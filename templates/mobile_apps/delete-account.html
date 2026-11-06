@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}AFCON360 — Delete Account{% endblock %}
+{% block content %}
+<section style="max-width:780px;margin:0 auto;padding:32px 18px 56px;line-height:1.7">
+  <p style="color:#087a4b;font-weight:800;letter-spacing:.12em;text-transform:uppercase">Account and privacy controls</p>
+  <h1>Request AFCON360 account deletion</h1>
+  <p>This page is the web route for customers and drivers who wish to request closure of an AFCON360 account. You can also start deletion inside the User or Driver app under Account.</p>
+  <h2>What happens when you submit a request?</h2>
+  <ul>
+    <li>Your sign-in is disabled and active website/mobile device sessions are revoked.</li>
+    <li>Direct account and general-profile identifiers are anonymized, and active MFA, recovery, PIN and personal API credentials are invalidated.</li>
+    <li>Some KYC/AML, wallet-ledger, booking, safety, dispute and audit records may be retained only where required for applicable legal, financial or safety obligations.</li>
+    <li>AFCON360 does not promise that statutory or financial records are erased where retention is legally required. The approved privacy notice will state the applicable categories and retention periods.</li>
+  </ul>
+  <p>Re-enter your current password and, when enabled, your authenticator/backup code. Type the confirmation phrase exactly. This verifies your intent; it does not transfer, refund or close any outstanding financial obligation.</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div role="alert" class="alert alert-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  {% if current_user.is_authenticated %}
+    <form method="post" action="{{ url_for('mobile_apps_delete_account') }}" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="mb-3">
+        <label class="form-label" for="delete-password">Current password</label>
+        <input class="form-control" id="delete-password" name="password" type="password" autocomplete="current-password" required maxlength="128">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="delete-mfa">Authenticator or backup code (when enrolled)</label>
+        <input class="form-control" id="delete-mfa" name="mfa_code" inputmode="numeric" autocomplete="one-time-code" maxlength="16">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="delete-confirm">Type DELETE MY ACCOUNT</label>
+        <input class="form-control" id="delete-confirm" name="confirmation" required maxlength="32" autocomplete="off">
+      </div>
+      <button class="btn btn-danger" type="submit">Submit account deletion request</button>
+    </form>
+  {% else %}
+    <p>You must sign in to verify ownership before requesting deletion.</p>
+    <a class="btn btn-primary" href="{{ url_for('auth.login', next=request.url) }}">Sign in to continue</a>
+  {% endif %}
+  <p class="mt-4"><a href="/apps/privacy">Read the mobile privacy notice (working draft)</a></p>
+  <p><a href="/apps">Back to AFCON360 Apps</a></p>
+</section>
+{% endblock %}

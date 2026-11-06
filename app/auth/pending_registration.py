@@ -322,6 +322,43 @@ def resend_pending_otp(token: str, ip: Optional[str] = None) -> PendingResult:
         )
 
     email = payload.get("email")
+    now = time.time()
+
+    # The hard deadline is fixed when the pending registration is created.
+    # Resending may refresh the OTP, but it must never extend the lifetime of
+    # the password hash or the registration capability itself.
+    try:
+        hard_deadline = float(payload.get("hard_expires_at") or 0)
+    except (TypeError, ValueError):
+        hard_deadline = 0
+
+    key = f"{_PENDING_PREFIX}{token}"
+    if not hard_deadline or now >= hard_deadline:
+        store_delete(key)
+        if email:
+            store_delete(
+                f"{_EMAIL_INDEX_PREFIX}{hashlib.sha256(email.encode()).hexdigest()}"
+            )
+        return PendingResult(
+            False,
+            message="Your verification session has expired. Please sign up again.",
+            code="expired",
+            email=email,
+        )
+
+    ttl = min(_otp_ttl(), int(hard_deadline - now))
+    if ttl <= 0:
+        store_delete(key)
+        if email:
+            store_delete(
+                f"{_EMAIL_INDEX_PREFIX}{hashlib.sha256(email.encode()).hexdigest()}"
+            )
+        return PendingResult(
+            False,
+            message="Your verification session has expired. Please sign up again.",
+            code="expired",
+            email=email,
+        )
 
     limited = _rate_limit_check(email, ip)
     if limited:
@@ -331,17 +368,17 @@ def resend_pending_otp(token: str, ip: Optional[str] = None) -> PendingResult:
     from app.auth.otp_service import OTPService
 
     otp = OTPService.generate_otp(length=6)
-    ttl = _otp_ttl()
-    now = time.time()
-
     payload["otp_hash"] = OTPService.hash_otp(otp)
     payload["attempts"] = 0  # fresh code, fresh attempt budget
-    payload["expires_at"] = now + ttl
-    payload["hard_expires_at"] = max(
-        payload.get("hard_expires_at", now + _max_lifetime()),
-        now + ttl,
-    )
-    store_set(f"{_PENDING_PREFIX}{token}", payload, ttl=ttl)
+    payload["expires_at"] = min(now + ttl, hard_deadline)
+    # Deliberately leave hard_expires_at unchanged.
+    if not store_set(key, payload, ttl=ttl):
+        return PendingResult(
+            False,
+            message="We couldn't resend the verification code. Please try again shortly.",
+            code="store_failure",
+            email=email,
+        )
 
     delivery = OTPService.send_email_otp_checked(
         email=email,
