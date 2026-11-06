@@ -375,6 +375,19 @@ def test_log_record_factory_scrubs_exception_text(caplog):
     assert sentinel not in caplog.text
 
 
+def test_log_redaction_masks_password_only_redis_and_database_urls():
+    from app.utils.log_redaction import redact_text
+
+    redis_url = "redis://:redis-password-77aa@redis.internal:6379/0"
+    database_url = "postgresql://afcon_user:db-password-88bb@db.internal/afcon360"
+    rendered = redact_text(f"redis={redis_url} database={database_url}")
+
+    assert "redis-password-77aa" not in rendered
+    assert "db-password-88bb" not in rendered
+    assert "redis://:[REDACTED]@redis.internal:6379/0" in rendered
+    assert "postgresql://afcon_user:[REDACTED]@db.internal/afcon360" in rendered
+
+
 def test_celery_task_gets_lazy_cached_flask_context(monkeypatch):
     from celery import Celery
     from flask import Flask
