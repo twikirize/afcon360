@@ -2897,25 +2897,25 @@ def auth_settings():
             if token_input:
                 SystemConfig.set(
                     'TWILIO_AUTH_TOKEN', token_input, value_type='str',
-                    category='sms', description='Twilio Auth Token',
+                    category='sms', description='Twilio Auth Token', commit=False,
                 )
             elif legacy_token and not SystemConfig.get('TWILIO_AUTH_TOKEN', ''):
                 # One-time compatibility migration from the old plaintext column.
                 SystemConfig.set(
                     'TWILIO_AUTH_TOKEN', legacy_token, value_type='str',
-                    category='sms', description='Twilio Auth Token',
+                    category='sms', description='Twilio Auth Token', commit=False,
                 )
             SystemConfig.set(
                 'TWILIO_ACCOUNT_SID', twilio_sid, value_type='str',
-                category='sms', description='Twilio Account SID',
+                category='sms', description='Twilio Account SID', commit=False,
             )
             SystemConfig.set(
                 'TWILIO_FROM_NUMBER', twilio_phone, value_type='str',
-                category='sms', description='Twilio verified sender phone number',
+                category='sms', description='Twilio verified sender phone number', commit=False,
             )
             SystemConfig.set(
                 'TWILIO_SMS_ENABLED', config.twilio_enabled, value_type='bool',
-                category='sms', description='Enable SMS via Twilio',
+                category='sms', description='Enable SMS via Twilio', commit=False,
             )
             config.twilio_account_sid = twilio_sid
             config.twilio_auth_token = None
