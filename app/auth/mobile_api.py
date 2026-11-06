@@ -1971,6 +1971,7 @@ def mobile_wallet_transfer():
         WalletFrozenError,
         WalletNotFoundError,
         ComplianceBlockError,
+        ConversionError,
     )
     from app.wallet.services.wallet_service import WalletService
 
@@ -2059,6 +2060,8 @@ def mobile_wallet_transfer():
         return _error("wallet_limit_exceeded", str(exc), 429)
     except UnsupportedCurrencyError:
         return _error("currency_unsupported", "This wallet currency is not currently supported for transfers.", 400)
+    except ConversionError as exc:
+        return _error("cross_currency_unavailable", str(exc), 409)
     except ComplianceBlockError as exc:
         return _error("compliance_blocked", str(exc), 403)
     except PermissionError:
