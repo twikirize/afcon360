@@ -20,7 +20,11 @@ class _SuccessfulInAppHandler:
         return bool(recipient.get("user_id"))
 
     def deliver(self, notification, recipient):
-        return {"external_id": f"test-{notification.id}", "response_code": 200}
+        return {
+            "success": True,
+            "external_id": f"test-{notification.id}",
+            "response_code": 200,
+        }
 
 
 def test_scheduled_notification_delivery_reuses_original_row(
