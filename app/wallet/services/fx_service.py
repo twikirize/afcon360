@@ -157,59 +157,56 @@ class FXService:
 
     def _fetch_from_api_safe(self, base: str, quote: str) -> Decimal:
         """
-        Resolve a currency pair using USD as the platform FX reference.
+        Fetch an executable FX rate from the configured provider extension.
 
-        USD itself can be resolved from a configured direct/inverse reference
-        rate. Every non-USD cross pair is calculated as:
-            base -> USD -> quote
-
-        The current provider adapter below still uses its documented mock
-        reference table. This method does not claim those mock values are live
-        market rates; a production rate provider remains a separate requirement.
+        All cross pairs are derived through USD. The old random-jitter mock
+        table is deliberately not used for payment execution. Without an
+        installed executable provider this method halts rather than creating
+        a guessed debit or provider settlement amount.
         """
         base = str(base or "").strip().upper()
         quote = str(quote or "").strip().upper()
         if base == quote:
             return Decimal("1")
 
-        mock_rates = self._get_mock_rates()
-
-        def _reference_pair(source: str, target: str) -> Decimal:
-            pair = (source, target)
-            if pair in mock_rates:
-                return Decimal(str(mock_rates[pair]))
-
-            inverse_pair = (target, source)
-            if inverse_pair in mock_rates:
-                inverse_rate = Decimal(str(mock_rates[inverse_pair]))
-                if inverse_rate <= 0:
-                    raise RateUnavailableError(
-                        f"Invalid inverse rate for {source}/{target}"
-                    )
-                return Decimal("1") / inverse_rate
-
+        provider = current_app.extensions.get("fx_rate_provider")
+        if provider is None or not callable(getattr(provider, "get_rate", None)):
             raise RateUnavailableError(
-                f"No USD reference rate available for {source}/{target}"
+                "No executable FX provider is configured. Indicative/mock rates "
+                "cannot be used for a Wallet debit or provider settlement."
             )
 
-        # Route all non-USD crosses through the same base reference. Do not
-        # prefer a legacy direct mock pair such as UGX/NGN over the USD bridge.
-        if base != self.BASE_CURRENCY and quote != self.BASE_CURRENCY:
-            base_to_usd = _reference_pair(base, self.BASE_CURRENCY)
-            usd_to_quote = _reference_pair(self.BASE_CURRENCY, quote)
-            rate = base_to_usd * usd_to_quote
+        source_name = str(
+            getattr(provider, "source_name", None)
+            or provider.__class__.__name__
+        )[:80]
+
+        def _usd_to(currency: str) -> Decimal:
+            result = provider.get_rate(
+                base_currency=self.BASE_CURRENCY,
+                quote_currency=currency,
+            )
+            raw_rate = getattr(result, "rate", result)
+            rate = Decimal(str(raw_rate))
+            if not rate.is_finite() or rate <= 0:
+                raise RateUnavailableError(
+                    f"The configured provider returned an invalid USD/{currency} rate."
+                )
+            return rate
+
+        if base == self.BASE_CURRENCY:
+            rate = _usd_to(quote)
+        elif quote == self.BASE_CURRENCY:
+            rate = Decimal("1") / _usd_to(base)
         else:
-            rate = _reference_pair(base, quote)
+            # KES -> USD -> NGN, for example. Each cross pair is built from
+            # independently sourced USD legs, never from a hardcoded cross rate.
+            rate = (Decimal("1") / _usd_to(base)) * _usd_to(quote)
 
-        if rate <= 0:
-            raise RateUnavailableError(f"Non-positive FX rate for {base}/{quote}")
-
-        # Retain the existing small simulation variation only for mock
-        # reference data. Replace this adapter with a real provider before
-        # production cross-border conversions are enabled.
-        import random
-        variation = Decimal(str(random.uniform(0.995, 1.005)))
-        return rate * variation
+        self._last_rate_source = source_name
+        if not rate.is_finite() or rate <= 0:
+            raise RateUnavailableError(f"The configured provider returned an invalid {base}/{quote} rate.")
+        return rate
 
     def _get_mock_rates(self) -> Dict:
         """Mock rates - replace with real API."""
@@ -264,7 +261,7 @@ class FXService:
         if existing:
             # UPDATE existing
             existing.rate = rate
-            existing.source = 'api_live'
+            existing.source = getattr(self, '_last_rate_source', 'configured_fx_provider')
             existing.expires_at = now + self.default_ttl
             existing.timestamp = now
             existing.spread = self.default_spread
@@ -275,7 +272,7 @@ class FXService:
                 base_currency=base,
                 quote_currency=quote,
                 rate=rate,
-                source='api_live',
+                source=getattr(self, '_last_rate_source', 'configured_fx_provider'),
                 expires_at=now + self.default_ttl,
                 spread=self.default_spread
             )
@@ -321,9 +318,16 @@ class FXService:
                 }
             )
             db.session.add(audit)
-            db.session.commit()
-        except Exception as e:
-            current_app.logger.error(f"Failed to log rate anomaly: {e}")
+            session = db.session()
+            transaction = session.get_transaction()
+            origin = getattr(getattr(transaction, "origin", None), "name", None)
+            explicitly_managed = origin == "BEGIN" or session.in_nested_transaction()
+            if explicitly_managed:
+                session.flush()
+            else:
+                session.commit()
+        except Exception:
+            current_app.logger.exception("Failed to log FX rate anomaly")
 
     def convert_amount_safe(
             self,
