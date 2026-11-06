@@ -13,6 +13,15 @@ from . import BaseChannelHandler
 logger = logging.getLogger(__name__)
 
 
+def _as_bool(value) -> bool:
+    """Parse owner/environment feature flags consistently."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "enabled"}
+    return bool(value)
+
+
 def _read_owner_setting(key: str):
     """Read a DB-backed setting only inside a Flask app context.
 
@@ -90,7 +99,7 @@ class TwilioSmsHandler(BaseChannelHandler):
         self.auth_token = auth_token
         self.from_number = self._get_config('TWILIO_FROM_NUMBER')
         self.messaging_service_sid = self._get_config('TWILIO_MESSAGING_SERVICE_SID')
-        self._enabled = bool(self._get_config('TWILIO_SMS_ENABLED', False)) or bool(
+        self._enabled = _as_bool(self._get_config('TWILIO_SMS_ENABLED', False)) or _as_bool(
             getattr(self.auth_config, 'twilio_enabled', False)
         )
 
@@ -204,7 +213,7 @@ class TwilioWhatsAppHandler(BaseChannelHandler):
         self.account_sid = account_sid
         self.auth_token = auth_token
         self.whatsapp_from = self._get_config('TWILIO_WHATSAPP_FROM')
-        self._enabled = bool(self._get_config('TWILIO_WHATSAPP_ENABLED', False))
+        self._enabled = _as_bool(self._get_config('TWILIO_WHATSAPP_ENABLED', False))
 
     def _get_client(self):
         """Lazy initialization and refresh of the owner-managed Twilio client."""
