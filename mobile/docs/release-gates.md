@@ -53,6 +53,24 @@ A release advances only when evidence for its gate is recorded. CI and source in
 
 The PR-capable validation workflow uses disposable CI signing keys and read-only GitHub permissions. It does not publish a GitHub Release or use permanent signing secrets. Every run uses a different temporary signature; a new test APK may require uninstalling the previous preview before installation. A stable tester-distribution release needs a separate trusted workflow and protected signing environment.
 
+## Exact-build and reinstall behavior
+
+The current CI APKs are disposable-key validation artifacts, not an in-place update channel. The public `/download` page currently points at fixed GitHub Release asset URLs and does not expose a verified installed-build comparison. Do not claim that a phone is up to date based only on a download click, a browser cookie, a version label or a locally cached value.
+
+Before a tester-facing install/reinstall status is enabled:
+
+- [ ] Every published User and Driver APK has a manifest containing app/package ID, release channel, display version, monotonic Android `versionCode`, immutable `build_id`, source commit, workflow run/attempt, APK SHA-256, signing-certificate SHA-256 and exact asset URL.
+- [ ] The immutable `build_id` is embedded in the installed app at build time and is also published in the manifest. Build identity must distinguish different APK artifacts even when the display version is unchanged.
+- [ ] Every distinct installable APK receives a strictly higher Android `versionCode` for that package/channel. Do not reuse a version code for a different artifact.
+- [ ] A trusted release pipeline signs each tester-distribution APK with the same protected signing key for that package/channel. PR/CI disposable keys must never be used for tester distribution or represented as upgrade-compatible.
+- [ ] The app compares its embedded installed `build_id` with the authoritative published manifest. The public download page may only display an installed-build state when that verified identity is supplied by the app or another trusted mechanism.
+- [ ] When installed and available `build_id` values match, show **“You’re up to date”** and do not show an Update action. A secondary **“Reinstall this same build”** action may be offered only after a clear confirmation.
+- [ ] When the available build differs, show **“New build available”** for a changed build with the same display version, or **“New version available”** when the display version changes. Only then may the app describe the action as an update.
+- [ ] The app never downloads or reinstalls automatically. A reinstall requires an explicit user confirmation; the confirmation must identify the exact build/version.
+- [ ] Tests cover exact-build match, different build/same display version, higher version, stale/unavailable manifest, invalid package/channel, checksum mismatch and signing-certificate mismatch.
+
+The Android system package-installer dialog is controlled by Android and may use its own wording. AFCON360 must use the states and wording above in its own UI; it cannot rename the operating system's installer dialog. Until these gates pass, keep the existing preview link labelled **Download APK** and do not describe it as an update mechanism.
+
 ## Gate 4 — iOS simulator and App Store
 
 - [ ] Both User and Driver iOS projects prebuild and pass Expo dependency compatibility.
