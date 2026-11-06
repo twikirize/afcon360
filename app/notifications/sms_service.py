@@ -299,7 +299,8 @@ def send_sms(phone_number: str, message: str) -> Dict[str, Any]:
     auth_config = None
     try:
         from app.auth.config_model import AuthConfiguration
-        auth_config = AuthConfiguration.get_config()
+        # Read only: sending an OTP must not create an auth-config row as a side effect.
+        auth_config = AuthConfiguration.query.first()
         provider = auth_config.get_sms_provider_for_phone(phone_number) if auth_config else None
     except Exception:
         logger.debug("Auth SMS routing configuration is unavailable", exc_info=True)
