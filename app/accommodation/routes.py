@@ -5983,6 +5983,142 @@ def host_refund_booking(booking_id):
     return redirect(url_for("accommodation.host_booking_detail", booking_id=booking_id))
 
 
+@accommodation_bp.route(
+    "/admin/refunds/review",
+    methods=["GET"],
+    endpoint="admin_refund_review_queue",
+)
+@login_required
+@require_role("admin", "super_admin", "owner", "accommodation_admin")
+def admin_refund_review_queue():
+    """Platform-only queue for cancellation exceptions and machine-screened risks."""
+    candidates = (
+        AccommodationBooking.query
+        .filter(
+            AccommodationBooking.status.in_([
+                AccommodationBookingStatus.CANCELLED.value,
+                AccommodationBookingStatus.REFUNDED.value,
+            ]),
+            AccommodationBooking.is_deleted.is_(False),
+        )
+        .order_by(AccommodationBooking.cancelled_at.desc())
+        .limit(500)
+        .all()
+    )
+    reviews = []
+    for booking in candidates:
+        workflow = (booking.policy_snapshot or {}).get("refund_workflow", {})
+        if workflow.get("state") == "pending_human_review":
+            reviews.append({"booking": booking, "workflow": workflow})
+    return render_template(
+        "accommodation/admin/refund_review_queue.html",
+        reviews=reviews,
+    )
+
+
+@accommodation_bp.route(
+    "/admin/refunds/review/<int:booking_id>/approve",
+    methods=["POST"],
+    endpoint="admin_approve_refund_review",
+)
+@login_required
+@require_role("admin", "super_admin", "owner", "accommodation_admin")
+@limiter.limit("20 per minute")
+def admin_approve_refund_review(booking_id):
+    """Approve the machine's proposed amount or an evidenced exception amount."""
+    try:
+        approved_amount = Decimal(request.form.get("approved_amount", "0"))
+    except Exception:
+        flash("Enter a valid approved refund amount.", "danger")
+        return redirect(url_for("accommodation.admin_refund_review_queue"))
+    reason = request.form.get("approval_reason", "").strip()
+    if not reason:
+        flash("An approval reason is required.", "danger")
+        return redirect(url_for("accommodation.admin_refund_review_queue"))
+
+    success, error = MarketplaceService.refund_guest_approved(
+        booking_id,
+        approved_amount,
+        approval_reason=reason,
+    )
+    if not success:
+        flash(error or "Refund approval could not be completed.", "danger")
+    else:
+        booking = db.session.get(AccommodationBooking, booking_id)
+        workflow = (booking.policy_snapshot or {}).get("refund_workflow", {}) if booking else {}
+        state = workflow.get("state")
+        if state == "refunded":
+            flash("Refund approved and executed. The approver and decision are recorded.", "success")
+        elif state == "approved_external_execution_pending":
+            flash(
+                "Refund entitlement approved. The original payment provider or property must execute it; "
+                "it is not marked refunded yet.",
+                "warning",
+            )
+        elif state == "approved_recovery_required":
+            flash(
+                "Refund entitlement approved, but escrow recovery is required before money can be sent.",
+                "warning",
+            )
+        else:
+            flash("Human approval recorded.", "success")
+    return redirect(url_for("accommodation.admin_refund_review_queue"))
+
+
+@accommodation_bp.route(
+    "/admin/refunds/review/<int:booking_id>/reject",
+    methods=["POST"],
+    endpoint="admin_reject_refund_review",
+)
+@login_required
+@require_role("admin", "super_admin", "owner", "accommodation_admin")
+@limiter.limit("20 per minute")
+def admin_reject_refund_review(booking_id):
+    reason = request.form.get("rejection_reason", "").strip()
+    if not reason:
+        flash("A reason is required to reject a refund request.", "danger")
+        return redirect(url_for("accommodation.admin_refund_review_queue"))
+    success, error = MarketplaceService.reject_refund_review(
+        booking_id,
+        reason,
+        reviewer_user_id=current_user.id,
+    )
+    if success:
+        flash("Refund request rejected. No refund was sent.", "success")
+    else:
+        flash(error or "Refund review could not be rejected.", "danger")
+    return redirect(url_for("accommodation.admin_refund_review_queue"))
+
+
+@accommodation_bp.route(
+    "/admin/refunds/review/<int:booking_id>/record-external-execution",
+    methods=["POST"],
+    endpoint="admin_record_external_refund_execution",
+)
+@login_required
+@require_role("admin", "super_admin", "owner", "accommodation_admin")
+@limiter.limit("20 per minute")
+def admin_record_external_refund_execution(booking_id):
+    """Record an already-completed refund from the original provider/property."""
+    try:
+        amount = Decimal(request.form.get("executed_amount", "0"))
+    except Exception:
+        flash("Enter a valid external refund amount.", "danger")
+        return redirect(url_for("accommodation.admin_refund_review_queue"))
+    reference = request.form.get("provider_reference", "").strip()
+    success, error = MarketplaceService.record_external_refund_execution(
+        booking_id,
+        amount,
+        reference,
+        reviewer_user_id=current_user.id,
+    )
+    if success:
+        flash("External refund execution verified and recorded.", "success")
+    else:
+        flash(error or "External refund evidence could not be recorded.", "danger")
+    return redirect(url_for("accommodation.admin_refund_review_queue"))
+
+
 @accommodation_bp.route('/host/booking/<int:booking_id>/approve', methods=['POST'], endpoint='host_approve_booking')
 @login_required
 @limiter.limit("10 per minute")
