@@ -1122,6 +1122,399 @@ def mobile_driver_cash_receipt(booking_reference):
     return DriverTripPaymentResource().post(booking_reference)
 
 
+
+
+# ---------------------------------------------------------------------------
+# Native Wallet APIs
+# ---------------------------------------------------------------------------
+
+def _native_wallet_user():
+    return g._afcon360_mobile_auth_context["user"]
+
+
+def _native_wallet_mask_identity(identity_type, normalized):
+    if identity_type == "PHONE":
+        digits = "".join(ch for ch in str(normalized) if ch.isdigit())
+        return f"+{digits[:3]} *** ***{digits[-3:]}" if len(digits) >= 9 else "••••"
+    if identity_type == "EMAIL" and "@" in str(normalized):
+        local, domain = str(normalized).split("@", 1)
+        return f"{local[:1]}***@{domain}" if local else f"***@{domain}"
+    value = str(normalized)
+    return value[:3] + "••••" if len(value) > 3 else "••••"
+
+
+def _resolve_native_wallet_recipient(identifier, sender_currency=None):
+    from app.identity.models.user import User
+    from app.wallet.models.payment_identity import (
+        PaymentIdentityModel,
+        PaymentIdentityType,
+    )
+    from app.wallet.models.ledger import AccountModel
+
+    raw = str(identifier or "").strip()
+    if not raw or len(raw) > 320:
+        return None, None, None, ("recipient_identifier_invalid", "Enter a valid AFCON360 ID, verified phone number or verified email.", 400)
+
+    from app.wallet.services.payment_identity_service import (
+        detect_identity_type,
+        normalize_identity,
+    )
+    identity_type = detect_identity_type(raw)
+    if identity_type is None:
+        return None, None, None, ("recipient_not_found", "AFCON360 could not resolve that payment identity.", 404)
+
+    try:
+        normalized = normalize_identity(identity_type, raw)
+    except (ValueError, TypeError):
+        return None, None, None, ("recipient_not_found", "AFCON360 could not resolve that payment identity.", 404)
+
+    identity = PaymentIdentityModel.query.filter_by(
+        identity_type=identity_type,
+        normalized_value=normalized,
+        is_active=True,
+        is_verified=True,
+    ).first()
+    if identity is None or identity.owner_type != "user" or not identity.owner_id:
+        return None, None, None, ("recipient_not_found", "No verified AFCON360 user payment identity was found.", 404)
+
+    recipient = db.session.get(User, identity.owner_id)
+    if recipient is None or not getattr(recipient, "is_active", False) or getattr(recipient, "is_deleted", False):
+        return None, None, None, ("recipient_unavailable", "That AFCON360 account is not available to receive transfers.", 404)
+
+    sender = _native_wallet_user()
+    if int(recipient.id) == int(sender.id):
+        return None, None, None, ("self_transfer_not_allowed", "You cannot send money to your own wallet.", 400)
+
+    account = None
+    if identity.account_id:
+        account = db.session.get(AccountModel, identity.account_id)
+        if (
+            account is None
+            or account.owner_type != "user"
+            or int(account.user_id or 0) != int(recipient.id)
+        ):
+            account = None
+    else:
+        candidates = AccountModel.query.filter_by(
+            user_id=recipient.id,
+            owner_type="user",
+            status="active",
+            is_frozen=False,
+        ).order_by(AccountModel.currency.asc()).all()
+        if sender_currency:
+            same_currency = [item for item in candidates if str(item.currency).upper() == str(sender_currency).upper()]
+        else:
+            same_currency = []
+        if len(same_currency) == 1:
+            account = same_currency[0]
+        elif len(candidates) == 1:
+            account = candidates[0]
+        elif not candidates:
+            return None, None, None, ("recipient_wallet_not_found", "That user has no active wallet to receive a transfer.", 404)
+        else:
+            currencies = sorted({str(item.currency).upper() for item in candidates})
+            return None, None, None, ("recipient_currency_ambiguous", "The recipient has more than one wallet currency. Select a recipient wallet currency before continuing.", 409, currencies)
+
+    if account is None or account.status != "active" or account.is_frozen:
+        return None, None, None, ("recipient_wallet_unavailable", "That user's destination wallet is unavailable.", 409)
+    return identity, recipient, account, None
+
+
+@mobile_api_bp.get("/wallet")
+@_bearer_required("user")
+def mobile_wallet_summary():
+    """Return ledger-derived balances for the authenticated user's active wallets."""
+    from app.wallet.models.ledger import AccountModel
+    from app.wallet.repositories.ledger_repository import LedgerRepository
+
+    user = _native_wallet_user()
+    accounts = AccountModel.query.filter_by(
+        user_id=user.id,
+        owner_type="user",
+    ).order_by(AccountModel.currency.asc()).all()
+    ledger = LedgerRepository()
+    data = []
+    for account in accounts:
+        data.append({
+            "currency": str(account.currency).upper(),
+            "balance": str(ledger.get_balance(account.id, account.currency)),
+            "is_frozen": bool(account.is_frozen) or account.status != "active",
+            "status": str(account.status),
+        })
+    return jsonify({
+        "success": True,
+        "data": {"exists": bool(data), "accounts": data},
+    }), 200
+
+
+@mobile_api_bp.get("/wallet/transactions")
+@_bearer_required("user")
+def mobile_wallet_transactions():
+    """Return only the authenticated user's transaction history, with safe fields."""
+    from sqlalchemy import or_
+    from app.wallet.models.transaction import TransactionModel
+
+    user = _native_wallet_user()
+    limit = request.args.get("limit", default=30, type=int)
+    offset = request.args.get("offset", default=0, type=int)
+    tx_type = str(request.args.get("type") or "").strip().lower()
+    allowed_types = {"deposit", "withdraw", "transfer", "refund", "fee", "adjustment"}
+    if limit < 1 or offset < 0:
+        return _error("pagination_invalid", "Use a positive limit and a non-negative offset.", 400)
+    limit = min(limit, 100)
+    if tx_type and tx_type not in allowed_types:
+        return _error("transaction_type_invalid", "The selected transaction type is not supported.", 400)
+
+    query = TransactionModel.query.filter(or_(
+        TransactionModel.user_id == user.id,
+        TransactionModel.recipient_user_id == user.id,
+    ))
+    if tx_type:
+        query = query.filter(TransactionModel.tx_type == tx_type)
+    total = query.count()
+    rows = query.order_by(
+        TransactionModel.created_at.desc(),
+        TransactionModel.id.desc(),
+    ).offset(offset).limit(limit).all()
+
+    items = []
+    for row in rows:
+        items.append({
+            "reference": str(row.id),
+            "type": str(getattr(row.tx_type, "value", row.tx_type)),
+            "direction": "received" if row.recipient_user_id == user.id else "sent",
+            "amount": str(row.amount),
+            "currency": str(row.currency),
+            "status": str(getattr(row.status, "value", row.status)),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        })
+    return jsonify({
+        "success": True,
+        "data": {
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total,
+        },
+    }), 200
+
+
+@mobile_api_bp.get("/wallet/pin")
+@_bearer_required("user")
+def mobile_wallet_pin_status():
+    user = _native_wallet_user()
+    return jsonify({
+        "success": True,
+        "data": {
+            "pin_set": bool(user.transaction_pin_hash),
+            "locked": bool(
+                user.transaction_pin_locked_until
+                and user.transaction_pin_locked_until > datetime.now(timezone.utc)
+            ),
+        },
+    }), 200
+
+
+@mobile_api_bp.post("/wallet/pin")
+@limiter.limit("8 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_wallet_pin_set():
+    from app.identity.models.user import User
+
+    data = request.get_json(silent=True) or {}
+    pin = str(data.get("pin") or "")
+    confirm_pin = str(data.get("confirm_pin") or "")
+    if not pin or not confirm_pin or pin != confirm_pin:
+        return _error("pin_confirmation_invalid", "Enter the same new PIN twice.", 400)
+    if not pin.isdigit() or len(pin) not in (4, 5, 6):
+        return _error("pin_format_invalid", "Your transaction PIN must contain 4–6 digits.", 400)
+
+    current = _native_wallet_user()
+    try:
+        user = db.session.query(User).filter_by(id=current.id).with_for_update().one_or_none()
+        if user is None or not getattr(user, "is_active", False) or getattr(user, "is_deleted", False):
+            return _error("account_unavailable", "This AFCON360 account is not available.", 403)
+
+        now = datetime.now(timezone.utc)
+        locked_until = user.transaction_pin_locked_until
+        if locked_until and locked_until.tzinfo is None:
+            locked_until = locked_until.replace(tzinfo=timezone.utc)
+        if locked_until and locked_until > now:
+            return _error("pin_locked", "Your current PIN is locked. Try again after the lockout expires.", 423)
+
+        if user.transaction_pin_hash:
+            current_pin = str(data.get("current_pin") or "")
+            if not current_pin or not user.verify_transaction_pin(current_pin, session=db.session):
+                db.session.commit()  # persist failed-attempt counters
+                return _error("current_pin_invalid", "Your current transaction PIN is incorrect or locked.", 403)
+        else:
+            password = str(data.get("password") or "")
+            if not password or not user.verify_password(password):
+                return _error("password_reauthentication_required", "Enter your account password to set your first transaction PIN.", 403)
+
+        user.set_transaction_pin(pin, session=db.session)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native wallet PIN update failed")
+        return _error("pin_update_unavailable", "AFCON360 could not securely update your PIN. Please try again.", 503)
+
+    return jsonify({"success": True, "data": {"pin_set": True}}), 200
+
+
+@mobile_api_bp.post("/wallet/recipients/resolve")
+@limiter.limit("20 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_wallet_recipient_resolve():
+    data = request.get_json(silent=True) or {}
+    currency = str(data.get("currency") or "").strip().upper()
+    if len(currency) != 3:
+        return _error("currency_invalid", "Choose a valid three-letter wallet currency.", 400)
+    identity, recipient, account, error = _resolve_native_wallet_recipient(
+        data.get("identifier"), sender_currency=currency
+    )
+    if error:
+        code, message, status, *details = error
+        payload = {"success": False, "code": code, "message": message}
+        if details:
+            payload["data"] = {"available_currencies": details[0]}
+        return jsonify(payload), status
+    return jsonify({
+        "success": True,
+        "data": {
+            "display_name": getattr(recipient, "display_name", None) or "AFCON360 member",
+            "masked_identifier": _native_wallet_mask_identity(identity.identity_type, identity.normalized_value),
+            "recipient_currency": str(account.currency).upper(),
+        },
+    }), 200
+
+
+@mobile_api_bp.post("/wallet/transfers")
+@limiter.limit("8 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_wallet_transfer():
+    from decimal import InvalidOperation
+    from app.wallet.models.ledger import LedgerEntryModel, AccountModel
+    from app.wallet.exceptions import (
+        DuplicateTransactionError,
+        InsufficientBalanceError,
+        LimitExceededError,
+        TransactionPINError,
+        UnsupportedCurrencyError,
+        WalletFrozenError,
+        WalletNotFoundError,
+        ComplianceBlockError,
+    )
+    from app.wallet.repositories.account_repository import AccountRepository
+    from app.wallet.services.wallet_service import WalletService
+
+    data = request.get_json(silent=True) or {}
+    user = _native_wallet_user()
+    identifier = data.get("identifier")
+    currency = str(data.get("currency") or "").strip().upper()
+    note = str(data.get("note") or "").strip()
+    pin = str(data.get("pin") or "")
+    idempotency_key = str(
+        request.headers.get("Idempotency-Key")
+        or request.headers.get("X-Idempotency-Key")
+        or data.get("idempotency_key")
+        or ""
+    ).strip()
+
+    if len(currency) != 3:
+        return _error("currency_invalid", "Choose a valid three-letter wallet currency.", 400)
+    if not idempotency_key or len(idempotency_key) < 8 or len(idempotency_key) > 128:
+        return _error("idempotency_key_required", "A unique transfer request key is required.", 400)
+    if len(note) > 140:
+        return _error("transfer_note_invalid", "The transfer note must be 140 characters or fewer.", 400)
+    if not pin or not pin.isdigit() or len(pin) not in (4, 5, 6):
+        return _error("transaction_pin_required", "Enter your 4–6 digit transaction PIN.", 403)
+
+    try:
+        amount = Decimal(str(data.get("amount")))
+        if not amount.is_finite() or amount <= 0 or amount.as_tuple().exponent < -2:
+            raise InvalidOperation
+    except (InvalidOperation, TypeError, ValueError):
+        return _error("amount_invalid", "Enter a valid positive amount with no more than two decimal places.", 400)
+
+    sender_account = AccountRepository().get_by_user_id(user.id, currency)
+    if sender_account is None or sender_account.owner_type != "user" or sender_account.status != "active":
+        return _error("wallet_not_found", "You do not have an active wallet in that currency.", 404)
+    if sender_account.is_frozen:
+        return _error("wallet_frozen", "Your wallet is restricted. Contact AFCON360 support.", 403)
+    if not user.transaction_pin_hash:
+        return _error("transaction_pin_not_set", "Set your transaction PIN before sending money.", 403)
+
+    identity, recipient, recipient_account, recipient_error = _resolve_native_wallet_recipient(
+        identifier, sender_currency=currency
+    )
+    if recipient_error:
+        code, message, status, *details = recipient_error
+        payload = {"success": False, "code": code, "message": message}
+        if details:
+            payload["data"] = {"available_currencies": details[0]}
+        return jsonify(payload), status
+    if str(recipient_account.currency).upper() != currency:
+        return jsonify({
+            "success": False,
+            "code": "recipient_currency_mismatch",
+            "message": "Your wallet and the recipient wallet use different currencies. AFCON360 must show you a confirmed conversion quote before this transfer can proceed.",
+            "data": {
+                "send_currency": currency,
+                "recipient_currency": str(recipient_account.currency).upper(),
+            },
+        }), 409
+
+    try:
+        result = WalletService().transfer(
+            from_account_id=str(sender_account.id),
+            to_account_id=str(recipient_account.id),
+            amount=amount,
+            currency=currency,
+            client_request_id=idempotency_key,
+            note=note or None,
+            metadata={"source": "native_mobile"},
+            pin=pin,
+        )
+    except TransactionPINError as exc:
+        return _error("transaction_pin_invalid", str(exc), 403)
+    except InsufficientBalanceError as exc:
+        return _error("insufficient_balance", str(exc), 402)
+    except DuplicateTransactionError:
+        return _error("idempotency_conflict", "That transfer request key has already been used. Refresh your transaction history before retrying.", 409)
+    except WalletFrozenError:
+        return _error("wallet_frozen", "The sender or recipient wallet is restricted.", 403)
+    except LimitExceededError as exc:
+        return _error("wallet_limit_exceeded", str(exc), 429)
+    except UnsupportedCurrencyError:
+        return _error("currency_unsupported", "This wallet currency is not currently supported for transfers.", 400)
+    except ComplianceBlockError as exc:
+        return _error("compliance_blocked", str(exc), 403)
+    except PermissionError:
+        return _error("wallet_transfer_forbidden", "AFCON360 could not authorize this wallet transfer.", 403)
+    except ValueError as exc:
+        return _error("transfer_invalid", str(exc), 400)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native wallet transfer failed for user %s", user.public_id)
+        return _error("wallet_transfer_unavailable", "AFCON360 could not complete this transfer. Check your transaction history before retrying.", 503)
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "reference": str(result.get("transaction_id")),
+            "amount": str(result.get("amount", amount)),
+            "currency": str(result.get("currency", currency)),
+            "received_amount": str(result.get("amount", amount)),
+            "received_currency": currency,
+            "recipient_display_name": getattr(recipient, "display_name", None) or "AFCON360 member",
+            "new_balance": str(result.get("new_balance_from")),
+            "already_processed": bool(result.get("already_processed", False)),
+        },
+    }), 200
+
+
 @mobile_api_bp.get("/driver/earnings")
 @_bearer_required("driver")
 def mobile_driver_earnings():
