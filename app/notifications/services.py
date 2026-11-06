@@ -420,27 +420,62 @@ class NotificationService:
                     all_success = False
                     continue
 
-                # Deliver
-                try:
-                    result = handler.deliver(notification, recipient)
-                    results.append({
-                        'channel': channel_str,
-                        'success': True,
-                        'external_id': result.get('external_id'),
-                        'response_code': result.get('response_code'),
-                    })
-                    cls._log_delivery(notification.id, channel_str, 'success', result)
-                except Exception as e:
-                    logger.error(
-                        f"Delivery failed for notification {notification.id} "
-                        f"via {channel_str}: {e}", exc_info=True
-                    )
+                # Deliver with fallback: if oci_email fails, try Gmail SMTP
+                delivered = False
+                fallback_channels = []
+                
+                # If oci_email fails, fall back to Gmail SMTP (EMAIL channel)
+                if channel_str == 'oci_email':
+                    fallback_channels = ['email']
+                
+                channels_to_try = [channel_str] + fallback_channels
+                
+                for try_channel in channels_to_try:
+                    try_handler = cls.HANDLERS.get(try_channel)
+                    if not try_handler:
+                        continue
+                    
+                    # Validate recipient for this channel
+                    if not try_handler.validate_recipient(recipient):
+                        continue
+                    
+                    try:
+                        result = try_handler.deliver(notification, recipient)
+                        if result.get('success'):
+                            results.append({
+                                'channel': try_channel,
+                                'success': True,
+                                'external_id': result.get('external_id'),
+                                'response_code': result.get('response_code'),
+                            })
+                            cls._log_delivery(notification.id, try_channel, 'success', result)
+                            
+                            if try_channel != channel_str:
+                                logger.warning(
+                                    f"Fallback used: {channel_str} failed, delivered via {try_channel} "
+                                    f"for notification {notification.id}"
+                                )
+                            delivered = True
+                            break
+                        else:
+                            logger.warning(
+                                f"Channel {try_channel} returned failure for notification {notification.id}: "
+                                f"{result.get('response_body')}"
+                            )
+                            cls._log_delivery(notification.id, try_channel, 'failure', result)
+                    except Exception as e:
+                        logger.error(
+                            f"Delivery failed for notification {notification.id} "
+                            f"via {try_channel}: {e}", exc_info=True
+                        )
+                        cls._log_delivery(notification.id, try_channel, 'failure', {'error': str(e)})
+                
+                if not delivered:
                     results.append({
                         'channel': channel_str,
                         'success': False,
-                        'error': str(e),
+                        'error': 'All delivery channels (including fallback) failed',
                     })
-                    cls._log_delivery(notification.id, channel_str, 'failure', {'error': str(e)})
                     all_success = False
 
             # Update notification status
