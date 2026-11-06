@@ -13,6 +13,7 @@ from app.auth.otp_store import (
     store_get,
     store_set,
     store_ttl,
+    store_compare_and_delete,
 )
 
 logger = logging.getLogger(__name__)
@@ -164,10 +165,12 @@ class OTPService:
 
         # Compare hashes (constant-time comparison for security)
         if OTPService.verify_otp_hash(otp, stored_hash):
-            # Delete the OTP after successful verification to prevent reuse
-            store_delete(cache_key)
-            logger.debug(f"Verified OTP for {identifier} with purpose {purpose}")
-            return True, "OTP verified successfully"
+            # Consume only the exact hash we verified. This makes successful
+            # OTP use atomic across concurrent workers and prevents replay.
+            if store_compare_and_delete(cache_key, stored_hash):
+                logger.debug(f"Verified OTP for {identifier} with purpose {purpose}")
+                return True, "OTP verified successfully"
+            return False, "OTP has already been used or replaced"
         else:
             logger.warning(f"Failed OTP verification for {identifier} with purpose {purpose}")
             return False, "Invalid OTP"
