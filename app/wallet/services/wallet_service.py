@@ -981,7 +981,8 @@ class WalletService:
         platform_fee: Optional[Decimal] = None,
         fee_currency: Optional[str] = None,
         pin: Optional[str] = None,
-        system_initiated: bool = False
+        system_initiated: bool = False,
+        authorized_user_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Transfer funds with full atomicity.
@@ -1045,12 +1046,24 @@ class WalletService:
                     from_account = self.account_repo.get_by_id(from_account_id)
                     if not from_account:
                         raise WalletNotFoundError(wallet_ref=from_account_id)
+                    if (
+                        authorized_user_id is not None
+                        and int(from_account.user_id or 0) != int(authorized_user_id)
+                    ):
+                        raise PermissionError("Authenticated user does not own the sender wallet")
 
                     sender_user = self.db.query(User).filter_by(
                         id=from_account.user_id
                     ).with_for_update().one_or_none()
                     if sender_user is None:
                         raise TransactionPINError("Sender PIN authority could not be verified")
+                    if (
+                        authorized_user_id is not None
+                        and int(sender_user.id) != int(authorized_user_id)
+                    ):
+                        raise PermissionError("Authenticated user does not match the sender PIN owner")
+                    if not sender_user.is_active or getattr(sender_user, "is_deleted", False):
+                        raise PermissionError("Sender account is not active")
                     if not sender_user.transaction_pin_hash:
                         raise TransactionPINError("Set a transaction PIN before sending money")
                     if not pin:
@@ -1083,9 +1096,17 @@ class WalletService:
 
             # Ownership validation - defense in depth (sender only)
             # system_initiated skips ownership check for system-initiated transactions
-            if not system_initiated and from_account.user_id != current_user.id and not self._is_admin():
-                current_app.logger.warning(f"Ownership violation attempt on account {from_account.id} by user {current_user.id}")
-                raise PermissionError("You do not have permission to operate on this account")
+            if not system_initiated:
+                if authorized_user_id is not None:
+                    if int(from_account.user_id or 0) != int(authorized_user_id):
+                        raise PermissionError("Authenticated user does not own the sender wallet")
+                elif from_account.user_id != current_user.id and not self._is_admin():
+                    current_app.logger.warning(
+                        "Wallet transfer ownership violation on account %s by session user %s",
+                        from_account.id,
+                        getattr(current_user, "id", None),
+                    )
+                    raise PermissionError("You do not have permission to operate on this account")
 
             def _transfer_terms_match(candidate_tx):
                 """Reject idempotency-key reuse for different financial terms."""
