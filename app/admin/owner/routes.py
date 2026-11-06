@@ -2967,7 +2967,7 @@ def auth_settings():
             else:
                 flash('Authentication settings updated. Phone OTP delivery is set to email.', 'success')
             
-            except Exception as exc:
+        except Exception as exc:
             db.session.rollback()
             logger.error(
                 "Authentication settings update failed (exception_type=%s)",
