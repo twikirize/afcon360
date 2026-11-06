@@ -441,7 +441,10 @@ class Config:
         if not cls.ENCRYPTION_KEY_VALUE or cls.ENCRYPTION_KEY_VALUE.startswith("REPLACE_"):
             missing.append("ENCRYPTION_KEY")
 
-        # Warn (not fail) for service credentials — they may not be needed at boot
+        # SMTP environment values are now a migration fallback only. The
+        # canonical provider may be configured in the encrypted
+        # communication_settings row by the Owner, so missing process-level
+        # username/password is not itself evidence that mail is unconfigured.
         warnings = []
         if not cls.MAIL_USERNAME:
             warnings.append("MAIL_USERNAME")
@@ -450,7 +453,10 @@ class Config:
 
         if warnings:
             logger.warning(
-                f"[CONFIG] Production service credentials not set: {', '.join(warnings)}"
+                "[CONFIG] SMTP environment fallback credentials not set: "
+                f"{', '.join(warnings)}. The Owner-managed encrypted email "
+                "provider may still be configured; verify it through the "
+                "communication settings page and asynchronous delivery test."
             )
 
         if missing:

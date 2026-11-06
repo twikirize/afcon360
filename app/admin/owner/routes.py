@@ -1116,6 +1116,15 @@ def audit_logs():
         flash("Error loading audit logs", "danger")
         return redirect(url_for('admin.owner.dashboard'))
 
+@owner_bp.route('/communication-settings', methods=['GET'])
+@login_required
+@owner_or_superadmin_required
+@audit_owner_action('viewed_communication_settings', 'settings')
+def communication_settings():
+    """Owner/Super Admin UI for the shared email provider credentials."""
+    return render_template('owner/communication_settings.html')
+
+
 @owner_bp.route('/settings', methods=['GET', 'POST'])
 @owner_or_superadmin_required
 @audit_owner_action('viewed_settings', 'settings')
@@ -1201,20 +1210,6 @@ def settings():
             logger.warning(f"Could not load fare configuration: {e}")
             fare_config = None
 
-        # Load OCI Email Delivery settings
-        oci_email_region = SystemConfig.get('OCI_EMAIL_REGION', 'eu-frankfurt-1')
-        oci_email_compartment_id = SystemConfig.get('OCI_EMAIL_COMPARTMENT_ID', '')
-        oci_email_sender_address = SystemConfig.get('OCI_EMAIL_SENDER_ADDRESS', 'noreply@pamoja.space')
-        oci_email_suppression_list = SystemConfig.get('OCI_EMAIL_SUPPRESSION_LIST', True)
-
-        # Load Twilio SMS/WhatsApp settings
-        twilio_account_sid = SystemConfig.get('TWILIO_ACCOUNT_SID', '')
-        twilio_auth_token = SystemConfig.get('TWILIO_AUTH_TOKEN', '')
-        twilio_from_number = SystemConfig.get('TWILIO_FROM_NUMBER', '')
-        twilio_messaging_service_sid = SystemConfig.get('TWILIO_MESSAGING_SERVICE_SID', '')
-        twilio_whatsapp_from = SystemConfig.get('TWILIO_WHATSAPP_FROM', '')
-        twilio_whatsapp_enabled = SystemConfig.get('TWILIO_WHATSAPP_ENABLED', False)
-
         logger.info(f"Rendering settings template with org_registration_mode={org_registration_mode}")
         return render_template('owner/settings.html',
                              settings=owner_settings,
@@ -1226,17 +1221,7 @@ def settings():
                              wallet_adjustment_threshold=wallet_adjustment_threshold,
                              socketio_enabled_stored=socketio_enabled_stored,
                              socketio_enabled_effective=socketio_enabled_effective,
-                             fare_config=fare_config,
-                             oci_email_region=oci_email_region,
-                             oci_email_compartment_id=oci_email_compartment_id,
-                             oci_email_sender_address=oci_email_sender_address,
-                             oci_email_suppression_list=oci_email_suppression_list,
-                             twilio_account_sid=twilio_account_sid,
-                             twilio_auth_token=twilio_auth_token,
-                             twilio_from_number=twilio_from_number,
-                             twilio_messaging_service_sid=twilio_messaging_service_sid,
-                             twilio_whatsapp_from=twilio_whatsapp_from,
-                             twilio_whatsapp_enabled=twilio_whatsapp_enabled)
+                             fare_config=fare_config)
     except Exception as e:
         current_app.logger.exception(
             "❌ Owner settings page crashed"
@@ -1249,220 +1234,6 @@ def settings():
         )
         flash("Unable to load settings. Please try again later.", "warning")
         return redirect(url_for('admin.owner.dashboard'))
-
-@owner_bp.route('/settings/oci-email', methods=['POST'])
-@owner_login_required
-@audit_owner_action('updated_oci_email_config', 'settings')
-def save_oci_email_config():
-    """Save OCI Email Delivery configuration"""
-    try:
-        from app.models.system_config import SystemConfig
-         
-        SystemConfig.set('OCI_EMAIL_REGION', request.form.get('OCI_EMAIL_REGION', 'eu-frankfurt-1'),
-                         value_type='str', category='email', description='OCI Email Delivery region')
-        SystemConfig.set('OCI_EMAIL_COMPARTMENT_ID', request.form.get('OCI_EMAIL_COMPARTMENT_ID', ''),
-                         value_type='str', category='email', description='OCI Compartment OCID')
-        SystemConfig.set('OCI_EMAIL_SENDER_ADDRESS', request.form.get('OCI_EMAIL_SENDER_ADDRESS', 'noreply@pamoja.space'),
-                         value_type='str', category='email', description='Approved sender address')
-        SystemConfig.set('OCI_EMAIL_SUPPRESSION_LIST', request.form.get('OCI_EMAIL_SUPPRESSION_LIST', 'true').lower() == 'true',
-                         value_type='bool', category='email', description='Use OCI suppression list')
-         
-        flash("✅ OCI Email configuration saved successfully", "success")
-        return redirect(url_for('admin.owner.settings'))
-    except Exception as e:
-        current_app.logger.error(f"Error saving OCI email config: {e}")
-        flash("❌ Error saving OCI email configuration", "danger")
-        return redirect(url_for('admin.owner.settings'))
-
-@owner_bp.route('/settings/oci-email/test', methods=['POST'])
-@owner_login_required
-@audit_owner_action('tested_oci_email', 'settings')
-def test_oci_email():
-    """Send a test email via OCI Email Delivery"""
-    try:
-        from app.notifications.channel_handlers.oci_email import OCIEmailHandler
-         
-        handler = OCIEmailHandler()
-         
-        if not handler.compartment_id:
-            return jsonify({'success': False, 'error': 'Compartment ID not configured'}), 400
-         
-        class TestNotification:
-            subject = 'AFCON360 OCI Email Test'
-            body = 'This is a test email from AFCON360 OCI Email Delivery configuration.'
-            html_body = '<h2>AFCON360 OCI Email Test</h2><p>This is a test email from AFCON360 OCI Email Delivery configuration.</p>'
-         
-        test_email = current_user.email
-        if not test_email:
-            return jsonify({'success': False, 'error': 'Owner email not set'}), 400
-         
-        result = handler.deliver(TestNotification(), {'email': test_email, 'user_id': current_user.id})
-        
-        if result.get('success'):
-            return jsonify({'success': True, 'message': f'Test email sent to {test_email}'})
-        else:
-            return jsonify({'success': False, 'error': result.get('response_body')}), 500
-            
-    except Exception as e:
-        current_app.logger.error(f"Error sending test OCI email: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@owner_bp.route('/settings/twilio-config', methods=['POST'])
-@owner_login_required
-@audit_owner_action('updated_twilio_config', 'settings')
-def save_twilio_config():
-    """Save Twilio SMS/WhatsApp configuration"""
-    try:
-        from app.models.system_config import SystemConfig
-
-        SystemConfig.set('TWILIO_ACCOUNT_SID', request.form.get('TWILIO_ACCOUNT_SID', ''),
-                         value_type='str', category='sms', description='Twilio Account SID')
-        SystemConfig.set('TWILIO_AUTH_TOKEN', request.form.get('TWILIO_AUTH_TOKEN', ''),
-                         value_type='str', category='sms', description='Twilio Auth Token')
-        SystemConfig.set('TWILIO_FROM_NUMBER', request.form.get('TWILIO_FROM_NUMBER', ''),
-                         value_type='str', category='sms', description='Twilio verified sender phone number')
-        SystemConfig.set('TWILIO_MESSAGING_SERVICE_SID', request.form.get('TWILIO_MESSAGING_SERVICE_SID', ''),
-                         value_type='str', category='sms', description='Twilio Messaging Service SID')
-        SystemConfig.set('TWILIO_WHATSAPP_FROM', request.form.get('TWILIO_WHATSAPP_FROM', ''),
-                         value_type='str', category='sms', description='Twilio WhatsApp sender')
-        SystemConfig.set('TWILIO_WHATSAPP_ENABLED', request.form.get('TWILIO_WHATSAPP_ENABLED', 'false').lower() == 'true',
-                         value_type='bool', category='sms', description='Enable WhatsApp via Twilio')
-        SystemConfig.set('TWILIO_SMS_ENABLED', request.form.get('TWILIO_SMS_ENABLED', 'false').lower() == 'true',
-                         value_type='bool', category='sms', description='Enable SMS via Twilio')
-
-        flash("✅ Twilio configuration saved successfully", "success")
-        return redirect(url_for('admin.owner.settings'))
-    except Exception as e:
-        current_app.logger.error(f"Error saving Twilio config: {e}")
-        flash("❌ Error saving Twilio configuration", "danger")
-        return redirect(url_for('admin.owner.settings'))
-
-
-@owner_bp.route('/settings/twilio-sms/test', methods=['POST'])
-@owner_login_required
-@audit_owner_action('tested_twilio_sms', 'settings')
-def test_twilio_sms():
-    """Send a test SMS via Twilio"""
-    try:
-        from app.notifications.channel_handlers.twilio_sms import TwilioSmsHandler
-
-        handler = TwilioSmsHandler()
-
-        if not handler.account_sid or not handler.auth_token:
-            return jsonify({'success': False, 'error': 'Twilio credentials not configured'}), 400
-
-        if not handler.from_number and not handler.messaging_service_sid:
-            return jsonify({'success': False, 'error': 'No from_number or messaging_service_sid configured'}), 400
-
-        class TestNotification:
-            subject = 'AFCON360 Twilio SMS Test'
-            body = 'This is a test SMS from AFCON360 Twilio SMS configuration.'
-            html_body = '<h2>AFCON360 Twilio SMS Test</h2><p>This is a test SMS from AFCON360 Twilio configuration.</p>'
-
-        test_phone = current_user.phone
-        if not test_phone:
-            return jsonify({'success': False, 'error': 'Owner phone number not set'}), 400
-
-        result = handler.deliver(TestNotification(), {'phone': test_phone, 'user_id': current_user.id})
-
-        if result.get('success'):
-            return jsonify({'success': True, 'message': f'Test SMS sent to {test_phone}'})
-        else:
-            return jsonify({'success': False, 'error': result.get('response_body')}), 500
-
-    except Exception as e:
-        current_app.logger.error(f"Error sending test Twilio SMS: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@owner_bp.route('/settings/twilio-whatsapp/test', methods=['POST'])
-@owner_login_required
-@audit_owner_action('tested_twilio_whatsapp', 'settings')
-def test_twilio_whatsapp():
-    """Send a test WhatsApp message via Twilio"""
-    try:
-        from app.notifications.channel_handlers.twilio_sms import TwilioWhatsAppHandler
-
-        handler = TwilioWhatsAppHandler()
-
-        if not handler.account_sid or not handler.auth_token:
-            return jsonify({'success': False, 'error': 'Twilio credentials not configured'}), 400
-
-        if not handler.whatsapp_from:
-            return jsonify({'success': False, 'error': 'WhatsApp from number not configured'}), 400
-
-        class TestNotification:
-            subject = 'AFCON360 Twilio WhatsApp Test'
-            body = 'This is a test WhatsApp message from AFCON360 Twilio WhatsApp configuration.'
-            html_body = '<h2>AFCON360 Twilio WhatsApp Test</h2><p>This is a test WhatsApp from AFCON360 Twilio configuration.</p>'
-
-        test_phone = current_user.phone
-        if not test_phone:
-            return jsonify({'success': False, 'error': 'Owner phone number not set'}), 400
-
-        result = handler.deliver(TestNotification(), {'phone': test_phone, 'user_id': current_user.id})
-
-        if result.get('success'):
-            return jsonify({'success': True, 'message': f'Test WhatsApp sent to {test_phone}'})
-        else:
-            return jsonify({'success': False, 'error': result.get('response_body')}), 500
-
-    except Exception as e:
-        current_app.logger.error(f"Error sending test Twilio WhatsApp: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@owner_bp.route('/settings/otp-delivery-config', methods=['POST'])
-@owner_login_required
-@audit_owner_action('updated_otp_delivery_config', 'settings')
-def save_otp_delivery_config():
-   """Save OTP delivery configuration"""
-   try:
-       from app.models.system_config import SystemConfig
-
-       # Email (OCI) settings
-       SystemConfig.set('OCI_EMAIL_ENABLED', request.form.get('OCI_EMAIL_ENABLED', 'false').lower() == 'true',
-                        value_type='bool', category='email', description='Enable OCI Email Delivery')
-       SystemConfig.set('OCI_EMAIL_REGION', request.form.get('OCI_EMAIL_REGION', 'eu-frankfurt-1'),
-                        value_type='str', category='email', description='OCI Email Delivery region')
-       SystemConfig.set('OCI_EMAIL_COMPARTMENT_ID', request.form.get('OCI_EMAIL_COMPARTMENT_ID', ''),
-                        value_type='str', category='email', description='OCI Compartment OCID')
-       SystemConfig.set('OCI_EMAIL_SENDER_ADDRESS', request.form.get('OCI_EMAIL_SENDER_ADDRESS', 'noreply@pamoja.space'),
-                        value_type='str', category='email', description='Approved sender address')
-       SystemConfig.set('OCI_EMAIL_SUPPRESSION_LIST', request.form.get('OCI_EMAIL_SUPPRESSION_LIST', 'true').lower() == 'true',
-                        value_type='bool', category='email', description='Use OCI suppression list')
-
-       # Twilio SMS settings
-       SystemConfig.set('TWILIO_SMS_ENABLED', request.form.get('TWILIO_SMS_ENABLED', 'false').lower() == 'true',
-                        value_type='bool', category='sms', description='Enable SMS via Twilio')
-       SystemConfig.set('TWILIO_ACCOUNT_SID', request.form.get('TWILIO_ACCOUNT_SID', ''),
-                        value_type='str', category='sms', description='Twilio Account SID')
-       SystemConfig.set('TWILIO_AUTH_TOKEN', request.form.get('TWILIO_AUTH_TOKEN', ''),
-                        value_type='str', category='sms', description='Twilio Auth Token')
-       SystemConfig.set('TWILIO_FROM_NUMBER', request.form.get('TWILIO_FROM_NUMBER', ''),
-                        value_type='str', category='sms', description='Twilio verified sender phone number')
-       SystemConfig.set('TWILIO_MESSAGING_SERVICE_SID', request.form.get('TWILIO_MESSAGING_SERVICE_SID', ''),
-                        value_type='str', category='sms', description='Twilio Messaging Service SID')
-
-       # Twilio WhatsApp settings
-       SystemConfig.set('TWILIO_WHATSAPP_ENABLED', request.form.get('TWILIO_WHATSAPP_ENABLED', 'false').lower() == 'true',
-                        value_type='bool', category='sms', description='Enable WhatsApp via Twilio')
-       SystemConfig.set('TWILIO_WHATSAPP_FROM', request.form.get('TWILIO_WHATSAPP_FROM', ''),
-                        value_type='str', category='sms', description='Twilio WhatsApp sender')
-       SystemConfig.set('TWILIO_MESSAGING_SERVICE_SID', request.form.get('TWILIO_MESSAGING_SERVICE_SID', ''),
-                        value_type='str', category='sms', description='Twilio Messaging Service SID')
-       SystemConfig.set('TWILIO_FROM_NUMBER', request.form.get('TWILIO_FROM_NUMBER', ''),
-                        value_type='str', category='sms', description='Twilio verified sender phone number')
-       SystemConfig.set('TWILIO_WHATSAPP_FROM', request.form.get('TWILIO_WHATSAPP_FROM', ''),
-                        value_type='str', category='sms', description='Twilio WhatsApp sender')
-
-       flash("✅ OTP delivery configuration saved successfully", "success")
-       return redirect(url_for('admin.owner.settings'))
-   except Exception as e:
-       current_app.logger.error(f"Error saving OTP delivery config: {e}")
-       flash("❌ Error saving OTP delivery configuration", "danger")
-       return redirect(url_for('admin.owner.settings'))
-
 
 @owner_bp.route('/settings/owner-mfa', methods=['POST'])
 @owner_login_required
@@ -2817,17 +2588,78 @@ def auth_settings():
             config.twilio_enabled = request.form.get('twilio_enabled') == 'on'
             config.africa_talking_enabled = request.form.get('africa_talking_enabled') == 'on'
             
-            # API credentials
+            # Provider credentials are write-only and encrypted in one
+            # shared settings record. Blank values preserve existing secrets;
+            # explicit clear checkboxes remove them.
+            from app.notifications.settings import CommunicationSettingsService
+
+            def _secret_input(field, existing, clear_field):
+                if request.form.get(clear_field) == 'on':
+                    return None
+                return request.form.get(field, '').strip() or existing
+
+            provider_secrets = {
+                'google_client_secret': _secret_input(
+                    'google_client_secret', config.google_client_secret,
+                    'clear_google_client_secret',
+                ),
+                'sendgrid_api_key': _secret_input(
+                    'sendgrid_api_key', config.sendgrid_api_key,
+                    'clear_sendgrid_api_key',
+                ),
+                'twilio_account_sid': _secret_input(
+                    'twilio_account_sid', config.twilio_account_sid,
+                    'clear_twilio_account_sid',
+                ),
+                'twilio_auth_token': _secret_input(
+                    'twilio_auth_token', config.twilio_auth_token,
+                    'clear_twilio_auth_token',
+                ),
+                'africa_talking_username': _secret_input(
+                    'africa_talking_username', config.africa_talking_username,
+                    'clear_africa_talking_username',
+                ),
+                'africa_talking_api_key': _secret_input(
+                    'africa_talking_api_key', config.africa_talking_api_key,
+                    'clear_africa_talking_api_key',
+                ),
+            }
+            clear_provider_secrets = [
+                key for key, form_key in {
+                    'google_client_secret': 'clear_google_client_secret',
+                    'sendgrid_api_key': 'clear_sendgrid_api_key',
+                    'twilio_account_sid': 'clear_twilio_account_sid',
+                    'twilio_auth_token': 'clear_twilio_auth_token',
+                    'africa_talking_username': 'clear_africa_talking_username',
+                    'africa_talking_api_key': 'clear_africa_talking_api_key',
+                }.items()
+                if request.form.get(form_key) == 'on'
+            ]
+            CommunicationSettingsService.upsert_setting(
+                key='auth_providers',
+                channel='auth',
+                provider='system',
+                enabled=True,
+                config=provider_secrets,
+                description='Encrypted credentials for OAuth, email and SMS providers',
+                updated_by=current_user.id,
+                clear_secret_keys=clear_provider_secrets,
+                commit=False,
+            )
+
+            # Clear the old plaintext columns in the same configuration row.
+            # AuthConfiguration.get_config() hydrates these attributes from the
+            # encrypted provider row for existing integration callers.
             config.google_client_id = request.form.get('google_client_id', '').strip()
-            config.google_client_secret = request.form.get('google_client_secret', '').strip()
-            config.sendgrid_api_key = request.form.get('sendgrid_api_key', '').strip()
+            config.google_client_secret = None
+            config.sendgrid_api_key = None
             config.sendgrid_from_email = request.form.get('sendgrid_from_email', '').strip()
             config.sendgrid_from_name = request.form.get('sendgrid_from_name', 'AFCON360').strip()
-            config.twilio_account_sid = request.form.get('twilio_account_sid', '').strip()
-            config.twilio_auth_token = request.form.get('twilio_auth_token', '').strip()
+            config.twilio_account_sid = None
+            config.twilio_auth_token = None
             config.twilio_phone_number = request.form.get('twilio_phone_number', '').strip()
-            config.africa_talking_username = request.form.get('africa_talking_username', '').strip()
-            config.africa_talking_api_key = request.form.get('africa_talking_api_key', '').strip()
+            config.africa_talking_username = None
+            config.africa_talking_api_key = None
             
             # SMS routing
             config.sms_provider_preference = request.form.get('sms_provider_preference', 'auto')
@@ -2873,14 +2705,31 @@ def auth_settings():
             else:
                 flash('Authentication settings updated. Phone OTP delivery is set to email.', 'success')
             
-        except Exception as e:
+        except Exception as exc:
             db.session.rollback()
-            logger.error(f"Error updating auth settings: {str(e)}")
-            flash(f'Error updating settings: {str(e)}', 'danger')
+            logger.error(
+                "Authentication settings update failed (exception_type=%s)",
+                type(exc).__name__,
+            )
+            flash(
+                'Settings could not be saved securely. Check the configuration and try again.',
+                'danger',
+            )
         
         return redirect(url_for('admin.owner.auth_settings'))
     
-    return render_template('admin/owner/auth_settings.html', config=config)
+    return render_template(
+        'admin/owner/auth_settings.html',
+        config=config,
+        secret_status={
+            'google_client_secret': bool(config.google_client_secret),
+            'sendgrid_api_key': bool(config.sendgrid_api_key),
+            'twilio_account_sid': bool(config.twilio_account_sid),
+            'twilio_auth_token': bool(config.twilio_auth_token),
+            'africa_talking_username': bool(config.africa_talking_username),
+            'africa_talking_api_key': bool(config.africa_talking_api_key),
+        },
+    )
 
 
 @owner_bp.route('/owner/settings/auth/test/<service>', methods=['POST'])
@@ -2889,6 +2738,10 @@ def test_auth_service(service):
     """
     Test connectivity to authentication services.
     """
+    allowed_services = {'sendgrid', 'twilio', 'africa_talking'}
+    if service not in allowed_services:
+        return jsonify({'success': False, 'message': 'Unknown service'}), 404
+
     config = AuthConfiguration.get_config()
     result = {'success': False, 'message': ''}
     
@@ -2934,9 +2787,13 @@ def test_auth_service(service):
         else:
             result['message'] = f'Unknown service: {service}'
     
-    except Exception as e:
-        logger.error(f"Error testing {service}: {str(e)}")
-        result['message'] = f'Error: {str(e)}'
+    except Exception as exc:
+        logger.warning(
+            "Authentication provider test failed (service=%s, exception_type=%s)",
+            service,
+            type(exc).__name__,
+        )
+        result['message'] = 'Provider test failed. Check protected server diagnostics for a safe error code.'
     
     return jsonify(result)
 

@@ -21,6 +21,11 @@ import time
 import threading
 import hashlib
 from datetime import datetime, timezone
+from app.utils.log_redaction import (
+    install_log_redaction, register_environment_secrets, register_secret_mapping,
+)
+
+install_log_redaction()
 from flask_wtf.csrf import CSRFError
 
 # Custom TRACE level (lower than DEBUG)
@@ -501,6 +506,10 @@ def create_app(config_object=None) -> Flask:
     # Load configuration — this triggers _load_env() in config.py which loads
     # .env (base) then .env.{APP_ENV} (local/docker/prod) before we read anything
     app.config.from_object(config_object or get_config())
+    # Capture runtime credentials for process-wide log redaction. Values are
+    # held only in memory and are never written to logs or application config.
+    register_environment_secrets()
+    register_secret_mapping(app.config)
 
     # -------------------------------------------------------------------------
     # ENCRYPTION KEY GUARD — fail closed in Docker/production before any

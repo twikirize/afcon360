@@ -458,7 +458,7 @@ replayable. New code should prefer `emit_event`.
 
 ### Channel Handlers (`channel_handlers/`)
 Each handler implements `BaseChannelHandler` with `validate_recipient()` and `deliver()` methods:
-- **EmailHandler** — THE single email sender. Validates email format, renders `templates/notifications/email/<type>.html` via the Jinja `Environment` (works with or without a request context), and delivers via Flask-Mail/SMTP. This is the **only** `mail.send()` call in the codebase.
+- **EmailHandler** — THE single email sender. Validates email format, renders `templates/notifications/email/<type>.html` via the Jinja `Environment` (works with or without a request context), then calls `email_transport.send_smtp_email()`. The transport reads the encrypted Owner-managed `email_provider` row shared by web and Celery; legacy `MAIL_*` environment settings are used only until that row exists. It uses Python SMTP directly, not Flask-Mail.
 - **SmsHandler** — Validates phone length, delivers via Twilio/Africa's Talking
 - **PushHandler** — Validates user_id, delivers via Firebase Cloud Messaging
 - **InAppHandler** — Validates user_id, stores in persistent inbox
@@ -734,7 +734,7 @@ Direct hooks also fire from `auth/services.register_user`, `wallet_service.creat
 - `generic` / `sap` (webhook / SAP Event Mesh — future integration)
 
 Dispatch logic in `app/notifications/integrations/__init__.py` routes each channel to the correct
-client (Twilio SDK, Flask-Mail, FCM, requests webhook). Secrets stored encrypted at rest via
+client (Twilio SDK, the shared SMTP transport, FCM, requests webhook). Provider secrets are stored encrypted at rest via
 `CommunicationSettingsService._encrypt_config` (uses `app.utils.crypto`).
 
 ## Backward Compatibility
@@ -877,7 +877,7 @@ pluggable channel handlers under `app/notifications/channel_handlers/`.
 
 **Why not decentralized?** Decentralization would mean each module owning its own
 SMTP client, template set, retry logic, and provider config. That causes:
-- Duplicated Flask-Mail / `mail.send` code in 5+ places (we found and removed
+- Duplicated Flask-Mail / direct SMTP code in 5+ places (we found and removed
   exactly this: `auth/otp_service.py`, `admin/owner/rate_limit_notifications.py`,
   `events/routes.py`, `events/tasks.py`, `notifications/integrations/__init__.py`,
   and a dead `_send_email` in `notifications/services.py`).
@@ -885,9 +885,10 @@ SMTP client, template set, retry logic, and provider config. That causes:
 - No single place to enforce policy (preferences, external-vs-internal zone).
 
 **The single email sender is `EmailHandler`** (`channel_handlers/email.py`).
-It is the ONLY module that imports `flask_mail.Message` and calls `mail.send()`.
-Grepping the codebase for `mail.send(` should return exactly one hit (in
-`EmailHandler`). Every other sender delegates to it.
+It is the only module that sends application notification email. It delegates SMTP to
+`email_transport.send_smtp_email()`, which resolves one encrypted Owner-managed
+provider configuration for both web and Celery. There are no application
+`mail.send()` call sites.
 
 ## 2. The "Two Zones" Model — Internal vs External
 
@@ -970,7 +971,7 @@ Before this ADR, email was sent from at least six places. The consolidation:
 | `admin/owner/rate_limit_notifications._send_email` used `mail.send` | builds a transient `Notification`, calls `EmailHandler().deliver(...)` |
 | `events/routes.py` used `mail.send` for organizer + confirmation | calls `EmailHandler().deliver(...)` with rendered HTML |
 | `events/tasks.py` used `mail.send` for registration emails | calls `EmailHandler().deliver(...)` |
-| `notifications/integrations._dispatch_email` used `mail.send` | calls `EmailHandler().deliver(...)` (preserves per-aggregator SMTP override) |
+| `notifications/integrations._dispatch_email` used `mail.send` | calls `EmailHandler().deliver(...)` (uses the shared Owner-managed SMTP provider) |
 | `notifications/services._send_email` (dead) re-implemented Flask-Mail | now delegates to `EmailHandler` |
 
 **`EmailHandler.deliver(notification, recipient)` contract** (DO NOT bypass it):
@@ -980,8 +981,8 @@ Before this ADR, email was sent from at least six places. The consolidation:
   (NOT `flask.render_template`, which needs a request context). Falls back to
   `email/default.html` if the type template is missing; if even that is absent,
   sends the plain-text `notification.body`.
-- Uses `flask_mail` + the configured `MAIL_*` env vars (Gmail SMTP today;
-  SendGrid/Mailgun/SES via `NotificationAggregator` later).
+- Uses the shared encrypted `email_provider` record (`smtp_host`, port, auth, sender and TLS mode). `MAIL_*` is a migration fallback only when no Owner record exists.
+- Email aggregator records do not override this transport; provider-specific SendGrid/Mailgun/SES delivery is not enabled by this path.
 
 ## 5. Extension Guide (do NOT create new `mail.send` sites)
 
