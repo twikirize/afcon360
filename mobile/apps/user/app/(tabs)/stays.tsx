@@ -86,7 +86,7 @@ export default function Stays() {
   const [checkOut, setCheckOut] = useState(dateOffset(9));
   const [guests, setGuests] = useState("2");
   const [rooms, setRooms] = useState("1");
-  const [roomTypeId, setRoomTypeId] = useState<number | null>(null);
+  const [roomTypeToken, setRoomTypeToken] = useState<string | null>(null);
   const [quote, setQuote] = useState<AccommodationBookingQuote | null>(null);
   const [pin, setPin] = useState("");
   const [specialRequests, setSpecialRequests] = useState("");
@@ -123,7 +123,7 @@ export default function Stays() {
 
   const chooseProperty = (property: AccommodationProperty) => {
     setSelectedProperty(property);
-    setRoomTypeId(property.room_types.length === 1 ? property.room_types[0].id : null);
+    setRoomTypeToken(property.room_types.length === 1 ? property.room_types[0].room_token : null);
     setQuote(null);
     setPin("");
     setError(null);
@@ -136,7 +136,7 @@ export default function Stays() {
       setError("Use YYYY-MM-DD for check-in and check-out.");
       return;
     }
-    if (selectedProperty.room_types.length > 0 && roomTypeId === null) {
+    if (selectedProperty.room_types.length > 0 && roomTypeToken === null) {
       setError("Choose a room type before requesting a quote.");
       return;
     }
@@ -151,7 +151,7 @@ export default function Stays() {
         checkOut,
         numGuests: Number(guests),
         roomsRequested: Number(rooms),
-        roomTypeId,
+        roomTypeToken,
       });
       setQuote(result);
       setNotice("This price was calculated by AFCON360. Review the amount and available Wallet balance before confirming.");
@@ -294,17 +294,17 @@ export default function Stays() {
               <Text style={{ color: palette.ink, fontWeight: "800" }}>Choose a room</Text>
               {selectedProperty.room_types.map((room) => (
                 <Pressable
-                  key={room.id}
+                  key={room.room_token}
                   onPress={() => {
-                    setRoomTypeId(room.id);
+                    setRoomTypeToken(room.room_token);
                     setQuote(null);
                   }}
                   style={{
                     borderWidth: 1,
-                    borderColor: roomTypeId === room.id ? palette.green : palette.border,
+                    borderColor: roomTypeToken === room.room_token ? palette.green : palette.border,
                     borderRadius: 10,
                     padding: 10,
-                    backgroundColor: roomTypeId === room.id ? "#EFF6F0" : palette.surface,
+                    backgroundColor: roomTypeToken === room.room_token ? "#EFF6F0" : palette.surface,
                     gap: 4,
                   }}
                 >
