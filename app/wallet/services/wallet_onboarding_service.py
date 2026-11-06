@@ -22,6 +22,10 @@ def _load_user(user_ref: Any):
     if user_ref is None:
         return None
     if hasattr(user_ref, "id") and getattr(user_ref, "id", None) is not None:
+        # Bearer/session authentication has already resolved the ORM User.
+        # Keep the object to avoid an unnecessary query before the country gate.
+        if hasattr(user_ref, "is_active") and hasattr(user_ref, "email_verified"):
+            return user_ref
         return db.session.get(User, int(user_ref.id))
     if isinstance(user_ref, str):
         return User.query.filter_by(public_id=user_ref.strip()).first()
