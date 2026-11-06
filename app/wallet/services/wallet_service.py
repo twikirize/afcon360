@@ -628,7 +628,7 @@ class WalletService:
                 raise ConversionError(
                     str(currency or "").upper(),
                     str(account.currency or "").upper(),
-                    "withdrawal currency must match the wallet denomination",
+                    "deposit currency must match the wallet denomination",
                 )
 
             # 3. KYC limit check
