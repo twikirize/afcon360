@@ -434,7 +434,7 @@ class FlutterwaveService:
             provider_amount = Decimal(str(provider_data.get("amount", "0")))
             provider_currency = str(provider_data.get("currency") or "").upper()
             if provider_amount != amount or provider_currency != currency:
-                logger.error(
+                current_app.logger.error(
                     "Flutterwave amount/currency mismatch for deposit reference %s",
                     reference,
                 )
