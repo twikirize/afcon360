@@ -91,9 +91,13 @@ class NativeEventService:
             if not ticket.is_active:
                 continue
             gate = availability_by_id.get(int(ticket.id), {})
-            # EventService computes availability from confirmed registrations and
-            # the active ticket window. Do not trust a possibly stale cached seat counter.
-            remaining = gate.get("remaining") if ticket.capacity and ticket.capacity > 0 else None
+            # The atomic inventory service reserves seats by decrementing this
+            # database counter; use it rather than a registration-count estimate,
+            # which does not include active ticket holds.
+            remaining = ticket.available_seats if ticket.capacity and ticket.capacity > 0 else None
+            if ticket.capacity and ticket.capacity > 0 and remaining is None:
+                ticket._sync_available_seats()
+                remaining = ticket.available_seats
             opens_at = ticket.available_from
             closes_at = ticket.available_until
             if opens_at and opens_at.tzinfo is None:
