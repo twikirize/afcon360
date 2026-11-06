@@ -215,31 +215,20 @@ class PayoutService:
     # ---- helpers -------------------------------------------------------------
 
     def _ensure_user_account(self, user_id: int, currency: str) -> AccountModel:
-        """Return the agent's user wallet account, creating it if necessary."""
-        acct = AccountModel.query.filter_by(
-            user_id=int(user_id), owner_type=AccountOwnerType.USER
+        """Return an already opened wallet; payouts never create customer accounts."""
+        account = AccountModel.query.filter_by(
+            user_id=int(user_id),
+            owner_type=AccountOwnerType.USER.value,
+            currency=str(currency or "").strip().upper(),
+            status=AccountStatus.ACTIVE.value,
+            is_frozen=False,
         ).first()
-        if not acct:
-            acct = AccountModel(
-                id=str(uuid4()),
-                user_id=int(user_id),
-                currency=currency,
-                is_frozen=False,
-                frozen_reason=None,
-                frozen_at=None,
-                daily_volume=Decimal('0'),
-                daily_volume_reset_at=None,
-                monthly_volume=Decimal('0'),
-                monthly_volume_reset_at=None,
-                owner_type=AccountOwnerType.USER,
-                status=AccountStatus.ACTIVE,
-                account_type=AccountType.USER_WALLET,
-                account_name=f"Wallet_{currency}_{user_id}",
-                verified=False,
+        if account is None:
+            raise ValueError(
+                f"Agent {int(user_id)} has no active {str(currency).upper()} Wallet. "
+                "The agent must complete Wallet onboarding before receiving a Wallet payout."
             )
-            self.db.add(acct)
-            self.db.flush()
-        return acct
+        return account
 
     def _disburse_to_wallet(self, pr) -> None:
         """Credit the agent's AFCON360 user wallet with the payout amount."""
