@@ -270,10 +270,11 @@ class AccountModel(db.Model):
     )
     
     # ── Currency ──
+    # Customer and platform account currencies must be deliberately selected.
+    # USD is the platform FX reference, never an implicit wallet denomination.
     currency = Column(
         String(10),
-        nullable=False,
-        default='USD'
+        nullable=False
     )
     
     # ── Freeze ──
@@ -427,6 +428,13 @@ from sqlalchemy import event, select, text
 
 @event.listens_for(AccountModel, 'before_insert')
 def _generate_account_number(mapper, connection, target):
+    if not str(target.currency or "").strip():
+        raise ValueError(
+            "A financial account currency must be explicitly selected; "
+            "USD is not an automatic Wallet default."
+        )
+    target.currency = str(target.currency).strip().upper()
+
     if target.account_number:
         return
     from app.wallet.utils.account_number import generate_account_number
