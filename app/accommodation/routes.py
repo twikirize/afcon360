@@ -2286,17 +2286,83 @@ def guest_checkout():
         booking.amount_due = amount_due
         booking.balance_due_date = balance_due_date
 
-        # Store policy snapshot
+        # Freeze the exact cancellation rule set used for this booking.
+        # Existing bookings without this v1 snapshot are sent to human review
+        # rather than being recalculated under a later-edited host policy.
         policy_obj = PropertyBookingPolicy.query.filter_by(property_id=property_obj.id).first()
-        if policy_obj:
-            booking.policy_snapshot = {
-                'cancellation_policy': policy_obj.cancellation_policy,
-                'free_cancel_hours': policy_obj.free_cancel_hours,
-                'no_show_charge_type': policy_obj.no_show_charge_type,
-                'no_show_charge_amount': str(policy_obj.no_show_charge_amount) if policy_obj.no_show_charge_amount else None,
-                'deposit_percentage': str(policy_obj.deposit_percentage) if policy_obj.deposit_percentage else None,
-                'balance_due_days_before_checkin': policy_obj.balance_due_days_before_checkin,
+        from app.accommodation.models.cancellation_policy import CancellationPolicy
+        raw_policy_name = (
+            str(policy_obj.cancellation_policy).strip().lower()
+            if policy_obj else ""
+        )
+        policy_aliases = {
+            "flexible": "FLEX",
+            "moderate": "MOD",
+            "strict": "STRICT",
+            "super_strict": "SUPER",
+            "no_show": "NOSHOW",
+            "no_show_penalty": "NOSHOW",
+        }
+        policy_name = policy_aliases.get(raw_policy_name, raw_policy_name.upper())
+        cancellation_policy = None
+        if raw_policy_name == "non_refundable":
+            cancellation_policy = CancellationPolicy(
+                property_id=property_obj.id,
+                name="NON_REFUNDABLE",
+                pre_checkin_days=0,
+                pre_checkin_refund_pct=Decimal("0.00"),
+                mid_stay_refund_pct=Decimal("0.00"),
+                no_show_penalty=Decimal("0.00"),
+                deposit_refundable=False,
+                refundable_cleaning_fee=False,
+                refundable_service_fee=False,
+                refundable_taxes=False,
+            )
+        else:
+            cancellation_policy = CancellationPolicy.get_effective_policy(
+                property_obj.id,
+                policy_name=policy_name or None,
+            )
+        policy_snapshot = {
+            'cancellation_policy': (
+                cancellation_policy.name if cancellation_policy else raw_policy_name or None
+            ),
+            'free_cancel_hours': policy_obj.free_cancel_hours if policy_obj else None,
+            'no_show_charge_type': policy_obj.no_show_charge_type if policy_obj else None,
+            'no_show_charge_amount': (
+                str(policy_obj.no_show_charge_amount)
+                if policy_obj and policy_obj.no_show_charge_amount is not None else None
+            ),
+            'deposit_percentage': (
+                str(policy_obj.deposit_percentage)
+                if policy_obj and policy_obj.deposit_percentage is not None else None
+            ),
+            'balance_due_days_before_checkin': (
+                policy_obj.balance_due_days_before_checkin if policy_obj else None
+            ),
+        }
+        if cancellation_policy is not None:
+            rules = {
+                "snapshot_version": 1,
+                "name": cancellation_policy.name,
+                "pre_checkin_days": int(cancellation_policy.pre_checkin_days),
+                "pre_checkin_refund_pct": str(cancellation_policy.pre_checkin_refund_pct),
+                "mid_stay_refund_pct": str(cancellation_policy.mid_stay_refund_pct),
+                "no_show_penalty": str(cancellation_policy.no_show_penalty),
+                "pay_on_arrival_penalty_type": cancellation_policy.pay_on_arrival_penalty_type,
+                "deposit_refundable": bool(cancellation_policy.deposit_refundable),
+                "refundable_cleaning_fee": bool(cancellation_policy.refundable_cleaning_fee),
+                "refundable_service_fee": bool(cancellation_policy.refundable_service_fee),
+                "refundable_taxes": bool(cancellation_policy.refundable_taxes),
+                "source_property_id": cancellation_policy.property_id,
+                "captured_at": datetime.now(timezone.utc).isoformat(),
             }
+            rules_payload = json.dumps(rules, sort_keys=True, separators=(",", ":"))
+            rules["sha256"] = hashlib.sha256(rules_payload.encode("utf-8")).hexdigest()
+            policy_snapshot["cancellation_policy_rules"] = rules
+        else:
+            policy_snapshot["cancellation_policy_rules"] = None
+        booking.policy_snapshot = policy_snapshot
 
         # 6.5 UPDATE PAYMENT LEDGER via PaymentStateMachine
         from app.accommodation.state_machine import PaymentStateMachine, PaymentState
