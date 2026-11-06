@@ -1,0 +1,205 @@
+"""
+Twilio SMS Channel Handler
+
+Sends SMS messages via Twilio REST API.
+Supports both regular SMS and WhatsApp messages via Twilio's Messaging API.
+"""
+
+import logging
+from typing import Dict, Any
+from flask import current_app
+from . import BaseChannelHandler
+
+logger = logging.getLogger(__name__)
+
+
+class TwilioSmsHandler(BaseChannelHandler):
+    """SMS handler using Twilio REST API."""
+    channel_name = 'twilio_sms'
+
+    def __init__(self):
+        self.account_sid = self._get_config('TWILIO_ACCOUNT_SID')
+        self.auth_token = self._get_config('TWILIO_AUTH_TOKEN')
+        self.from_number = self._get_config('TWILIO_FROM_NUMBER')
+        self.messaging_service_sid = self._get_config('TWILIO_MESSAGING_SERVICE_SID')
+        self._enabled = self._get_config('TWILIO_SMS_ENABLED', False)
+        self._client = None
+
+    def _get_config(self, key: str, default=None):
+        """Read from SystemConfig (DB) first, then env, then default."""
+        try:
+            from app.models.system_config import SystemConfig
+            val = SystemConfig.get(key)
+            if val is not None:
+                return val
+        except Exception:
+            pass
+
+        import os
+        env_val = os.getenv(key)
+        if env_val is not None:
+            return env_val
+        return default
+
+    def _get_client(self):
+        """Lazy initialization of Twilio client."""
+        if not self._enabled:
+            logger.warning("[Twilio SMS] SMS not enabled (TWILIO_SMS_ENABLED=false)")
+            return None
+        if self._client is None:
+            if not self.account_sid or not self.auth_token:
+                logger.warning("[Twilio SMS] Credentials not configured")
+                return None
+            try:
+                from twilio.rest import Client
+                self._client = Client(self.account_sid, self.auth_token)
+                logger.info("[Twilio SMS] Client initialized")
+            except Exception as e:
+                logger.error(f"[Twilio SMS] Failed to initialize client: {e}")
+                return None
+        return self._client
+
+    def validate_recipient(self, recipient: dict) -> bool:
+        phone = recipient.get('phone')
+        return bool(phone and len(phone) >= 8)
+
+    def deliver(self, notification, recipient: dict) -> dict:
+        to_phone = recipient.get('phone')
+        if not to_phone:
+            return {'success': False, 'response_code': 400, 'response_body': 'No recipient phone number'}
+
+        client = self._get_client()
+        if not client:
+            return {'success': False, 'response_code': 500, 'response_body': 'Twilio client not configured'}
+
+        body_text = notification.body or ''
+        if len(body_text) > 1600:
+            body_text = body_text[:1597] + '...'
+
+        try:
+            # Build message parameters
+            params = {
+                'to': to_phone,
+                'body': body_text,
+            }
+
+            # Use messaging service SID if configured, otherwise from_number
+            if self.messaging_service_sid:
+                params['messaging_service_sid'] = self.messaging_service_sid
+            elif self.from_number:
+                params['from_'] = self.from_number
+            else:
+                return {'success': False, 'response_code': 500, 'response_body': 'No from_number or messaging_service_sid configured'}
+
+            message = client.messages.create(**params)
+
+            logger.info(f"[Twilio SMS] Sent to {to_phone}: SID={message.sid}, Status={message.status}")
+            return {
+                'success': True,
+                'external_id': message.sid,
+                'response_code': 200,
+                'response_body': f'Twilio SMS sent: {message.status}',
+            }
+
+        except Exception as e:
+            logger.error(f"[Twilio SMS] Failed to send to {to_phone}: {e}")
+            return {
+                'success': False,
+                'response_code': 500,
+                'response_body': str(e),
+            }
+
+
+class TwilioWhatsAppHandler(BaseChannelHandler):
+    """WhatsApp handler using Twilio WhatsApp Business API."""
+    channel_name = 'twilio_whatsapp'
+
+    def __init__(self):
+        self.account_sid = self._get_config('TWILIO_ACCOUNT_SID')
+        self.auth_token = self._get_config('TWILIO_AUTH_TOKEN')
+        self.whatsapp_from = self._get_config('TWILIO_WHATSAPP_FROM')  # e.g., 'whatsapp:+14155238886'
+        self._enabled = self._get_config('TWILIO_WHATSAPP_ENABLED', False)
+        self._client = None
+
+    def _get_config(self, key: str, default=None):
+        """Read from SystemConfig (DB) first, then env, then default."""
+        try:
+            from app.models.system_config import SystemConfig
+            val = SystemConfig.get(key)
+            if val is not None:
+                return val
+        except Exception:
+            pass
+
+        import os
+        env_val = os.getenv(key)
+        if env_val is not None:
+            return env_val
+        return default
+
+    def _get_client(self):
+        """Lazy initialization of Twilio client."""
+        if not self._enabled:
+            logger.warning("[Twilio WhatsApp] WhatsApp not enabled (TWILIO_WHATSAPP_ENABLED=false)")
+            return None
+        if self._client is None:
+            if not self.account_sid or not self.auth_token:
+                logger.warning("[Twilio WhatsApp] Credentials not configured")
+                return None
+            try:
+                from twilio.rest import Client
+                self._client = Client(self.account_sid, self.auth_token)
+                logger.info("[Twilio WhatsApp] Client initialized")
+            except Exception as e:
+                logger.error(f"[Twilio WhatsApp] Failed to initialize client: {e}")
+                return None
+        return self._client
+
+    def validate_recipient(self, recipient: dict) -> bool:
+        phone = recipient.get('phone')
+        return bool(phone and len(phone) >= 8)
+
+    def deliver(self, notification, recipient: dict) -> dict:
+        to_phone = recipient.get('phone')
+        if not to_phone:
+            return {'success': False, 'response_code': 400, 'response_body': 'No recipient phone number'}
+
+        # Ensure WhatsApp format: whatsapp:+1234567890
+        if not to_phone.startswith('whatsapp:'):
+            to_whatsapp = f'whatsapp:{to_phone}'
+        else:
+            to_whatsapp = to_phone
+
+        client = self._get_client()
+        if not client:
+            return {'success': False, 'response_code': 500, 'response_body': 'Twilio client not configured'}
+
+        if not self.whatsapp_from:
+            return {'success': False, 'response_code': 500, 'response_body': 'TWILIO_WHATSAPP_FROM not configured'}
+
+        body_text = notification.body or ''
+        if len(body_text) > 1600:
+            body_text = body_text[:1597] + '...'
+
+        try:
+            message = client.messages.create(
+                from_=self.whatsapp_from,
+                to=to_whatsapp,
+                body=body_text,
+            )
+
+            logger.info(f"[Twilio WhatsApp] Sent to {to_whatsapp}: SID={message.sid}, Status={message.status}")
+            return {
+                'success': True,
+                'external_id': message.sid,
+                'response_code': 200,
+                'response_body': f'Twilio WhatsApp sent: {message.status}',
+            }
+
+        except Exception as e:
+            logger.error(f"[Twilio WhatsApp] Failed to send to {to_whatsapp}: {e}")
+            return {
+                'success': False,
+                'response_code': 500,
+                'response_body': str(e),
+            }

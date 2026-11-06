@@ -1,0 +1,85 @@
+<!-- SMS/WhatsApp Configuration Section -->
+  <h3 class="section-title">SMS & WhatsApp (Twilio)</h3>
+  <div class="settings-grid">
+    <div class="settings-card" style="border-left:4px solid #0ea5e9; grid-column: 1 / -1;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;flex-wrap:wrap;gap:1rem;">
+        <div>
+          <div class="card-icon">📱</div>
+          <div class="card-title">Twilio SMS & WhatsApp Configuration</div>
+          <div class="card-description" style="margin-top:0.5rem;">
+            Configure Twilio for SMS and WhatsApp OTP delivery. <strong>Fallback chain:</strong> SMS → WhatsApp → Email.
+            Requires Twilio Account SID, Auth Token, and verified sender number.
+          </div>
+        </div>
+        <span class="card-badge" style="background:#e0f2fe;color:#0369a1;">Messaging Infrastructure</span>
+      </div>
+
+      <form method="POST" action="{{ url_for('admin.owner.save_twilio_config') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;margin-bottom:1rem;">
+          <div>
+            <label class="form-label" style="font-weight:600;color:#1a1a1a;">Twilio Account SID</label>
+            <input type="text" name="TWILIO_ACCOUNT_SID" class="form-control" 
+                   value="{{ twilio_account_sid or '' }}" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+            <small class="text-muted">Found in Twilio Console → Account Info</small>
+          </div>
+          <div>
+            <label class="form-label" style="font-weight:600;color:#1a1a1a;">Twilio Auth Token</label>
+            <input type="password" name="TWILIO_AUTH_TOKEN" class="form-control" 
+                   value="{{ twilio_auth_token or '' }}" placeholder="your_auth_token">
+            <small class="text-muted">Found in Twilio Console → Account Info (hidden by default)</small>
+          </div>
+          <div>
+            <label class="form-label" style="font-weight:600;color:#1a1a1a;">Twilio From Number</label>
+            <input type="text" name="TWILIO_FROM_NUMBER" class="form-control" 
+                   value="{{ twilio_from_number or '' }}" placeholder="+15551234567">
+            <small class="text-muted">Verified sender number in E.164 format (e.g., +15551234567)</small>
+          </div>
+          <div>
+            <label class="form-label" style="font-weight:600;color:#1a1a1a;">Messaging Service SID (Optional)</label>
+            <input type="text" name="TWILIO_MESSAGING_SERVICE_SID" class="form-control" 
+                   value="{{ twilio_messaging_service_sid or '' }}" placeholder="MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+            <small class="text-muted">Alternative to From Number for advanced routing</small>
+          </div>
+          <div>
+            <label class="form-label" style="font-weight:600;color:#1a1a1a;">WhatsApp From Number</label>
+            <input type="text" name="TWILIO_WHATSAPP_FROM" class="form-control" 
+                   value="{{ twilio_whatsapp_from or '' }}" placeholder="whatsapp:+14155238886">
+            <small class="text-muted">Twilio WhatsApp sandbox or approved sender (format: whatsapp:+14155238886)</small>
+          </div>
+          <div>
+            <label class="form-label" style="font-weight:600;color:#1a1a1a;">Enable WhatsApp</label>
+            <select name="TWILIO_WHATSAPP_ENABLED" class="form-control">
+              <option value="true" {{ 'selected' if twilio_whatsapp_enabled else '' }}>Enabled</option>
+              <option value="false" {{ 'selected' if not twilio_whatsapp_enabled else '' }}>Disabled</option>
+            </select>
+            <small class="text-muted">Enable WhatsApp as fallback after SMS</small>
+          </div>
+        </div>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Save Twilio Configuration
+          </button>
+          <button type="button" class="btn btn-outline-secondary" onclick="testTwilioSms()">
+            <i class="bi bi-send"></i> Send Test SMS
+          </button>
+          <button type="button" class="btn btn-outline-secondary" onclick="testTwilioWhatsApp()" {% if not twilio_whatsapp_enabled %}disabled{% endif %}>
+            <i class="bi bi-whatsapp"></i> Send Test WhatsApp
+          </button>
+        </div>
+        <div id="twilioTestResult" style="margin-top:1rem;display:none;padding:0.75rem;border-radius:8px;"></div>
+      </form>
+
+      <div style="margin-top:1.5rem;padding:1rem;background:#f8fafc;border-radius:8px;border:1px solid #e5e7eb;">
+        <h5 style="margin-top:0;margin-bottom:0.75rem;color:#374151;">Setup Instructions</h5>
+        <ol style="margin:0;padding-left:1.5rem;color:#6b7280;font-size:0.875rem;">
+          <li style="margin-bottom:0.5rem;">Create a <a href="https://www.twilio.com/try-twilio" target="_blank">Twilio account</a> or log in</li>
+          <li style="margin-bottom:0.5rem;">Get Account SID and Auth Token from <a href="https://console.twilio.com/" target="_blank">Twilio Console</a></li>
+          <li style="margin-bottom:0.5rem;">Buy or verify a phone number in <a href="https://console.twilio.com/us1/develop/phone-numbers/manage/incoming" target="_blank">Phone Numbers</a></li>
+          <li style="margin-bottom:0.5rem;">For WhatsApp: Request access in <a href="https://console.twilio.com/us1/develop/sms/whatsapp/senders" target="_blank">WhatsApp Senders</a> or use sandbox (<code>whatsapp:+14155238886</code>)</li>
+          <li style="margin-bottom:0.5rem;">Configure fallback chain: SMS → WhatsApp → Email (configured automatically)</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>

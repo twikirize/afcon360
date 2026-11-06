@@ -25,6 +25,7 @@ from app.notifications.models import (
 from app.notifications.channel_handlers import (
     EmailHandler, SmsHandler, PushHandler, InAppHandler, WebhookHandler,
     OCIEmailHandler,
+    TwilioSmsHandler, TwilioWhatsAppHandler,
 )
 from app.notifications.template_loader import template_loader
 from app.notifications.utils import generate_idempotency_key, calculate_backoff
@@ -67,6 +68,8 @@ class NotificationService:
     HANDLERS = {
         NotificationChannel.EMAIL: EmailHandler(),          # Transactional (Gmail SMTP)
         'oci_email': OCIEmailHandler(),                      # Bulk/Marketing (OCI Email Delivery)
+        'twilio_sms': TwilioSmsHandler(),                    # SMS via Twilio
+        'twilio_whatsapp': TwilioWhatsAppHandler(),          # WhatsApp via Twilio
         NotificationChannel.SMS: SmsHandler(),
         NotificationChannel.PUSH: PushHandler(),
         NotificationChannel.IN_APP: InAppHandler(),
@@ -233,16 +236,24 @@ class NotificationService:
 
         Returns the final list of channels to deliver on.
         """
-        internal_channels = [c for c in channels if NotificationChannel(c) == NotificationChannel.IN_APP]
-        external_channels = [c for c in channels if NotificationChannel(c) != NotificationChannel.IN_APP]
+        # Helper: safely check if channel is a valid enum value
+        def _is_valid_enum_channel(c) -> bool:
+            try:
+                NotificationChannel(c)
+                return True
+            except ValueError:
+                return False
+
+        internal_channels = [c for c in channels if _is_valid_enum_channel(c) and NotificationChannel(c) == NotificationChannel.IN_APP]
+        external_channels = [c for c in channels if not _is_valid_enum_channel(c) or NotificationChannel(c) != NotificationChannel.IN_APP]
 
         # No external intent -> keep as-is (in_app only or already resolved).
         if not external_channels:
             return list(channels)
 
         # Webhook is always external (subscriber integration) — keep as-is.
-        webhook_channels = [c for c in external_channels if NotificationChannel(c) == NotificationChannel.WEBHOOK]
-        non_webhook_external = [c for c in external_channels if NotificationChannel(c) != NotificationChannel.WEBHOOK]
+        webhook_channels = [c for c in external_channels if _is_valid_enum_channel(c) and NotificationChannel(c) == NotificationChannel.WEBHOOK]
+        non_webhook_external = [c for c in external_channels if not _is_valid_enum_channel(c) or NotificationChannel(c) != NotificationChannel.WEBHOOK]
 
         # External recipient (no user) -> external channels are legitimate.
         if not user_id:
@@ -371,13 +382,23 @@ class NotificationService:
                 notification.scheduled_for = None
                 notification.link = link
             else:
+                # Gracefully handle channel strings (enum or future custom channels).
+                # Store enum value for DB; delivery loop uses original string via HANDLERS[channel_str].
+                _primary = NotificationChannel.IN_APP
+                if len(channels) == 1:
+                    try:
+                        _primary = NotificationChannel(channels[0])
+                    except ValueError:
+                        # Future custom channel (e.g. 'mailgun_email') - fallback to EMAIL for DB
+                        _primary = NotificationChannel.EMAIL
+
                 notification = Notification(
                     user_id=user_id,
                     email=recipient_email,
                     phone=recipient_phone,
                     type=notification_type,
                     module=cls._resolve_module(module, notification_type),
-                    channel=NotificationChannel(channels[0]) if len(channels) == 1 else NotificationChannel.IN_APP,
+                    channel=_primary,
                     context=data or context or {},
                     subject=title,
                     body=message,
@@ -398,8 +419,14 @@ class NotificationService:
             all_success = True
 
             for channel_str in channels:
-                channel = NotificationChannel(channel_str)
-                handler = cls.HANDLERS.get(NotificationChannel(channel_str))
+                # Convert to enum for DB constraints (OCI_EMAIL is now valid)
+                try:
+                    channel = NotificationChannel(channel_str)
+                except ValueError:
+                    # Future custom channels (e.g. 'mailgun_email')
+                    channel = NotificationChannel.IN_APP
+                
+                handler = cls.HANDLERS.get(channel_str)  # Use string key for custom channels
 
                 if not handler:
                     logger.warning(f"Unknown channel '{channel_str}' for notification {notification.id}")

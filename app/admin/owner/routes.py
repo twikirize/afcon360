@@ -1207,6 +1207,14 @@ def settings():
         oci_email_sender_address = SystemConfig.get('OCI_EMAIL_SENDER_ADDRESS', 'noreply@pamoja.space')
         oci_email_suppression_list = SystemConfig.get('OCI_EMAIL_SUPPRESSION_LIST', True)
 
+        # Load Twilio SMS/WhatsApp settings
+        twilio_account_sid = SystemConfig.get('TWILIO_ACCOUNT_SID', '')
+        twilio_auth_token = SystemConfig.get('TWILIO_AUTH_TOKEN', '')
+        twilio_from_number = SystemConfig.get('TWILIO_FROM_NUMBER', '')
+        twilio_messaging_service_sid = SystemConfig.get('TWILIO_MESSAGING_SERVICE_SID', '')
+        twilio_whatsapp_from = SystemConfig.get('TWILIO_WHATSAPP_FROM', '')
+        twilio_whatsapp_enabled = SystemConfig.get('TWILIO_WHATSAPP_ENABLED', False)
+
         logger.info(f"Rendering settings template with org_registration_mode={org_registration_mode}")
         return render_template('owner/settings.html',
                              settings=owner_settings,
@@ -1222,7 +1230,13 @@ def settings():
                              oci_email_region=oci_email_region,
                              oci_email_compartment_id=oci_email_compartment_id,
                              oci_email_sender_address=oci_email_sender_address,
-                             oci_email_suppression_list=oci_email_suppression_list)
+                             oci_email_suppression_list=oci_email_suppression_list,
+                             twilio_account_sid=twilio_account_sid,
+                             twilio_auth_token=twilio_auth_token,
+                             twilio_from_number=twilio_from_number,
+                             twilio_messaging_service_sid=twilio_messaging_service_sid,
+                             twilio_whatsapp_from=twilio_whatsapp_from,
+                             twilio_whatsapp_enabled=twilio_whatsapp_enabled)
     except Exception as e:
         current_app.logger.exception(
             "❌ Owner settings page crashed"

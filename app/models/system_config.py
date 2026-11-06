@@ -129,6 +129,14 @@ class SystemConfig(BaseModel):
             {'key': 'OCI_EMAIL_COMPARTMENT_ID', 'value': '', 'value_type': 'str', 'category': 'email', 'description': 'OCI Compartment OCID for Email Delivery'},
             {'key': 'OCI_EMAIL_SENDER_ADDRESS', 'value': 'noreply@pamoja.space', 'value_type': 'str', 'category': 'email', 'description': 'Approved sender email address in OCI Email Delivery'},
             {'key': 'OCI_EMAIL_SUPPRESSION_LIST', 'value': 'true', 'value_type': 'bool', 'category': 'email', 'description': 'Use OCI suppression list for bounces/complaints'},
+            # Twilio SMS/WhatsApp (Owner/Super Admin configurable) - ALL OFF BY DEFAULT
+            {'key': 'TWILIO_ACCOUNT_SID', 'value': '', 'value_type': 'str', 'category': 'sms', 'description': 'Twilio Account SID'},
+            {'key': 'TWILIO_AUTH_TOKEN', 'value': '', 'value_type': 'str', 'category': 'sms', 'description': 'Twilio Auth Token'},
+            {'key': 'TWILIO_FROM_NUMBER', 'value': '', 'value_type': 'str', 'category': 'sms', 'description': 'Twilio verified sender phone number (E.164 format)'},
+            {'key': 'TWILIO_MESSAGING_SERVICE_SID', 'value': '', 'value_type': 'str', 'category': 'sms', 'description': 'Twilio Messaging Service SID (optional, alternative to from_number)'},
+            {'key': 'TWILIO_WHATSAPP_FROM', 'value': '', 'value_type': 'str', 'category': 'sms', 'description': 'Twilio WhatsApp sender (e.g., whatsapp:+14155238886)'},
+            {'key': 'TWILIO_WHATSAPP_ENABLED', 'value': 'false', 'value_type': 'bool', 'category': 'sms', 'description': 'Enable WhatsApp via Twilio'},
+            {'key': 'TWILIO_SMS_ENABLED', 'value': 'false', 'value_type': 'bool', 'category': 'sms', 'description': 'Enable SMS via Twilio'},
         ]
 
         # KYC configuration (Owner/Super Admin configurable). Seeded from the
