@@ -117,8 +117,27 @@ class SMSService:
 
 
 def send_sms(to_number: str, message: str) -> bool:
-    """Backward-compatible bool API; OTPService owns code storage."""
-    return bool(SMSService(provider="twilio").send_message(to_number, message).get("success"))
+    """Backward-compatible bool API using the owner's current country/provider routing."""
+    try:
+        from app.auth.config_model import AuthConfiguration
+
+        auth_config = AuthConfiguration.get_config()
+        provider = auth_config.get_sms_provider_for_phone(to_number) if auth_config else None
+        if provider not in {"twilio", "africa_talking", "africas_talking"}:
+            logger.warning("SMS not sent because no enabled provider is configured")
+            return False
+
+        result = SMSService(
+            provider=provider,
+            auth_config=auth_config,
+        ).send_message(to_number, message)
+        return bool(result.get("success"))
+    except Exception as exc:
+        logger.warning(
+            "SMS helper delivery failed (exception_type=%s)",
+            type(exc).__name__,
+        )
+        return False
 
 
 def send_whatsapp(to_number: str, message: str) -> bool:
