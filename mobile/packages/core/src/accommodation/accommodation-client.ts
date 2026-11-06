@@ -1,7 +1,7 @@
 import type { RequestOptions } from "../api/client";
 
 export type AccommodationRoomType = {
-  id: number;
+  room_token: string;
   name: string;
   description: string | null;
   max_guests: number;
@@ -48,7 +48,6 @@ export type AccommodationBookingQuote = {
   quote_id: string;
   quote_token: string;
   property: AccommodationProperty;
-  room_type_id: number | null;
   check_in: string;
   check_out: string;
   num_guests: number;
@@ -150,7 +149,7 @@ export class MobileAccommodationClient {
     checkOut: string;
     numGuests: number;
     roomsRequested: number;
-    roomTypeId?: number | null;
+    roomTypeToken?: string | null;
   }): Promise<AccommodationBookingQuote> {
     return this.unwrap<AccommodationBookingQuote>("/api/mobile/v1/accommodation/quotes", {
       method: "POST",
@@ -160,7 +159,7 @@ export class MobileAccommodationClient {
         check_out: input.checkOut,
         num_guests: input.numGuests,
         rooms_requested: input.roomsRequested,
-        room_type_id: input.roomTypeId ?? null,
+        room_type_token: input.roomTypeToken ?? null,
       },
     });
   }
