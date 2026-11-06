@@ -1048,7 +1048,7 @@ class WalletService:
 
                     sender_user = self.db.query(User).filter_by(
                         id=from_account.user_id
-                    ).with_for_update().one_or_none()
+                    ).with_for_update(of=User).one_or_none()
                     if sender_user is None:
                         raise TransactionPINError("Sender PIN authority could not be verified")
                     if not sender_user.transaction_pin_hash:
