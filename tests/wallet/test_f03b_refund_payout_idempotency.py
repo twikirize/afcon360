@@ -427,6 +427,10 @@ class TestEscrowHumanAuthorization:
                 "cancellation_outcome": {"refund": "100.00"}
             }
             db.session.commit()
+            assert booking.cancelled_by_user_id == guest["user_id"]
+            assert booking.booked_by_user_id == guest["user_id"]
+            assert booking.status == AccommodationBookingStatus.REFUNDED.value
+            assert booking.policy_snapshot["cancellation_outcome"]["refund"] == "100.00"
 
         with _login_as(app, guest["user_id"]):
             ok, error = _guarded_call(
