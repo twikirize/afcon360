@@ -216,7 +216,7 @@ class FXService:
         return rate
 
     def _get_mock_rates(self) -> Dict:
-        """Mock rates - replace with real API."""
+        """Legacy indicative fixture values; never used for Wallet execution."""
         return {
             # USD pairs
             ('USD', 'UGX'): Decimal('3800.0'),
