@@ -287,6 +287,7 @@ class NativeAccommodationService:
         check_out_value,
         num_guests,
         rooms_requested=1,
+        room_type_id=None,
         room_type_token=None,
     ):
         from app.accommodation.services.pricing_service import PricingService
@@ -301,18 +302,45 @@ class NativeAccommodationService:
         if not 1 <= guests <= 32 or not 1 <= rooms <= 10:
             raise NativeAccommodationError("booking_guests_invalid", "Choose 1–32 guests and 1–10 rooms.", 400)
 
-        selected_from_token = (
-            cls._load_room_type_token(prop, room_type_token)
-            if room_type_token
-            else None
-        )
+        # Native clients select a room type using the ID returned by this
+        # property detail endpoint. Treat it only as a selector: _validate_stay
+        # resolves it from this property's active room_types before pricing.
+        # A signed room token remains accepted for older clients, but callers
+        # must not supply both selector forms.
+        if room_type_id not in (None, "") and room_type_token:
+            raise NativeAccommodationError(
+                "room_type_selection_ambiguous",
+                "Send either a room type ID or a signed room selection, not both.",
+                400,
+            )
+
+        selected_room_type_id = None
+        if room_type_id not in (None, ""):
+            try:
+                selected_room_type_id = int(room_type_id)
+            except (TypeError, ValueError) as exc:
+                raise NativeAccommodationError(
+                    "room_type_invalid",
+                    "Choose a valid room type for this property.",
+                    400,
+                ) from exc
+            if selected_room_type_id <= 0:
+                raise NativeAccommodationError(
+                    "room_type_invalid",
+                    "Choose a valid room type for this property.",
+                    400,
+                )
+        elif room_type_token:
+            selected_from_token = cls._load_room_type_token(prop, room_type_token)
+            selected_room_type_id = int(selected_from_token.id)
+
         selected = cls._validate_stay(
             prop,
             check_in,
             check_out,
             guests,
             rooms,
-            int(selected_from_token.id) if selected_from_token else None,
+            selected_room_type_id,
         )
         try:
             pricing = PricingService.calculate_total(
