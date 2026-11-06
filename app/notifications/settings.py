@@ -132,7 +132,6 @@ class CommunicationSettingsService:
         setting.enabled = enabled
         setting.updated_by = updated_by
         if commit:
-            if commit:
             db.session.commit()
         return setting
 
