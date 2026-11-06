@@ -233,6 +233,7 @@ class CommunicationSettingsService:
         clear_secret_keys: List[str] = None,
         commit: bool = True,
     ) -> CommunicationSettings:
+        _assert_no_runtime_secret_fields(config)
         setting = CommunicationSettings.query.filter_by(key=key, is_deleted=False).first()
         if not setting:
             setting = CommunicationSettings(key=key)
@@ -258,6 +259,7 @@ class CommunicationSettingsService:
                     # A blank password field means "keep the existing secret".
                     continue
                 merged[name] = value
+            _assert_no_runtime_secret_fields(merged)
             register_secret_mapping(merged)
             setting.config = cls._encrypt_config(merged)
         if description is not None:
@@ -306,6 +308,7 @@ class CommunicationSettingsService:
         updated_by: int = None,
         clear_webhook_url: bool = False,
     ) -> NotificationAggregator:
+        _assert_no_runtime_secret_fields(credentials)
         agg = NotificationAggregator.query.filter_by(name=name, is_deleted=False).first()
         if not agg:
             agg = NotificationAggregator(name=name)
@@ -335,6 +338,7 @@ class CommunicationSettingsService:
             if effective_webhook_url:
                 merged["webhook_url"] = effective_webhook_url
 
+        _assert_no_runtime_secret_fields(merged)
         if credentials is not None or existing or webhook_url or agg.webhook_url or clear_webhook_url:
             register_secret_mapping(merged)
             agg.credentials = cls._encrypt_config(merged)
