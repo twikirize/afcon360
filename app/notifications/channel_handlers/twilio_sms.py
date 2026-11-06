@@ -79,9 +79,15 @@ class TwilioSmsHandler(BaseChannelHandler):
         return default
 
     def _refresh_config(self):
-        """Refresh DB-backed values because handlers may be global singletons."""
-        self.account_sid = self._get_config('TWILIO_ACCOUNT_SID')
-        self.auth_token = self._get_config('TWILIO_AUTH_TOKEN')
+        """Refresh owner settings and invalidate a client after credential rotation."""
+        previous_credentials = (self.account_sid, self.auth_token)
+        account_sid = self._get_config('TWILIO_ACCOUNT_SID')
+        auth_token = self._get_config('TWILIO_AUTH_TOKEN')
+        if previous_credentials != (account_sid, auth_token):
+            self._client = None
+
+        self.account_sid = account_sid
+        self.auth_token = auth_token
         self.from_number = self._get_config('TWILIO_FROM_NUMBER')
         self.messaging_service_sid = self._get_config('TWILIO_MESSAGING_SERVICE_SID')
         self._enabled = bool(self._get_config('TWILIO_SMS_ENABLED', False)) or bool(
@@ -188,9 +194,15 @@ class TwilioWhatsAppHandler(BaseChannelHandler):
         return default
 
     def _refresh_config(self):
-        """Refresh DB-backed values because handlers may be global singletons."""
-        self.account_sid = self._get_config('TWILIO_ACCOUNT_SID')
-        self.auth_token = self._get_config('TWILIO_AUTH_TOKEN')
+        """Refresh owner settings and invalidate a client after credential rotation."""
+        previous_credentials = (self.account_sid, self.auth_token)
+        account_sid = self._get_config('TWILIO_ACCOUNT_SID')
+        auth_token = self._get_config('TWILIO_AUTH_TOKEN')
+        if previous_credentials != (account_sid, auth_token):
+            self._client = None
+
+        self.account_sid = account_sid
+        self.auth_token = auth_token
         self.whatsapp_from = self._get_config('TWILIO_WHATSAPP_FROM')
         self._enabled = bool(self._get_config('TWILIO_WHATSAPP_ENABLED', False))
 
