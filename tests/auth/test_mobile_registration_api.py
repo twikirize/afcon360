@@ -1118,7 +1118,8 @@ def test_native_sms_mfa_uses_configured_provider_and_does_not_log_otp(app, monke
     assert captured["sent"][0] == "+256700000002"
     assert "483921" in captured["sent"][1]
     assert captured["throttle"][2:] == (60, True)
-    assert captured["invalidated"] == []
+    # Starting a fresh challenge invalidates any previously issued code first.
+    assert captured["invalidated"] == [("502", "2fa_login")]
 
 
 def test_native_sms_mfa_fails_closed_when_provider_is_not_configured(app, monkeypatch):
@@ -1213,13 +1214,16 @@ def test_native_sms_mfa_verification_uses_hashed_one_time_otp(client, monkeypatc
     from app.identity.models.user import User
 
     user = SimpleNamespace(id=505, public_id="sms-native-verify-user")
-    monkeypatch.setattr(
-        User,
-        "query",
-        SimpleNamespace(
-            filter_by=lambda **kwargs: SimpleNamespace(first=lambda: user)
-        ),
-    )
+    # Flask-SQLAlchemy's query descriptor requires an application context
+    # even when the descriptor itself is being replaced for this test.
+    with client.application.app_context():
+        monkeypatch.setattr(
+            User,
+            "query",
+            SimpleNamespace(
+                filter_by=lambda **kwargs: SimpleNamespace(first=lambda: user)
+            ),
+        )
     monkeypatch.setattr(
         mobile_api,
         "pop_mobile_mfa_challenge",
@@ -1340,4 +1344,4 @@ def test_native_sms_mfa_invalidates_otp_when_provider_delivery_fails(app, monkey
     assert error[0] == "sms_mfa_delivery_failed"
     assert error[2] == 503
     assert stored == [("505", "735192", "2fa_login", 300)]
-    assert invalidated == [("505", "2fa_login")]
+    assert invalidated == [("505", "2fa_login"), ("505", "2fa_login")]
