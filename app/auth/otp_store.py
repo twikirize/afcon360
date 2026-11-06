@@ -103,6 +103,21 @@ class _MemoryStore:
             self._data[key] = (value, time.time() + ttl)
             return True
 
+    def compare_and_delete(self, key: str, expected: Any) -> bool:
+        """Atomically delete a live value only when it matches expected."""
+        with self._lock:
+            entry = self._data.get(key)
+            if entry is None:
+                return False
+            value, expires_at = entry
+            if self._expired(expires_at):
+                self._data.pop(key, None)
+                return False
+            if value != expected:
+                return False
+            self._data.pop(key, None)
+            return True
+
 
 _memory_store = _MemoryStore()
 
@@ -229,3 +244,37 @@ def reset_memory_store() -> None:
     """Clear the in-process fallback. Intended for tests only."""
     global _memory_store
     _memory_store = _MemoryStore()
+
+
+
+def store_compare_and_delete(key: str, expected_value: Any) -> bool:
+    """Atomically consume a stored value only when it equals expected_value.
+
+    Redis compares the JSON-encoded representation written by store_set and
+    deletes it in one Lua operation. The local fallback uses the same
+    compare-and-delete semantics under the memory-store lock. Deployed
+    runtimes fail closed when their required shared Redis is unavailable.
+    """
+    client = _redis()
+    if client is None:
+        try:
+            from flask import current_app
+            if current_app and current_app.config.get("REDIS_REQUIRED", False):
+                logger.error("Required Redis unavailable; refusing OTP consumption")
+                return False
+        except Exception:
+            pass
+        return _memory_store.compare_and_delete(key, expected_value)
+
+    script = """
+    local current = redis.call('GET', KEYS[1])
+    if not current then return 0 end
+    if current ~= ARGV[1] then return 0 end
+    redis.call('DEL', KEYS[1])
+    return 1
+    """
+    try:
+        return bool(client.eval(script, 1, key, _encode(expected_value)))
+    except Exception as exc:
+        logger.error("Atomic OTP consumption failed for %s: %s", key, exc)
+        return False

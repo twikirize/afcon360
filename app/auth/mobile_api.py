@@ -1,6 +1,7 @@
 """Versioned bearer-only API for native AFCON360 clients."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import secrets
@@ -34,6 +35,13 @@ mobile_api_bp = Blueprint("mobile_api", __name__, url_prefix="/api/mobile/v1")
 
 def _error(code: str, message: str, status: int):
     return jsonify({"success": False, "code": code, "message": message}), status
+
+
+def _mobile_password_reset_rate_key():
+    data = request.get_json(silent=True) or {}
+    identifier = str(data.get("identifier") or "").strip().lower()
+    digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()
+    return f"{get_remote_address()}:{digest}"
 
 
 def _device_fields(data: dict) -> tuple[str, str]:
@@ -453,6 +461,82 @@ def mobile_register_resend():
     return jsonify({
         "success": True,
         "data": {"message": result.message or "A new verification code has been sent."},
+    }), 200
+
+
+@mobile_api_bp.post("/auth/password-reset/request")
+@limiter.limit("10 per hour", key_func=get_remote_address)
+def mobile_password_reset_request():
+    """Start an enumeration-safe email-code reset for an existing account."""
+    data = request.get_json(silent=True) or {}
+    identifier = str(
+        data.get("identifier") or data.get("username") or data.get("email") or ""
+    ).strip()[:255]
+
+    # Never reveal whether an account exists or whether its mail address is
+    # deliverable. The service logs delivery problems without returning PII.
+    if identifier:
+        try:
+            from app.auth.mobile_password_reset import request_mobile_password_reset
+            request_mobile_password_reset(identifier)
+        except Exception:
+            logger.exception("Native password-reset request could not be processed")
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "message": (
+                "If an active AFCON360 account has a registered email address, "
+                "a reset code has been sent."
+            ),
+            "expires_in": 600,
+        },
+    }), 202
+
+
+@mobile_api_bp.post("/auth/password-reset/confirm")
+@limiter.limit("5 per hour", key_func=_mobile_password_reset_rate_key)
+def mobile_password_reset_confirm():
+    """Consume one email OTP, set the new password and revoke prior sessions."""
+    data = request.get_json(silent=True) or {}
+    identifier = str(data.get("identifier") or "").strip()[:255]
+    code = str(data.get("code") or "").strip()
+    new_password = data.get("new_password")
+    confirm_password = data.get("confirm_password")
+
+    if not identifier or not code.isdigit() or len(code) != 6:
+        return _error(
+            "password_reset_input_invalid",
+            "Enter your username or email and the 6-digit code sent to your email.",
+            400,
+        )
+    if not isinstance(new_password, str) or not new_password or len(new_password) > 128:
+        return _error("password_reset_password_invalid", "Enter a valid new password.", 400)
+    if new_password != confirm_password:
+        return _error("password_reset_password_mismatch", "The passwords do not match.", 400)
+
+    try:
+        from app.auth.mobile_password_reset import confirm_mobile_password_reset
+        success, message = confirm_mobile_password_reset(
+            identifier=identifier,
+            code=code,
+            new_password=new_password,
+        )
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native password-reset confirmation failed unexpectedly")
+        return _error(
+            "password_reset_unavailable",
+            "AFCON360 could not complete the password reset. Request a new code or try again.",
+            503,
+        )
+
+    if not success:
+        return _error("password_reset_rejected", message, 400)
+
+    return jsonify({
+        "success": True,
+        "data": {"message": message},
     }), 200
 
 

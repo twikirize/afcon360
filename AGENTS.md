@@ -652,19 +652,45 @@ Do not restore the old H3-A chain as the active path, create a second baseline, 
 The consolidated V1 baseline gives new installations one reproducible starting schema without requiring replay of the retired H3-A history. Incremental revisions preserve forward evolution after V1. The historical TZ-UNIFY work also demonstrated that migration session timezone is part of data semantics: a correct revision run under the wrong timezone can silently alter instants. Therefore, V1 and all ordinary future work use UTC; Nairobi interpretation is narrowly scoped to proven legacy naive data.
 
 
-## 53. Deployment Boundary and Branch Ownership (Permanent Rule)
+## 53. Permanent Native Mobile Branch Isolation (6 November 2026)
 
-**The deployable website and server application are owned by `main`. Native mobile client work is isolated from server delivery.**
+**This rule is mandatory for every agent, automation, workflow, and contributor.**
 
-1. `main` is the canonical integration and deployment branch for the public website, web frontend, Flask application, server-rendered templates, APIs, authentication/session services, business logic, models, database migrations, server configuration, deployment/worker configuration, and tests or CI that validate those server components.
-2. A feature does not become mobile-only merely because it is needed by a mobile app. Any API endpoint, token/session implementation, account/deletion service, database/model change, server template/page, or other server runtime dependency belongs in a separate PR targeting `main`.
-3. The native-app branch is limited to `mobile/**`, mobile-specific build/preview workflows (including `.github/workflows/mobile-preview-apk.yml` and `.github/workflows/mobile-workspace.yml`), and mobile-client documentation. It must not carry new Flask, template, migration, database, or server-runtime changes as part of the app-only PR.
-4. Backend contract/regression workflows that test server code (for example `.github/workflows/mobile-auth-postgres-tests.yml`) belong with the server changes on `main`, not in the app-only change set.
-5. If a native client needs a new backend capability, first submit and verify the server change against `main`; then base or retarget the app-only PR on the branch containing that server work. After the server PR is merged, retarget the app-only PR to `main`. Do not duplicate or cherry-pick the backend changes into the app PR.
-6. Website and server changes must never be deployed from a mobile feature branch. Merging to `main` is still separate from production deployment, which follows the approved backup, verification, and release gates.
-7. The public app-download contract is stable: `/download`, `templates/public_download.html`, the User/Driver preview artifact destinations, and the validated `AFCON360_USER_*` / `AFCON360_DRIVER_*` store-link environment variables must remain unchanged during unrelated mobile development. Change them only in a dedicated, reviewed download-contract task with explicit approval and contract tests.
+AFCON360 remains one Git repository with two deliberately separated development lines:
 
-**Required review question:** Does this change execute on the server, render the website, alter server data/contracts, or validate server behavior? If yes, it belongs in a PR targeting `main`. Does it only build/run the native User or Driver client? If yes, it belongs in the mobile-app PR.
+- Website/backend canonical branch: `main`.
+- Native User/Driver app line: `feat/native-mobile-apps-20261104` and explicitly designated app-only follow-up branches based on it.
+
+### 53.1 Never mix the native client into website/backend main
+
+The following are native-client-owned and must remain on the app branch:
+
+- All files under `mobile/**`.
+- Native app build and workspace workflows, including `.github/workflows/mobile-preview-apk.yml` and `.github/workflows/mobile-workspace.yml`.
+- Future app-only workflows using the `.github/workflows/mobile-*.yml` naming pattern, except explicitly server-owned workflows such as `mobile-auth-postgres-tests.yml`.
+
+Never merge, pull, rebase, cherry-pick, or retarget native app source/build changes into website/backend `main`. Do not merge the app branch itself into `main`. A PR that contains native app paths and targets `main` is an invalid branch-boundary change and must not be merged.
+
+### 53.2 Keep server integration separate
+
+Flask APIs, authentication/session services, account-deletion services, database models/migrations, website pages/templates, and backend contract tests remain server-owned. Those changes may target `main` through their own backend-only PRs. Supporting the native apps does not authorize copying the React Native clients or app build workflows into `main`.
+
+The server-owned `.github/workflows/mobile-auth-postgres-tests.yml` is intentionally allowed on `main`; it tests backend contracts and is not a native app build workflow.
+
+### 53.3 Required automated boundary check
+
+The `Native app branch boundary` workflow checks every PR targeting `main`. It fails when the PR changes `mobile/**` or a native app build/workspace workflow. Do not disable, path-filter around, rename to evade, or weaken this check. A failed boundary check is intentional—not a test failure to work around.
+
+The check only becomes a hard merge gate when repository branch protection requires the exact job status check. Repository settings must therefore require this check on `main`, require pull requests, and disallow direct pushes, force pushes, and branch deletion. Protect the app branch against force pushes and deletion as well. Do not grant agents or GitHub Actions bypass rights for these rules.
+
+### 53.4 Safe app-branch workflow
+
+1. Native app implementation and preview-build changes stay on the designated app branch or app-only follow-up branches.
+2. App follow-up PRs target `feat/native-mobile-apps-20261104`, not `main`.
+3. Merge app PRs only after the relevant User and Driver Android/iOS checks pass and the changed-file list is confirmed app-only.
+4. Server/backend PRs target `main` separately and must not use the app branch as their base.
+5. Before any merge, verify both the PR base branch and every changed path. A green build does not override the branch boundary.
+
 
 ---
 
