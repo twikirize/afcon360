@@ -617,3 +617,38 @@ def test_legacy_owner_auth_settings_template_never_prefills_provider_secrets():
         assert f'value="{{{{ config.{field}' not in source
         assert f'name="{field}"' in source
         assert f'name="clear_{field}"' in source
+
+def test_provider_and_aggregator_saves_reject_system_secrets_before_database_lookup(monkeypatch):
+    from app.notifications.models import CommunicationSettings, NotificationAggregator
+    from app.notifications.settings import CommunicationSettingsService
+
+    def _unexpected_query(*args, **kwargs):
+        raise AssertionError("database lookup must not occur for a rejected payload")
+
+    monkeypatch.setattr(CommunicationSettings, "query", _unexpected_query, raising=False)
+    monkeypatch.setattr(NotificationAggregator, "query", _unexpected_query, raising=False)
+
+    protected_provider_payloads = (
+        {"SECRET_KEY": "application-signing-key"},
+        {"nested": {"ENCRYPTION_KEY": "credential-decryption-key"}},
+        {"database": {"url": "postgresql://app:password@db/afcon360"}},
+        {"redis": {"password": "queue-password"}},
+        {"CELERY_BROKER_URL": "rediss://:redis-password@queue/0"},
+    )
+    for payload in protected_provider_payloads:
+        with pytest.raises(ValueError, match="server-side secrets"):
+            CommunicationSettingsService.upsert_setting(
+                key="bad-provider",
+                channel="email",
+                provider="smtp",
+                enabled=True,
+                config=payload,
+            )
+
+    with pytest.raises(ValueError, match="server-side secrets"):
+        CommunicationSettingsService.upsert_aggregator(
+            name="bad-aggregator",
+            provider_type="generic",
+            channels=["webhook"],
+            credentials={"nested": {"DB_PASSWORD": "database-password"}},
+        )
