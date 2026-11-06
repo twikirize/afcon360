@@ -1638,6 +1638,150 @@ def _resolve_native_wallet_recipient(identifier, sender_currency=None):
     return identity, recipient, account, None
 
 
+@mobile_api_bp.get("/wallet/currencies")
+@limiter.limit("20 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_wallet_currencies():
+    """Return owner-approved wallet currencies and the user's verified-country suggestion."""
+    from app.wallet.services.home_currency_service import get_wallet_currency_context
+
+    try:
+        data = get_wallet_currency_context(_native_wallet_user())
+        return jsonify({"success": True, "data": data}), 200
+    except ValueError as exc:
+        return _error("wallet_currency_configuration_unavailable", str(exc), 503)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native wallet currency options could not be loaded")
+        return _error(
+            "wallet_currency_options_unavailable",
+            "AFCON360 could not load Wallet currency options right now.",
+            503,
+        )
+
+
+@mobile_api_bp.post("/wallet")
+@limiter.limit("3 per hour", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_wallet_create():
+    """Create the user's first Wallet in an explicitly accepted currency.
+
+    The client must confirm Wallet terms and select a currency. The server
+    requires an approved country context and serializes concurrent first-wallet
+    creation by locking the owning User row. USD is never selected implicitly.
+    """
+    from datetime import datetime, timezone
+    from app.identity.models.user import User
+    from app.wallet.models.ledger import AccountModel, AccountOwnerType, AccountStatus, AccountType
+    from app.wallet.services.home_currency_service import resolve_home_currency, FX_BASE_CURRENCY
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return _error("invalid_request", "A JSON object is required.", 400)
+    if data.get("terms_accepted") is not True:
+        return _error(
+            "wallet_terms_required",
+            "Accept the AFCON360 Wallet terms before opening your Wallet.",
+            400,
+        )
+
+    try:
+        user = _native_wallet_user()
+        currency = resolve_home_currency(
+            user,
+            requested_currency=data.get("currency"),
+        )
+    except ValueError as exc:
+        message = str(exc)
+        code = (
+            "wallet_country_verification_required"
+            if "Verify your country" in message
+            else "wallet_currency_not_available"
+        )
+        return _error(code, message, 403 if code.endswith("required") else 400)
+
+    db.session.rollback()
+    try:
+        with db.session.begin():
+            # The user row is the serialization point for first-wallet creation.
+            locked_user = (
+                db.session.query(User)
+                .filter_by(id=int(user.id))
+                .with_for_update()
+                .one_or_none()
+            )
+            if locked_user is None or not locked_user.is_active or locked_user.is_deleted:
+                return _error(
+                    "account_unavailable",
+                    "This AFCON360 account is not available.",
+                    403,
+                )
+
+            existing = (
+                db.session.query(AccountModel)
+                .filter_by(
+                    user_id=int(locked_user.id),
+                    owner_type=AccountOwnerType.USER.value,
+                )
+                .order_by(AccountModel.created_at.asc(), AccountModel.id.asc())
+                .with_for_update()
+                .first()
+            )
+            if existing is not None:
+                if str(existing.currency or "").upper() == currency:
+                    return jsonify({
+                        "success": True,
+                        "data": {
+                            "currency": str(existing.currency).upper(),
+                            "created_at": existing.created_at.isoformat() if existing.created_at else None,
+                            "already_exists": True,
+                            "requires_activation": not bool(existing.verified),
+                            "fx_base_currency": FX_BASE_CURRENCY,
+                        },
+                    }), 200
+                return _error(
+                    "wallet_already_exists",
+                    f"Your first Wallet is already denominated in {str(existing.currency).upper()}. "
+                    "AFCON360 will not silently replace or create another account.",
+                    409,
+                )
+
+            now = datetime.now(timezone.utc)
+            account = AccountModel(
+                user_id=int(locked_user.id),
+                owner_type=AccountOwnerType.USER.value,
+                account_type=AccountType.USER_WALLET.value,
+                status=AccountStatus.ACTIVE.value,
+                currency=currency,
+                account_name=f"Wallet_{currency}_{int(locked_user.id)}",
+                is_frozen=False,
+                verified=False,
+                terms_accepted_at=now,
+            )
+            db.session.add(account)
+            db.session.flush()
+            created_at = account.created_at or now
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "currency": currency,
+                "created_at": created_at.isoformat(),
+                "already_exists": False,
+                "requires_activation": True,
+                "fx_base_currency": FX_BASE_CURRENCY,
+            },
+        }), 201
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native Wallet creation failed for user %s", user.public_id)
+        return _error(
+            "wallet_creation_unavailable",
+            "AFCON360 could not open your Wallet. No account was created.",
+            503,
+        )
+
+
 @mobile_api_bp.get("/wallet")
 @_bearer_required("user")
 def mobile_wallet_summary():
@@ -1646,6 +1790,8 @@ def mobile_wallet_summary():
     from app.wallet.repositories.ledger_repository import LedgerRepository
 
     user = _native_wallet_user()
+    from app.wallet.services.home_currency_service import FX_BASE_CURRENCY, get_user_home_currency
+    home_currency = get_user_home_currency(user)
     accounts = AccountModel.query.filter_by(
         user_id=user.id,
         owner_type="user",
@@ -1661,7 +1807,7 @@ def mobile_wallet_summary():
         })
     return jsonify({
         "success": True,
-        "data": {"exists": bool(data), "accounts": data},
+        "data": {"exists": bool(data), "accounts": data, "home_currency": home_currency, "fx_base_currency": FX_BASE_CURRENCY},
     }), 200
 
 
