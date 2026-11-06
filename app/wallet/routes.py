@@ -108,76 +108,36 @@ def get_account(user_id, currency='UGX', owner_type=None):
     return account
 
 
-def get_or_create_account(user_id, currency=None):
-    """
-    Get existing account OR create one if it doesn't exist.
-    This is the main function for wallet access - creates wallet on first use.
-    
-    Args:
-        user_id: Can be either internal BIGINT id or public_id (UUID string)
-        currency: Optional supported primary/home currency; otherwise derived from profile country
-    
-    Returns:
-        Account object (existing or newly created)
-    """
-    from app.identity.models.user import User
-    from app.wallet.models.ledger import AccountModel, AccountOwnerType, AccountStatus, AccountType
-    from app.extensions import db
-    from uuid import uuid4
-    from decimal import Decimal
-    
-    # Handle both internal BIGINT and external UUID (public_id)
-    if isinstance(user_id, str):
-        # It's a public_id (UUID string) - convert to internal
-        user = User.query.filter_by(public_id=user_id).first()
-        if not user:
-            return None
-        internal_id = user.id
-    else:
-        internal_id = user_id
-        user = User.query.get(internal_id)
-        if not user:
-            return None
-    
-    # Try to find existing account (one account per user - unique constraint)
-    account = AccountModel.query.filter_by(
-        user_id=internal_id,
-        owner_type=AccountOwnerType.USER
-    ).first()
-    
-    if not account:
-        # Resolve the user's primary/home currency once, at first-wallet creation.
-        # An explicit onboarding choice overrides the profile-country default.
-        from app.wallet.services.home_currency_service import resolve_home_currency
-        currency = resolve_home_currency(user, requested_currency=currency)
+def get_or_create_account(
+    user_id,
+    currency=None,
+    *,
+    create_if_missing=False,
+    terms_accepted=False,
+):
+    """Read a user's existing Wallet; creation is opt-in and gated.
 
-        # Create new account (verified defaults to False in model)
-        account = AccountModel(
-            id=str(uuid4()),
-            user_id=internal_id,
-            currency=currency,
-            is_frozen=False,
-            frozen_reason=None,
-            frozen_at=None,
-            daily_volume=Decimal('0'),
-            daily_volume_reset_at=None,
-            monthly_volume=Decimal('0'),
-            monthly_volume_reset_at=None,
-            owner_type=AccountOwnerType.USER,
-            status=AccountStatus.ACTIVE,
-            account_type=AccountType.USER_WALLET,
-            account_name=f"Wallet_{currency}_{internal_id}",
-            verified=False
-        )
-        db.session.add(account)
-        db.session.commit()
-        
-        # Re-query to ensure we have a fresh object from the DB
-        account = AccountModel.query.filter_by(
-            user_id=internal_id,
-            owner_type=AccountOwnerType.USER
-        ).first()
-        
+    Ordinary callers get a read-only lookup. A new Wallet is created only
+    when the caller is an explicit onboarding flow that has already collected
+    and validated terms acceptance and passes an explicit currency choice.
+    """
+    from app.wallet.services.wallet_onboarding_service import (
+        create_user_wallet_account,
+        get_user_wallet_account,
+    )
+
+    account = get_user_wallet_account(user_id, currency=currency)
+    if account is not None or not create_if_missing:
+        return account
+
+    if currency in (None, ""):
+        raise ValueError("Choose a Wallet currency before opening an account.")
+
+    account, _already_exists = create_user_wallet_account(
+        user_id,
+        currency=currency,
+        terms_accepted=terms_accepted,
+    )
     return account
 
 
@@ -518,9 +478,12 @@ def _wallet_dashboard_pane():
 @wallet_bp.route('/overview')
 @login_required
 def overview():
-    """Wallet overview page"""
+    """Wallet overview page; opening this page never creates a Wallet."""
     try:
-        account = get_or_create_account(current_user.id)
+        account = get_account(current_user.id)
+        if account is None:
+            flash("Open your AFCON360 Wallet to view your wallet overview.", "info")
+            return redirect(url_for("wallet.wallet_create_page"))
         service = WalletService()
         balance = service.get_balance(account.user_id)
         
@@ -652,7 +615,12 @@ def wallet_create():
         WalletCreationTracker.log_step(current_user.id, WalletCreationEvent.INITIATED)
 
         # Create account using get_or_create_account with selected currency
-        account = get_or_create_account(current_user.id, currency=currency)
+        account = get_or_create_account(
+            current_user.id,
+            currency=currency,
+            create_if_missing=True,
+            terms_accepted=True,
+        )
 
         # Verify account was created and is retrievable
         if not account:
