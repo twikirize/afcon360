@@ -1064,7 +1064,7 @@ class WalletService:
 
                     if not sender_user.verify_transaction_pin(pin, session=self.db):
                         raise TransactionPINError("Invalid or locked PIN")
-                except (TransactionPINError, WalletNotFoundError):
+                except (TransactionPINError, WalletNotFoundError, PermissionError):
                     raise
                 except Exception as exc:
                     current_app.logger.exception(
