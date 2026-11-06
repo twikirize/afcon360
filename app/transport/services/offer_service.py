@@ -142,6 +142,7 @@ class OfferService:
     PREFIX_OFFER = "transport:offer"
     PREFIX_DRIVER = "transport:driver"
     PREFIX_INDEX = "transport:offer:index"
+    PREFIX_SWEEP = "transport:offer:sweep"
     DEFAULT_TTL_SECONDS = _DEFAULT_TTL_SECONDS
 
     # ------------------------------------------------------------------ #
@@ -910,9 +911,41 @@ class OfferService:
         Redis SCAN is incremental and avoids the server-blocking KEYS command.
         Cursors are passed through Celery continuations; duplicate SCAN results
         are harmless because SREM/DEL are idempotent.
+
+        A Redis lock prevents concurrent scan chains from the beat schedule
+        and self-continuation running simultaneously. Only the first task in
+        a chain acquires the lock; subsequent beat triggers return early.
         """
         batch_size = max(1, min(int(batch_size), 200))
         cleared = 0
+
+        # Lock key for this sweep chain - prevents dual trigger (beat + continuation)
+        lock_key = f"{cls.PREFIX_SWEEP}:lock"
+        # Only acquire lock if we're at the start of a chain (cursors at 0 or -1)
+        # Continuations pass cursors forward, so they don't re-acquire.
+        is_chain_start = int(driver_cursor) <= 0 and int(index_cursor) <= 0
+        if is_chain_start:
+            acquired = bool(redis_client.set(lock_key, "1", nx=True, ex=300))
+            if not acquired:
+                # Another chain is running; don't queue continuation
+                return {
+                    "cleared": 0,
+                    "driver_cursor": -1,
+                    "index_cursor": -1,
+                    "has_more": False,
+                    "batch_size": batch_size,
+                }
+        else:
+            # Continuation: verify lock still exists (chain not stolen)
+            if not redis_client.exists(lock_key):
+                # Lock lost - chain was interrupted, don't continue
+                return {
+                    "cleared": 0,
+                    "driver_cursor": -1,
+                    "index_cursor": -1,
+                    "has_more": False,
+                    "batch_size": batch_size,
+                }
 
         try:
             # -1 is the completed sentinel. Without it, a cursor that reached
@@ -978,15 +1011,29 @@ class OfferService:
             # A just-finished cursor is encoded as -1 in continuation args.
             next_driver_cursor = -1 if next_driver_cursor == 0 else next_driver_cursor
             next_index_cursor = -1 if next_index_cursor == 0 else next_index_cursor
+            has_more = next_driver_cursor >= 0 or next_index_cursor >= 0
+
+            # If chain completes, release the lock so next beat can start fresh
+            if not has_more:
+                try:
+                    redis_client.delete(lock_key)
+                except Exception:
+                    pass
+
             return {
                 "cleared": cleared,
                 "driver_cursor": next_driver_cursor,
                 "index_cursor": next_index_cursor,
-                "has_more": next_driver_cursor >= 0 or next_index_cursor >= 0,
+                "has_more": has_more,
                 "batch_size": batch_size,
             }
         except Exception as exc:
             logger.warning("offer sweep page failed (Redis): %s", exc, exc_info=True)
+            # On error, release lock so next beat can retry
+            try:
+                redis_client.delete(lock_key)
+            except Exception:
+                pass
             return {
                 "cleared": cleared,
                 "driver_cursor": int(driver_cursor or 0),

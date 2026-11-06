@@ -185,13 +185,21 @@ The state machine, delivery boundary, and security invariants are defined in
 py -3 -m venv .venv
 & .venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
+
+# Always install production deps
 pip install -r requirements.txt
+
+# Optional: add dev tools for local development (Playwright, OpenTelemetry, py-spy, pywin32, profiling)
+pip install -r requirements-dev.txt
+
 Copy-Item env.example .env
 ```
 
 Fill in `.env` with real local values. Do not commit secrets. The application
 supports layered environment files: `.env` plus `.env.local`, `.env.docker`, or
 `.env.prod`, selected by `APP_ENV`.
+
+**Dependency rule:** Only `requirements.txt` goes to production, staging, CI, or Docker. `requirements-dev.txt` is for local developer machines only — it adds observability, debugging, and browser automation tooling that must not ship.
 
 Database migrations are intentionally not run automatically by agents. After
 reviewing the migration state, an operator may run:

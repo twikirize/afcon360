@@ -7,6 +7,27 @@ Understanding comes before code. Proof comes before closure.
 
 ---
 
+## 53. Python Dependencies
+
+Two requirement files:
+
+| File | Purpose | Packages | When to Use |
+|------|---------|----------|-------------|
+| `requirements.txt` | **Production/runtime** | 102 core dependencies (Flask, SQLAlchemy, Celery, Redis, etc.) | **Always** — production, staging, CI, Docker, any environment running the app |
+| `requirements-dev.txt` | **Development only** | 29 dev tools (OpenTelemetry, Playwright, py-spy, pywin32, profiling) | **Local development only** — debugging, profiling, browser testing, telemetry instrumentation |
+
+Install:
+```bash
+# Production / CI / Docker / Staging
+pip install -r requirements.txt
+
+# Local development (adds debugging, profiling, browser automation tools)
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
+**Never** install `requirements-dev.txt` in production, staging, CI pipelines, or Docker images. It contains observability/debugging tooling that increases attack surface and image size.
+
 ## 1. The Method — EGGE
 
 Every work item runs:
