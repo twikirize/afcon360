@@ -438,6 +438,28 @@ def test_aggregator(agg_id):
     return jsonify({'success': result.get('ok', False), 'detail': result})
 
 
+def _missing_initial_smtp_credentials(data, environment_config, existing_setting):
+    """Require explicit re-entry before replacing an environment-only SMTP config.
+
+    Once an Owner-managed row exists, blank secret fields mean preserve the
+    encrypted database value. Before the first row exists, however, a blank
+    field would silently discard an environment credential when the database
+    row becomes authoritative. Require explicit entry for each configured
+    environment credential, unless the Owner explicitly clears authentication.
+    """
+    if existing_setting is not None or data.get('clear_auth'):
+        return []
+
+    missing = []
+    for field, env_key, label in (
+        ('smtp_user', 'MAIL_USERNAME', 'SMTP username'),
+        ('smtp_pass', 'MAIL_PASSWORD', 'SMTP password'),
+    ):
+        if environment_config.get(env_key) and not str(data.get(field) or '').strip():
+            missing.append(label)
+    return missing
+
+
 @notifications_api.route('/admin/email-provider', methods=['GET'])
 @login_required
 @require_role('owner', 'super_admin')
@@ -512,6 +534,22 @@ def save_email_provider_settings():
         return jsonify({'error': 'SMTP port must be between 1 and 65535'}), 400
     if use_tls and use_ssl:
         return jsonify({'error': 'Choose STARTTLS or SSL, not both'}), 400
+
+    existing_setting = CommunicationSettingsService.get_email_setting()
+    missing_environment_credentials = _missing_initial_smtp_credentials(
+        data,
+        current_app.config,
+        existing_setting,
+    )
+    if missing_environment_credentials:
+        fields = ' and '.join(missing_environment_credentials)
+        return jsonify({
+            'error': (
+                'This is the first Owner-managed SMTP save. Re-enter the configured '
+                f'{fields} in the write-only fields before saving. Blank values would '
+                'otherwise stop using the environment credentials. No settings were changed.'
+            )
+        }), 409
 
     config = {
         'smtp_host': host,
