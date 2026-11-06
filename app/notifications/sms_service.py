@@ -1,119 +1,139 @@
 """
-SMS Service using Twilio
+Provider-neutral SMS adapter used by authentication and phone-verification flows.
 
-Provides SMS sending functionality via Twilio API.
+The notification channel handlers remain the canonical Twilio delivery
+implementation. This adapter restores the older SMSService interface without
+creating a second OTP store or a second Twilio configuration source.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Optional
-from flask import current_app
+import os
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 
-def send_sms(to_number: str, message: str) -> bool:
-    """
-    Send an SMS message via Twilio.
+class _SMSNotification:
+    subject = "AFCON360 verification code"
 
-    Args:
-        to_number: Destination phone number in E.164 format (e.g., +15551234567)
-        message: Message body (max 1600 characters)
+    def __init__(self, body: str) -> None:
+        self.body = body
 
-    Returns:
-        True if sent successfully, False otherwise
-    """
-    try:
-        # Get Twilio credentials from SystemConfig
-        from app.models.system_config import SystemConfig
 
-        account_sid = SystemConfig.get('TWILIO_ACCOUNT_SID')
-        auth_token = SystemConfig.get('TWILIO_AUTH_TOKEN')
-        from_number = SystemConfig.get('TWILIO_FROM_NUMBER')
-        messaging_service_sid = SystemConfig.get('TWILIO_MESSAGING_SERVICE_SID')
+class SMSService:
+    """Compatibility adapter for owner-configured SMS providers."""
 
-        if not account_sid or not auth_token:
-            logger.warning("[SMS] Twilio credentials not configured")
-            return False
+    def __init__(self, provider: Optional[str] = None, auth_config=None) -> None:
+        self.provider = (provider or "twilio").strip().lower()
+        self.auth_config = auth_config
 
-        if not from_number and not messaging_service_sid:
-            logger.warning("[SMS] No from_number or messaging_service_sid configured")
-            return False
+    def send_message(self, phone_number: str, message: str) -> Dict[str, Any]:
+        """Deliver a message but deliberately leave OTP storage to OTPService."""
+        if not phone_number or not isinstance(phone_number, str):
+            return {"success": False, "provider": self.provider, "error": "recipient_required"}
+        if not message or not isinstance(message, str):
+            return {"success": False, "provider": self.provider, "error": "message_required"}
+        if len(message) > 1600:
+            message = message[:1597] + "..."
 
-        from twilio.rest import Client
+        try:
+            if self.provider == "twilio":
+                return self._send_twilio(phone_number, message)
+            if self.provider in {"africa_talking", "africas_talking"}:
+                return self._send_africa_talking(phone_number, message)
+            return {
+                "success": False,
+                "provider": self.provider,
+                "error": "unsupported_sms_provider",
+            }
+        except Exception as exc:
+            # Do not put provider exception text into API responses or logs:
+            # SDK exceptions may include request details.
+            logger.warning(
+                "SMS delivery failed (provider=%s, exception_type=%s)",
+                self.provider,
+                type(exc).__name__,
+            )
+            return {
+                "success": False,
+                "provider": self.provider,
+                "error": "provider_delivery_failed",
+            }
 
-        client = Client(account_sid, auth_token)
+    def _send_twilio(self, phone_number: str, message: str) -> Dict[str, Any]:
+        from app.notifications.channel_handlers.twilio_sms import TwilioSmsHandler
 
-        # Build message parameters
-        params = {
-            'to': to_number,
-            'body': message,
+        result = TwilioSmsHandler(auth_config=self.auth_config).deliver(
+            _SMSNotification(message),
+            {"phone": phone_number},
+        )
+        success = bool(result.get("success"))
+        return {
+            "success": success,
+            "provider": "twilio",
+            "message_sid": result.get("external_id"),
+            "status": "accepted" if success else "failed",
+            "error": None if success else "provider_delivery_failed",
         }
 
-        # Use messaging service SID if configured, otherwise from_number
-        if messaging_service_sid:
-            params['messaging_service_sid'] = messaging_service_sid
-        elif from_number:
-            params['from_'] = from_number
-        else:
-            logger.error("[SMS] No from_number or messaging_service_sid configured")
-            return False
+    def _send_africa_talking(self, phone_number: str, message: str) -> Dict[str, Any]:
+        config = self.auth_config
+        username = getattr(config, "africa_talking_username", None) if config else None
+        api_key = getattr(config, "africa_talking_api_key", None) if config else None
+        sender_id = os.getenv("AFRICAS_TALKING_SENDER_ID")
 
-        message = client.messages.create(**params)
+        if not username or not api_key:
+            return {
+                "success": False,
+                "provider": "africa_talking",
+                "error": "provider_credentials_missing",
+            }
 
-        logger.info(f"[SMS] Sent to {to_number}: SID={message.sid}, Status={message.status}")
-        return True
+        import africastalking
 
-    except Exception as e:
-        logger.error(f"[SMS] Failed to send to {to_number}: {e}")
-        return False
+        africastalking.initialize(username, api_key)
+        response = africastalking.SMS.send(
+            message,
+            [phone_number],
+            sender_id=sender_id or None,
+        )
+        recipients = (
+            response.get("SMSMessageData", {}).get("Recipients", [])
+            if isinstance(response, dict)
+            else []
+        )
+        recipient = recipients[0] if recipients else {}
+        status = str(recipient.get("status") or "")
+        success = status.lower() in {"success", "success."}
+        return {
+            "success": success,
+            "provider": "africa_talking",
+            "status": status or "unknown",
+            "message_id": recipient.get("messageId"),
+            "error": None if success else "provider_delivery_failed",
+        }
+
+
+def send_sms(to_number: str, message: str) -> bool:
+    """Backward-compatible bool API; OTPService owns code storage."""
+    return bool(SMSService(provider="twilio").send_message(to_number, message).get("success"))
 
 
 def send_whatsapp(to_number: str, message: str) -> bool:
-    """
-    Send a WhatsApp message via Twilio.
-
-    Args:
-        to_number: Destination phone number in E.164 format (e.g., +15551234567)
-        message: Message body (max 1600 characters)
-
-    Returns:
-        True if sent successfully, False otherwise
-    """
+    """Backward-compatible Twilio WhatsApp API used by older callers."""
     try:
-        # Get Twilio credentials from SystemConfig
-        from app.models.system_config import SystemConfig
+        from app.notifications.channel_handlers.twilio_sms import TwilioWhatsAppHandler
 
-        account_sid = SystemConfig.get('TWILIO_ACCOUNT_SID')
-        auth_token = SystemConfig.get('TWILIO_AUTH_TOKEN')
-        whatsapp_from = SystemConfig.get('TWILIO_WHATSAPP_FROM')
-
-        if not account_sid or not auth_token:
-            logger.warning("[WhatsApp] Twilio credentials not configured")
-            return False
-
-        if not whatsapp_from:
-            logger.warning("[WhatsApp] No WhatsApp from number configured")
-            return False
-
-        from twilio.rest import Client
-
-        client = Client(account_sid, auth_token)
-
-        # Ensure WhatsApp format: whatsapp:+1234567890
-        if not to_number.startswith('whatsapp:'):
-            to_whatsapp = f'whatsapp:{to_number}'
-        else:
-            to_whatsapp = to_number
-
-        message = client.messages.create(
-            from_=whatsapp_from,
-            to=to_whatsapp,
-            body=message,
+        result = TwilioWhatsAppHandler().deliver(
+            _SMSNotification(message),
+            {"phone": to_number},
         )
-
-        logger.info(f"[WhatsApp] Sent to {to_whatsapp}: SID={message.sid}, Status={message.status}")
-        return True
-
-    except Exception as e:
-        logger.error(f"[WhatsApp] Failed to send to {to_number}: {e}")
+        return bool(result.get("success"))
+    except Exception as exc:
+        logger.warning(
+            "WhatsApp delivery failed (exception_type=%s)",
+            type(exc).__name__,
+        )
         return False
