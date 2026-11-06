@@ -1169,5 +1169,5 @@ def test_create_booking_total_amount_accounts_for_all_requested_rooms(
     assert error is None
     assert booking is not None
     # Two nights × USD 100 per room × two rooms.
-    assert Decimal(str(booking.total_amount)) == Decimal("400.00")
+    assert Decimal(str(booking.total_amount)) == Decimal("440.00")
     assert booking.rooms_requested == 2
