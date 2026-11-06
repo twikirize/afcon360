@@ -519,7 +519,16 @@ class OTPService:
         """
         if not phone:
             return False, None
-        stored = OTPService.store_otp(identifier=phone, otp=otp, purpose="sms_verification", ttl=300)
+        # Storage and verification must use the same identity key. The phone
+        # number is the delivery destination; internal_user_id is the verifier
+        # identity when the caller supplies it.
+        identifier = str(internal_user_id) if internal_user_id is not None else phone
+        stored = OTPService.store_otp(
+            identifier=identifier,
+            otp=otp,
+            purpose="sms_verification",
+            ttl=300,
+        )
         if not stored:
             return False, None
         try:
@@ -527,12 +536,14 @@ class OTPService:
             success = send_sms(phone, f"Your AFCON360 code: {otp}")
             if success:
                 return True, otp
-            else:
-                OTPService.invalidate_otp(phone, "sms_verification")
-                return False, None
-        except Exception as e:
-            logger.error(f"[SMS OTP] Failed to send SMS to {phone}: {e}")
-            OTPService.invalidate_otp(phone, "sms_verification")
+            OTPService.invalidate_otp(identifier, "sms_verification")
+            return False, None
+        except Exception as exc:
+            logger.warning(
+                "[SMS OTP] Delivery failed (exception_type=%s)",
+                type(exc).__name__,
+            )
+            OTPService.invalidate_otp(identifier, "sms_verification")
             return False, None
 
     @staticmethod
@@ -724,7 +735,16 @@ class OTPService:
         """
         if not phone:
             return False, None
-        stored = OTPService.store_otp(identifier=phone, otp=otp, purpose="sms_verification", ttl=300)
+        # Storage and verification must use the same identity key. The phone
+        # number is the delivery destination; internal_user_id is the verifier
+        # identity when the caller supplies it.
+        identifier = str(internal_user_id) if internal_user_id is not None else phone
+        stored = OTPService.store_otp(
+            identifier=identifier,
+            otp=otp,
+            purpose="sms_verification",
+            ttl=300,
+        )
         if not stored:
             return False, None
         try:
@@ -732,12 +752,14 @@ class OTPService:
             success = send_sms(phone, f"Your AFCON360 code: {otp}")
             if success:
                 return True, otp
-            else:
-                OTPService.invalidate_otp(phone, "sms_verification")
-                return False, None
-        except Exception as e:
-            logger.error(f"[SMS OTP] Failed to send SMS to {phone}: {e}")
-            OTPService.invalidate_otp(phone, "sms_verification")
+            OTPService.invalidate_otp(identifier, "sms_verification")
+            return False, None
+        except Exception as exc:
+            logger.warning(
+                "[SMS OTP] Delivery failed (exception_type=%s)",
+                type(exc).__name__,
+            )
+            OTPService.invalidate_otp(identifier, "sms_verification")
             return False, None
 
     @staticmethod
