@@ -628,7 +628,7 @@ class WalletService:
                 raise ConversionError(
                     str(currency or "").upper(),
                     str(account.currency or "").upper(),
-                    "cross-currency wallet deposits are not enabled until executable FX settlement is configured",
+                    "withdrawal currency must match the wallet denomination",
                 )
 
             # 3. KYC limit check
