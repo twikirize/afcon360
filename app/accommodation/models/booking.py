@@ -531,29 +531,51 @@ class AccommodationBooking(BaseModel):
         
         Returns CancellationPolicy instance or None.
         """
-        # 1. Check snapshot first
-        if isinstance(self.policy_snapshot, dict):
-            snapshot_policy_name = self.policy_snapshot.get("cancellation_policy")
-            if snapshot_policy_name:
-                # Try to get the exact policy from snapshot
-                from app.accommodation.models.cancellation_policy import CancellationPolicy
-                # For snapshot, we try to get property-specific first, then system default
-                policy = CancellationPolicy.query.filter_by(
+        # 1. Prefer the complete immutable rules captured when this booking
+        # was confirmed. Never reload a mutable policy row for a new booking.
+        snapshot = self.policy_snapshot if isinstance(self.policy_snapshot, dict) else {}
+        rules = snapshot.get("cancellation_policy_rules")
+        if isinstance(rules, dict) and rules.get("snapshot_version") == 1:
+            from app.accommodation.models.cancellation_policy import CancellationPolicy
+            try:
+                return CancellationPolicy(
                     property_id=self.property_id,
-                    name=snapshot_policy_name,
-                    is_active=True
-                ).first()
-                if policy:
-                    return policy
-                # Fall back to system default
-                return CancellationPolicy.query.filter_by(
-                    property_id=None,
-                    name=snapshot_policy_name,
-                    is_active=True
-                ).first()
-        
-        # 2. Use new CancellationPolicy resolution
+                    name=rules["name"],
+                    pre_checkin_days=int(rules["pre_checkin_days"]),
+                    pre_checkin_refund_pct=Decimal(str(rules["pre_checkin_refund_pct"])),
+                    mid_stay_refund_pct=Decimal(str(rules["mid_stay_refund_pct"])),
+                    no_show_penalty=Decimal(str(rules["no_show_penalty"])),
+                    pay_on_arrival_penalty_type=rules.get("pay_on_arrival_penalty_type"),
+                    deposit_refundable=bool(rules.get("deposit_refundable", True)),
+                    refundable_cleaning_fee=bool(rules.get("refundable_cleaning_fee", False)),
+                    refundable_service_fee=bool(rules.get("refundable_service_fee", False)),
+                    refundable_taxes=bool(rules.get("refundable_taxes", False)),
+                )
+            except (KeyError, TypeError, ValueError, ArithmeticError):
+                # A malformed/incomplete historical snapshot is not silently
+                # replaced with today's policy; caller will route its refund
+                # through human review.
+                return None
+
+        # 2. Historical bookings without a complete snapshot retain a
+        # best-effort quote for review, but MarketplaceService will not
+        # automatically pay them.
         from app.accommodation.models.cancellation_policy import CancellationPolicy
+        snapshot_policy_name = snapshot.get("cancellation_policy")
+        if snapshot_policy_name:
+            aliases = {
+                "flexible": "FLEX",
+                "moderate": "MOD",
+                "strict": "STRICT",
+                "super_strict": "SUPER",
+                "no_show": "NOSHOW",
+                "no_show_penalty": "NOSHOW",
+            }
+            policy_name = aliases.get(str(snapshot_policy_name).lower(), snapshot_policy_name)
+            return CancellationPolicy.get_effective_policy(
+                self.property_id, policy_name=policy_name
+            )
+
         return CancellationPolicy.get_effective_policy(self.property_id)
 
     def get_cancellation_quote(self, cancellation_date=None, cancelled_by_user_type="guest") -> dict:
