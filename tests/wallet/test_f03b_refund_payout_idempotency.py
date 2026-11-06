@@ -429,10 +429,12 @@ class TestEscrowHumanAuthorization:
             db.session.commit()
 
         with _login_as(app, guest["user_id"]):
-            ok, error = MarketplaceService.refund_guest_approved(
-                held_booking,
-                Decimal("100.00"),
-                approval_reason="Booking owner requested cancellation",
+            ok, error = _guarded_call(
+                lambda: MarketplaceService.refund_guest_approved(
+                    held_booking,
+                    Decimal("100.00"),
+                    approval_reason="Booking owner requested cancellation",
+                )
             )
 
         assert ok, error
