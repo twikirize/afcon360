@@ -1288,3 +1288,56 @@ def test_required_otp_store_fails_closed_instead_of_using_process_memory(app, mo
         assert otp_store.store_set("otp:501:2fa_login", "hashed-value", ttl=300) is False
         assert otp_store.store_get("otp:501:2fa_login") is None
         assert otp_store.store_delete("otp:501:2fa_login") is False
+
+
+def test_native_sms_mfa_invalidates_otp_when_provider_delivery_fails(app, monkeypatch):
+    from types import SimpleNamespace
+    from app.auth import mobile_api
+    from app.auth.otp_service import OTPService
+    from app.auth.config_model import AuthConfiguration
+    from app.notifications import sms_service
+
+    invalidated = []
+    stored = []
+
+    class FakeRedis:
+        def set(self, key, value, ex=None, nx=None):
+            return True
+
+    class FakeSmsClient:
+        def __init__(self, provider, auth_config):
+            pass
+
+        def send_message(self, phone_number, message):
+            return {"success": False, "error": "provider rejected message"}
+
+    config = SimpleNamespace(get_sms_provider_for_phone=lambda phone: "twilio")
+    monkeypatch.setattr(mobile_api, "_redis", lambda: FakeRedis())
+    monkeypatch.setattr(AuthConfiguration, "get_config", classmethod(lambda cls: config))
+    monkeypatch.setattr(sms_service, "SMSService", FakeSmsClient)
+    monkeypatch.setattr(OTPService, "generate_otp", staticmethod(lambda length=6: "735192"))
+    monkeypatch.setattr(
+        OTPService,
+        "store_otp",
+        staticmethod(lambda identifier, otp, purpose, ttl: stored.append((identifier, otp, purpose, ttl)) or True),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "invalidate_otp",
+        staticmethod(lambda identifier, purpose: invalidated.append((identifier, purpose)) or True),
+    )
+    user = SimpleNamespace(
+        id=505,
+        public_id="sms-user-provider-failure",
+        phone="+256700000005",
+        phone_verified=True,
+    )
+
+    with app.app_context():
+        hint, error = mobile_api._start_native_sms_mfa(user)
+
+    assert hint is None
+    assert error[0] == "sms_mfa_delivery_failed"
+    assert error[2] == 503
+    assert stored == [("505", "735192", "2fa_login", 300)]
+    assert invalidated == [("505", "2fa_login")]
