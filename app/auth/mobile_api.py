@@ -6,7 +6,7 @@ import json
 import logging
 import secrets
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from functools import wraps
 
 from flask import Blueprint, current_app, g, jsonify, request, url_for
@@ -1635,6 +1635,22 @@ def mobile_wallet_deposit_start():
         return _error("deposit_service_unavailable", "AFCON360 could not securely start a deposit. Please try again.", 503)
 
     try:
+        # Persist the owner/account/amount reference before contacting Flutterwave.
+        # If the provider accepts the request but the HTTP response is lost, the
+        # callback or an explicit status refresh can still reconcile this intent.
+        from app.wallet.services.deposit_intent import save_deposit_intent, mark_deposit_intent_status
+        save_deposit_intent(reference, {
+            "account_id": str(account.id),
+            "user_id": int(user.id),
+            "amount": str(amount),
+            "currency": currency,
+            "source": "flutterwave",
+            "payment_method": payment_method,
+            "reference": reference,
+            "status": "pending",
+            "initiation_state": "started",
+        })
+
         redirect_url = url_for("wallet.flutterwave_deposit_callback", _external=True)
         result = FlutterwaveService().initiate_deposit(
             user_id=int(user.id),
@@ -1645,15 +1661,30 @@ def mobile_wallet_deposit_start():
             redirect_url=redirect_url,
             idempotency_key=reference,
         )
-        if not result.get("success") or result.get("status") != "pending":
-            logger.warning("Flutterwave native deposit initiation failed for user %s", user.public_id)
-            return _error("deposit_initiation_failed", "Flutterwave could not start this deposit. Please try again later.", 503)
-
         intent = get_deposit_intent(reference)
+        if not intent:
+            logger.error("Flutterwave native reference %s lost its pre-created deposit intent", reference)
+            return _error("deposit_state_unavailable", "AFCON360 could not verify the pending payment record. Contact support before retrying.", 503)
+
         authorization_url = (intent or {}).get("authorization_url") or result.get("authorization_url")
-        if not intent or not authorization_url:
-            logger.error("Flutterwave accepted native reference %s but no recoverable intent/checkout URL was stored", reference)
-            return _error("deposit_state_unavailable", "The payment provider started a request but AFCON360 could not safely recover its checkout details. Contact support before retrying.", 503)
+        if not result.get("success") or result.get("status") != "pending" or not authorization_url:
+            # The provider request may have reached Flutterwave even if the client
+            # saw a timeout or malformed response. Keep the intent pending so a
+            # provider callback or explicit refresh can reconcile the reference.
+            mark_deposit_intent_status(reference, "pending")
+            logger.warning("Flutterwave native deposit initiation is awaiting reconciliation for user %s", user.public_id)
+            return jsonify({
+                "success": True,
+                "data": {
+                    "reference": reference,
+                    "status": "pending",
+                    "amount": str(amount),
+                    "currency": currency,
+                    "payment_provider": "flutterwave",
+                    "authorization_url": None,
+                    "message": "AFCON360 is checking the provider response. Refresh this deposit status before starting another payment.",
+                },
+            }), 202
 
         return jsonify({
             "success": True,
