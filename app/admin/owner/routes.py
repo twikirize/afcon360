@@ -2957,7 +2957,20 @@ def auth_settings():
         
         return redirect(url_for('admin.owner.auth_settings'))
     
-    return render_template('admin/owner/auth_settings.html', config=config)
+    # Expose only whether a Twilio token exists, never the credential itself.
+    from app.models.system_config import SystemConfig
+    try:
+        twilio_token_configured = bool(
+            config.twilio_auth_token or SystemConfig.get('TWILIO_AUTH_TOKEN', '')
+        )
+    except RuntimeError:
+        twilio_token_configured = False
+    config.twilio_auth_token = None
+    return render_template(
+        'admin/owner/auth_settings.html',
+        config=config,
+        twilio_token_configured=twilio_token_configured,
+    )
 
 
 @owner_bp.route('/owner/settings/auth/test/<service>', methods=['POST'])
