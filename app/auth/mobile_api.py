@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from functools import wraps
 
-from flask import Blueprint, current_app, g, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request, url_for
 from flask_limiter.util import get_remote_address
 
 from app.extensions import db, limiter
@@ -1515,6 +1515,230 @@ def mobile_wallet_transfer():
             "already_processed": bool(result.get("already_processed", False)),
         },
     }), 200
+
+
+
+# ---------------------------------------------------------------------------
+# Native provider-backed wallet deposits
+# ---------------------------------------------------------------------------
+
+def _native_deposit_reference(user, idempotency_key: str) -> str:
+    source = f"{user.public_id}:{idempotency_key}".encode("utf-8")
+    return "NATDEP-" + hashlib.sha256(source).hexdigest()[:32].upper()
+
+
+def _native_deposit_intent(reference: str, user):
+    from app.wallet.services.deposit_intent import get_deposit_intent
+
+    intent = get_deposit_intent(reference)
+    if not intent or int(intent.get("user_id") or 0) != int(user.id):
+        return None
+    return intent
+
+
+@mobile_api_bp.post("/wallet/deposits")
+@limiter.limit("4 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_wallet_deposit_start():
+    """Start a Flutterwave checkout; ledger credit waits for provider verification."""
+    from app.extensions import redis_client
+    from app.wallet.models.ledger import AccountModel
+    from app.wallet.services.deposit_intent import get_deposit_intent
+    from app.wallet.payments.flutterwave import FlutterwaveService
+
+    user = _native_wallet_user()
+    data = request.get_json(silent=True) or {}
+    currency = str(data.get("currency") or "").strip().upper()
+    payment_method = str(data.get("payment_method") or "mobilemoney").strip().lower()
+    idempotency_key = str(
+        request.headers.get("Idempotency-Key")
+        or request.headers.get("X-Idempotency-Key")
+        or data.get("idempotency_key")
+        or ""
+    ).strip()
+
+    if not currency or len(currency) != 3:
+        return _error("currency_invalid", "Choose a valid three-letter wallet currency.", 400)
+    if payment_method not in {"mobilemoney", "card", "banktransfer", "ussd"}:
+        return _error("payment_method_invalid", "Choose a supported Flutterwave payment method.", 400)
+    if not idempotency_key or len(idempotency_key) < 8 or len(idempotency_key) > 128:
+        return _error("idempotency_key_required", "A unique deposit request key is required.", 400)
+
+    try:
+        amount = Decimal(str(data.get("amount")))
+        if not amount.is_finite() or amount <= 0 or amount.as_tuple().exponent < -2:
+            raise ValueError("invalid amount")
+    except (InvalidOperation, TypeError, ValueError):
+        return _error("amount_invalid", "Enter a positive amount with no more than two decimal places.", 400)
+
+    account = AccountModel.query.filter_by(
+        user_id=user.id,
+        owner_type="user",
+        currency=currency,
+    ).first()
+    if account is None or str(account.status).lower() != "active":
+        return _error("wallet_not_found", "Create or activate a wallet in this currency before depositing.", 404)
+    if bool(account.is_frozen):
+        return _error("wallet_frozen", "Your wallet is restricted. Contact AFCON360 support.", 403)
+
+    reference = _native_deposit_reference(user, idempotency_key)
+    try:
+        existing = get_deposit_intent(reference)
+    except Exception:
+        logger.exception("Native wallet deposit intent store unavailable")
+        return _error("deposit_service_unavailable", "AFCON360 could not securely start a deposit. Please try again.", 503)
+
+    if existing:
+        if (
+            int(existing.get("user_id") or 0) != int(user.id)
+            or str(existing.get("account_id")) != str(account.id)
+            or str(existing.get("currency") or "").upper() != currency
+            or Decimal(str(existing.get("amount") or "0")) != amount
+        ):
+            return _error("idempotency_conflict", "That deposit request key was already used for different payment details.", 409)
+        state = str(existing.get("status") or "pending").lower()
+        if state == "completed":
+            return jsonify({
+                "success": True,
+                "data": {
+                    "reference": reference,
+                    "status": "completed",
+                    "amount": str(amount),
+                    "currency": currency,
+                },
+            }), 200
+        if state == "pending" and existing.get("authorization_url"):
+            return jsonify({
+                "success": True,
+                "data": {
+                    "reference": reference,
+                    "status": "pending",
+                    "amount": str(amount),
+                    "currency": currency,
+                    "payment_provider": "flutterwave",
+                    "authorization_url": existing["authorization_url"],
+                    "message": "Continue with the existing Flutterwave checkout.",
+                },
+            }), 200
+        if state == "failed":
+            return _error("deposit_request_failed", "This deposit request failed. Start a new request with a new idempotency key.", 409)
+        return _error("deposit_request_pending", "This deposit request is still being prepared. Check its status before starting another.", 409)
+
+    # Prevent concurrent native retries from creating multiple hosted checkouts.
+    lock_key = f"wallet:native-deposit:init:{reference}"
+    lock_token = secrets.token_urlsafe(24)
+    try:
+        if not redis_client or not redis_client.set(lock_key, lock_token, ex=60, nx=True):
+            return _error("deposit_request_in_progress", "This deposit request is already being prepared. Please check its status.", 409)
+    except Exception:
+        logger.exception("Native wallet deposit idempotency lock unavailable")
+        return _error("deposit_service_unavailable", "AFCON360 could not securely start a deposit. Please try again.", 503)
+
+    try:
+        redirect_url = url_for("wallet.flutterwave_deposit_callback", _external=True)
+        result = FlutterwaveService().initiate_deposit(
+            user_id=int(user.id),
+            account_id=str(account.id),
+            amount=amount,
+            currency=currency,
+            payment_method=payment_method,
+            redirect_url=redirect_url,
+            idempotency_key=reference,
+        )
+        if not result.get("success") or result.get("status") != "pending":
+            logger.warning("Flutterwave native deposit initiation failed for user %s", user.public_id)
+            return _error("deposit_initiation_failed", "Flutterwave could not start this deposit. Please try again later.", 503)
+
+        intent = get_deposit_intent(reference)
+        authorization_url = (intent or {}).get("authorization_url") or result.get("authorization_url")
+        if not intent or not authorization_url:
+            logger.error("Flutterwave accepted native reference %s but no recoverable intent/checkout URL was stored", reference)
+            return _error("deposit_state_unavailable", "The payment provider started a request but AFCON360 could not safely recover its checkout details. Contact support before retrying.", 503)
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "reference": reference,
+                "status": "pending",
+                "amount": str(amount),
+                "currency": currency,
+                "payment_provider": "flutterwave",
+                "authorization_url": authorization_url,
+                "message": "Complete the payment in Flutterwave. Your Wallet is credited only after provider confirmation.",
+            },
+        }), 201
+    except Exception:
+        logger.exception("Native wallet deposit initiation failed for user %s", user.public_id)
+        return _error("deposit_initiation_failed", "AFCON360 could not start this deposit. Please try again later.", 503)
+    finally:
+        # Compare-and-delete so an expired lock acquired by a later request is
+        # never deleted by this request.
+        try:
+            redis_client.eval(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+                1,
+                lock_key,
+                lock_token,
+            )
+        except Exception:
+            logger.warning("Native wallet deposit lock cleanup deferred to its TTL", exc_info=True)
+
+
+@mobile_api_bp.get("/wallet/deposits/<string:reference>")
+@_bearer_required("user")
+def mobile_wallet_deposit_status(reference):
+    user = _native_wallet_user()
+    intent = _native_deposit_intent(reference, user)
+    if intent is None:
+        return _error("deposit_not_found", "No deposit request was found for this AFCON360 account.", 404)
+    return jsonify({
+        "success": True,
+        "data": {
+            "reference": reference,
+            "status": str(intent.get("status") or "pending").lower(),
+            "amount": str(intent.get("amount")),
+            "currency": str(intent.get("currency") or "").upper(),
+            "payment_provider": str(intent.get("source") or ""),
+        },
+    }), 200
+
+
+@mobile_api_bp.post("/wallet/deposits/<string:reference>/refresh")
+@limiter.limit("10 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_wallet_deposit_refresh(reference):
+    user = _native_wallet_user()
+    intent = _native_deposit_intent(reference, user)
+    if intent is None:
+        return _error("deposit_not_found", "No deposit request was found for this AFCON360 account.", 404)
+    if str(intent.get("source") or "").lower() != "flutterwave":
+        return _error("deposit_provider_unsupported", "This deposit provider cannot be refreshed through this native endpoint.", 422)
+
+    from app.wallet.payments.flutterwave import FlutterwaveService
+    result = FlutterwaveService().verify_and_credit(reference)
+    status = str(result.get("status") or ("completed" if result.get("success") else "pending")).lower()
+    if status == "completed":
+        return jsonify({
+            "success": True,
+            "data": {
+                "reference": reference,
+                "status": "completed",
+                "amount": str(intent.get("amount")),
+                "currency": str(intent.get("currency") or "").upper(),
+            },
+        }), 200
+    if status == "failed":
+        return _error("deposit_failed", "Flutterwave did not complete this payment. Start a new deposit when ready.", 409)
+    return jsonify({
+        "success": True,
+        "data": {
+            "reference": reference,
+            "status": "pending",
+            "amount": str(intent.get("amount")),
+            "currency": str(intent.get("currency") or "").upper(),
+            "message": "The payment provider has not confirmed this deposit yet.",
+        },
+    }), 202
 
 
 @mobile_api_bp.get("/driver/earnings")
