@@ -1441,6 +1441,111 @@ def mobile_accommodation_cancel_booking(booking_reference):
 
 
 # ---------------------------------------------------------------------------
+# Native Events and Tickets APIs
+# ---------------------------------------------------------------------------
+
+def _native_events_user():
+    return g._afcon360_mobile_auth_context["user"]
+
+
+@mobile_api_bp.get("/events")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_events_list():
+    from app.events.native_event_service import NativeEventService
+    try:
+        result = NativeEventService.list_events(
+            query=request.args.get("q"),
+            city=request.args.get("city"),
+            country=request.args.get("country"),
+            category=request.args.get("category"),
+            limit=request.args.get("limit", 20, type=int),
+            offset=request.args.get("offset", 0, type=int),
+        )
+        return jsonify({"success": True, "data": result}), 200
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event discovery failed")
+        return _error("events_unavailable", "Events are temporarily unavailable.", 503)
+
+
+@mobile_api_bp.get("/events/registrations")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_event_registrations():
+    from app.events.native_event_service import NativeEventService
+    try:
+        result = NativeEventService.list_registrations(
+            _native_events_user(),
+            limit=request.args.get("limit", 20, type=int),
+            offset=request.args.get("offset", 0, type=int),
+        )
+        return jsonify({"success": True, "data": result}), 200
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event ticket history failed")
+        return _error("event_tickets_unavailable", "Your event tickets could not be loaded.", 503)
+
+
+@mobile_api_bp.get("/events/registrations/<string:registration_reference>")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_event_registration(registration_reference):
+    from app.events.native_event_service import NativeEventError, NativeEventService
+    try:
+        result = NativeEventService.get_registration(_native_events_user(), registration_reference)
+        return jsonify({"success": True, "data": result}), 200
+    except NativeEventError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event ticket detail failed")
+        return _error("event_ticket_unavailable", "This ticket could not be loaded.", 503)
+
+
+@mobile_api_bp.get("/events/<string:event_public_id>")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_event_detail(event_public_id):
+    from app.events.native_event_service import NativeEventError, NativeEventService
+    try:
+        result = NativeEventService.get_event(event_public_id)
+        return jsonify({"success": True, "data": result}), 200
+    except NativeEventError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event detail failed")
+        return _error("event_detail_unavailable", "This event could not be loaded.", 503)
+
+
+@mobile_api_bp.post("/events/<string:event_public_id>/registrations")
+@limiter.limit("5 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_event_register_free_ticket(event_public_id):
+    from app.events.native_event_service import NativeEventError, NativeEventService
+    data = request.get_json(silent=True) or {}
+    token = str(data.get("ticket_token") or "")
+    if not token:
+        return _error("ticket_selection_required", "Select a ticket type before registering.", 400)
+    try:
+        result = NativeEventService.register_free_ticket(
+            _native_events_user(),
+            event_public_id=event_public_id,
+            ticket_token=token,
+        )
+        return jsonify({"success": True, "data": result}), 201
+    except NativeEventError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event free-ticket registration failed")
+        return _error("event_registration_unavailable", "AFCON360 could not complete this registration. Check your tickets before trying again.", 503)
+
+
+
+
+# ---------------------------------------------------------------------------
 # Native Wallet APIs
 # ---------------------------------------------------------------------------
 
