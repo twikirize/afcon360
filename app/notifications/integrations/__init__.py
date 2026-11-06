@@ -19,11 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 def _decrypt(credentials: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        from app.utils.crypto import decrypt_json
-        return decrypt_json(credentials) if credentials else {}
-    except Exception:
-        return credentials or {}
+    """Decrypt provider credentials or fail closed; never treat ciphertext as config."""
+    from app.notifications.settings import CommunicationSettingsService
+    return CommunicationSettingsService._decrypt_config(credentials or {})
 
 
 def dispatch_via_aggregator(aggregator, notification=None, test: bool = False) -> Dict[str, Any]:
@@ -76,58 +74,50 @@ def _dispatch_twilio(aggregator, notification, test: bool) -> Dict[str, Any]:
     except ImportError:
         logger.error("twilio package not installed")
         return {'ok': False, 'detail': 'twilio not installed'}
-    except Exception as e:
-        logger.error(f"Twilio send failed: {e}")
-        return {'ok': False, 'detail': str(e)}
+    except Exception as exc:
+        logger.warning("Twilio dispatch failed (exception_type=%s)", type(exc).__name__)
+        return {'ok': False, 'detail': 'twilio_dispatch_failed'}
 
 
 # ----------------------------------------------------------------------
-# Email (SendGrid / SMTP / Mailgun / SES)
+# Email (single Owner-managed SMTP transport)
 # ----------------------------------------------------------------------
 
 def _dispatch_email(aggregator, notification, test: bool) -> Dict[str, Any]:
-    creds = _decrypt(aggregator.credentials)
-    provider = (aggregator.provider_type or 'smtp').lower()
-
-    if test:
-        if provider == 'sendgrid' and not creds.get('api_key'):
-            return {'ok': False, 'detail': 'Missing SendGrid api_key'}
-        if provider == 'smtp' and not (creds.get('MAIL_SERVER') or creds.get('smtp_host')):
-            return {'ok': False, 'detail': 'Missing SMTP host'}
-        return {'ok': True, 'detail': f'{provider} config valid', 'response_code': 200}
-
-    if not notification:
-        return {'ok': False, 'detail': 'No notification to send'}
+    """Use the one shared Owner-managed SMTP transport for every process."""
+    from app.notifications.settings import CommunicationSettingsService
 
     try:
-        from app import create_app
-        from app.notifications.channel_handlers.email import EmailHandler
+        if test:
+            config = CommunicationSettingsService.resolve_email_transport_config()
+            if not config.get("smtp_host") or not config.get("default_sender"):
+                return {"ok": False, "detail": "smtp_configuration_incomplete"}
+            if bool(config.get("use_tls")) and bool(config.get("use_ssl")):
+                return {"ok": False, "detail": "smtp_tls_ssl_conflict"}
+            return {"ok": True, "detail": "smtp_configuration_available", "response_code": 200}
 
-        app = create_app()
-        with app.app_context():
-            # Override mail server if aggregator specifies a custom SMTP
-            if provider == 'smtp' and creds.get('smtp_host'):
-                app.config.update({
-                    'MAIL_SERVER': creds.get('smtp_host'),
-                    'MAIL_PORT': creds.get('smtp_port', 587),
-                    'MAIL_USERNAME': creds.get('smtp_user'),
-                    'MAIL_PASSWORD': creds.get('smtp_pass'),
-                    'MAIL_USE_TLS': creds.get('use_tls', True),
-                })
-            result = EmailHandler().deliver(
-                notification,
-                {'email': notification.email, 'user_id': notification.user_id},
-            )
-        if result.get('success'):
+        if not notification:
+            return {"ok": False, "detail": "notification_required"}
+
+        from app.notifications.channel_handlers.email import EmailHandler
+        result = EmailHandler().deliver(
+            notification,
+            {"email": notification.email, "user_id": notification.user_id},
+        )
+        if result.get("success"):
             return {
-                'ok': True,
-                'external_id': result.get('external_id') or notification.external_id,
-                'response_code': result.get('response_code', 200),
+                "ok": True,
+                "external_id": result.get("external_id") or notification.external_id,
+                "response_code": result.get("response_code", 200),
             }
-        return {'ok': False, 'detail': result.get('response_body')}
-    except Exception as e:
-        logger.error(f"Email dispatch failed: {e}")
-        return {'ok': False, 'detail': str(e)}
+        return {
+            "ok": False,
+            "detail": result.get("error_code") or "email_delivery_failed",
+        }
+    except Exception as exc:
+        error_code = getattr(exc, "code", "email_provider_error")
+        logger.warning("Email provider dispatch failed (error_code=%s)", error_code)
+        return {"ok": False, "detail": error_code}
 
 
 # ----------------------------------------------------------------------
@@ -150,7 +140,7 @@ def _dispatch_push(aggregator, notification, test: bool) -> Dict[str, Any]:
     # Device token registration is wired via user profile push tokens (future).
     if not server_key:
         return {'ok': False, 'detail': 'FCM not configured'}
-    logger.info(f"FCM push queued for user {notification.user_id}: {notification.subject}")
+    logger.info("FCM push queued for notification %s", getattr(notification, 'id', 'n/a'))
     return {'ok': True, 'external_id': notification.external_id, 'response_code': 200}
 
 
@@ -178,9 +168,9 @@ def _dispatch_whatsapp(aggregator, notification, test: bool) -> Dict[str, Any]:
         return {'ok': True, 'external_id': msg.sid, 'response_code': 201}
     except ImportError:
         return {'ok': False, 'detail': 'twilio not installed'}
-    except Exception as e:
-        logger.error(f"WhatsApp send failed: {e}")
-        return {'ok': False, 'detail': str(e)}
+    except Exception as exc:
+        logger.warning("WhatsApp dispatch failed (exception_type=%s)", type(exc).__name__)
+        return {'ok': False, 'detail': 'whatsapp_dispatch_failed'}
 
 
 # ----------------------------------------------------------------------
@@ -221,6 +211,6 @@ def _dispatch_webhook(aggregator, notification, test: bool) -> Dict[str, Any]:
             'external_id': resp.headers.get('X-Request-Id'),
             'response_code': resp.status_code,
         }
-    except Exception as e:
-        logger.error(f"Webhook dispatch failed: {e}")
-        return {'ok': False, 'detail': str(e)}
+    except Exception as exc:
+        logger.warning("Webhook dispatch failed (exception_type=%s)", type(exc).__name__)
+        return {'ok': False, 'detail': 'webhook_dispatch_failed'}

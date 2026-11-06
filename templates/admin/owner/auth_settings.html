@@ -173,9 +173,11 @@
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Google Client Secret</label>
-                            <input type="password" class="form-control" name="google_client_secret" 
-                                   value="{{ config.google_client_secret or '' }}" 
-                                   placeholder="Enter Google OAuth Client Secret">
+                            <input type="password" class="form-control" name="google_client_secret"
+                                   value="" autocomplete="new-password"
+                                   placeholder="Leave blank to keep the saved secret">
+                            <small class="text-muted">{% if secret_status.google_client_secret %}A secret is saved; its value is hidden.{% else %}No secret is saved.{% endif %}</small>
+                            <div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="clear_google_client_secret" id="clear_google_client_secret"><label class="form-check-label" for="clear_google_client_secret">Clear saved secret</label></div>
                         </div>
                     </div>
                 </div>
@@ -206,9 +208,11 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">SendGrid API Key</label>
-                            <input type="password" class="form-control" name="sendgrid_api_key" 
-                                   value="{{ config.sendgrid_api_key or '' }}" 
-                                   placeholder="Enter SendGrid API Key">
+                            <input type="password" class="form-control" name="sendgrid_api_key"
+                                   value="" autocomplete="new-password"
+                                   placeholder="Leave blank to keep the saved API key">
+                            <small class="text-muted">{% if secret_status.sendgrid_api_key %}An API key is saved; its value is hidden.{% else %}No API key is saved.{% endif %}</small>
+                            <div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="clear_sendgrid_api_key" id="clear_sendgrid_api_key"><label class="form-check-label" for="clear_sendgrid_api_key">Clear saved API key</label></div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">From Email</label>
@@ -259,15 +263,19 @@
                     <div class="row">
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Account SID</label>
-                            <input type="text" class="form-control" name="twilio_account_sid" 
-                                   value="{{ config.twilio_account_sid or '' }}" 
-                                   placeholder="ACxxxxxxxxxxx">
+                            <input type="password" class="form-control" name="twilio_account_sid"
+                                   value="" autocomplete="new-password"
+                                   placeholder="Leave blank to keep the saved Account SID">
+                            <small class="text-muted">{% if secret_status.twilio_account_sid %}An Account SID is saved; its value is hidden.{% else %}No Account SID is saved.{% endif %}</small>
+                            <div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="clear_twilio_account_sid" id="clear_twilio_account_sid"><label class="form-check-label" for="clear_twilio_account_sid">Clear saved Account SID</label></div>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Auth Token</label>
-                            <input type="password" class="form-control" name="twilio_auth_token" 
-                                   value="{{ config.twilio_auth_token or '' }}" 
-                                   placeholder="Your Auth Token">
+                            <input type="password" class="form-control" name="twilio_auth_token"
+                                   value="" autocomplete="new-password"
+                                   placeholder="Leave blank to keep the saved Auth Token">
+                            <small class="text-muted">{% if secret_status.twilio_auth_token %}An Auth Token is saved; its value is hidden.{% else %}No Auth Token is saved.{% endif %}</small>
+                            <div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="clear_twilio_auth_token" id="clear_twilio_auth_token"><label class="form-check-label" for="clear_twilio_auth_token">Clear saved Auth Token</label></div>
                         </div>
                         <div class="col-md-4 mb-3 d-flex align-items-end">
                             <button type="button" class="test-btn" onclick="testService('twilio')">
@@ -304,9 +312,11 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Username</label>
-                            <input type="text" class="form-control" name="africa_talking_username" 
-                                   value="{{ config.africa_talking_username or '' }}" 
-                                   placeholder="Your username">
+                            <input type="password" class="form-control" name="africa_talking_username"
+                                   value="" autocomplete="new-password"
+                                   placeholder="Leave blank to keep the saved username">
+                            <small class="text-muted">{% if secret_status.africa_talking_username %}A username is saved; its value is hidden.{% else %}No username is saved.{% endif %}</small>
+                            <div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="clear_africa_talking_username" id="clear_africa_talking_username"><label class="form-check-label" for="clear_africa_talking_username">Clear saved username</label></div>
                         </div>
                         <div class="col-md-6 mb-3 d-flex align-items-end">
                             <button type="button" class="test-btn" onclick="testService('africa_talking')">
@@ -317,9 +327,11 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">API Key</label>
-                            <input type="password" class="form-control" name="africa_talking_api_key" 
-                                   value="{{ config.africa_talking_api_key or '' }}" 
-                                   placeholder="Your API Key">
+                            <input type="password" class="form-control" name="africa_talking_api_key"
+                                   value="" autocomplete="new-password"
+                                   placeholder="Leave blank to keep the saved API key">
+                            <small class="text-muted">{% if secret_status.africa_talking_api_key %}An API key is saved; its value is hidden.{% else %}No API key is saved.{% endif %}</small>
+                            <div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="clear_africa_talking_api_key" id="clear_africa_talking_api_key"><label class="form-check-label" for="clear_africa_talking_api_key">Clear saved API key</label></div>
                         </div>
                     </div>
                 </div>

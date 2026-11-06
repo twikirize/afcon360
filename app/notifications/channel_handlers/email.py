@@ -5,79 +5,86 @@ logger = logging.getLogger(__name__)
 
 
 class EmailHandler(BaseChannelHandler):
-    channel_name = 'email'
+    channel_name = "email"
 
     def validate_recipient(self, recipient: dict) -> bool:
-        email = recipient.get('email')
-        return bool(email and '@' in email)
+        email = recipient.get("email")
+        return bool(email and "@" in email)
 
     def deliver(self, notification, recipient: dict) -> dict:
-        to_email = recipient.get('email') or notification.email
+        to_email = recipient.get("email") or getattr(notification, "email", None)
         if not to_email:
             return {
-                'success': False,
-                'response_code': 400,
-                'response_body': 'No recipient email address',
+                "success": False,
+                "response_code": 400,
+                "response_body": "invalid_recipient",
+                "error_code": "invalid_recipient",
             }
 
-        subject = notification.subject or 'Notification'
-        body_text = notification.body or ''
+        subject = getattr(notification, "subject", None) or "Notification"
+        body_text = getattr(notification, "body", None) or ""
+        notification_id = getattr(notification, "id", None)
 
-        # Render the rich HTML email template
-        # (templates/notifications/email/<type>.html) via the Jinja Environment
-        # directly so it works with or without a Flask request context (e.g.
-        # standalone scripts, Celery tasks). Falls back to the generic
-        # default.html (which renders title/message/link) so every email is sent
-        # as branded HTML instead of plain text.
+        # Render the branded HTML body without putting message/recipient data
+        # into application logs when rendering fails.
         html = None
         try:
             from app.notifications.template_loader import template_loader
 
-            ctx = dict(
+            context = dict(
                 title=subject,
                 message=body_text,
                 notification=notification,
-                data=notification.context or {},
-                link=notification.link,
-                user_id=notification.user_id,
+                data=getattr(notification, "context", None) or {},
+                link=getattr(notification, "link", None),
+                user_id=getattr(notification, "user_id", None),
             )
             try:
                 html = template_loader.env.get_template(
-                    f"email/{notification.type}.html"
-                ).render(**ctx)
+                    f"email/{getattr(notification, 'type', 'system_alert')}.html"
+                ).render(**context)
             except Exception:
-                # Type-specific template missing -> use the generic default.
                 html = template_loader.env.get_template(
                     "email/default.html"
-                ).render(**ctx)
-        except Exception as e:
-            logger.debug(f"[EmailHandler] Could not render HTML for {notification.type} ({e}); using text body")
+                ).render(**context)
+        except Exception as exc:
+            logger.debug(
+                "Email template rendering unavailable (exception_type=%s)",
+                type(exc).__name__,
+            )
 
         try:
-            from flask_mail import Message
-            from app.extensions import mail
+            from app.notifications.email_transport import send_smtp_email
 
-            msg = Message(
+            provider = send_smtp_email(
+                recipient=to_email,
                 subject=subject,
-                recipients=[to_email],
                 body=body_text,
                 html=html,
             )
-            mail.send(msg)
-
             logger.info(
-                f"[EmailHandler] Email sent to {to_email}: {subject}"
+                "Email provider accepted notification (notification_id=%s, provider=%s)",
+                notification_id or "test",
+                provider,
             )
             return {
-                'success': True,
-                'external_id': f"mail_{notification.id}",
-                'response_code': 200,
-                'response_body': 'Email delivered via SMTP',
+                "success": True,
+                "external_id": f"mail_{notification_id}" if notification_id else "mail_test",
+                "response_code": 200,
+                "response_body": "email_provider_accepted",
+                "provider": provider,
             }
-        except Exception as e:
-            logger.error(f"[EmailHandler] Failed to send email to {to_email}: {e}")
+        except Exception as exc:
+            error_code = getattr(exc, "code", "email_delivery_failed")
+            # Do not log the exception string, recipient, subject or message.
+            logger.warning(
+                "Email provider delivery failed (notification_id=%s, error_code=%s)",
+                notification_id or "test",
+                error_code,
+            )
             return {
-                'success': False,
-                'response_code': 500,
-                'response_body': str(e),
+                "success": False,
+                "response_code": 502,
+                "response_body": "email_delivery_failed",
+                "error_code": error_code,
             }

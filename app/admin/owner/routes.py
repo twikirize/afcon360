@@ -1116,6 +1116,15 @@ def audit_logs():
         flash("Error loading audit logs", "danger")
         return redirect(url_for('admin.owner.dashboard'))
 
+@owner_bp.route('/communication-settings', methods=['GET'])
+@login_required
+@owner_or_superadmin_required
+@audit_owner_action('viewed_communication_settings', 'settings')
+def communication_settings():
+    """Owner/Super Admin UI for the shared email provider credentials."""
+    return render_template('communication_settings.html')
+
+
 @owner_bp.route('/settings', methods=['GET', 'POST'])
 @owner_or_superadmin_required
 @audit_owner_action('viewed_settings', 'settings')
@@ -2579,17 +2588,78 @@ def auth_settings():
             config.twilio_enabled = request.form.get('twilio_enabled') == 'on'
             config.africa_talking_enabled = request.form.get('africa_talking_enabled') == 'on'
             
-            # API credentials
+            # Provider credentials are write-only and encrypted in one
+            # shared settings record. Blank values preserve existing secrets;
+            # explicit clear checkboxes remove them.
+            from app.notifications.settings import CommunicationSettingsService
+
+            def _secret_input(field, existing, clear_field):
+                if request.form.get(clear_field) == 'on':
+                    return None
+                return request.form.get(field, '').strip() or existing
+
+            provider_secrets = {
+                'google_client_secret': _secret_input(
+                    'google_client_secret', config.google_client_secret,
+                    'clear_google_client_secret',
+                ),
+                'sendgrid_api_key': _secret_input(
+                    'sendgrid_api_key', config.sendgrid_api_key,
+                    'clear_sendgrid_api_key',
+                ),
+                'twilio_account_sid': _secret_input(
+                    'twilio_account_sid', config.twilio_account_sid,
+                    'clear_twilio_account_sid',
+                ),
+                'twilio_auth_token': _secret_input(
+                    'twilio_auth_token', config.twilio_auth_token,
+                    'clear_twilio_auth_token',
+                ),
+                'africa_talking_username': _secret_input(
+                    'africa_talking_username', config.africa_talking_username,
+                    'clear_africa_talking_username',
+                ),
+                'africa_talking_api_key': _secret_input(
+                    'africa_talking_api_key', config.africa_talking_api_key,
+                    'clear_africa_talking_api_key',
+                ),
+            }
+            clear_provider_secrets = [
+                key for key, form_key in {
+                    'google_client_secret': 'clear_google_client_secret',
+                    'sendgrid_api_key': 'clear_sendgrid_api_key',
+                    'twilio_account_sid': 'clear_twilio_account_sid',
+                    'twilio_auth_token': 'clear_twilio_auth_token',
+                    'africa_talking_username': 'clear_africa_talking_username',
+                    'africa_talking_api_key': 'clear_africa_talking_api_key',
+                }.items()
+                if request.form.get(form_key) == 'on'
+            ]
+            CommunicationSettingsService.upsert_setting(
+                key='auth_providers',
+                channel='auth',
+                provider='system',
+                enabled=True,
+                config=provider_secrets,
+                description='Encrypted credentials for OAuth, email and SMS providers',
+                updated_by=current_user.id,
+                clear_secret_keys=clear_provider_secrets,
+                commit=False,
+            )
+
+            # Clear the old plaintext columns in the same configuration row.
+            # AuthConfiguration.get_config() hydrates these attributes from the
+            # encrypted provider row for existing integration callers.
             config.google_client_id = request.form.get('google_client_id', '').strip()
-            config.google_client_secret = request.form.get('google_client_secret', '').strip()
-            config.sendgrid_api_key = request.form.get('sendgrid_api_key', '').strip()
+            config.google_client_secret = None
+            config.sendgrid_api_key = None
             config.sendgrid_from_email = request.form.get('sendgrid_from_email', '').strip()
             config.sendgrid_from_name = request.form.get('sendgrid_from_name', 'AFCON360').strip()
-            config.twilio_account_sid = request.form.get('twilio_account_sid', '').strip()
-            config.twilio_auth_token = request.form.get('twilio_auth_token', '').strip()
+            config.twilio_account_sid = None
+            config.twilio_auth_token = None
             config.twilio_phone_number = request.form.get('twilio_phone_number', '').strip()
-            config.africa_talking_username = request.form.get('africa_talking_username', '').strip()
-            config.africa_talking_api_key = request.form.get('africa_talking_api_key', '').strip()
+            config.africa_talking_username = None
+            config.africa_talking_api_key = None
             
             # SMS routing
             config.sms_provider_preference = request.form.get('sms_provider_preference', 'auto')
@@ -2635,14 +2705,31 @@ def auth_settings():
             else:
                 flash('Authentication settings updated. Phone OTP delivery is set to email.', 'success')
             
-        except Exception as e:
+        except Exception as exc:
             db.session.rollback()
-            logger.error(f"Error updating auth settings: {str(e)}")
-            flash(f'Error updating settings: {str(e)}', 'danger')
+            logger.error(
+                "Authentication settings update failed (exception_type=%s)",
+                type(exc).__name__,
+            )
+            flash(
+                'Settings could not be saved securely. Check the configuration and try again.',
+                'danger',
+            )
         
         return redirect(url_for('admin.owner.auth_settings'))
     
-    return render_template('admin/owner/auth_settings.html', config=config)
+    return render_template(
+        'admin/owner/auth_settings.html',
+        config=config,
+        secret_status={
+            'google_client_secret': bool(config.google_client_secret),
+            'sendgrid_api_key': bool(config.sendgrid_api_key),
+            'twilio_account_sid': bool(config.twilio_account_sid),
+            'twilio_auth_token': bool(config.twilio_auth_token),
+            'africa_talking_username': bool(config.africa_talking_username),
+            'africa_talking_api_key': bool(config.africa_talking_api_key),
+        },
+    )
 
 
 @owner_bp.route('/owner/settings/auth/test/<service>', methods=['POST'])
@@ -2651,6 +2738,10 @@ def test_auth_service(service):
     """
     Test connectivity to authentication services.
     """
+    allowed_services = {'sendgrid', 'twilio', 'africa_talking'}
+    if service not in allowed_services:
+        return jsonify({'success': False, 'message': 'Unknown service'}), 404
+
     config = AuthConfiguration.get_config()
     result = {'success': False, 'message': ''}
     
@@ -2696,9 +2787,13 @@ def test_auth_service(service):
         else:
             result['message'] = f'Unknown service: {service}'
     
-    except Exception as e:
-        logger.error(f"Error testing {service}: {str(e)}")
-        result['message'] = f'Error: {str(e)}'
+    except Exception as exc:
+        logger.warning(
+            "Authentication provider test failed (service=%s, exception_type=%s)",
+            service,
+            type(exc).__name__,
+        )
+        result['message'] = 'Provider test failed. Check protected server diagnostics for a safe error code.'
     
     return jsonify(result)
 

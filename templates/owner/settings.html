@@ -342,6 +342,15 @@ document.addEventListener('DOMContentLoaded', function() {
       <span class="card-badge badge-auth">Authentication</span>
     </a>
 
+    <a href="{{ url_for('owner.communication_settings') }}" class="settings-card">
+      <div class="card-icon">✉️</div>
+      <div class="card-title">System Communication Settings</div>
+      <div class="card-description">
+        Manage the shared SMTP provider used by the website and Celery workers. Saved credentials stay hidden.
+      </div>
+      <span class="card-badge badge-auth">Owner / Super Admin</span>
+    </a>
+
     <a href="{{ url_for('admin.owner.settings') }}" class="settings-card">
       <div class="card-icon">🔒</div>
       <div class="card-title">Security Settings</div>

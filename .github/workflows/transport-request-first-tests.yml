@@ -19,6 +19,18 @@ on:
       - "app/utils/validators.py"
       - "app/utils/module_toggle_service.py"
       - "app/config.py"
+      - "app/notifications/**"
+      - "app/tasks/context.py"
+      - "app/celery_app.py"
+      - "app/utils/log_redaction.py"
+      - "app/utils/crypto.py"
+      - "app/notifications/email_transport.py"
+      - "tests/notifications/test_shared_email_configuration.py"
+      - "app/admin/owner/templates/communication_settings.html"
+      - "templates/base.html"
+      - "docs/operations/PRODUCTION_EMAIL_VERIFICATION.md"
+      - "docs/operations/PRODUCTION_SECRET_MANAGEMENT.md"
+      - "tests/notifications/**"
       - "tests/test_geo_integration.py"
       - "tests/test_module_integration.py"
       - "tests/test_*.py"
@@ -76,7 +88,9 @@ on:
       - "app/identity/models/user.py"
       - "app/profile/routes.py"
       - "app/utils/security.py"
+      - "app/auth/config_model.py"
       - "app/admin/owner/routes.py"
+      - "templates/admin/owner/auth_settings.html"
       - "templates/owner/settings.html"
       - "templates/auth/mfa_setup.html"
       - "templates/auth/mfa_status.html"
@@ -216,6 +230,8 @@ jobs:
           app/accommodation/services/availability_service.py
           app/notifications/tasks.py
           app/notifications/services.py
+          app/notifications/email_transport.py
+          app/notifications/settings.py
           app/notifications/events/tasks.py
           app/notifications/models.py
           app/events/tasks.py
@@ -261,6 +277,8 @@ jobs:
           app/identity/models/user.py
           app/profile/routes.py
           app/utils/security.py
+          app/utils/log_redaction.py
+          app/utils/crypto.py
           app/admin/owner/routes.py
           app/models/system_config.py
           app/api/health.py
@@ -274,8 +292,34 @@ jobs:
           tests/test_org_host_production_path.py
           tests/test_events_ownership_characterization.py
 
-      - name: Validate Celery Docker entrypoint shell syntax
-        run: bash -n docker-entrypoint.sh
+      - name: Validate Celery Docker entrypoint and default queue subscriptions
+        run: |
+          set -euo pipefail
+          bash -n docker-entrypoint.sh
+
+          tmp_bin="$(mktemp -d)"
+          trap 'rm -rf "$tmp_bin"' EXIT
+          cat > "$tmp_bin/pg_isready" <<'EOF'
+          #!/usr/bin/env bash
+          exit 0
+          EOF
+          cat > "$tmp_bin/nc" <<'EOF'
+          #!/usr/bin/env bash
+          exit 0
+          EOF
+          cat > "$tmp_bin/celery" <<'EOF'
+          #!/usr/bin/env bash
+          printf '%s\n' "$@" > "$CELERY_ARGS_FILE"
+          EOF
+          chmod +x "$tmp_bin/pg_isready" "$tmp_bin/nc" "$tmp_bin/celery"
+
+          args_file="$tmp_bin/celery.args"
+          env PATH="$tmp_bin:$PATH" CONTAINER_ROLE=celery DATABASE_URL=postgresql://ci:ci@localhost/ci REDIS_URL=redis://localhost:6379/0 SECRET_KEY=ci-secret SECURITY_SALT=ci-salt CELERY_ARGS_FILE="$args_file" ./docker-entrypoint.sh celery >/dev/null
+          grep -qx -- '-Q' "$args_file"
+          grep -qx -- 'critical,default,bulk' "$args_file"
+
+          env PATH="$tmp_bin:$PATH" CONTAINER_ROLE=celery CELERY_QUEUES=bulk DATABASE_URL=postgresql://ci:ci@localhost/ci REDIS_URL=redis://localhost:6379/0 SECRET_KEY=ci-secret SECURITY_SALT=ci-salt CELERY_ARGS_FILE="$args_file" ./docker-entrypoint.sh celery >/dev/null
+          grep -qx -- 'bulk' "$args_file"
 
       - name: Parse changed Jinja templates without database access
         run: |
@@ -298,9 +342,10 @@ jobs:
               "base.html",
               "transport/driver/base.html",
               "components/workspace_context_switcher.html",
+              "communication_settings.html",
           )
           env = Environment(
-              loader=FileSystemLoader("templates"),
+              loader=FileSystemLoader(["templates", "app/admin/owner/templates"]),
               extensions=["jinja2.ext.do", "jinja2.ext.loopcontrols"],
           )
 
@@ -309,7 +354,12 @@ jobs:
           # registrations from requiring a database-backed app factory here.
           # Actual filter behavior is exercised only by application tests.
           for template in templates:
-              source = Path("templates", template).read_text(encoding="utf-8")
+              template_path = (
+                  Path("app/admin/owner/templates", template)
+                  if template == "communication_settings.html"
+                  else Path("templates", template)
+              )
+              source = template_path.read_text(encoding="utf-8")
               for filter_name in re.findall(r"\|\s*([A-Za-z_]\w*)", source):
                   env.filters.setdefault(
                       filter_name, lambda value, *args, **kwargs: value
@@ -358,6 +408,7 @@ jobs:
               tests/test_celery_small_batch_contracts.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
               tests/notifications/test_scheduled_notification_delivery.py
+              tests/notifications/test_shared_email_configuration.py
               tests/notifications/test_models.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
             )

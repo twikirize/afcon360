@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from sqlalchemy import (
     Column,
     Boolean,
@@ -11,6 +12,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from app.extensions import db
 from app.models.base import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class AuthConfiguration(BaseModel):
@@ -194,8 +197,81 @@ class AuthConfiguration(BaseModel):
             )
             db.session.add(config)
             db.session.commit()
+        return cls._hydrate_provider_secrets(config)
+
+    @classmethod
+    def _hydrate_provider_secrets(cls, config):
+        """Load legacy provider credentials from the encrypted shared settings row.
+
+        Existing auth_configurations columns remain a read-only migration fallback
+        until the Owner saves this page once. New writes are stored in the
+        encrypted CommunicationSettings JSON record and the legacy columns are
+        cleared by the settings route.
+        """
+        legacy_fields = (
+            "google_client_secret",
+            "sendgrid_api_key",
+            "twilio_account_sid",
+            "twilio_auth_token",
+            "africa_talking_username",
+            "africa_talking_api_key",
+        )
+        try:
+            from sqlalchemy.orm.attributes import set_committed_value
+            from app.notifications.models import CommunicationSettings
+            from app.notifications.settings import CommunicationSettingsService
+            from app.utils.log_redaction import register_secret_mapping
+
+            setting = CommunicationSettings.query.filter_by(
+                key="auth_providers",
+                is_deleted=False,
+            ).first()
+            if setting is not None:
+                try:
+                    stored = CommunicationSettingsService._decrypt_config(
+                        setting.config or {}
+                    )
+                except Exception as exc:
+                    # A present but unreadable encrypted record must fail closed;
+                    # never fall back to stale plaintext columns.
+                    for field in legacy_fields:
+                        set_committed_value(config, field, None)
+                    logger.error(
+                        "Encrypted authentication provider credentials unavailable "
+                        "(exception_type=%s)",
+                        type(exc).__name__,
+                    )
+                    return config
+                for field in legacy_fields:
+                    # The encrypted record is authoritative, including an
+                    # intentionally-cleared/missing value.
+                    set_committed_value(config, field, stored.get(field))
+            register_secret_mapping({
+                field: getattr(config, field, None)
+                for field in legacy_fields
+            })
+        except Exception as exc:
+            # During migration/bootstrap the shared settings table may not be
+            # queryable yet. Preserve legacy behavior, but never log values.
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            logger.warning(
+                "Encrypted authentication provider settings unavailable "
+                "(exception_type=%s); legacy settings remain in use",
+                type(exc).__name__,
+            )
+            try:
+                from app.utils.log_redaction import register_secret_mapping
+                register_secret_mapping({
+                    field: getattr(config, field, None)
+                    for field in legacy_fields
+                })
+            except Exception:
+                pass
         return config
-    
+
     def to_dict(self, include_secrets=False):
         """
         Convert configuration to dictionary.
@@ -230,17 +306,19 @@ class AuthConfiguration(BaseModel):
         }
         
         if include_secrets:
+            # This method is used for serialization and must never disclose
+            # credential values, even when a legacy caller asks for secrets.
             data.update({
                 'google_client_id': self.google_client_id,
-                'google_client_secret': self.google_client_secret,
-                'sendgrid_api_key': self.sendgrid_api_key,
+                'google_client_secret_configured': bool(self.google_client_secret),
+                'sendgrid_api_key_configured': bool(self.sendgrid_api_key),
+                'twilio_account_sid_configured': bool(self.twilio_account_sid),
+                'twilio_auth_token_configured': bool(self.twilio_auth_token),
+                'africa_talking_username_configured': bool(self.africa_talking_username),
+                'africa_talking_api_key_configured': bool(self.africa_talking_api_key),
                 'sendgrid_from_email': self.sendgrid_from_email,
                 'sendgrid_from_name': self.sendgrid_from_name,
-                'twilio_account_sid': self.twilio_account_sid,
-                'twilio_auth_token': self.twilio_auth_token,
                 'twilio_phone_number': self.twilio_phone_number,
-                'africa_talking_username': self.africa_talking_username,
-                'africa_talking_api_key': self.africa_talking_api_key,
             })
         
         return data

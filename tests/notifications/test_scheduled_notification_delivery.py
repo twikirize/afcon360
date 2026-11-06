@@ -123,7 +123,7 @@ def test_scheduled_reminder_batches_advance_without_starving_later_rows(
         return None
 
     monkeypatch.setattr(
-        "app.notifications.tasks.create_app",
+        "app.notifications.tasks._get_task_flask_app",
         lambda: app,
     )
     monkeypatch.setattr(

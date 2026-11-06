@@ -421,24 +421,47 @@ class NotificationService:
                 # Deliver
                 try:
                     result = handler.deliver(notification, recipient)
-                    results.append({
-                        'channel': channel_str,
-                        'success': True,
-                        'external_id': result.get('external_id'),
-                        'response_code': result.get('response_code'),
-                    })
-                    cls._log_delivery(notification.id, channel_str, 'success', result)
-                except Exception as e:
+                    delivered = bool(result) and (
+                        not isinstance(result, dict) or result.get('success', True) is not False
+                    )
+                    if delivered:
+                        results.append({
+                            'channel': channel_str,
+                            'success': True,
+                            'external_id': result.get('external_id'),
+                            'response_code': result.get('response_code'),
+                        })
+                        cls._log_delivery(notification.id, channel_str, 'success', result)
+                    else:
+                        error_code = (
+                            result.get('error_code') if isinstance(result, dict) else None
+                        ) or 'channel_delivery_failed'
+                        results.append({
+                            'channel': channel_str,
+                            'success': False,
+                            'error_code': error_code,
+                            'response_code': result.get('response_code') if isinstance(result, dict) else None,
+                        })
+                        cls._log_delivery(
+                            notification.id, channel_str, 'failure',
+                            {'error_code': error_code, 'response_code': result.get('response_code') if isinstance(result, dict) else None},
+                        )
+                        all_success = False
+                except Exception as exc:
+                    error_code = getattr(exc, 'code', type(exc).__name__)
                     logger.error(
-                        f"Delivery failed for notification {notification.id} "
-                        f"via {channel_str}: {e}", exc_info=True
+                        "Delivery failed (notification_id=%s, channel=%s, error_code=%s)",
+                        notification.id, channel_str, error_code,
                     )
                     results.append({
                         'channel': channel_str,
                         'success': False,
-                        'error': str(e),
+                        'error_code': str(error_code)[:80],
                     })
-                    cls._log_delivery(notification.id, channel_str, 'failure', {'error': str(e)})
+                    cls._log_delivery(
+                        notification.id, channel_str, 'failure',
+                        {'error_code': str(error_code)[:80]},
+                    )
                     all_success = False
 
             # Update notification status
@@ -452,9 +475,12 @@ class NotificationService:
             db.session.commit()
             return notification
 
-        except Exception as e:
+        except Exception as exc:
             db.session.rollback()
-            logger.error(f"Failed to send notification: {e}", exc_info=True)
+            logger.error(
+                "Notification send failed (exception_type=%s)",
+                type(exc).__name__,
+            )
             return None
 
     @classmethod
@@ -945,13 +971,33 @@ class NotificationService:
                         'phone': notification.phone or (user.phone if user else None),
                     }
                     result = handler.deliver(notification, recipient)
-                    cls._log_delivery(notification.id, notification.channel, 'success', result)
-                    notification.mark_delivered()
-                    resent += 1
-                except Exception as e:
-                    logger.error(f"Resend failed for notification {notification.id}: {e}")
-                    notification.mark_failed(str(e))
-                    cls._log_delivery(notification.id, notification.channel, 'failure', {'error': str(e)})
+                    delivered = bool(result) and (
+                        not isinstance(result, dict) or result.get('success', True) is not False
+                    )
+                    if delivered:
+                        cls._log_delivery(notification.id, notification.channel, 'success', result)
+                        notification.mark_delivered()
+                        resent += 1
+                    else:
+                        error_code = (
+                            result.get('error_code') if isinstance(result, dict) else None
+                        ) or 'channel_delivery_failed'
+                        notification.mark_failed(str(error_code)[:80])
+                        cls._log_delivery(
+                            notification.id, notification.channel, 'failure',
+                            {'error_code': str(error_code)[:80]},
+                        )
+                except Exception as exc:
+                    error_code = getattr(exc, 'code', type(exc).__name__)
+                    logger.error(
+                        "Notification resend failed (notification_id=%s, exception_type=%s)",
+                        notification.id, type(exc).__name__,
+                    )
+                    notification.mark_failed(str(error_code)[:80])
+                    cls._log_delivery(
+                        notification.id, notification.channel, 'failure',
+                        {'error_code': str(error_code)[:80]},
+                    )
 
         # Persist failed attempts too; otherwise a provider failure could leave
         # the row stuck in PENDING after the pre-delivery commit above.
@@ -968,16 +1014,26 @@ class NotificationService:
     ) -> None:
         """Log a delivery attempt."""
         try:
+            # Persist only a small allowlisted diagnostic code. Provider exception
+            # text and response bodies can contain credentials or recipient data.
+            safe_code = response.get('error_code') or response.get('status_code') or ''
+            safe_code = ''.join(ch for ch in str(safe_code) if ch.isalnum() or ch in '._-')[:80]
+            safe_body = f"error_code={safe_code}" if safe_code else (
+                'provider_accepted' if status == 'success' else 'delivery_failed'
+            )
             log = NotificationLog(
                 notification_id=notification_id,
                 channel=channel,
                 status=status,
                 response_code=response.get('response_code'),
-                response_body=str(response.get('response_body', ''))[:500],
+                response_body=safe_body,
             )
             db.session.add(log)
-        except Exception as e:
-            logger.error(f"Failed to log notification delivery: {e}")
+        except Exception as exc:
+            logger.error(
+                "Failed to persist notification delivery log (exception_type=%s)",
+                type(exc).__name__,
+            )
 
     @staticmethod
     def _render_email_template(notification: Notification) -> str:
