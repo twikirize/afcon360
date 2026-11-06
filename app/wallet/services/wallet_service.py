@@ -495,10 +495,10 @@ class WalletService:
             "transactions": [
                 {
                     "id": str(t.id),
-                    "type": t.tx_type.value,
+                    "type": str(getattr(t.tx_type, "value", t.tx_type)),
                     "amount": str(t.amount),
                     "currency": t.currency,
-                    "status": t.status.value,
+                    "status": str(getattr(t.status, "value", t.status)),
                     "created_at": t.created_at.isoformat(),
                     "metadata": t.tx_metadata
                 }
@@ -1033,35 +1033,41 @@ class WalletService:
 
         # SINGLE TRANSACTION
         with self.db.begin():
-            # 0. PIN verification inside the transaction to avoid TOCTOU
-            try:
+            # 0. PIN verification inside the transaction to avoid TOCTOU.
+            # User-authorized transfers MUST fail closed when PIN verification
+            # cannot be completed. Only explicit system-initiated transfers may
+            # bypass the user's PIN.
+            if not system_initiated:
                 from app.identity.models.user import User
                 from app.wallet.exceptions import TransactionPINError
 
-                # Get sender's account first to find user_id
-                from_account = self.account_repo.get_by_id(from_account_id)
-                if not from_account:
-                    raise WalletNotFoundError(wallet_ref=from_account_id)
-                sender_user = User.get_by_private_id(from_account.user_id)
-                if sender_user and sender_user.transaction_pin_hash:
+                try:
+                    from_account = self.account_repo.get_by_id(from_account_id)
+                    if not from_account:
+                        raise WalletNotFoundError(wallet_ref=from_account_id)
+
+                    sender_user = self.db.query(User).filter_by(
+                        id=from_account.user_id
+                    ).with_for_update().one_or_none()
+                    if sender_user is None:
+                        raise TransactionPINError("Sender PIN authority could not be verified")
+                    if not sender_user.transaction_pin_hash:
+                        raise TransactionPINError("Set a transaction PIN before sending money")
                     if not pin:
                         raise TransactionPINError("Transaction PIN is required")
-                    # SELECT FOR UPDATE on the user row to prevent concurrent state changes
-                    try:
-                        locked_user = self.db.query(User).filter_by(id=sender_user.id).with_for_update().one()
-                    except Exception:
-                        # Fallback to the already loaded sender_user if locking failed for any reason
-                        locked_user = sender_user
 
-                    ok = locked_user.verify_transaction_pin(pin, session=self.db)
-                    if not ok:
+                    if not sender_user.verify_transaction_pin(pin, session=self.db):
                         raise TransactionPINError("Invalid or locked PIN")
-            except TransactionPINError:
-                # Bubble up to caller (will rollback transaction)
-                raise
-            except Exception:
-                # Non-fatal: if verification infrastructure missing, continue without enforcing PIN
-                current_app.logger.debug("Transaction PIN verification infrastructure unavailable; skipping PIN enforcement")
+                except (TransactionPINError, WalletNotFoundError):
+                    raise
+                except Exception as exc:
+                    current_app.logger.exception(
+                        "Wallet transfer PIN verification failed closed for account %s",
+                        from_account_id,
+                    )
+                    raise TransactionPINError(
+                        "AFCON360 could not securely verify your transaction PIN. No transfer was made."
+                    ) from exc
 
             # 1. Get both accounts by UUID with lock (consistent order prevents deadlock)
             account_ids = sorted([from_account_id, to_account_id])
