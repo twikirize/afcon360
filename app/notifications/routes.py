@@ -460,6 +460,24 @@ def _missing_initial_smtp_credentials(data, environment_config, existing_setting
     return missing
 
 
+def _smtp_auth_pair_error(data, existing_config):
+    """Validate the effective SMTP auth pair after blank-secret preservation."""
+    supplied_user = data.get('smtp_user')
+    supplied_pass = data.get('smtp_pass')
+
+    if data.get('clear_auth'):
+        if supplied_user not in (None, '') or supplied_pass not in (None, ''):
+            return 'Uncheck Clear auth before entering new SMTP credentials.'
+        return None
+
+    existing_config = existing_config or {}
+    effective_user = supplied_user or existing_config.get('smtp_user') or existing_config.get('MAIL_USERNAME')
+    effective_pass = supplied_pass or existing_config.get('smtp_pass') or existing_config.get('MAIL_PASSWORD')
+    if bool(effective_user) != bool(effective_pass):
+        return 'Provide both SMTP username and password, or leave both blank.'
+    return None
+
+
 @notifications_api.route('/admin/email-provider', methods=['GET'])
 @login_required
 @require_role('owner', 'super_admin')
@@ -550,6 +568,24 @@ def save_email_provider_settings():
                 'otherwise stop using the environment credentials. No settings were changed.'
             )
         }), 409
+
+    existing_config = {}
+    if existing_setting is not None and not data.get('clear_auth'):
+        try:
+            existing_config = CommunicationSettingsService._decrypt_config(
+                existing_setting.config or {}
+            )
+        except Exception as exc:
+            db.session.rollback()
+            logger.error(
+                "Existing SMTP settings could not be decrypted (exception_type=%s)",
+                type(exc).__name__,
+            )
+            return jsonify({'error': 'Stored email settings could not be decrypted'}), 503
+
+    auth_pair_error = _smtp_auth_pair_error(data, existing_config)
+    if auth_pair_error:
+        return jsonify({'error': auth_pair_error}), 400
 
     config = {
         'smtp_host': host,
