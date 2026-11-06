@@ -3948,7 +3948,7 @@ def guest_cancel_booking(reference):
             refund_success, refund_error = MarketplaceService.refund_guest(
                 booking.id,
                 refund,
-                            )
+            )
             if refund_success:
                 flash(f'{message} Refund of ${refund} processed.', 'success')
             else:
@@ -5529,7 +5529,7 @@ def host_cancel_booking(property_id, booking_id):
         refund_success, refund_error = MarketplaceService.refund_guest(
             booking.id,
             refund,
-                    )
+        )
         if refund_success:
             refund_msg = f" Wallet refund of {refund} {booking.currency} processed."
         else:
@@ -5877,7 +5877,7 @@ def host_refund_booking(booking_id):
     success, error = MarketplaceService.refund_guest(
         booking_id,
         refund_amount,
-            )
+    )
     if success:
         flash(f"Refund of ${refund_amount} processed successfully.", "success")
     else:
