@@ -132,3 +132,66 @@ def test_twilio_sms_handler_uses_shared_settings_and_verified_sender(monkeypatch
     assert sent["to"] == "+256700000001"
     assert sent["messaging_service_sid"] == values["TWILIO_MESSAGING_SERVICE_SID"]
     assert sent["body"] == "AFCON360 code 654321"
+
+
+def test_multi_channel_storage_happens_before_provider_delivery(app, monkeypatch):
+    from app.auth.otp_service import OTPService
+
+    order = []
+
+    def store_otp(identifier, otp, purpose, ttl):
+        order.append(("store", identifier, purpose))
+        return True
+
+    class FakeHandler:
+        def deliver(self, notification, recipient):
+            order.append(("deliver", recipient["phone"]))
+            return {"success": True, "external_id": "SM-order-test"}
+
+    monkeypatch.setattr(OTPService, "store_otp", staticmethod(store_otp))
+    monkeypatch.setattr(OTPService, "_dev_fallback_allowed", staticmethod(lambda: False))
+    monkeypatch.setattr(OTPService, "invalidate_otp", staticmethod(lambda *_: True))
+    monkeypatch.setattr(
+        "app.notifications.channel_handlers.twilio_sms.TwilioSmsHandler",
+        lambda: FakeHandler(),
+    )
+
+    with app.app_context():
+        result = OTPService.send_otp_multi_channel(
+            identifier="account-123",
+            otp="582741",
+            purpose="login",
+            channels=["twilio_sms"],
+            phone="+256700000001",
+            max_retries=1,
+        )
+
+    assert result["success"] is True
+    assert order[0] == ("store", "account-123", "login")
+    assert order[1][0] == "deliver"
+
+
+def test_multi_channel_stops_when_shared_otp_storage_fails(app, monkeypatch):
+    from app.auth.otp_service import OTPService
+
+    delivered = []
+    monkeypatch.setattr(OTPService, "store_otp", staticmethod(lambda **_: False))
+    monkeypatch.setattr(OTPService, "_dev_fallback_allowed", staticmethod(lambda: False))
+    monkeypatch.setattr(
+        "app.notifications.channel_handlers.twilio_sms.TwilioSmsHandler",
+        lambda: delivered.append(True),
+    )
+
+    with app.app_context():
+        result = OTPService.send_otp_multi_channel(
+            identifier="account-456",
+            otp="194826",
+            purpose="phone",
+            channels=["twilio_sms"],
+            phone="+256700000002",
+            max_retries=1,
+        )
+
+    assert result["success"] is False
+    assert result["code"] == "storage_failed"
+    assert delivered == []
