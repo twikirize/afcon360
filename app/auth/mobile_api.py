@@ -89,6 +89,63 @@ def _verify_login_eligibility(user, client: str):
     return None
 
 
+
+
+def _start_native_sms_mfa(user):
+    """Send a hashed, short-lived sign-in OTP to the user's verified phone.
+
+    Native SMS MFA is enabled only when the account has a verified E.164 phone
+    number and an owner-configured real SMS provider. It never falls back to
+    console logging or an unverified contact address.
+    """
+    from app.auth.otp_service import OTPService
+
+    user_id = str(user.id)
+    OTPService.invalidate_otp(user_id, "2fa_login")
+
+    phone = str(getattr(user, "phone", "") or "").strip()
+    if not bool(getattr(user, "phone_verified", False)):
+        return None, ("sms_mfa_phone_unverified", "Verify your phone number before using SMS sign-in.", 403)
+    if not phone.startswith("+") or not phone[1:].isdigit() or not 8 <= len(phone[1:]) <= 15:
+        return None, ("sms_mfa_phone_invalid", "Your verified phone number must be stored in international format. Update it in AFCON360 account settings.", 422)
+
+    try:
+        redis = _redis()
+        throttle_key = "afcon360:mobile:sms-mfa-send:" + hashlib.sha256(
+            str(user.public_id).encode("utf-8")
+        ).hexdigest()
+        if not redis.set(throttle_key, "1", ex=60, nx=True):
+            return None, ("sms_mfa_rate_limited", "A sign-in code was requested recently. Wait a minute before trying again.", 429)
+
+        from app.auth.config_model import AuthConfiguration
+        from app.notifications.sms_service import SMSService
+
+        auth_config = AuthConfiguration.get_config()
+        provider = auth_config.get_sms_provider_for_phone(phone) if auth_config else None
+        if provider not in {"twilio", "africa_talking", "africas_talking"}:
+            return None, ("sms_mfa_unavailable", "SMS sign-in is not configured for your verified phone number. Use your authenticator app or contact AFCON360 support.", 503)
+
+        code = OTPService.generate_otp(length=6)
+        if not OTPService.store_otp(user_id, code, purpose="2fa_login", ttl=300):
+            return None, ("sms_mfa_unavailable", "AFCON360 could not prepare a secure sign-in code. Try again.", 503)
+
+        delivery = SMSService(provider=provider, auth_config=auth_config).send_message(
+            phone_number=phone,
+            message=f"Your AFCON360 sign-in code is {code}. It expires in 5 minutes. Do not share it.",
+        )
+        if not isinstance(delivery, dict) or not bool(delivery.get("success")):
+            OTPService.invalidate_otp(user_id, "2fa_login")
+            logger.warning("Native SMS MFA delivery failed for user %s", user.public_id)
+            return None, ("sms_mfa_delivery_failed", "AFCON360 could not deliver your sign-in code. Check your phone connection or try again later.", 503)
+
+        hint = f"{phone[:3]}••••{phone[-2:]}"
+        return hint, None
+    except Exception:
+        OTPService.invalidate_otp(user_id, "2fa_login")
+        logger.exception("Native SMS MFA could not be started for user %s", getattr(user, "public_id", "unknown"))
+        return None, ("sms_mfa_unavailable", "SMS sign-in is temporarily unavailable. Please try again later.", 503)
+
+
 def _active_server_session(session_id: str):
     from app.auth.sessions import ServerSession
     now = datetime.now(timezone.utc)
@@ -228,33 +285,52 @@ def mobile_login():
         if eligible:
             return eligible
         mfa_type = str(payload.get("mfa_type") or "").lower()
-        if mfa_type != "totp":
+        sms_phone_hint = None
+        if mfa_type == "sms":
+            sms_phone_hint, sms_error = _start_native_sms_mfa(user)
+            if sms_error:
+                code, message, status = sms_error
+                return _error(code, message, status)
+        elif mfa_type != "totp":
             return _error(
                 "mfa_method_unsupported",
-                "This account uses an MFA method that is not supported by native sign-in yet. Use the AFCON360 website to update its authenticator method.",
+                "This account uses an MFA method that is not supported by native sign-in yet. Use an authenticator app or contact AFCON360 support.",
                 422,
             )
+
         challenge = secrets.token_urlsafe(40)
         challenge_record = {
             "user_public_id": str(user.public_id),
             "client": client,
             "device_id": device_id,
             "device_name": device_name,
-            "mfa_type": "totp",
+            "mfa_type": mfa_type,
+            "sms_phone_hint": sms_phone_hint,
             "created_at": int(datetime.now(timezone.utc).timestamp()),
         }
-        _redis().setex(
-            "afcon360:mobile:mfa:" + __import__("hashlib").sha256(challenge.encode()).hexdigest(),
-            300,
-            json.dumps(challenge_record, separators=(",", ":")),
-        )
-        return jsonify({
+        try:
+            _redis().setex(
+                "afcon360:mobile:mfa:" + hashlib.sha256(challenge.encode()).hexdigest(),
+                300,
+                json.dumps(challenge_record, separators=(",", ":")),
+            )
+        except Exception:
+            if mfa_type == "sms":
+                from app.auth.otp_service import OTPService
+                OTPService.invalidate_otp(str(user.id), "2fa_login")
+            logger.exception("Could not store native MFA challenge")
+            return _error("auth_service_unavailable", "Sign-in is temporarily unavailable. Try again.", 503)
+
+        response = {
             "success": True,
             "mfa_required": True,
             "challenge_token": challenge,
-            "mfa_type": "totp",
+            "mfa_type": mfa_type,
             "expires_in": 300,
-        }), 202
+        }
+        if sms_phone_hint:
+            response["destination_hint"] = sms_phone_hint
+        return jsonify(response), 202
 
     if result != AuthResult.SUCCESS or not payload or not payload.get("user"):
         code = "account_locked" if result == AuthResult.LOCKED else "invalid_credentials"
@@ -565,9 +641,22 @@ def mobile_mfa_verify():
     if eligible:
         return eligible
 
-    from app.auth.routes import _verify_mfa_token
-    if not _verify_mfa_token(user, code, backup_code=(len(code) == 8)):
-        return _error("mfa_verification_failed", "The authenticator code is invalid or has expired.", 401)
+    mfa_type = challenge_data.get("mfa_type")
+    if mfa_type == "totp":
+        from app.auth.routes import _verify_mfa_token
+        if not _verify_mfa_token(user, code, backup_code=(len(code) == 8)):
+            return _error("mfa_verification_failed", "The authenticator code is invalid or has expired.", 401)
+    elif mfa_type == "sms":
+        from app.auth.otp_service import otp_service
+        verified, _message = otp_service.verify_otp(
+            str(user.id),
+            code,
+            purpose="2fa_login",
+        )
+        if not verified:
+            return _error("mfa_verification_failed", "The SMS code is invalid or has expired. Start sign-in again to request a new code.", 401)
+    else:
+        return _error("mfa_method_unsupported", "This sign-in method is not supported by the native app.", 422)
 
     from app.auth.sessions import start_server_session
     server_session_id = start_server_session(
