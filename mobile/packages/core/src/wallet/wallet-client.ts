@@ -95,7 +95,7 @@ export class MobileWalletClient {
     confirm_pin: string;
     current_pin?: string;
     password?: string;
-  }): Promise<WalletPinStatus> {
+  }): Promise<{ pin_set: boolean }> {
     return this.unwrap<WalletPinStatus>("/api/mobile/v1/wallet/pin", {
       method: "POST",
       body: input,
