@@ -218,3 +218,168 @@ def test_native_wallet_pin_status_handles_legacy_naive_lock_timestamp(client, mo
     assert response.status_code == 200
     assert response.get_json()["data"]["pin_set"] is True
     assert response.get_json()["data"]["locked"] is True
+
+
+def test_native_deposit_uses_existing_account_and_returns_provider_checkout_without_crediting(client, monkeypatch):
+    from app.auth import mobile_api
+    import app.wallet.models.ledger as ledger_models
+    import app.extensions as extensions
+    from app.wallet.services import deposit_intent
+
+    user = SimpleNamespace(id=745, public_id="native-deposit-user-745")
+    account = SimpleNamespace(
+        id="wallet-account-745",
+        owner_type="user",
+        status="active",
+        is_frozen=False,
+    )
+    stored = {}
+    captured = {}
+
+    class FakeAccountModel:
+        query = _FilterQuery(account)
+
+    class FakeRedis:
+        def set(self, key, value, ex=None, nx=None):
+            captured["lock"] = (key, value, ex, nx)
+            return True
+
+        def eval(self, script, number_of_keys, key, token):
+            return 1
+
+    class FakeFlutterwaveService:
+        def initiate_deposit(self, **kwargs):
+            captured["initiate"] = kwargs
+            stored.update({
+                "account_id": kwargs["account_id"],
+                "user_id": kwargs["user_id"],
+                "amount": str(kwargs["amount"]),
+                "currency": kwargs["currency"],
+                "source": "flutterwave",
+                "payment_method": kwargs["payment_method"],
+                "reference": kwargs["idempotency_key"],
+                "authorization_url": "https://checkout.flutterwave.com/hosted/test",
+                "status": "pending",
+            })
+            return {
+                "success": True,
+                "status": "pending",
+                "reference": kwargs["idempotency_key"],
+                "authorization_url": stored["authorization_url"],
+            }
+
+    _authenticated_mobile_user(monkeypatch, user)
+    monkeypatch.setattr(ledger_models, "AccountModel", FakeAccountModel)
+    monkeypatch.setattr(extensions, "redis_client", FakeRedis())
+    monkeypatch.setattr(deposit_intent, "get_deposit_intent", lambda reference: dict(stored) if stored else None)
+    monkeypatch.setattr(deposit_intent, "save_deposit_intent", lambda reference, data: stored.update(data))
+    monkeypatch.setattr(deposit_intent, "mark_deposit_intent_status", lambda reference, status: stored.update(status=status))
+    monkeypatch.setattr("app.wallet.payments.flutterwave.FlutterwaveService", FakeFlutterwaveService)
+
+    response = client.post(
+        "/api/mobile/v1/wallet/deposits",
+        json={"amount": "25000.00", "currency": "UGX", "payment_method": "mobilemoney"},
+        headers={
+            "Authorization": "Bearer native-test-token",
+            "X-Idempotency-Key": "native-deposit-request-0001",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.get_json()["data"]
+    assert body["status"] == "pending"
+    assert body["payment_provider"] == "flutterwave"
+    assert body["authorization_url"] == "https://checkout.flutterwave.com/hosted/test"
+    assert captured["initiate"]["account_id"] == str(account.id)
+    assert captured["initiate"]["user_id"] == user.id
+    assert captured["initiate"]["amount"] == Decimal("25000.00")
+    assert stored["status"] == "pending"
+    assert captured["lock"][2:] == (60, True)
+
+
+def test_native_deposit_retry_reuses_existing_checkout_and_does_not_create_second_provider_request(client, monkeypatch):
+    from app.auth import mobile_api
+    import app.wallet.models.ledger as ledger_models
+    from app.wallet.services import deposit_intent
+    import app.wallet.payments.flutterwave as flutterwave_module
+
+    user = SimpleNamespace(id=746, public_id="native-deposit-user-746")
+    account = SimpleNamespace(id="wallet-account-746", owner_type="user", status="active", is_frozen=False)
+    existing = {
+        "account_id": str(account.id),
+        "user_id": user.id,
+        "amount": "9000.00",
+        "currency": "UGX",
+        "source": "flutterwave",
+        "payment_method": "mobilemoney",
+        "reference": "NATDEP-RETRY-REFERENCE",
+        "authorization_url": "https://checkout.flutterwave.com/hosted/reused",
+        "status": "pending",
+    }
+    captured = {}
+
+    class FakeAccountModel:
+        query = _FilterQuery(account)
+
+    class MustNotInitiate:
+        def initiate_deposit(self, **kwargs):
+            pytest.fail("An existing idempotent pending checkout must be reused")
+
+    _authenticated_mobile_user(monkeypatch, user)
+    monkeypatch.setattr(ledger_models, "AccountModel", FakeAccountModel)
+    monkeypatch.setattr(
+        mobile_api,
+        "_native_deposit_reference",
+        lambda owner, key: existing["reference"],
+    )
+    monkeypatch.setattr(deposit_intent, "get_deposit_intent", lambda reference: dict(existing))
+    monkeypatch.setattr(flutterwave_module, "FlutterwaveService", MustNotInitiate)
+
+    response = client.post(
+        "/api/mobile/v1/wallet/deposits",
+        json={"amount": "9000.00", "currency": "UGX", "payment_method": "mobilemoney"},
+        headers={
+            "Authorization": "Bearer native-test-token",
+            "X-Idempotency-Key": "native-deposit-request-0002",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["authorization_url"] == existing["authorization_url"]
+    assert response.get_json()["data"]["reference"] == existing["reference"]
+
+
+def test_native_deposit_refresh_is_owner_scoped_and_returns_pending_when_provider_not_confirmed(client, monkeypatch):
+    from app.auth import mobile_api
+    import app.wallet.payments.flutterwave as flutterwave_module
+
+    user = SimpleNamespace(id=747, public_id="native-deposit-user-747")
+    intent = {
+        "user_id": user.id,
+        "account_id": "wallet-account-747",
+        "amount": "4000.00",
+        "currency": "UGX",
+        "source": "flutterwave",
+        "status": "pending",
+    }
+
+    class FakeFlutterwaveService:
+        def verify_and_credit(self, reference):
+            return {"success": False, "status": "pending", "error": "not confirmed"}
+
+    _authenticated_mobile_user(monkeypatch, user)
+    monkeypatch.setattr(
+        mobile_api,
+        "_native_deposit_intent",
+        lambda reference, owner: dict(intent) if int(owner.id) == int(intent["user_id"]) else None,
+    )
+    monkeypatch.setattr(flutterwave_module, "FlutterwaveService", FakeFlutterwaveService)
+
+    response = client.post(
+        "/api/mobile/v1/wallet/deposits/NATDEP-OWNED-REFERENCE/refresh",
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 202
+    assert response.get_json()["data"]["status"] == "pending"
+    assert response.get_json()["data"]["reference"] == "NATDEP-OWNED-REFERENCE"
