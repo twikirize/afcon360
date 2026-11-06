@@ -1,5 +1,6 @@
 import React from "react";
 import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { ActionButton, AppScreen, PageHeader, Panel, SectionTitle, ServiceTile } from "@afcon360/mobile-ui";
 
 const SITE = "https://www.pamoja.space";
