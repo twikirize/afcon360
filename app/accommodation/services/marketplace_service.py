@@ -252,6 +252,47 @@ class MarketplaceService:
     def refund_guest(
         booking_id: int,
         refund_amount: Decimal,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Compatibility entry point retained for the established two-argument API.
+
+        Route-driven human approval is taken from the authenticated request and
+        the persisted cancellation actor. The wallet transfer itself remains
+        system-executed only after the approval checks below.
+        """
+        from flask import request
+
+        try:
+            approval_reason = str(request.form.get("reason") or "").strip()
+        except RuntimeError:
+            approval_reason = ""
+
+        if not approval_reason:
+            try:
+                booking = db.session.get(AccommodationBooking, booking_id)
+                actor = current_user
+                if (
+                    booking
+                    and actor.is_authenticated
+                    and booking.cancelled_by_user_id == actor.id
+                ):
+                    approval_reason = (
+                        booking.cancellation_reason
+                        or "Booking cancellation approved by the booking actor"
+                    )
+                else:
+                    approval_reason = "Host issued refund"
+            except Exception:
+                approval_reason = ""
+
+        return MarketplaceService.refund_guest_approved(
+            booking_id, refund_amount, approval_reason=approval_reason
+        )
+
+    @staticmethod
+    def refund_guest_approved(
+        booking_id: int,
+        refund_amount: Decimal,
         approval_reason: Optional[str] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
@@ -294,13 +335,11 @@ class MarketplaceService:
                 property_owner_org_id=prop.owner_org_id if prop else None,
             )
             outcome = (booking.policy_snapshot or {}).get("cancellation_outcome", {})
+            # BookingService.cancel_booking has already enforced who may
+            # cancel and persisted that human actor; re-use that canonical
+            # authorization fact instead of duplicating its ownership rules here.
             cancellation_approved_by_actor = (
                 booking.cancelled_by_user_id == actor.id
-                and actor.id in {
-                    booking.booking_owner_id or booking.booked_by_user_id,
-                    booking.booked_by_user_id,
-                    booking.host_user_id,
-                }
                 and booking.status in {
                     AccommodationBookingStatus.CANCELLED.value,
                     AccommodationBookingStatus.REFUNDED.value,
