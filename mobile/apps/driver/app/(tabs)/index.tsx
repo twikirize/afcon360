@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import {
   ActionButton,
@@ -95,10 +95,21 @@ export default function DriverHome() {
 
   useEffect(() => {
     void load();
+
     // Polling is a fallback until a supported live-delivery channel is available.
-    // Keep the interval moderate so the dashboard does not over-poll the API.
-    const interval = setInterval(() => { void load(); }, 10000);
-    return () => clearInterval(interval);
+    // Do not keep polling while the app is backgrounded; refresh as soon as the
+    // driver returns so offers and trip state are current without wasting data.
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") void load();
+    });
+    const interval = setInterval(() => {
+      if (AppState.currentState === "active") void load();
+    }, 10000);
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
   }, [load]);
 
   async function toggleOnline() {
