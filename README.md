@@ -1,6 +1,6 @@
 # AFCON360 — Integrated Tournament Management Platform
 
-**Repository status:** Active development · **Updated:** 2026-10-25
+**Repository status:** Active development · **Updated:** 2026-11-06
 
 AFCON360 is a modular Flask platform for tournament operations, accommodation,
 transport, events, identity/KYC, wallet transactions, notifications, media, and
@@ -18,6 +18,7 @@ every environment.
 - [Running services](#running-services)
 - [Testing and verification](#testing-and-verification)
 - [Configuration](#configuration)
+- [Emergency: Owner MFA Lost](#emergency-owner-mfa-lost)
 - [Production database cutover and recovery](#production-database-cutover-and-recovery--25-october-2026)
 - [Documentation](#documentation)
 - [Adding or activating a database enum](#adding-or-activating-a-database-enum)
@@ -296,6 +297,97 @@ Start from `env.example`. Common settings include:
 
 Use environment-specific files for deployment overrides. Never place provider
 secrets, production passwords, or private keys in source control.
+
+## Emergency: Owner MFA Lost
+
+> **Break-glass procedure — authorized operator use only.** Use this only when the Owner has lost the authenticator device and has no usable MFA recovery codes, and the supported account-recovery path is unavailable. This temporarily removes the Owner's registered MFA factors. It is not a routine login workaround.
+
+Keep the global Owner MFA requirement enabled. Do not disable `REQUIRE_OWNER_MFA`, weaken the global security policy, reset the Owner's password, or clear account lockout fields as part of this procedure.
+
+Before starting:
+
+- Confirm that you are authorized to administer the production host and database. Record an incident/change reference and the reason for the emergency reset. Have a second authorized operator independently verify the target account and database when available.
+- Confirm the normal app recovery options are unavailable. A still-valid backup code should be used through the supported login and authenticator-replacement flow instead of this database procedure.
+- Confirm the production database and Docker container names. Do not run these commands against a local, test, restore-verification, or candidate database.
+
+### 1. Create and check a protected database backup
+
+Run on Server 1. This writes the archive outside the Git repository, restricts its file permissions, and checks that PostgreSQL can read the archive's table of contents:
+
+```bash
+sudo bash -euo pipefail -c '
+umask 077
+BACKUP_DIR=/opt/afcon360/backups
+mkdir -p "$BACKUP_DIR"
+BACKUP="$BACKUP_DIR/mfa_reset_$(date +%Y%m%d_%H%M%S).dump"
+docker exec afcon360_db pg_dump -U afcon_prod -d afcon360_prod -Fc > "$BACKUP"
+test -s "$BACKUP"
+docker exec -i afcon360_db pg_restore -l < "$BACKUP" >/dev/null
+printf "Readable MFA recovery archive: %s\n" "$BACKUP"
+'
+```
+
+Do not continue unless the command exits successfully and prints the archive path. Keep the backup access-restricted and outside source control. `pg_restore -l` proves that the archive header and table-of-contents can be read; it is **not** a full restore test.
+
+### 2. Inspect and positively identify the Owner account (read-only)
+
+```bash
+docker exec afcon360_db psql -X -v ON_ERROR_STOP=1 -U afcon_prod -d afcon360_prod -c "
+SELECT current_database() AS database_name, current_user AS database_role;
+SELECT id, username, mfa_enabled, failed_logins, locked_until
+FROM users
+WHERE id = 1;
+"
+```
+
+Proceed only when:
+
+- The database reported is exactly `afcon360_prod`.
+- Exactly one user row is returned.
+- The username and Owner role match the account whose MFA must be recovered.
+- The row's internal `users.id` has been independently confirmed.
+
+**The value `1` is the example target from this runbook, not a universal Owner ID.** If the verified Owner has a different internal ID, replace `1` with that confirmed ID in both statements in Step 3. Do not select an account merely because its ID is 1. If the identity or role is uncertain, stop.
+
+Also inspect `failed_logins` and `locked_until`. This MFA procedure does not clear a password lockout or change the password; resolve any separate lockout through its approved process.
+
+### 3. Clear the verified Owner's MFA factors
+
+Only after the backup and identity checks pass, run the transaction below. Replace `1` in both places only if Step 2 proved a different internal Owner ID:
+
+```bash
+docker exec -i afcon360_db psql -X -v ON_ERROR_STOP=1 -U afcon_prod -d afcon360_prod <<'SQL'
+BEGIN;
+UPDATE users
+SET mfa_enabled = false
+WHERE id = 1
+RETURNING id, mfa_enabled;
+
+DELETE FROM mfa_secrets
+WHERE user_id = 1;
+COMMIT;
+SQL
+```
+
+The delete removes the registered MFA factor records for that user, including the stored authenticator secret and backup codes. Confirm that the `UPDATE` returned the verified Owner row and review the `DELETE` row count. If the transaction reports an error or the output does not match the expected target, stop and investigate; do not repeat it blindly.
+
+Direct SQL bypasses the application's MFA audit helper. Record the operator, approver (if available), UTC time, incident reference, verified database and account, backup filename, and affected row counts in the protected incident record. Never put passwords, TOTP secrets, or recovery codes in that record.
+
+### 4. Sign in through a clean browser session
+
+Open a private/incognito browser window and sign in with the Owner's existing password. Complete only the MFA re-enrolment flow. When the global Owner MFA requirement is enabled, the application may direct the Owner to the restricted MFA setup page before allowing normal access; complete that setup rather than weakening the global policy.
+
+### 5. Re-enrol and verify MFA immediately
+
+1. Register the new authenticator device through the application's MFA setup page.
+2. Confirm the new authenticator with a current code; do not stop at merely displaying a QR code or secret.
+3. Generate new recovery codes and store them in two separate, approved secure locations (for example, a password manager and an offline protected copy). Do not store them in email, chat, source control, or this README.
+4. Sign out and perform a fresh login using the new authenticator code.
+5. Confirm the Owner account reports MFA enabled and the application accepts the new factor. Record the successful verification in the incident record.
+
+Do not leave the Owner account in a password-only state. If re-enrolment or verification fails, stop normal Owner work and continue through the approved incident-recovery process.
+
+---
 
 ## Production Database Cutover and Recovery — 25 October 2026
 

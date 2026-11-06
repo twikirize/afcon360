@@ -195,8 +195,10 @@ jobs:
       # These source-level checks deliberately run before migration replay.
       # They can still report useful code/template failures when an unrelated
       # migration prevents the database-backed regression suite from starting.
-      - name: Validate read-only Oracle release audit script syntax
-        run: bash -n scripts/ops/pre_release_readonly_audit.sh
+      - name: Validate read-only Oracle release audit and SMTP diagnostic scripts
+        run: |
+          bash -n scripts/ops/pre_release_readonly_audit.sh
+          python -m py_compile scripts/ops/send_smtp_test_email.py
 
       - name: Compile Python modules changed by the transport feature
         run: >-
