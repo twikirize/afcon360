@@ -133,6 +133,15 @@ def _redis():
         return None
 
 
+def _redis_required() -> bool:
+    """Whether deployed auth flows require the shared Redis store."""
+    try:
+        from flask import current_app
+        return bool(current_app and current_app.config.get("REDIS_REQUIRED", False))
+    except Exception:
+        return False
+
+
 def _encode(value: Any) -> bytes:
     return json.dumps(value).encode("utf-8")
 
@@ -153,14 +162,25 @@ def _decode(raw: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 def store_set(key: str, value: Any, ttl: Optional[int] = None) -> bool:
-    """Store *value* under *key*, expiring after *ttl* seconds."""
+    """Store *value* under *key*, expiring after *ttl* seconds.
+
+    Production auth state must be shared across web/worker processes. Do not
+    report successful OTP storage when required Redis is unavailable.
+    """
     client = _redis()
-    if client is not None:
-        try:
-            return bool(client.set(key, _encode(value), ex=ttl))
-        except Exception as e:
-            logger.warning("Redis SET failed for %s (%s); falling back to memory", key, e)
-    return _memory_store.set(key, value, ttl)
+    if client is None:
+        if _redis_required():
+            logger.error("Required Redis unavailable; refusing auth-state write for %s", key)
+            return False
+        return _memory_store.set(key, value, ttl)
+    try:
+        return bool(client.set(key, _encode(value), ex=ttl))
+    except Exception as e:
+        if _redis_required():
+            logger.error("Required Redis SET failed for %s: %s", key, e)
+            return False
+        logger.warning("Redis SET failed for %s (%s); falling back to memory", key, e)
+        return _memory_store.set(key, value, ttl)
 
 
 def store_set_if_absent(key: str, value: Any, ttl: Optional[int] = None) -> bool:
@@ -177,23 +197,37 @@ def store_set_if_absent(key: str, value: Any, ttl: Optional[int] = None) -> bool
 def store_get(key: str) -> Optional[Any]:
     """Return the value stored at *key*, or ``None`` if missing/expired."""
     client = _redis()
-    if client is not None:
-        try:
-            return _decode(client.get(key))
-        except Exception as e:
-            logger.warning("Redis GET failed for %s (%s); falling back to memory", key, e)
-    return _memory_store.get(key)
+    if client is None:
+        if _redis_required():
+            logger.error("Required Redis unavailable; refusing auth-state read for %s", key)
+            return None
+        return _memory_store.get(key)
+    try:
+        return _decode(client.get(key))
+    except Exception as e:
+        if _redis_required():
+            logger.error("Required Redis GET failed for %s: %s", key, e)
+            return None
+        logger.warning("Redis GET failed for %s (%s); falling back to memory", key, e)
+        return _memory_store.get(key)
 
 
 def store_delete(key: str) -> bool:
     """Delete *key*. Returns True when something was removed."""
     client = _redis()
-    if client is not None:
-        try:
-            return bool(client.delete(key))
-        except Exception as e:
-            logger.warning("Redis DEL failed for %s (%s); falling back to memory", key, e)
-    return _memory_store.delete(key)
+    if client is None:
+        if _redis_required():
+            logger.error("Required Redis unavailable; refusing auth-state delete for %s", key)
+            return False
+        return _memory_store.delete(key)
+    try:
+        return bool(client.delete(key))
+    except Exception as e:
+        if _redis_required():
+            logger.error("Required Redis DEL failed for %s: %s", key, e)
+            return False
+        logger.warning("Redis DEL failed for %s (%s); falling back to memory", key, e)
+        return _memory_store.delete(key)
 
 
 def store_incr(key: str, ttl: Optional[int] = None) -> int:
