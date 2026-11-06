@@ -131,8 +131,7 @@ class CommunicationSettingsService:
             db.session.add(setting)
         setting.enabled = enabled
         setting.updated_by = updated_by
-        if commit:
-            db.session.commit()
+        db.session.commit()
         return setting
 
     @classmethod
@@ -264,7 +263,8 @@ class CommunicationSettingsService:
         if description is not None:
             setting.description = description
         setting.updated_by = updated_by
-        db.session.commit()
+        if commit:
+            db.session.commit()
         return setting
 
     @classmethod
