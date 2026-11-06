@@ -321,6 +321,8 @@ class MarketplaceService:
 
             if commission.status == 'refunded':
                 return False, "Already refunded"
+            if commission.status != 'held':
+                return False, f"Refund cannot be issued from escrow while commission is {commission.status}"
             if refund_amount > Decimal(str(commission.total_amount or 0)):
                 return False, "Refund amount exceeds the amount held for this booking"
 
