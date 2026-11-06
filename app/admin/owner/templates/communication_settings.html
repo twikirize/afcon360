@@ -16,6 +16,10 @@
     <strong>One shared configuration.</strong> Once saved here, the SMTP settings are encrypted in PostgreSQL and are read by both Server 1 web processes and Server 2 Celery workers. Password fields are write-only; leaving them blank preserves the stored value.
   </div>
 
+  <div class="alert alert-warning" id="environment-migration-note" role="alert" hidden>
+    <strong>One-time environment credential migration.</strong> The current SMTP username and/or password comes from the server environment and is hidden here. Before the first Owner-managed save, re-enter every configured credential in its write-only field. Once the database row exists, it becomes authoritative for both web and Celery; blank fields cannot carry over credentials from the environment. To deliberately remove SMTP authentication instead, select the explicit clear-auth option.
+  </div>
+
   <div class="card shadow-sm mb-4">
     <div class="card-header">
       <h2 class="h5 mb-0">SMTP provider</h2>
@@ -137,6 +141,10 @@
     const data = await requestJson(settingsUrl, { method: 'GET', headers: {} });
     document.getElementById('config-source').textContent =
       data.source === 'database' ? 'Owner-managed / encrypted' : 'Environment fallback';
+    document.getElementById('environment-migration-note').hidden = !(
+      data.source === 'environment' &&
+      (data.smtp_user_configured || data.smtp_password_configured)
+    );
     document.getElementById('smtp-host').value = data.smtp_host || '';
     document.getElementById('smtp-port').value = data.smtp_port || 587;
     document.getElementById('default-sender').value = data.default_sender || '';
