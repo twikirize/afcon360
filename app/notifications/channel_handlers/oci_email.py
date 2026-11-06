@@ -22,8 +22,10 @@ class OCIEmailHandler(BaseChannelHandler):
         self.compartment_id = self._get_config('OCI_EMAIL_COMPARTMENT_ID')
         self.sender = self._get_config('OCI_EMAIL_SENDER_ADDRESS', 'noreply@pamoja.space')
         self.use_suppression = self._get_config('OCI_EMAIL_SUPPRESSION_LIST', True, 'bool')
+        # Credential resolution can perform network I/O against OCI instance
+        # metadata. Keep it lazy so importing notifications never blocks app
+        # startup on non-OCI hosts or in tests without OCI configuration.
         self._email_client = None
-        self._init_client()
 
     def _get_config(self, key: str, default=None, value_type: str = 'str'):
         """Read from SystemConfig (DB) first, then env, then default."""
@@ -87,7 +89,9 @@ class OCIEmailHandler(BaseChannelHandler):
 
     @property
     def email_client(self):
-        if self._email_client is None:
+        # No compartment means OCI email is not configured. Do not probe
+        # instance metadata or require a local OCI config file in that case.
+        if self._email_client is None and self.compartment_id:
             self._init_client()
         return self._email_client
 
