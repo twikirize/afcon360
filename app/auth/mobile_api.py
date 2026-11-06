@@ -1899,6 +1899,7 @@ def mobile_wallet_transfer():
             note=note or None,
             metadata={"source": "native_mobile"},
             pin=pin,
+            authorized_user_id=int(user.id),
         )
     except TransactionPINError as exc:
         return _error("transaction_pin_invalid", str(exc), 403)
