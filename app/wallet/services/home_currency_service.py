@@ -34,6 +34,10 @@ def get_accepted_wallet_currencies() -> list[str]:
 
     method = PaymentMethodConfig.query.filter_by(method_id="wallet").first()
     if method is not None:
+        if not method.is_enabled or not method.is_active:
+            raise ValueError(
+                "AFCON360 Wallet is temporarily unavailable for new accounts."
+            )
         configured = method.supported_currencies or []
     else:
         # Explicit deployment override is useful during bootstrap, but an
@@ -66,39 +70,52 @@ def get_accepted_wallet_currencies() -> list[str]:
 
 
 def _jurisdiction_catalogue() -> dict[str, dict]:
-    """Return the jurisdiction registry without creating or seeding records."""
-    try:
-        from app.compliance.aml_regulatory_models import JurisdictionProfile
+    """Return seeded jurisdiction defaults overlaid with active DB policy rows.
 
-        rows = JurisdictionProfile.query.filter_by(is_active=True).all()
-        if rows:
-            return {
-                str(row.country_code).strip().upper(): {
-                    "country_name": row.country_name,
-                    "currency_code": str(row.currency_code or "").strip().upper(),
-                }
-                for row in rows
-            }
-    except Exception:
-        # A missing optional AML catalogue must not trigger a database write.
-        current_app.logger.debug(
-            "AML jurisdiction rows are unavailable; using the canonical seed catalogue",
-            exc_info=True,
-        )
-
+    This is a read-only lookup. It never seeds or mutates jurisdiction data.
+    A partially populated database must not hide countries still present in
+    the canonical jurisdiction catalogue.
+    """
+    catalogue: dict[str, dict] = {}
     try:
         from app.compliance.aml_regulatory_service import _JURISDICTIONS
 
-        return {
+        catalogue.update({
             str(code).strip().upper(): {
                 "country_name": str(data.get("country_name") or ""),
                 "currency_code": str(data.get("currency_code") or "").strip().upper(),
             }
             for code, data in _JURISDICTIONS.items()
-        }
+        })
     except Exception:
-        current_app.logger.exception("Canonical AML jurisdiction catalogue is unavailable")
-        return {}
+        current_app.logger.warning(
+            "Canonical AML jurisdiction seed catalogue is unavailable",
+            exc_info=True,
+        )
+
+    try:
+        from app.compliance.aml_regulatory_models import JurisdictionProfile
+
+        rows = JurisdictionProfile.query.filter_by(is_active=True).all()
+        for row in rows:
+            code = str(row.country_code or "").strip().upper()
+            if not code:
+                continue
+            catalogue[code] = {
+                "country_name": str(row.country_name or catalogue.get(code, {}).get("country_name") or ""),
+                "currency_code": str(
+                    row.currency_code or catalogue.get(code, {}).get("currency_code") or ""
+                ).strip().upper(),
+            }
+    except Exception:
+        # A missing optional AML table must not trigger a database write or
+        # erase the canonical static reference data already loaded.
+        current_app.logger.debug(
+            "AML jurisdiction database rows are unavailable",
+            exc_info=True,
+        )
+
+    return catalogue
 
 
 def normalize_country_code(country: Any) -> Optional[str]:
