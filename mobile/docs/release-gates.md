@@ -16,7 +16,8 @@ A release advances only when evidence for its gate is recorded. CI and source in
 ## Gate 1 — backend implementation
 
 - [x] Native password sign-in reuses canonical Auth credential and lockout logic.
-- [x] TOTP and backup-code MFA verification uses existing Auth routines. SMS MFA remains unsupported until the canonical Auth verifier supports it.
+- [x] TOTP and backup-code MFA verification uses existing Auth routines.
+- [ ] SMS MFA: server follow-up PR #41 adds verified-phone delivery, one-time challenge verification and atomic OTP consumption. Await server CI and a real provider-delivery test with a verified test number before treating this gate as complete.
 - [x] Short-lived bearer access tokens, one-time refresh rotation, replay detection, device revocation, logout and /me are implemented.
 - [x] Bearer requests pin Flask-Login identity to the token owner; protected operations resolve the user/driver from server-side records.
 - [x] User place search, signed fare discovery, Wallet-certified payment options and request-first ride creation use GEO/Transport/Wallet services.
