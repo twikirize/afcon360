@@ -6,7 +6,6 @@ const root = path.resolve(import.meta.dirname, "..");
 const approved = [
   ["apps/user/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")'],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/tourism")'],
-  ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/events")'],
   ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")'],
   ["apps/user/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)"],
   ["apps/driver/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)"],
@@ -14,6 +13,8 @@ const approved = [
 ];
 
 const nativeInternalRoutes = [
+  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(tabs)/events" as never)'],
+  ["apps/user/app/(tabs)/_layout.tsx", 'name="events" options={{ href: null }}'],
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(tabs)/stays" as never)'],
   ["apps/user/app/(tabs)/_layout.tsx", 'name="stays" options={{ href: null }}'],
 ];
