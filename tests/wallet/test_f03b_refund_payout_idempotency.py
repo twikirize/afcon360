@@ -416,6 +416,37 @@ class TestEscrowHumanAuthorization:
         assert "authorised" in error.lower()
         assert _count_transfers_for(held_booking, "refund") == 0
 
+    def test_booking_owner_approves_policy_calculated_refund_without_wallet_pin(
+        self, app, guest, held_booking
+    ):
+        with app.app_context():
+            booking = db.session.get(AccommodationBooking, held_booking)
+            booking.status = AccommodationBookingStatus.REFUNDED.value
+            booking.cancelled_by_user_id = guest["user_id"]
+            booking.policy_snapshot = {
+                "cancellation_outcome": {"refund": "100.00"}
+            }
+            db.session.commit()
+
+        with _login_as(app, guest["user_id"]):
+            ok, error = MarketplaceService.refund_guest(
+                held_booking,
+                Decimal("100.00"),
+                approval_reason="Booking owner requested cancellation",
+            )
+
+        assert ok, error
+        assert _count_transfers_for(held_booking, "refund") == 1
+        refund_tx = (
+            db.session.query(TransactionModel)
+            .filter_by(client_request_id=REFUND_KEY_TEMPLATE.format(booking_id=held_booking))
+            .first()
+        )
+        assert refund_tx.tx_metadata["approved_by_user_id"] == guest["user_id"]
+        assert refund_tx.tx_metadata["approval_source"] == "booking_cancellation"
+        commission = _commission(app, held_booking)
+        assert commission.extra_data["refund_approval"]["approved_by_user_id"] == guest["user_id"]
+
 
 class TestPayoutIdempotency:
     def test_sequential_duplicate_payout_single_transfer(
