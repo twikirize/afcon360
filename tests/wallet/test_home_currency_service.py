@@ -166,9 +166,10 @@ def test_address_kyc_country_precedes_profile_country(app, monkeypatch):
         def all(self):
             return [record]
 
-    _policy(
-        monkeypatch,
-        {"country_code": "TZ", "country_name": "Tanzania", "source": "approved_address_kyc"},
+    monkeypatch.setattr(
+        home_currency_service,
+        "_jurisdiction_catalogue",
+        lambda: CATALOGUE,
     )
     monkeypatch.setattr(kyc_models.KycRecord, "query", FakeKycQuery())
 
