@@ -701,6 +701,12 @@ class _NativeWalletCreateSession:
     def begin(self):
         return _NativeWalletCreateTransaction()
 
+    def get(self, model, user_id):
+        from app.identity.models.user import User
+        if model is User and int(user_id) == int(self.user.id):
+            return self.user
+        return None
+
     def query(self, model):
         from app.identity.models.user import User
         if model is User:
@@ -712,6 +718,9 @@ class _NativeWalletCreateSession:
 
     def flush(self):
         self.flushed = True
+
+    def commit(self):
+        self.committed = True
 
 
 def test_native_wallet_create_uses_explicit_accepted_currency_not_usd(client, monkeypatch):
@@ -725,6 +734,7 @@ def test_native_wallet_create_uses_explicit_accepted_currency_not_usd(client, mo
         public_id="wallet-create-user",
         is_active=True,
         is_deleted=False,
+        email_verified=True,
     )
     fake_session = _NativeWalletCreateSession(user)
 
@@ -775,6 +785,7 @@ def test_native_wallet_create_reuses_same_wallet_and_rejects_currency_replacemen
         public_id="wallet-existing-user",
         is_active=True,
         is_deleted=False,
+        email_verified=True,
     )
     existing = SimpleNamespace(
         currency="EUR",
