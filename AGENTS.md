@@ -20,8 +20,8 @@ the work item is BLOCKED, not PASS. Partial is BLOCKED.
 
 **Read first, in this order, before responding to any task:**
 1. `AGENTS.md` (this file)
-2. `docs/transport/02-OPERATING-SYSTEM.md` (the operating system)
-3. The work item's contract file: `docs/transport/nodes/<node-id>-contract.md`
+2. `docs/engineering/02-OPERATING-SYSTEM.md` (the shared operating system)
+3. The work item's contract file: `docs/<domain>/nodes/<node-id>-contract.md` (resolve `<domain>` using Operating System §3)
 
 ---
 
@@ -29,11 +29,13 @@ the work item is BLOCKED, not PASS. Partial is BLOCKED.
 
 Every work item produces exactly three files:
 
-1. `docs/transport/nodes/<node-id>-contract.md` — written by the human, before any code
-2. `docs/transport/nodes/<node-id>-evidence.md` — written by the agent, after the human confirms PASS
-3. `docs/transport/nodes/<node-id>-record.md` — written by the agent, after the human confirms PASS
+1. `docs/<domain>/nodes/<node-id>-contract.md` — written by the human, before any code
+2. `docs/<domain>/nodes/<node-id>-evidence.md` — written by the agent, after the human confirms PASS
+3. `docs/<domain>/nodes/<node-id>-record.md` — written by the agent, after the human confirms PASS
 
 The register is the HUMAN's step. The agent never writes the register.
+The domain is selected by the behavior's owning bounded context, not by the first file inspected. Existing historical node files stay at their recorded paths unless a separate human-approved relocation is made.
+
 
 ---
 
