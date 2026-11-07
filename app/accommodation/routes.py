@@ -568,8 +568,14 @@ def admin_analytics():
     """Platform-wide accommodation analytics dashboard."""
     from sqlalchemy import func
 
-    # Revenue by month (last 12 months)
-    today = date.today()
+    # Platform-wide revenue uses the explicitly configured report calendar,
+    # not the application host's operating-system date.
+    from app.utils.time_policy import require_iana_timezone
+    report_zone = require_iana_timezone(
+        current_app.config.get("ACCOMMODATION_REPORT_TIMEZONE", "UTC"),
+        field="accommodation report timezone",
+    )
+    today = datetime.now(report_zone).date()
     monthly_revenue = []
     for i in range(11, -1, -1):
         month_start = (today.replace(day=1) - timedelta(days=30 * i)).replace(day=1)
@@ -1273,8 +1279,18 @@ def guest_detail(identifier):
             # ============================================================
             # VALIDATION: Past date check for display
             # ============================================================
-            today = date.today()
-            if check_in_date < today:
+            try:
+                today = property_model.local_today() if property_model else None
+            except ValueError:
+                today = None
+            if today is None:
+                availability_status = "timezone_unconfigured"
+                flash(
+                    "This property needs an IANA timezone before availability can be confirmed. "
+                    "Please contact the host or accommodation support.",
+                    "warning",
+                )
+            elif check_in_date < today:
                 availability_status = "past_date"
                 flash('Please select a future date for your stay.', 'warning')
             elif check_out_date <= check_in_date:

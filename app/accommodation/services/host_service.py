@@ -340,20 +340,31 @@ class HostService:
         if owner_org_id:
             bookings_query = bookings_query.filter(Property.owner_org_id == owner_org_id)
 
-        # Upcoming bookings (next 10)
-        upcoming_bookings = (
+        # Calendar dates are evaluated at each property's location. Query a
+        # two-day overlap around the process date, then apply the exact local
+        # date per property; the machine timezone must not decide check-in day.
+        candidate_upcoming = (
             bookings_query.filter(
                 AccommodationBooking.status.in_(
-                    [AccommodationBookingStatus.CONFIRMED.value, 
+                    [AccommodationBookingStatus.CONFIRMED.value,
                      AccommodationBookingStatus.PENDING.value,
                      AccommodationBookingStatus.PENDING_APPROVAL.value]
                 ),
-                AccommodationBooking.check_in >= date.today(),
+                AccommodationBooking.check_in >= date.today() - timedelta(days=2),
             )
             .order_by(AccommodationBooking.check_in.asc())
-            .limit(10)
             .all()
         )
+        upcoming_bookings = []
+        for candidate in candidate_upcoming:
+            try:
+                property_today = candidate.accommodation_property.local_today()
+            except (AttributeError, ValueError):
+                continue
+            if candidate.check_in >= property_today:
+                upcoming_bookings.append(candidate)
+            if len(upcoming_bookings) >= 10:
+                break
 
         # Recent bookings (last 10)
         recent_bookings = (
