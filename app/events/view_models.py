@@ -112,7 +112,14 @@ class EventRegistrationViewModel:
 
         # ── Derived registration state flags ──────────────────────────────
         self.is_published = self.status == EventStatus.PUBLISHED.value
-        self.is_registration_open = self.is_published and not self.is_expired
+        try:
+            event.business_timezone()
+            venue_calendar_ready = True
+        except (AttributeError, ValueError):
+            venue_calendar_ready = False
+        self.is_registration_open = (
+            self.is_published and venue_calendar_ready and not self.is_expired
+        )
 
     @property
     def is_expired(self) -> bool:

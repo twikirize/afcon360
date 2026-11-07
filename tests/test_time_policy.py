@@ -91,3 +91,68 @@ def test_event_registration_deadline_is_interpreted_in_venue_timezone():
         "2026-11-07T12:00", "Africa/Kampala"
     )
     assert close_at == datetime(2026, 11, 7, 9, tzinfo=timezone.utc)
+
+def test_event_expiration_uses_the_venue_calendar_day():
+    from types import SimpleNamespace
+    from app.events.services import EventService
+
+    event = SimpleNamespace(
+        end_date=date(2026, 11, 7),
+        local_today=lambda: date(2026, 11, 7),
+    )
+    assert EventService.is_event_expired(event) is False
+    event.local_today = lambda: date(2026, 11, 8)
+    assert EventService.is_event_expired(event) is True
+
+
+def test_event_availability_fails_closed_when_venue_timezone_is_unresolved(monkeypatch):
+    from types import SimpleNamespace
+    from app.events.services import EventService
+    from app.events.constants import RegistrationAvailability
+
+    class FakeColumn:
+        @staticmethod
+        def in_(values):
+            return tuple(values)
+
+    class FakeQuery:
+        def filter(self, *args, **kwargs):
+            return self
+
+        @staticmethod
+        def count():
+            return 0
+
+    class FakeRegistration:
+        event_id = object()
+        status = FakeColumn()
+        query = FakeQuery()
+
+    monkeypatch.setattr(
+        EventService,
+        "_get_registration_class",
+        staticmethod(lambda: FakeRegistration),
+    )
+    event = SimpleNamespace(
+        id=1,
+        start_date=date(2026, 11, 7),
+        end_date=date(2026, 11, 8),
+        business_timezone=lambda: (_ for _ in ()).throw(
+            ValueError("venue timezone is not configured")
+        ),
+        registration_opens_at=None,
+        registration_closes_at=None,
+        status="published",
+        registration_required=True,
+        max_capacity=0,
+        ticket_types=[],
+        currency="USD",
+    )
+
+    result = EventService._availability_snapshot(
+        event, datetime(2026, 11, 7, 12, tzinfo=timezone.utc)
+    )
+
+    assert result["state"] == RegistrationAvailability.CLOSED.value
+    assert result["reason"] == "timezone_unconfigured"
+

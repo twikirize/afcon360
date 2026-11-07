@@ -289,7 +289,15 @@ class EventService:
             event_phase = "live" if event.start_date and event.start_date <= event_today else "upcoming"
 
         opens_at = cls._as_utc(getattr(event, "registration_opens_at", None))
-        closes_at = cls._registration_close_at(event)
+        if venue_calendar_ready:
+            closes_at = cls._registration_close_at(event)
+        else:
+            # Do not compute the default venue-midnight cutoff without a
+            # resolvable venue calendar. An explicit UTC instant remains
+            # readable, but the availability state below stays closed.
+            closes_at = cls._as_utc(
+                getattr(event, "registration_closes_at", None)
+            )
         total_statuses = ("confirmed", "checked_in")
         Registration = cls._get_registration_class()
         total_regs = Registration.query.filter(

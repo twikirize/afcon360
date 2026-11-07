@@ -12,6 +12,12 @@ on:
       - docker-compose.yml
       - .codebuddy/docker-compose.prod.yml
       - tests/test_database_timezone_policy.py
+      - tests/test_time_policy.py
+      - app/events/models.py
+      - app/events/services.py
+      - app/events/view_models.py
+      - app/utils/time_policy.py
+      - app/utils/location_timezone.py
       - .github/workflows/postgresql-utc-session-policy.yml
   push:
     branches:
@@ -99,3 +105,6 @@ jobs:
 
       - name: Run focused PostgreSQL UTC policy regression tests
         run: python -m pytest --noconftest -q tests/test_database_timezone_policy.py
+
+      - name: Run focused calendar and event timezone regressions
+        run: python -m pytest --noconftest -q tests/test_time_policy.py
