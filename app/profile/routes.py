@@ -246,6 +246,24 @@ def edit_profile():
             'email': (request.form.get('email') or '').strip() or None,
         }
 
+        # Display preference is deliberately separate from business-zone
+        # authority and remains editable after identity verification.
+        preferred_timezone_value = None
+        if "preferred_timezone" in request.form:
+            preferred_timezone_raw = (
+                request.form.get("preferred_timezone") or ""
+            ).strip()
+            if preferred_timezone_raw:
+                try:
+                    from app.utils.time_policy import require_iana_timezone
+                    preferred_timezone_value = require_iana_timezone(
+                        preferred_timezone_raw,
+                        field="preferred timezone",
+                    ).key
+                except ValueError as exc:
+                    flash(str(exc), "danger")
+                    return redirect(url_for("profile.edit_profile"))
+
         # Canonical date_of_birth write path (single identity entry).
         # Parsed to a real date so the immutable firewall compares like values
         # and the model validator receives a date, not a raw form string.
@@ -286,6 +304,9 @@ def edit_profile():
         for field, value in allowed_changes.items():
             if value is not None:
                 setattr(profile, field, value)
+
+        if "preferred_timezone" in request.form:
+            profile.preferred_timezone = preferred_timezone_value
 
         if blocked_fields:
             from app.audit.forensic_audit import ForensicAuditService

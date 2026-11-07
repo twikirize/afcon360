@@ -601,10 +601,13 @@ def get_user_limits(user_identifier) -> Dict[str, Any]:
             daily_total = 0
             monthly_total = 0
     except AttributeError as e:
-        # Log error but continue without usage tracking
-        current_app.logger.warning(f"Could not calculate transaction usage for user {user_identifier}: {e}")
-        daily_total = 0
-        monthly_total = 0
+        # Attribute/configuration failures are not evidence of zero usage.
+        current_app.logger.error(
+            f"Could not calculate KYC usage for user {user_identifier}; "
+            f"failing closed: {e}"
+        )
+        daily_total = limits.get("daily") or 0
+        monthly_total = limits.get("monthly") or 0
     except Exception as e:
         # A calendar/configuration/database failure must never report zero usage
         # and accidentally widen a regulated wallet limit. Fail closed for the

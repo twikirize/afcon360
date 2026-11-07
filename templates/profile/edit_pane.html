@@ -197,6 +197,29 @@
         </div>
       </div>
 
+
+      {# ── Personal display timezone ── #}
+      <div class="edit-card">
+        <div class="edit-card-head">
+          <span class="edit-card-title"><i class="fas fa-clock"></i> Time display</span>
+        </div>
+        <div class="edit-card-body">
+          <div class="field-group">
+            <label for="preferred_timezone">Preferred timezone</label>
+            <input type="text" id="preferred_timezone" name="preferred_timezone"
+                   placeholder="e.g. Africa/Kampala"
+                   value="{{ profile.preferred_timezone or '' if profile else '' }}"
+                   autocomplete="off">
+            <div class="field-hint">
+              Used for personal activity history. Enter an IANA name such as
+              Africa/Kampala or America/New_York. Leave blank to use your browser
+              timezone. Pickup, property and event times continue to use their
+              own business location.
+            </div>
+          </div>
+        </div>
+      </div>
+
       {# ── AFCON preferences ── #}
       <div class="edit-card">
         <div class="edit-card-head">

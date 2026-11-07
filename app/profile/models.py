@@ -71,6 +71,8 @@ class UserProfile(BaseModel):
     country = Column(String(64), nullable=True)
     phone_number = Column(String(32), nullable=True)
     email = Column(String(128), nullable=True)
+    # User display preference only; never used for business scheduling.
+    preferred_timezone = Column(String(64), nullable=True)
 
     # ── Fan / tournament identity (optional, tournament skin uses these) ──
     fan_team = Column(String(64), nullable=True, index=True)
@@ -294,6 +296,15 @@ class UserProfile(BaseModel):
         if id_type and id_type not in IDType.values():
             raise ValueError(f"Invalid id_type. Must be one of: {IDType.values()}")
         return id_type
+
+    @validates("preferred_timezone")
+    def validate_preferred_timezone(self, key, value):
+        if value is None or not str(value).strip():
+            return None
+        from app.utils.time_policy import require_iana_timezone
+        return require_iana_timezone(
+            str(value).strip(), field="preferred_timezone"
+        ).key
 
     @validates("email")
     def validate_email(self, key, email):

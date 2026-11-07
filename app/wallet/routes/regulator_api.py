@@ -250,6 +250,12 @@ def get_compliance_report(report_type):
         
         return jsonify(result)
         
+    except ValueError as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "error_code": "INVALID_REPORT_TIMEZONE_OR_PERIOD",
+        }), 400
     except Exception as e:
         current_app.logger.error(f"Get compliance report error: {e}")
         return jsonify({
