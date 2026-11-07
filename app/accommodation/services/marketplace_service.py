@@ -322,8 +322,16 @@ class MarketplaceService:
         # platform ledger payment by the booking's payer for this booking.
         if booking.wallet_txn_id:
             try:
-                original = TransactionModel.query.filter_by(id=booking.wallet_txn_id).first()
+                from uuid import UUID
+                original_transaction_id = UUID(str(booking.wallet_txn_id))
+                original = TransactionModel.query.filter_by(
+                    id=original_transaction_id
+                ).first()
+            except (ValueError, TypeError, AttributeError):
+                original = None
             except Exception:
+                # A failed read is not permission to refund. The missing
+                # transaction is converted into a review flag below.
                 original = None
             original_status = getattr(getattr(original, "status", None), "value", getattr(original, "status", None))
             original_metadata = dict(getattr(original, "tx_metadata", None) or {}) if original else {}
