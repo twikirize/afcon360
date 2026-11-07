@@ -453,6 +453,50 @@ class MarketplaceService:
         )
 
     @staticmethod
+    def _is_independent_refund_reviewer(booking, reviewer_user_id, workflow=None) -> bool:
+        """Reject booking parties and provider-side property managers as reviewers."""
+        workflow = workflow or {}
+        prohibited_user_ids = {
+            booking.cancelled_by_user_id,
+            booking.booked_by_user_id,
+            booking.guest_user_id,
+            booking.booking_owner_id,
+            booking.primary_guest_id,
+            booking.host_user_id,
+            workflow.get("requested_by_user_id"),
+        }
+        if reviewer_user_id in prohibited_user_ids:
+            return False
+
+        prop = booking.accommodation_property
+        if not prop:
+            return False
+        if prop.owner_user_id and reviewer_user_id == prop.owner_user_id:
+            return False
+
+        if prop.owner_org_id:
+            try:
+                from app.identity.models.organisation_member import OrganisationMember
+
+                member = OrganisationMember.query.filter_by(
+                    user_id=reviewer_user_id,
+                    organisation_id=prop.owner_org_id,
+                    is_active=True,
+                    is_deleted=False,
+                ).first()
+            except Exception:
+                # Fail closed if provider membership cannot be checked.
+                logger.exception(
+                    "Could not verify provider-side refund reviewer membership for booking %s",
+                    booking.id,
+                )
+                return False
+            if member and member.has_permission("org.accommodation.manage"):
+                return False
+
+        return True
+
+    @staticmethod
     def _refund_screening_flags(booking, refund_amount, commission):
         """Return machine-detected risks that prevent automatic settlement."""
         from app.wallet.models.transaction import TransactionModel
@@ -970,15 +1014,13 @@ class MarketplaceService:
                 return False, "Already refunded"
             if workflow.get("state") != "pending_human_review":
                 return False, "This refund is not awaiting human review"
-            prohibited_actors = {
-                booking.cancelled_by_user_id,
-                booking.booked_by_user_id,
-                booking.guest_user_id,
-                booking.host_user_id,
-                workflow.get("requested_by_user_id"),
-            }
-            if actor.id in prohibited_actors:
-                return False, "The cancellation actor, guest, requester or host cannot approve this refund"
+            if not MarketplaceService._is_independent_refund_reviewer(
+                booking, actor.id, workflow
+            ):
+                return False, (
+                    "The cancellation actor, guest, booking owner, requester, host or "
+                    "property-side manager cannot approve this refund"
+                )
 
             amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
             if amount <= 0:
@@ -1182,14 +1224,13 @@ class MarketplaceService:
                 return False, "Refund workflow signature failed; do not reject until the case is safely resubmitted and reviewed"
             if workflow.get("state") != "pending_human_review":
                 return False, "This refund is not awaiting human review"
-            if reviewer_user_id in {
-                booking.cancelled_by_user_id,
-                booking.booked_by_user_id,
-                booking.guest_user_id,
-                booking.host_user_id,
-                workflow.get("requested_by_user_id"),
-            }:
-                return False, "The cancellation actor, guest, requester or host cannot reject this review as the platform reviewer"
+            if not MarketplaceService._is_independent_refund_reviewer(
+                booking, reviewer_user_id, workflow
+            ):
+                return False, (
+                    "The cancellation actor, guest, booking owner, requester, host or "
+                    "property-side manager cannot reject this review as the platform reviewer"
+                )
             workflow.update({
                 "state": "rejected",
                 "rejected_by_user_id": reviewer_user_id,
@@ -1264,15 +1305,15 @@ class MarketplaceService:
                 return False, "This refund is not awaiting external payment execution"
             if not workflow.get("approved_by_user_id") or not workflow.get("approval_reason"):
                 return False, "The human approval record is incomplete"
-            if reviewer_user_id in {
-                workflow.get("approved_by_user_id"),
-                workflow.get("requested_by_user_id"),
-                booking.cancelled_by_user_id,
-                booking.booked_by_user_id,
-                booking.guest_user_id,
-                booking.host_user_id,
-            }:
+            if reviewer_user_id == workflow.get("approved_by_user_id"):
                 return False, "A different platform administrator must verify external execution"
+            if not MarketplaceService._is_independent_refund_reviewer(
+                booking, reviewer_user_id, workflow
+            ):
+                return False, (
+                    "The cancellation actor, guest, booking owner, requester, host or "
+                    "property-side manager cannot verify external execution"
+                )
             amount = Decimal(str(amount)).quantize(Decimal("0.01"))
             if amount <= 0 or amount > Decimal(str(booking.amount_paid or 0)):
                 return False, "Verified provider refund must be positive and no greater than the amount collected"
