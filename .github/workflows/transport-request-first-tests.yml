@@ -217,6 +217,9 @@ jobs:
           app/tasks/cleanup.py
           app/tasks/accommodation_reminders.py
           app/accommodation/services/availability_service.py
+          app/accommodation/services/booking_service.py
+          app/accommodation/services/marketplace_service.py
+          app/accommodation/models/booking.py
           app/notifications/tasks.py
           app/notifications/services.py
           app/notifications/events/tasks.py
