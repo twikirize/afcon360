@@ -141,7 +141,7 @@ def test_driver_map_demand_filter_uses_only_real_aggregated_request_counts():
     assert "if (count >= 10) return 'high';" in adapter
     assert "if (count >= 6) return 'medium';" in adapter
     assert "return 'low';" in adapter
-    assert "item.request_count" in adapter
+    assert "cell.request_count" in adapter
     assert "container.dataset.demandUrl" in adapter
 
 def test_csrf_refresh_does_not_rotate_session_seed():
