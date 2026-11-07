@@ -808,6 +808,7 @@ class MarketplaceService:
         from sqlalchemy import select
         from app.accommodation.services.identity_service import AccommodationIdentityService
         from app.identity.models.user import User
+        from flask_login import current_user
 
         try:
             booking = db.session.execute(
@@ -818,6 +819,12 @@ class MarketplaceService:
             if not booking:
                 return False, "Booking not found"
             actor = db.session.get(User, requested_by_user_id)
+            if (
+                not current_user
+                or not current_user.is_authenticated
+                or current_user.id != requested_by_user_id
+            ):
+                return False, "The refund requester must be the authenticated property manager"
             prop = booking.accommodation_property
             if not actor or not AccommodationIdentityService.can_manage_property(
                 actor,
@@ -832,14 +839,25 @@ class MarketplaceService:
             if amount < 0 or amount > Decimal(str(booking.amount_paid or 0)):
                 return False, "Requested refund must not exceed the confirmed amount paid"
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            workflow_signature_valid = MarketplaceService.verify_refund_workflow(
+                booking, workflow
+            )
             if workflow.get("state") in {
                 "pending_human_review",
                 "approved_external_execution_pending",
                 "approved_recovery_required",
                 "refunded",
                 "partially_refunded",
-            }:
+            } and workflow_signature_valid:
                 return False, "A refund review or settlement is already active for this booking"
+            if not workflow_signature_valid:
+                workflow["risk_flags"] = list(dict.fromkeys(
+                    list(workflow.get("risk_flags") or [])
+                    + ["refund_workflow_integrity_failed"]
+                ))
+                workflow["integrity_review_reason"] = (
+                    "Previous refund workflow signature was invalid; provider request resubmitted for review"
+                )
             workflow.update({
                 "state": "pending_human_review",
                 "proposed_amount": str(amount),
@@ -903,6 +921,8 @@ class MarketplaceService:
                 return False, "Booking not found"
 
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            if not MarketplaceService.verify_refund_workflow(booking, workflow):
+                return False, "Refund workflow signature failed; do not approve until the case is safely resubmitted and reviewed"
             if workflow.get("state") in {"refunded", "partially_refunded"}:
                 return False, "Already refunded"
             if workflow.get("state") != "pending_human_review":
@@ -1023,10 +1043,17 @@ class MarketplaceService:
         """Record a human rejection without changing the original payment."""
         from app.auth.helpers import has_global_role
         from app.identity.models.user import User
+        from flask_login import current_user
         from sqlalchemy import select
 
         try:
             actor = db.session.get(User, reviewer_user_id)
+            if (
+                not current_user
+                or not current_user.is_authenticated
+                or current_user.id != reviewer_user_id
+            ):
+                return False, "The refund reviewer must be the authenticated platform administrator"
             if not actor or not has_global_role(
                 actor, "admin", "super_admin", "owner", "accommodation_admin"
             ):
@@ -1042,6 +1069,8 @@ class MarketplaceService:
             if not booking:
                 return False, "Booking not found"
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            if not MarketplaceService.verify_refund_workflow(booking, workflow):
+                return False, "Refund workflow signature failed; do not reject until the case is safely resubmitted and reviewed"
             if workflow.get("state") != "pending_human_review":
                 return False, "This refund is not awaiting human review"
             if reviewer_user_id in {
@@ -1088,11 +1117,18 @@ class MarketplaceService:
         """Record verified completion by the original payment channel."""
         from app.auth.helpers import has_global_role
         from app.identity.models.user import User
+        from flask_login import current_user
         from app.accommodation.models.booking import AccommodationBookingStatus, AccommodationPaymentStatus
         from app.accommodation.state_machine.booking_states import BookingStateMachine
 
         try:
             actor = db.session.get(User, reviewer_user_id)
+            if (
+                not current_user
+                or not current_user.is_authenticated
+                or current_user.id != reviewer_user_id
+            ):
+                return False, "The execution verifier must be the authenticated platform administrator"
             if not actor or not has_global_role(
                 actor, "admin", "super_admin", "owner", "accommodation_admin"
             ):
@@ -1109,6 +1145,8 @@ class MarketplaceService:
             if not booking:
                 return False, "Booking not found"
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            if not MarketplaceService.verify_refund_workflow(booking, workflow):
+                return False, "The external refund approval record failed its signature check"
             if workflow.get("state") != "approved_external_execution_pending":
                 return False, "This refund is not awaiting external payment execution"
             if not workflow.get("approved_by_user_id") or not workflow.get("approval_reason"):
