@@ -40,6 +40,104 @@ class MarketplaceService:
     DEFAULT_COMMISSION_PCT = Decimal('10.0')
 
     @staticmethod
+    def _refund_policy_signing_key() -> bytes:
+        """Use an application-held secret, never a digest stored beside the policy."""
+        key = (
+            current_app.config.get("REFUND_POLICY_SIGNING_KEY")
+            or current_app.config.get("SECRET_KEY")
+        )
+        if not key:
+            raise RuntimeError("Refund policy signing key is not configured")
+        return key if isinstance(key, bytes) else str(key).encode("utf-8")
+
+    @staticmethod
+    def _refund_policy_booking_context(booking) -> Dict[str, str]:
+        return {
+            "booking_id": str(booking.id),
+            "booking_reference": str(booking.booking_reference),
+            "property_id": str(booking.property_id),
+            "booked_by_user_id": str(booking.booked_by_user_id),
+            "host_user_id": str(booking.host_user_id),
+            "currency": str(booking.currency or "").upper(),
+        }
+
+    @staticmethod
+    def sign_cancellation_policy_rules(booking, rules: dict) -> str:
+        """HMAC-sign immutable rules and bind them to this booking."""
+        import hashlib
+        import hmac
+        import json
+
+        unsigned_rules = {
+            key: value for key, value in rules.items()
+            if key not in {"hmac_sha256", "sha256"}
+        }
+        payload = json.dumps(
+            {
+                "booking": MarketplaceService._refund_policy_booking_context(booking),
+                "rules": unsigned_rules,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hmac.new(
+            MarketplaceService._refund_policy_signing_key(),
+            payload,
+            hashlib.sha256,
+        ).hexdigest()
+
+    @staticmethod
+    def verify_cancellation_policy_rules(booking, rules: dict) -> bool:
+        import hmac
+
+        recorded = str((rules or {}).get("hmac_sha256") or "")
+        if not recorded:
+            return False
+        try:
+            expected = MarketplaceService.sign_cancellation_policy_rules(booking, rules)
+        except Exception:
+            return False
+        return hmac.compare_digest(recorded, expected)
+
+    @staticmethod
+    def sign_cancellation_outcome(booking, outcome: dict) -> str:
+        """Bind the calculated refund/fine to the signed booking-time rules."""
+        import hashlib
+        import hmac
+        import json
+
+        rules = (booking.policy_snapshot or {}).get("cancellation_policy_rules", {})
+        payload = json.dumps(
+            {
+                "booking": MarketplaceService._refund_policy_booking_context(booking),
+                "policy_rules_signature": (rules or {}).get("hmac_sha256"),
+                "outcome": outcome,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hmac.new(
+            MarketplaceService._refund_policy_signing_key(),
+            payload,
+            hashlib.sha256,
+        ).hexdigest()
+
+    @staticmethod
+    def verify_cancellation_outcome(booking) -> bool:
+        import hmac
+
+        snapshot = booking.policy_snapshot if isinstance(booking.policy_snapshot, dict) else {}
+        outcome = snapshot.get("cancellation_outcome")
+        recorded = str(snapshot.get("cancellation_outcome_hmac") or "")
+        if not isinstance(outcome, dict) or not recorded:
+            return False
+        try:
+            expected = MarketplaceService.sign_cancellation_outcome(booking, outcome)
+        except Exception:
+            return False
+        return hmac.compare_digest(recorded, expected)
+
+    @staticmethod
     def _get_platform_account_id(currency: str = 'USD') -> str:
         """
         Get or create the platform escrow account.
