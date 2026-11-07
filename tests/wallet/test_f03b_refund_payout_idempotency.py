@@ -956,6 +956,15 @@ class TestEscrowHumanAuthorization:
         assert history.change_metadata["rejection_reason"] == (
             "Evidence does not support the requested exception"
         )
+        from app.audit.models import AuditLog
+        audit = AuditLog.query.filter_by(
+            action="accommodation_refund.refund_review_rejected",
+            resource_id=booking.booking_reference,
+        ).one()
+        assert audit.user_id == platform_admin["user_id"]
+        assert audit.meta["rejection_reason"] == (
+            "Evidence does not support the requested exception"
+        )
 
     def test_external_refund_requires_second_admin_to_verify_execution(
         self, app, guest, host, platform_admin, platform_admin_two,
@@ -1010,6 +1019,16 @@ class TestEscrowHumanAuthorization:
         assert booking.payment_status == AccommodationPaymentStatus.REFUNDED.value
         assert booking.refund_amount == Decimal("230.00")
         assert _count_transfers_for(held_booking, "refund") == 0
+        from app.audit.models import AuditLog
+        audit = AuditLog.query.filter_by(
+            action="accommodation_refund.external_refund_verified",
+            resource_id=booking.booking_reference,
+        ).one()
+        assert audit.user_id == platform_admin_two["user_id"]
+        assert audit.meta["verification_method"] == (
+            "independent_manual_provider_reconciliation"
+        )
+        assert "merchant portal" in audit.meta["verification_note"].lower()
 
 
 class TestPayoutIdempotency:
