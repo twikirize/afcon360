@@ -546,22 +546,25 @@ def _prepare_cancelled_booking_for_review(
     refund_amount=Decimal("230.00"),
     risk_flags=None,
 ):
-    with app.app_context():
-        booking = db.session.get(AccommodationBooking, booking_id)
-        booking.status = AccommodationBookingStatus.CANCELLED.value
-        booking.cancelled_by_user_id = guest_id
-        booking.cancellation_reason = "Guest cancellation test"
-        booking.payment_method = payment_method
-        booking.payment_status = AccommodationPaymentStatus.PAID.value
-        booking.amount_paid = Decimal("230.00")
-        booking.policy_snapshot = _frozen_policy_snapshot(
-            booking,
-            refund_amount,
-            workflow_state=workflow_state,
-            requester_user_id=requester_user_id,
-            risk_flags=risk_flags,
-        )
-        db.session.commit()
+    # Use the fixture's active app-context session. Opening a nested app
+    # context here creates a second scoped SQLAlchemy session while the
+    # held_booking fixture keeps the outer identity map alive. The test would
+    # then read stale booking JSON/status and test the wrong actor.
+    booking = db.session.get(AccommodationBooking, booking_id)
+    booking.status = AccommodationBookingStatus.CANCELLED.value
+    booking.cancelled_by_user_id = guest_id
+    booking.cancellation_reason = "Guest cancellation test"
+    booking.payment_method = payment_method
+    booking.payment_status = AccommodationPaymentStatus.PAID.value
+    booking.amount_paid = Decimal("230.00")
+    booking.policy_snapshot = _frozen_policy_snapshot(
+        booking,
+        refund_amount,
+        workflow_state=workflow_state,
+        requester_user_id=requester_user_id,
+        risk_flags=risk_flags,
+    )
+    db.session.commit()
 
 
 # ---------------- Payout idempotency ----------------
