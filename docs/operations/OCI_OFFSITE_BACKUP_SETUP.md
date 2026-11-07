@@ -25,6 +25,19 @@ Before enabling the feature:
 - Record the OCI S3-compatible endpoint and region for the chosen bucket's tenancy/region. The usual endpoint format is `https://<namespace>.compat.objectstorage.<region>.oraclecloud.com`; use your tenancy's actual namespace and region.
 - OCI's S3 compatibility API requires Signature Version 4 and path-style requests. AFCON360 configures boto3 accordingly.
 
+### Bucket-scoped IAM permissions
+
+For normal backups up to OCI's 50-GiB `PutObject` limit, the application streams the backup through a single PUT request. A user in a dedicated OCI group can be granted only create/overwrite and read/inspect permissions on the intended bucket and object prefix. Example policy statements (replace the placeholders):
+
+```text
+Allow group <backup-group> to {OBJECT_CREATE, OBJECT_OVERWRITE} in compartment <backup-compartment> where all {target.bucket.name = '<private-backup-bucket>', target.object.name = 'afcon360/backups/*'}
+Allow group <backup-group> to {OBJECT_READ, OBJECT_INSPECT} in compartment <backup-compartment> where all {target.bucket.name = '<private-backup-bucket>', target.object.name = 'afcon360/backups/*'}
+```
+
+For the staging drill, scope the object-name prefix to `afcon360/oci-backup-drills/*` instead. The identity must not be able to create/delete buckets, alter policies, create PARs, or delete completed backup objects.
+
+Backups larger than 50 GiB use boto3 multipart upload. Multipart completion needs additional bucket/object permissions; aborting a failed multipart upload needs `OBJECT_DELETE`. Do not silently add broad object-management rights to the normal key. Review that exceptional path separately, scope it to a dedicated bucket/prefix, and configure an OCI Object Lifecycle Management `ABORT` rule for stale incomplete multipart uploads.
+
 ## Protected runtime settings
 
 Set these only in the protected server-side runtime environment file (for example, `.env.docker`), never in Git or chat:
