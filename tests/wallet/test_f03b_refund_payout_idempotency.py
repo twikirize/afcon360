@@ -1327,6 +1327,162 @@ class TestPayoutIdempotency:
         assert ledger_count == 2
 
 
+class TestCrossOperationEscrowSettlement:
+    def test_host_payout_and_guest_refund_cannot_settle_same_booking_concurrently(
+        self, app, platform, guest, host, held_booking
+    ):
+        """A payout already authorized against CHECKED_IN state must exclude a
+        cancellation/refund that arrives before the payout's wallet transfer.
+
+        This reproduces the dangerous interleaving: payout reads CHECKED_IN and
+        held escrow; the guest cancellation commits; the refund then attempts
+        settlement while payout is still in flight. The shared advisory lock
+        must reject the overlapping refund, and a retry after payout must route
+        to human review because the escrow is no longer held.
+        """
+        host_before = _balance(host["account_id"])
+        guest_before = _balance(guest["account_id"])
+        platform_before = _balance(platform["account_id"])
+
+        payout_authorized = threading.Event()
+        allow_payout_transfer = threading.Event()
+        refund_attempt_started = threading.Event()
+        refund_attempt_finished = threading.Event()
+        payout_outcomes = []
+        refund_outcomes = []
+        thread_errors = []
+        original_lookup = MarketplaceService._get_account_for_user
+
+        def _pause_after_payout_authorization(user_id, currency="USD"):
+            # release_host_payout has already checked the booking and held
+            # commission before it reaches its first wallet-account lookup.
+            if user_id == host["user_id"] and not payout_authorized.is_set():
+                payout_authorized.set()
+                if not allow_payout_transfer.wait(timeout=20):
+                    raise AssertionError("Timed out waiting to resume host payout")
+            return original_lookup(user_id, currency)
+
+        def _payout_worker():
+            try:
+                with app.app_context():
+                    with app.test_request_context():
+                        login_user(db.session.get(User, host["user_id"]))
+                        payout_outcomes.append(
+                            MarketplaceService.release_host_payout(held_booking)
+                        )
+                        db.session.remove()
+            except Exception as exc:  # pragma: no cover - defensive
+                thread_errors.append(exc)
+
+        def _refund_worker():
+            try:
+                with app.app_context():
+                    with app.test_request_context():
+                        login_user(db.session.get(User, guest["user_id"]))
+                        refund_attempt_started.set()
+                        refund_outcomes.append(
+                            MarketplaceService.refund_guest(
+                                held_booking, Decimal("230.00")
+                            )
+                        )
+                        db.session.remove()
+            except Exception as exc:  # pragma: no cover - defensive
+                thread_errors.append(exc)
+            finally:
+                refund_attempt_finished.set()
+
+        payout_thread = threading.Thread(target=_payout_worker)
+        refund_thread = threading.Thread(target=_refund_worker)
+
+        with patch.object(
+            MarketplaceService,
+            "_get_account_for_user",
+            new=_pause_after_payout_authorization,
+        ), _guarded():
+            try:
+                payout_thread.start()
+                assert payout_authorized.wait(timeout=15), (
+                    "Host payout did not reach the post-authorization wallet boundary"
+                )
+
+                # The payout has already read CHECKED_IN and confirmed that
+                # escrow is held. Commit the guest cancellation from a separate
+                # session while payout is paused before WalletService.transfer.
+                _prepare_cancelled_booking_for_review(
+                    app,
+                    held_booking,
+                    guest["user_id"],
+                    workflow_state="screening",
+                    refund_amount=Decimal("230.00"),
+                )
+
+                refund_thread.start()
+                assert refund_attempt_started.wait(timeout=10)
+                assert refund_attempt_finished.wait(timeout=10), (
+                    "The overlapping refund should fail fast on the held advisory lock"
+                )
+            finally:
+                allow_payout_transfer.set()
+                payout_thread.join(timeout=30)
+                if refund_thread.ident is not None:
+                    refund_thread.join(timeout=30)
+
+        assert not payout_thread.is_alive(), "Host payout thread did not finish"
+        assert not refund_thread.is_alive(), "Guest refund thread did not finish"
+        assert not thread_errors, f"Settlement worker errors: {thread_errors}"
+        assert len(payout_outcomes) == 1
+        assert payout_outcomes[0][0] is True, payout_outcomes
+        assert len(refund_outcomes) == 1
+        assert refund_outcomes[0][0] is False, refund_outcomes
+        assert "another refund or host payout" in refund_outcomes[0][1].lower()
+
+        # Exactly the winning host payout moved money; the overlapping refund
+        # did not create a second, differently-keyed wallet transfer.
+        assert _count_transfers_for(held_booking, "payout") == 1
+        assert _count_transfers_for(held_booking, "refund") == 0
+        assert _balance(host["account_id"]) == host_before + Decimal("207.00")
+        assert _balance(guest["account_id"]) == guest_before
+        assert _balance(platform["account_id"]) == platform_before - Decimal("207.00")
+
+        payout_tx = (
+            db.session.query(TransactionModel)
+            .filter_by(
+                client_request_id=PAYOUT_KEY_TEMPLATE.format(
+                    booking_id=held_booking
+                )
+            )
+            .one()
+        )
+        payout_ledger_entries = (
+            db.session.query(LedgerEntryModel)
+            .filter_by(transaction_id=payout_tx.id)
+            .all()
+        )
+        assert len(payout_ledger_entries) == 2
+        assert sum(
+            (entry.amount for entry in payout_ledger_entries),
+            Decimal("0.00"),
+        ) == Decimal("414.00")
+        assert _commission(app, held_booking).status == "released"
+
+        # Once the payout has completed and released escrow, a safe retry of
+        # the guest refund must be escalated, never automatically paid.
+        with _login_as(app, guest["user_id"]):
+            retry_ok, retry_message = _guarded_call(
+                lambda: MarketplaceService.refund_guest(
+                    held_booking, Decimal("230.00")
+                )
+            )
+        assert retry_ok, retry_message
+        assert _count_transfers_for(held_booking, "refund") == 0
+        booking = db.session.get(AccommodationBooking, held_booking)
+        workflow = booking.policy_snapshot["refund_workflow"]
+        assert workflow["state"] == "pending_human_review"
+        assert "escrow_not_held_for_automatic_refund" in workflow["risk_flags"]
+        assert booking.status == AccommodationBookingStatus.CANCELLED.value
+        assert _commission(app, held_booking).status == "released"
+
+
 # ---------------- Refund idempotency ----------------
 
 
