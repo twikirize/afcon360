@@ -2,6 +2,21 @@
 
 {% block module_styles %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/accommodation/calendar.css') }}">
+<script>
+(function () {
+  var form = document.querySelector('form');
+  if (!form) return;
+  var timezone = form.querySelector('[name="timezone_name"]');
+  if (!timezone) return;
+  ['city', 'country', 'venue'].forEach(function (name) {
+    var field = form.querySelector('[name="' + name + '"]');
+    if (field) field.addEventListener('change', function () {
+      timezone.value = '';
+      timezone.setCustomValidity('');
+    });
+  });
+})();
+</script>
 {% endblock %}
 
 {% block title %}Edit Event - AFCON360{% endblock %}
