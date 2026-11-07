@@ -12,7 +12,15 @@ import argparse
 import os
 import re
 import sys
+from pathlib import Path
 from typing import Any
+
+# Running a file under scripts/ops puts that directory, not the repository
+# root, at sys.path[0]. Add the project root so `import app` works both in
+# GitHub Actions and when this utility is launched from another directory.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from sqlalchemy import text
 
