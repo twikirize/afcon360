@@ -67,7 +67,9 @@
           title: 'Searched place'
         }).addTo(map);
       }
-      searchMarker.bindPopup(label).openPopup();
+      var popupContent = document.createElement('span');
+      popupContent.textContent = label;
+      searchMarker.bindPopup(popupContent).openPopup();
       map.setView(coordinates, Math.max(map.getZoom(), 14));
       setSearchState('Map centered on ' + label, false);
       hideResults();
@@ -174,6 +176,8 @@
     var layer = window.L && typeof window.L.layerGroup === 'function'
       ? window.L.layerGroup().addTo(map) : null;
     var entries = [];
+    var emptyStateMessage = 'No recent request clusters nearby (24h)';
+    var emptyStateIsError = false;
 
     function setDemandState(message, isError) {
       state.textContent = message;
@@ -202,7 +206,7 @@
       });
 
       if (entries.length === 0) {
-        setDemandState('No recent request clusters nearby (24h)', false);
+        setDemandState(emptyStateMessage, emptyStateIsError);
       } else {
         var level = selected === 'all' ? 'all' : selected + ' demand';
         setDemandState(
@@ -236,7 +240,9 @@
         layer.clearLayers();
         entries = [];
         if (payload.state === 'location_unavailable') {
-          setDemandState('Waiting for a fresh driver location', true);
+          emptyStateMessage = 'Waiting for a fresh driver location';
+          emptyStateIsError = true;
+          setDemandState(emptyStateMessage, true);
           return;
         }
 
@@ -264,11 +270,15 @@
           entries.push({ circle: circle, count: count });
         });
 
+        emptyStateMessage = 'No recent request clusters nearby (24h)';
+        emptyStateIsError = false;
         applyDemandFilter();
       } catch (error) {
         layer.clearLayers();
         entries = [];
-        setDemandState('Recent demand unavailable; driver tools remain available', true);
+        emptyStateMessage = 'Recent demand unavailable; driver tools remain available';
+        emptyStateIsError = true;
+        setDemandState(emptyStateMessage, true);
       } finally {
         refreshButton.disabled = false;
       }
