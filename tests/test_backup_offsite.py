@@ -176,8 +176,19 @@ def test_offsite_backup_download_verifies_and_writes_new_file(
 
     payload = b"AFCON360 verified remote backup download"
     checksum = hashlib.sha256(payload).hexdigest()
+    destination = tmp_path / "recovery" / "database.sql.gz"
+    partial_modes = []
+
+    class _InspectingBody(io.BytesIO):
+        def read(self, size=-1):
+            partial_files = list(destination.parent.glob(".database.sql.gz.partial-*"))
+            if partial_files:
+                partial_modes.append(partial_files[0].stat().st_mode & 0o777)
+            return super().read(size)
+
     fake_client = _FakeS3Client(payload)
     fake_client.object_metadata = {"sha256": checksum}
+    fake_client.get_object = lambda **_: {"Body": _InspectingBody(payload)}
     client_calls = []
 
     def _client_factory(service_name, **kwargs):
@@ -186,8 +197,6 @@ def test_offsite_backup_download_verifies_and_writes_new_file(
 
     monkeypatch.setattr(boto3, "client", _client_factory)
     _configure_offsite(app)
-
-    destination = tmp_path / "recovery" / "database.sql.gz"
     with app.app_context():
         result = BackupService.__new__(BackupService)._download_offsite_artifact(
             bucket="afcon360-backups-test",
@@ -202,6 +211,7 @@ def test_offsite_backup_download_verifies_and_writes_new_file(
     assert result["size"] == len(payload)
     assert destination.read_bytes() == payload
     assert destination.stat().st_mode & 0o777 == 0o600
+    assert partial_modes and set(partial_modes) == {0o600}
     assert len(client_calls) == 1
     assert client_calls[0][1]["config"].signature_version == "s3v4"
     assert client_calls[0][1]["config"].s3 == {"addressing_style": "path"}
