@@ -32,6 +32,9 @@ def _user():
         id=7,
         public_id="user-public-id",
         email="person@example.com",
+        email_verified=True,
+        is_verified=True,
+        phone="+256700000001",
         phone_verified=False,
         phone_verified_at=None,
     )
@@ -251,3 +254,131 @@ def test_saved_sms_choice_routes_to_email_while_global_sms_switch_is_off(app, mo
     assert result["transport"] == "email"
     assert delivered["email"] == user.email
     assert delivered["purpose"] == "phone_verification"
+
+
+
+def test_phone_verification_is_blocked_until_email_is_verified(monkeypatch):
+    user = _user()
+    user.email_verified = False
+    user.is_verified = False
+    profile = _profile()
+
+    monkeypatch.setattr(
+        OTPService,
+        "store_otp",
+        staticmethod(lambda **_: (_ for _ in ()).throw(AssertionError("OTP must not be stored"))),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "send_email_otp_checked",
+        staticmethod(lambda **_: (_ for _ in ()).throw(AssertionError("Phone code must not be sent"))),
+    )
+
+    result = PhoneVerificationService.request_code(user, profile, profile.phone_number)
+
+    assert result["success"] is False
+    assert result["code"] == "email_not_verified"
+    assert user.phone_verified is False
+
+
+def test_legacy_phone_channel_sends_code_to_verified_email_and_then_verifies_phone(monkeypatch):
+    from app.auth.pending_registration import start_channel_verification, verify_channel_otp
+    from app.identity.models.user import User
+
+    user = _user()
+    stored = {}
+    delivered = {}
+
+    monkeypatch.setattr(
+        User,
+        "query",
+        SimpleNamespace(get=lambda user_id: user if user_id == user.id else None),
+    )
+    monkeypatch.setattr(OTPService, "generate_otp", staticmethod(lambda length=6: "732915"))
+    monkeypatch.setattr(
+        OTPService,
+        "generate_sms_otp",
+        staticmethod(lambda **_: (_ for _ in ()).throw(AssertionError("SMS OTP generator must not be used"))),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "store_otp",
+        staticmethod(lambda **kwargs: stored.update(kwargs) or True),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "send_sms_otp",
+        staticmethod(lambda **_: (_ for _ in ()).throw(AssertionError("SMS delivery must not be attempted"))),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "send_email_otp_checked",
+        staticmethod(lambda **kwargs: delivered.update(kwargs) or {"success": True}),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "verify_sms_otp",
+        staticmethod(lambda **kwargs: kwargs.get("otp") == "732915"),
+    )
+    app = _request_app()
+    with app.app_context():
+        monkeypatch.setattr("app.extensions.db.session.commit", lambda: None)
+        started, message, debug_otp = start_channel_verification(user.id, "sms")
+        verified, _ = verify_channel_otp(user.id, "sms", "732915")
+
+    assert started is True
+    assert "person@example.com" in message
+    assert debug_otp is None
+    assert stored == {
+        "identifier": str(user.id),
+        "otp": "732915",
+        "purpose": "sms_verification",
+        "ttl": 300,
+    }
+    assert delivered["email"] == user.email
+    assert delivered["otp"] == "732915"
+    assert delivered["purpose"] == "sms_verification"
+    assert verified is True
+    assert user.phone_verified is True
+    assert user.phone_verified_at is not None
+
+def test_legacy_phone_channel_uses_sms_after_global_switch_is_enabled(app, monkeypatch):
+    from app.auth.pending_registration import start_channel_verification
+    from app.identity.models.user import User
+
+    user = _user()
+    sent = {}
+
+    monkeypatch.setattr(
+        User,
+        "query",
+        SimpleNamespace(get=lambda user_id: user if user_id == user.id else None),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "generate_sms_otp",
+        staticmethod(lambda length=6: "319572"),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "send_sms_otp",
+        staticmethod(lambda **kwargs: sent.update(kwargs) or (True, kwargs["otp"])),
+    )
+    monkeypatch.setattr(
+        OTPService,
+        "send_email_otp_checked",
+        staticmethod(lambda **_: (_ for _ in ()).throw(AssertionError("Email is not the active delivery channel"))),
+    )
+
+    app.config["SMS_DELIVERY_ENABLED"] = True
+    with app.app_context():
+        started, message, debug_otp = start_channel_verification(user.id, "sms")
+
+    assert started is True
+    assert "SMS" in message
+    assert sent == {
+        "phone": user.phone,
+        "otp": "319572",
+        "internal_user_id": user.id,
+    }
+    assert debug_otp == "319572"

@@ -4,7 +4,13 @@
     <div class="card shadow-sm" style="width: 100%; max-width: 500px; border-radius: 12px; border: none; border-top: 4px solid #ffcc00;">
         <div class="card-body p-4 p-md-5">
             <h2 class="card-title text-center mb-3">Enter Verification Code</h2>
-            <p class="text-muted text-center mb-4">Please enter the 6-digit code sent via <strong>{{ channel | upper }}</strong>.</p>
+            <p class="text-muted text-center mb-4">
+                {% if channel in ("sms", "whatsapp") and not sms_delivery_enabled %}
+                    Enter the phone-verification code sent to your verified account email <strong>{{ delivery_email }}</strong>.
+                {% else %}
+                    Please enter the 6-digit code sent via <strong>{{ channel | upper }}</strong>.
+                {% endif %}
+            </p>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
