@@ -13,9 +13,20 @@ def _require_utc_timezone(timezone_name, *, operation):
 
 
 def assert_postgresql_utc_session(connection, *, operation="database operation"):
-    """Assert UTC on a SQLAlchemy Connection and return the verified zone."""
-    timezone_name = connection.exec_driver_sql("SHOW TimeZone").scalar_one()
-    return _require_utc_timezone(timezone_name, operation=operation)
+    """Assert UTC without leaking an implicit SQLAlchemy transaction.
+
+    If the caller already owns a transaction, the check runs inside it and
+    leaves it alone. Otherwise, the read-only SHOW statement's implicit
+    transaction is rolled back before returning. This is essential for
+    Alembic: migration DDL must begin in its own real transaction so it commits.
+    """
+    had_transaction = connection.in_transaction()
+    try:
+        timezone_name = connection.exec_driver_sql("SHOW TimeZone").scalar_one()
+        return _require_utc_timezone(timezone_name, operation=operation)
+    finally:
+        if not had_transaction and connection.in_transaction():
+            connection.rollback()
 
 
 def assert_postgresql_utc_dbapi_connection(

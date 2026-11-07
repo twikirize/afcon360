@@ -1,10 +1,9 @@
 """Regression tests for AFCON360's PostgreSQL UTC session policy.
 
 This file is intentionally runnable with --noconftest: the policy tests need
-only a disposable PostgreSQL database and must not invoke the shared row
-isolation fixtures or mutate application data.
+only a disposable PostgreSQL database and must not invoke shared row isolation
+fixtures or mutate application data.
 """
-
 from pathlib import Path
 
 import pytest
@@ -43,6 +42,10 @@ def test_app_sqlalchemy_connection_overrides_nairobi_database_default(applicatio
                 assert assert_postgresql_utc_session(
                     connection, operation="Flask SQLAlchemy regression test"
                 ) == "UTC"
+                assert not connection.in_transaction(), (
+                    "The timezone guard must not leave an implicit transaction "
+                    "that could prevent Alembic's transaction from committing."
+                )
     finally:
         raw_engine.dispose()
 
@@ -58,6 +61,7 @@ def test_utc_guard_rejects_a_nairobi_migration_session(application):
                     assert_postgresql_utc_session(
                         connection, operation="Alembic regression test"
                     )
+                assert connection.in_transaction(), "Caller-owned transaction was closed"
             finally:
                 transaction.rollback()
 
