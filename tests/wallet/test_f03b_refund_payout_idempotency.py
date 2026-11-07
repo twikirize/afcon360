@@ -26,6 +26,8 @@ Design rules honoured here (F-03b prompt):
   lacked).
 """
 
+import hashlib
+import json
 import threading
 import time
 import uuid
@@ -207,6 +209,32 @@ def host(app, test_db):
         yield {"user_id": user.id, "account_id": str(account.id)}
 
 
+def _grant_global_role(user, role_name):
+    from app.identity.models.roles_permission import get_or_create_role
+    from app.identity.models.user import UserRole
+
+    role = get_or_create_role(role_name, level=3)
+    if not any(getattr(user_role, "role_id", None) == role.id for user_role in user.roles):
+        db.session.add(UserRole(user_id=user.id, role_id=role.id))
+        db.session.commit()
+
+
+@pytest.fixture
+def platform_admin(app, test_db):
+    with app.app_context():
+        user = _make_user("platform-admin")
+        _grant_global_role(user, "admin")
+        yield {"user_id": user.id}
+
+
+@pytest.fixture
+def platform_admin_two(app, test_db):
+    with app.app_context():
+        user = _make_user("platform-admin-two")
+        _grant_global_role(user, "super_admin")
+        yield {"user_id": user.id}
+
+
 @contextmanager
 def _login_as(app, user_id):
     """test_request_context with the given user logged in."""
@@ -275,6 +303,7 @@ def held_booking(app, test_db, platform, guest, host):
             guest_email="guest@test.com",
             guest_phone="+256700000000",
             payment_status=AccommodationPaymentStatus.PAID.value,
+            amount_paid=Decimal("230.00"),
             status=AccommodationBookingStatus.CHECKED_IN.value,
             checked_in_by=host["user_id"],
             is_checked_in=True,
@@ -305,7 +334,49 @@ def held_booking(app, test_db, platform, guest, host):
             },
         )
         db.session.add(commission)
-        booking.wallet_txn_id = f"txn-charge-{uuid.uuid4().hex[:12]}"
+
+        # Build a real completed charge record and its balanced ledger legs.
+        from app.wallet.models.ledger import AccountModel
+        guest_account = db.session.get(AccountModel, uuid.UUID(guest["account_id"]))
+        platform_account = db.session.get(AccountModel, uuid.UUID(platform["account_id"]))
+        _fund_account(guest_account, Decimal("230.00"))
+        charge_id = uuid.uuid4()
+        charge = TransactionModel(
+            id=charge_id,
+            client_request_id=f"booking_{booking.id}_charge_fixture",
+            tx_type=TransactionType.TRANSFER.value,
+            status=TransactionStatus.COMPLETED.value,
+            amount=Decimal("230.00"),
+            currency="USD",
+            user_id=guest["user_id"],
+            recipient_user_id=platform["user_id"],
+            account_id=guest_account.id,
+            tx_metadata={
+                "booking_id": str(booking.id),
+                "booking_reference": booking.booking_reference,
+            },
+            completed_at=datetime.now(timezone.utc),
+        )
+        db.session.add(charge)
+        db.session.flush()
+        db.session.add_all([
+            LedgerEntryModel(
+                transaction_id=charge_id,
+                account_id=guest_account.id,
+                entry_type=EntryType.DEBIT.value,
+                amount=Decimal("230.00"),
+                currency="USD",
+            ),
+            LedgerEntryModel(
+                transaction_id=charge_id,
+                account_id=platform_account.id,
+                entry_type=EntryType.CREDIT.value,
+                amount=Decimal("230.00"),
+                currency="USD",
+            ),
+        ])
+        booking.wallet_txn_id = str(charge_id)
+        booking.paid_at = datetime.now(timezone.utc)
         db.session.commit()
         yield booking.id
 
@@ -386,6 +457,91 @@ def _balance(account_id):
 def _commission(app, booking_id):
     with app.app_context():
         return BookingCommission.query.filter_by(booking_id=booking_id).first()
+
+
+def _frozen_policy_snapshot(
+    booking_id,
+    property_id,
+    refund_amount,
+    *,
+    workflow_state="screening",
+    requester_user_id=None,
+    risk_flags=None,
+):
+    rules = {
+        "snapshot_version": 1,
+        "name": "FLEX",
+        "pre_checkin_days": 1,
+        "pre_checkin_refund_pct": "100.00",
+        "mid_stay_refund_pct": "100.00",
+        "no_show_penalty": "0.00",
+        "pay_on_arrival_penalty_type": "debt",
+        "deposit_refundable": True,
+        "refundable_cleaning_fee": False,
+        "refundable_service_fee": False,
+        "refundable_taxes": False,
+        "source_property_id": property_id,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+    }
+    rules["sha256"] = hashlib.sha256(
+        json.dumps(rules, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
+    return {
+        "cancellation_policy": "FLEX",
+        "cancellation_policy_rules": rules,
+        "cancellation_outcome": {
+            "policy": "FLEX",
+            "phase": "pre_checkin",
+            "refundable_base": "230.00",
+            "refund": str(amount),
+            "fine": str(Decimal("230.00") - amount),
+            "nights_remaining": 0,
+            "days_until_checkin": 3,
+            "policy_snapshot_version": 1,
+        },
+        "refund_workflow": {
+            "state": workflow_state,
+            "proposed_amount": str(amount),
+            "policy_amount": str(amount),
+            "currency": "USD",
+            "payment_method": "wallet",
+            "requested_by_user_id": requester_user_id,
+            "request_reason": "Test refund exception" if workflow_state == "pending_human_review" else "",
+            "risk_flags": list(risk_flags or []),
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
+
+
+def _prepare_cancelled_booking_for_review(
+    app,
+    booking_id,
+    guest_id,
+    *,
+    workflow_state="pending_human_review",
+    requester_user_id=None,
+    payment_method="wallet",
+    refund_amount=Decimal("230.00"),
+    risk_flags=None,
+):
+    with app.app_context():
+        booking = db.session.get(AccommodationBooking, booking_id)
+        booking.status = AccommodationBookingStatus.CANCELLED.value
+        booking.cancelled_by_user_id = guest_id
+        booking.cancellation_reason = "Guest cancellation test"
+        booking.payment_method = payment_method
+        booking.payment_status = AccommodationPaymentStatus.PAID.value
+        booking.amount_paid = Decimal("230.00")
+        booking.policy_snapshot = _frozen_policy_snapshot(
+            booking.id,
+            booking.property_id,
+            refund_amount,
+            workflow_state=workflow_state,
+            requester_user_id=requester_user_id,
+            risk_flags=risk_flags,
+        )
+        db.session.commit()
 
 
 # ---------------- Payout idempotency ----------------
