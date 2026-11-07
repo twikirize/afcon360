@@ -1568,6 +1568,8 @@ class BookingService:
     def record_policy_violation(
         property_id: int,
         reason: str = "Policy violation",
+        *,
+        commit: bool = True,
     ) -> Tuple[bool, Optional[str]]:
         """
         Record a policy violation for a property and auto-suspend if threshold exceeded.
@@ -1588,11 +1590,15 @@ class BookingService:
                     f"Property {property_id} auto-suspended after {prop.policy_violations} violations"
                 )
 
-            db.session.commit()
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
             return True, None
 
         except Exception as e:
-            db.session.rollback()
+            if commit:
+                db.session.rollback()
             logger.error(f"Failed to record policy violation for property {property_id}: {e}", exc_info=True)
             return False, str(e)
 
@@ -1725,10 +1731,15 @@ class BookingService:
                 AccommodationBookingStatus.CONFIRMED.value,
                 AccommodationBookingStatus.CHECKED_IN.value,
             ]:
-                BookingService.record_policy_violation(
+                violation_recorded, violation_error = BookingService.record_policy_violation(
                     property_id=booking.property_id,
                     reason=f"Host cancelled booking {booking.booking_reference}: {reason}",
+                    commit=False,
                 )
+                if not violation_recorded:
+                    raise RuntimeError(
+                        f"Could not record host cancellation liability: {violation_error}"
+                    )
 
             payment_timing = booking.payment_timing or "pay_now"
             refundable_cash_amount = (
