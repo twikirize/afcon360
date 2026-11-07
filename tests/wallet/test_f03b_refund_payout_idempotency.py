@@ -714,6 +714,76 @@ class TestEscrowHumanAuthorization:
         assert _count_transfers_for(held_booking, "refund") == 0
         assert booking.refunded_at is None
 
+    def test_tampered_cancellation_outcome_queues_review_without_transfer(
+        self, app, guest, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            workflow_state="screening",
+            refund_amount=Decimal("230.00"),
+        )
+        booking = db.session.get(AccommodationBooking, held_booking)
+        snapshot = dict(booking.policy_snapshot)
+        outcome = dict(snapshot["cancellation_outcome"])
+        outcome["refund"] = "100.00"
+        outcome["fine"] = "130.00"
+        # Keep both signatures unchanged to simulate a DB-only edit.
+        snapshot["cancellation_outcome"] = outcome
+        booking.policy_snapshot = snapshot
+        db.session.commit()
+
+        with _login_as(app, guest["user_id"]):
+            ok, message = MarketplaceService.refund_guest(
+                held_booking, Decimal("100.00")
+            )
+
+        assert ok is True
+        assert "review" in message.lower()
+        booking = db.session.get(AccommodationBooking, held_booking)
+        workflow = booking.policy_snapshot["refund_workflow"]
+        assert workflow["state"] == "pending_human_review"
+        assert "cancellation_outcome_integrity_failed" in workflow["risk_flags"]
+        assert MarketplaceService.verify_refund_workflow(
+            booking, workflow
+        )
+        assert _count_transfers_for(held_booking, "refund") == 0
+        assert booking.refunded_at is None
+
+    def test_tampered_refund_workflow_state_queues_review_without_transfer(
+        self, app, guest, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            workflow_state="screening",
+            refund_amount=Decimal("230.00"),
+        )
+        booking = db.session.get(AccommodationBooking, held_booking)
+        snapshot = dict(booking.policy_snapshot)
+        workflow = dict(snapshot["refund_workflow"])
+        workflow["state"] = "screening"
+        workflow["risk_flags"] = []
+        snapshot["refund_workflow"] = workflow
+        booking.policy_snapshot = snapshot
+        db.session.commit()
+
+        with _login_as(app, guest["user_id"]):
+            ok, message = MarketplaceService.refund_guest(
+                held_booking, Decimal("230.00")
+            )
+
+        assert ok is True
+        assert "integrity" in message.lower()
+        booking = db.session.get(AccommodationBooking, held_booking)
+        workflow = booking.policy_snapshot["refund_workflow"]
+        assert workflow["state"] == "pending_human_review"
+        assert "refund_workflow_integrity_failed" in workflow["risk_flags"]
+        assert MarketplaceService.verify_refund_workflow(booking, workflow)
+        assert _count_transfers_for(held_booking, "refund") == 0
+
     def test_guest_and_host_cannot_approve_platform_review(
         self, app, guest, host, held_booking
     ):
@@ -861,6 +931,7 @@ class TestEscrowHumanAuthorization:
                 held_booking,
                 Decimal("230.00"),
                 "CARD-REFUND-001",
+                verification_note="Checked the acquirer merchant portal; refund status is completed for the exact amount and card transaction reference.",
                 reviewer_user_id=platform_admin["user_id"],
             )
         assert same_admin_ok is False
@@ -871,6 +942,7 @@ class TestEscrowHumanAuthorization:
                 held_booking,
                 Decimal("230.00"),
                 "CARD-REFUND-001",
+                verification_note="Independently checked the acquirer merchant portal; refund status is completed, amount and currency match.",
                 reviewer_user_id=platform_admin_two["user_id"],
             )
         assert verified, verify_error
