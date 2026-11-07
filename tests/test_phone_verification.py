@@ -37,6 +37,7 @@ def _user():
         phone="+256700000001",
         phone_verified=False,
         phone_verified_at=None,
+        activated_at=None,
     )
 
 
