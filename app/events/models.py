@@ -221,12 +221,20 @@ class Event(BaseModel):
             str(value).strip(), field="event venue timezone"
         ).key
 
+    def business_timezone(self):
+        """Resolve the authoritative venue calendar zone; reject unknown multi-zone venues."""
+        from app.utils.location_timezone import resolve_location_timezone
+        return resolve_location_timezone(
+            explicit_timezone=self.timezone_name,
+            country=self.country,
+        )
+
     def local_today(self):
         """Return the current calendar date at the event venue."""
         from datetime import datetime
         from app.utils.time_policy import require_iana_timezone
         zone = require_iana_timezone(
-            self.timezone_name, field="event venue timezone"
+            self.business_timezone(), field="event venue timezone"
         )
         return datetime.now(zone).date()
 
