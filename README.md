@@ -634,8 +634,10 @@ A revision number alone does not prove schema parity. Verify the actual database
 
 - All timestamp columns use timezone-aware types (`DateTime(timezone=True)` / PostgreSQL `TIMESTAMPTZ`).
 - Store and compare aware UTC instants. Use `datetime.now(timezone.utc)`; never create naive application timestamps with `datetime.now()` or `datetime.utcnow()`.
-- PostgreSQL server, application sessions, migration sessions and test sessions use UTC. Verify with `SHOW TimeZone;` and expect `UTC`.
-- For ordinary V1/V2+ migration and test commands, use `PGTZ=UTC` when an explicit client timezone setting is required.
+- The tracked Docker Compose PostgreSQL service starts with `postgres -c timezone=UTC`, so fresh database sessions default to UTC on both the primary and production resource-overlay Compose configurations.
+- `app/config.py` passes `-c timezone=UTC` to PostgreSQL for every SQLAlchemy connection. The Flask engine also checks each new PostgreSQL connection and fails closed if it is not UTC.
+- Online Alembic migration/autogeneration connections independently assert UTC before schema inspection or migration work. This means `flask db migrate`, `flask db check` and `flask db upgrade` use the same enforced application engine; no timezone migration is needed.
+- Standalone `psql`/libpq clients do not use the Flask engine options. They inherit the PostgreSQL server/database default; use `PGTZ=UTC` as an explicit client override when operating against a server whose UTC default has not yet been verified.
 - Convert to a user's local timezone only at the presentation/scheduling boundary. Do not shift stored instants to local wall time.
 - A naive external timestamp is not automatically UTC unless its input contract explicitly says so. Establish its source timezone before converting it to an aware UTC instant.
 
@@ -681,7 +683,8 @@ This expression interprets the naive wall-clock value as Nairobi local time and 
 # Use the project's intended environment and an isolated PostgreSQL *_test database.
 $env:APP_ENV = 'testing'
 $env:FLASK_ENV = 'testing'
-$env:PGTZ = 'UTC'
+# Flask/SQLAlchemy and Alembic connections enforce UTC in source code.
+# Set PGTZ=UTC only when a standalone psql/libpq command needs an explicit client override.
 
 # Inspect the active chain and the actual connected database.
 python -m flask db heads       # expect one active head
@@ -700,8 +703,8 @@ python -m flask db migrate -m "description"
 # 4. After review and authorization, owner applies it:
 python -m flask db upgrade
 
-# Confirm the migration connection is still using UTC:
-python -c "from sqlalchemy import create_engine,text; from app import create_app; app=create_app(); e=create_engine(app.config['SQLALCHEMY_DATABASE_URI']); c=e.connect(); print(c.execute(text('SHOW TimeZone')).scalar()); c.close(); e.dispose()"
+# Confirm the migration/application engine connection is still using UTC:
+python -c "from app import create_app; from app.extensions import db; app=create_app(); ctx=app.app_context(); ctx.push(); conn=db.engine.connect(); print(conn.exec_driver_sql('SHOW TimeZone').scalar_one()); conn.close(); db.engine.dispose(); ctx.pop()"
 ```
 
 Do not copy the illustrative connection probe into production without first confirming the application's configured target. Never expose credentials in commands or output.

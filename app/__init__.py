@@ -99,6 +99,16 @@ from sqlalchemy.engine import Engine
 from flask import g, has_request_context
 
 
+def _sqla_assert_postgresql_utc(dbapi_connection, connection_record):
+    """Fail closed if a new PostgreSQL application connection is not UTC."""
+    from app.utils.database_timezone import assert_postgresql_utc_dbapi_connection
+
+    assert_postgresql_utc_dbapi_connection(
+        dbapi_connection,
+        operation="AFCON360 application database connection",
+    )
+
+
 def _sqla_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
     if not has_request_context():
         return
@@ -1079,6 +1089,10 @@ def create_app(config_object=None) -> Flask:
     # Register SQLAlchemy timing on the actual engine instance (once per engine)
     with app.app_context():
         engine = db.engine
+        if engine.dialect.name == "postgresql" and not event.contains(
+            engine, "connect", _sqla_assert_postgresql_utc
+        ):
+            event.listen(engine, "connect", _sqla_assert_postgresql_utc)
         if not event.contains(engine, 'before_cursor_execute', _sqla_before_cursor_execute):
             event.listen(engine, 'before_cursor_execute', _sqla_before_cursor_execute)
         if not event.contains(engine, 'after_cursor_execute', _sqla_after_cursor_execute):

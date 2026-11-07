@@ -1,0 +1,101 @@
+name: PostgreSQL UTC session policy
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - app/config.py
+      - app/__init__.py
+      - app/utils/database_timezone.py
+      - migrations/env.py
+      - docker-compose.yml
+      - .codebuddy/docker-compose.prod.yml
+      - tests/test_database_timezone_policy.py
+      - .github/workflows/postgresql-utc-session-policy.yml
+  push:
+    branches:
+      - main
+    paths:
+      - app/config.py
+      - app/__init__.py
+      - app/utils/database_timezone.py
+      - migrations/env.py
+      - docker-compose.yml
+      - .codebuddy/docker-compose.prod.yml
+      - tests/test_database_timezone_policy.py
+      - .github/workflows/postgresql-utc-session-policy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postgres-utc-policy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-utc-policy:
+    name: PostgreSQL 15 — application and Alembic UTC enforcement
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: afcon360_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d afcon360_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      APP_ENV: testing
+      FLASK_ENV: testing
+      DISABLE_REDIS: "1"
+      SOCKETIO_ENABLED: "false"
+      LOG_LEVEL: WARNING
+      SECRET_KEY: "ci-only-not-a-production-secret"
+      SECURITY_SALT: "ci-only-security-salt-value-long-enough-for-tests-2026"
+      ENCRYPTION_KEY: "ci-only-not-a-production-key"
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
+      DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
+      TEST_DB_LOCK_TIMEOUT: "60"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install application and PostgreSQL test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyyaml
+
+      - name: Prove the database server default is deliberately Nairobi
+        run: |
+          psql -X -w -U postgres -h localhost -p 5432 -d postgres \
+            -v ON_ERROR_STOP=1 \
+            -c "ALTER DATABASE afcon360_test SET timezone TO 'Africa/Nairobi';"
+          actual="$(psql -X -w -U postgres -h localhost -p 5432 -d afcon360_test -Atc "SHOW TimeZone")"
+          echo "Raw PostgreSQL session timezone: $actual"
+          test "$actual" = "Africa/Nairobi"
+
+      - name: Build the disposable schema through the guarded Alembic engine
+        run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Verify online Alembic inspection uses UTC
+        run: python -m flask --app 'app:create_app()' db current
+
+      - name: Run focused PostgreSQL UTC policy regression tests
+        run: python -m pytest --noconftest -q tests/test_database_timezone_policy.py

@@ -7,6 +7,8 @@ from flask import current_app
 from alembic import context
 from sqlalchemy.engine import make_url
 
+from app.utils.database_timezone import assert_postgresql_utc_session
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -143,6 +145,9 @@ def run_migrations_online():
     connectable = get_engine()
 
     with connectable.connect() as connection:
+        assert_postgresql_utc_session(
+            connection, operation="Alembic online migration connection"
+        )
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),
