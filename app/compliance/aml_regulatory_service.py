@@ -250,6 +250,11 @@ def compute_due_date(
     calendar = _approved_working_calendar(jurisdiction)
     local_start = start.astimezone(business_zone)
     due_day = local_start.date()
+    if due_day < calendar["valid_from"] or due_day > calendar["valid_until"]:
+        raise ValueError(
+            f"The suspicion date is outside approved AML calendar coverage for "
+            f"{jurisdiction.country_code}"
+        )
     remaining = sla
     while remaining:
         due_day += timedelta(days=1)
