@@ -1611,15 +1611,22 @@ class BookingService:
         review_reason: str = None,
     ) -> Tuple[bool, Optional[str], Optional[Decimal]]:
         """
-        Cancel a booking and process refund/debt based on payment method and policy.
-        
+        Cancel a booking and persist the policy-calculated refund entitlement.
+
         Payment method handling:
-        - pay_now: Process refund via wallet (idempotent)
-        - pay_on_arrival: Create CancellationPenalty debt if fine > 0
-        - deposit: Refund deposit if eligible per policy
-        
-        Idempotency: Uses booking.id + idempotency_key to prevent duplicate processing.
-        Concurrency: Row locking via select_for_update() on booking.
+        - pay_now/deposit: persist the booking-time policy amount. After this
+          cancellation commits, MarketplaceService executes a reconciled wallet
+          refund automatically or queues an exception for platform review.
+        - external payment: persist the policy entitlement; an approved refund
+          remains pending until the original provider/property executes it and
+          a separate reviewer verifies the provider reference.
+        - pay_on_arrival: create CancellationPenalty debt if fine > 0.
+
+        Cancellation and refund completion are separate lifecycle events.
+        This method never marks a booking REFUNDED before funds move.
+        Penalty idempotency uses booking.id + idempotency_key; MarketplaceService
+        owns the stable wallet refund key.
+        Concurrency: row locking via select_for_update() on booking.
         """
         booking = db.session.execute(
             select(AccommodationBooking).where(AccommodationBooking.id == booking_id).with_for_update()
