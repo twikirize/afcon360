@@ -303,8 +303,13 @@ independent TMS audit.
    submission (auth, acknowledgement polling) is a deployment/config step.
 3. **Automated CTR/structuring scheduling** — detection is callable
    (`aml_ctr/detect`); wire it to a Celery beat job for continuous coverage.
-4. **Holiday-aware SLA** — `compute_due_date` skips weekends; add public-holiday
-   calendars per jurisdiction.
+4. **Approved jurisdiction calendars** — configure `AML_APPROVED_WORKING_CALENDARS`
+   as deployment JSON for each reporting jurisdiction. Each entry must include
+   `approved`, `source`, `approved_by`, `approved_at`, `version`,
+   `working_weekdays` (0=Monday through 6=Sunday), and ISO `public_holidays`.
+   The source must be the competent regulator/government calendar. AML deadline
+   generation fails closed when a jurisdiction has no approved calendar; never
+   substitute an assumed weekends-only calendar for a regulatory deadline.
 5. **Tipping-off controls** — enforce "do not disclose" post-filing in UI/workflow.
 
 ---
