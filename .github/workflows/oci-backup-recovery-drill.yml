@@ -59,14 +59,14 @@ jobs:
         image: postgres:15
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: afcon360_oci_source
+          POSTGRES_PASSWORD: AFCON360-OCI-Source-Only-2026
+          POSTGRES_DB: afcon360_oci_source_test
           TZ: UTC
           PGTZ: UTC
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d afcon360_oci_source"
+          --health-cmd "pg_isready -U postgres -d afcon360_oci_source_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -85,10 +85,11 @@ jobs:
       MFA_ENCRYPTION_KEY: "oci-drill-only-mfa-key-not-production"
       DB_HOST: 127.0.0.1
       DB_PORT: "5432"
-      DB_NAME: afcon360_oci_source
+      DB_NAME: afcon360_oci_source_test
       DB_USER: postgres
-      DB_PASS: postgres
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/afcon360_oci_source
+      DB_PASS: AFCON360-OCI-Source-Only-2026
+      DATABASE_URL: postgresql://postgres:AFCON360-OCI-Source-Only-2026@127.0.0.1:5432/afcon360_oci_source_test
+      TEST_DATABASE_URL: postgresql://postgres:AFCON360-OCI-Source-Only-2026@127.0.0.1:5432/afcon360_oci_source_test
       BACKUP_DIR: /tmp/afcon360-oci-drill-backups
       BACKUP_DUMP_TIMEOUT: "1800"
       BACKUP_OFFSITE_ENABLED: "true"
@@ -151,6 +152,41 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install boto3
+
+      - name: Verify disposable source PostgreSQL credentials and test target
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from sqlalchemy.engine import make_url
+          from psycopg2 import connect
+
+          url = make_url(os.environ["TEST_DATABASE_URL"])
+          expected = {
+              "host": "127.0.0.1",
+              "port": 5432,
+              "database": "afcon360_oci_source_test",
+              "username": "postgres",
+          }
+          actual = {
+              "host": url.host,
+              "port": url.port,
+              "database": url.database,
+              "username": url.username,
+          }
+          if actual != expected:
+              raise SystemExit(f"Disposable PostgreSQL target mismatch: {actual!r}")
+          if url.password != os.environ.get("DB_PASS"):
+              raise SystemExit("TEST_DATABASE_URL password does not match DB_PASS; values were not printed.")
+          with connect(os.environ["TEST_DATABASE_URL"], connect_timeout=10) as conn:
+              with conn.cursor() as cursor:
+                  cursor.execute("SELECT current_user, current_database(), current_setting('TimeZone')")
+                  user, database, timezone = cursor.fetchone()
+          if user != "postgres" or database != "afcon360_oci_source_test":
+              raise SystemExit("Disposable PostgreSQL identity/database verification failed.")
+          print(f"Disposable PostgreSQL connection verified: user={user}, database={database}, timezone={timezone}.")
+          PY
 
       - name: Build source database from reviewed migrations
         run: python -m flask --app 'app:create_app()' db upgrade
