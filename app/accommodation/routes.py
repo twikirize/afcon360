@@ -6056,6 +6056,7 @@ def admin_refund_review_queue():
         "pending_human_review",
         "approved_external_execution_pending",
         "approved_recovery_required",
+        "partially_refunded",
     )
     page = max(request.args.get("page", 1, type=int), 1)
     per_page = 50
