@@ -689,6 +689,30 @@ class MarketplaceService:
                 return False, "Refund amount does not match the recorded booking-time cancellation calculation"
 
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            if not MarketplaceService.verify_refund_workflow(booking, workflow):
+                # Do not trust a database-stored workflow state or requester
+                # identity unless it is signed by the application secret.
+                workflow.update({
+                    "state": "pending_human_review",
+                    "risk_flags": list(dict.fromkeys(
+                        list(workflow.get("risk_flags") or [])
+                        + ["refund_workflow_integrity_failed"]
+                    )),
+                    "review_reason": "The stored refund workflow failed its signature check",
+                    "integrity_review_queued_at": datetime.now(timezone.utc).isoformat(),
+                })
+                MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
+                MarketplaceService._record_refund_history(
+                    booking,
+                    actor.id,
+                    "refund_workflow_integrity_review_queued",
+                    {
+                        "risk_flag": "refund_workflow_integrity_failed",
+                        "proposed_amount": workflow.get("proposed_amount"),
+                    },
+                )
+                db.session.commit()
+                return True, "Refund workflow integrity could not be verified; the case was sent for human review"
             if workflow.get("state") in {"refunded", "partially_refunded"}:
                 return False, "Already refunded"
             if workflow.get("state") in {
