@@ -965,7 +965,7 @@ class MarketplaceService:
             if not MarketplaceService.verify_refund_workflow(booking, workflow):
                 return False, "Refund workflow signature failed; do not approve until the case is safely resubmitted and reviewed"
             if booking.refunded_at or Decimal(str(booking.refund_amount or 0)) > 0:
-                return False, "A refund has already been executed for this booking"
+                return False, "Already refunded"
             if workflow.get("state") in {"refunded", "partially_refunded"}:
                 return False, "Already refunded"
             if workflow.get("state") != "pending_human_review":
