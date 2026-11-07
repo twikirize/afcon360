@@ -1458,11 +1458,17 @@ class TestCrossOperationEscrowSettlement:
             .filter_by(transaction_id=payout_tx.id)
             .all()
         )
+        assert payout_tx.recipient_user_id == host["user_id"]
+        assert payout_tx.amount == Decimal("207.00")
         assert len(payout_ledger_entries) == 2
-        assert sum(
-            (entry.amount for entry in payout_ledger_entries),
-            Decimal("0.00"),
-        ) == Decimal("414.00")
+        assert {
+            getattr(entry.entry_type, "value", entry.entry_type)
+            for entry in payout_ledger_entries
+        } == {EntryType.DEBIT.value, EntryType.CREDIT.value}
+        assert all(
+            entry.amount == Decimal("207.00")
+            for entry in payout_ledger_entries
+        )
         assert _commission(app, held_booking).status == "released"
 
         # Once the payout has completed and released escrow, a safe retry of
