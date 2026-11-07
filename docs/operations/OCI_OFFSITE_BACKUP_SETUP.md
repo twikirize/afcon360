@@ -22,7 +22,7 @@ Before enabling the feature:
 - Create a dedicated **private** Object Storage bucket for backups. Do not make it public and do not reuse the public media bucket.
 - Create a dedicated OCI identity/customer secret key for the backup integration. Grant only the minimum Object Storage permissions needed to create and read objects in this bucket. Do not reuse the media-storage key.
 - Decide the bucket's retention/lifecycle policy and any recovery-point requirements. Do not apply automatic deletion until retention and restore requirements are agreed.
-- Record the OCI S3-compatible endpoint and region for the chosen bucket's tenancy/region. The usual endpoint format is `https://<namespace>.compat.objectstorage.<region>.oraclecloud.com`; use your tenancy's actual namespace and region.
+- Record the OCI S3-compatible endpoint and region for the chosen bucket's tenancy/region. For path-style access, the current OCI endpoint format is `https://<namespace>.compat.objectstorage.<region>.oci.customer-oci.com`; use your tenancy's actual Object Storage namespace and region identifier.
 - OCI's S3 compatibility API requires Signature Version 4 and path-style requests. AFCON360 configures boto3 accordingly.
 
 ### Bucket-scoped IAM permissions
@@ -30,11 +30,10 @@ Before enabling the feature:
 For normal backups up to OCI's 50-GiB `PutObject` limit, the application streams the backup through a single PUT request. A user in a dedicated OCI group can be granted only create/overwrite and read/inspect permissions on the intended bucket and object prefix. Example policy statements (replace the placeholders):
 
 ```text
-Allow group <backup-group> to {OBJECT_CREATE, OBJECT_OVERWRITE} in compartment <backup-compartment> where all {target.bucket.name = '<private-backup-bucket>', target.object.name = 'afcon360/backups/*'}
-Allow group <backup-group> to {OBJECT_READ, OBJECT_INSPECT} in compartment <backup-compartment> where all {target.bucket.name = '<private-backup-bucket>', target.object.name = 'afcon360/backups/*'}
+Allow group <backup-group> to manage objects in compartment <backup-compartment> where all {target.bucket.name = '<private-backup-bucket>', target.object.name = 'afcon360/backups/*', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_OVERWRITE', request.permission = 'OBJECT_READ', request.permission = 'OBJECT_INSPECT'}}
 ```
 
-For the staging drill, scope the object-name prefix to `afcon360/oci-backup-drills/*` instead. The identity must not be able to create/delete buckets, alter policies, create PARs, or delete completed backup objects.
+For the staging drill, use a separate policy with the object-name prefix `afcon360/oci-backup-drills/*` and the staging bucket name. The policy's `any {request.permission ...}` condition restricts the `manage objects` verb to the four listed object permissions; it does not grant bucket administration or object deletion. Create the policy in the bucket's compartment. The OCI IAM group reference syntax can differ for Identity Domains; use the exact group principal format shown by the OCI policy editor for your domain.
 
 Backups larger than 50 GiB use boto3 multipart upload. Multipart completion needs additional bucket/object permissions; aborting a failed multipart upload needs `OBJECT_DELETE`. Do not silently add broad object-management rights to the normal key. Review that exceptional path separately, scope it to a dedicated bucket/prefix, and configure an OCI Object Lifecycle Management `ABORT` rule for stale incomplete multipart uploads.
 
