@@ -1029,6 +1029,63 @@ class TestEscrowHumanAuthorization:
             "Evidence does not support the requested exception"
         )
 
+    def test_external_refund_rejected_without_original_provider_charge_reference(
+        self, app, guest, host, platform_admin, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+            payment_method="card",
+        )
+        booking = db.session.get(AccommodationBooking, held_booking)
+        booking.wallet_txn_id = None
+        db.session.commit()
+
+        with _login_as(app, platform_admin["user_id"]):
+            ok, error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Attempt external refund without original provider transaction reference",
+            )
+
+        assert ok is False
+        assert "external payment reference" in error.lower()
+        booking = db.session.get(AccommodationBooking, held_booking)
+        assert booking.refunded_at is None
+        assert booking.policy_snapshot["refund_workflow"]["state"] == "pending_human_review"
+        assert _count_transfers_for(held_booking, "refund") == 0
+
+    def test_external_refund_rejected_when_payment_not_confirmed(
+        self, app, guest, host, platform_admin, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+            payment_method="card",
+        )
+        booking = db.session.get(AccommodationBooking, held_booking)
+        booking.payment_status = AccommodationPaymentStatus.PENDING.value
+        db.session.commit()
+
+        with _login_as(app, platform_admin["user_id"]):
+            ok, error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Attempt external refund before the original charge settled",
+            )
+
+        assert ok is False
+        assert "payment has not been confirmed" in error.lower()
+        booking = db.session.get(AccommodationBooking, held_booking)
+        assert booking.refunded_at is None
+        assert booking.policy_snapshot["refund_workflow"]["state"] == "pending_human_review"
+        assert _count_transfers_for(held_booking, "refund") == 0
+
+
     def test_external_refund_requires_second_admin_to_verify_execution(
         self, app, guest, host, platform_admin, platform_admin_two,
         platform, held_booking
