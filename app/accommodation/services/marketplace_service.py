@@ -850,6 +850,16 @@ class MarketplaceService:
             })
             snapshot["refund_workflow"] = workflow
             booking.policy_snapshot = snapshot
+            MarketplaceService._record_refund_history(
+                booking,
+                reviewer_user_id,
+                "refund_review_rejected",
+                {
+                    "rejection_reason": reason,
+                    "requested_by_user_id": workflow.get("requested_by_user_id"),
+                    "proposed_amount": workflow.get("proposed_amount"),
+                },
+            )
             db.session.commit()
             return True, None
         except Exception as exc:
@@ -880,12 +890,19 @@ class MarketplaceService:
             reference = str(provider_reference or "").strip()
             if not reference:
                 return False, "Original provider refund reference is required"
-            booking = db.session.get(AccommodationBooking, booking_id)
+            from sqlalchemy import select
+            booking = db.session.execute(
+                select(AccommodationBooking)
+                .where(AccommodationBooking.id == booking_id)
+                .with_for_update()
+            ).scalar_one_or_none()
             if not booking:
                 return False, "Booking not found"
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
             if workflow.get("state") != "approved_external_execution_pending":
                 return False, "This refund is not awaiting external payment execution"
+            if not workflow.get("approved_by_user_id") or not workflow.get("approval_reason"):
+                return False, "The human approval record is incomplete"
             if reviewer_user_id in {
                 workflow.get("approved_by_user_id"),
                 workflow.get("requested_by_user_id"),
@@ -896,12 +913,30 @@ class MarketplaceService:
             }:
                 return False, "A different platform administrator must verify external execution"
             amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+            if amount <= 0 or amount > Decimal(str(booking.amount_paid or 0)):
+                return False, "Verified provider refund must be positive and no greater than the amount collected"
             if amount != Decimal(str(workflow.get("approved_amount") or "0")):
                 return False, "Recorded provider execution amount does not match the approved amount"
-            if booking.status == AccommodationBookingStatus.CANCELLED.value:
-                booking.refund_amount = amount
-                booking.refunded_at = datetime.now(timezone.utc)
-                booking.payment_status = AccommodationPaymentStatus.REFUNDED.value
+            from app.accommodation.models.booking import BookingStatusHistory
+            existing_external_records = BookingStatusHistory.query.filter_by(
+                trigger="external_refund_verified"
+            ).all()
+            if any(
+                str((row.change_metadata or {}).get("external_provider_reference")) == reference
+                for row in existing_external_records
+            ):
+                return False, "This provider refund reference has already been recorded"
+            full_refund = amount >= Decimal(str(booking.amount_paid or 0))
+            booking.refund_amount = amount
+            booking.refunded_at = datetime.now(timezone.utc)
+            booking.payment_status = (
+                AccommodationPaymentStatus.REFUNDED.value
+                if full_refund else AccommodationPaymentStatus.PARTIAL_REFUND.value
+            )
+            if (
+                booking.status == AccommodationBookingStatus.CANCELLED.value
+                and full_refund
+            ):
                 BookingStateMachine.transition(
                     booking,
                     AccommodationBookingStatus.REFUNDED,
@@ -910,7 +945,7 @@ class MarketplaceService:
                     trigger="external_refund_verified",
                 )
             workflow.update({
-                "state": "refunded",
+                "state": "refunded" if full_refund else "partially_refunded",
                 "actual_amount": str(amount),
                 "external_provider_reference": reference,
                 "execution_verified_by_user_id": reviewer_user_id,
@@ -918,6 +953,19 @@ class MarketplaceService:
             })
             snapshot["refund_workflow"] = workflow
             booking.policy_snapshot = snapshot
+            MarketplaceService._record_refund_history(
+                booking,
+                reviewer_user_id,
+                "external_refund_verified",
+                {
+                    "approved_by_user_id": workflow.get("approved_by_user_id"),
+                    "verified_by_user_id": reviewer_user_id,
+                    "amount": str(amount),
+                    "currency": booking.currency,
+                    "external_provider_reference": reference,
+                    "full_refund": full_refund,
+                },
+            )
             db.session.commit()
             return True, None
         except Exception as exc:
