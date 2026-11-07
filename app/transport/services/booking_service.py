@@ -2215,10 +2215,36 @@ class BookingService:
         if hasattr(payment_status, "value"):
             payment_status = payment_status.value
         metadata = booking.booking_metadata or {}
+        pickup_schedule = metadata.get("pickup_schedule")
+        if not isinstance(pickup_schedule, dict) or not pickup_schedule.get("timezone_name"):
+            # Legacy compatibility: derive display timezone from the already
+            # stored pickup coordinates, but never alter/reinterpret pickup_time.
+            location = booking.pickup_location if isinstance(booking.pickup_location, dict) else {}
+            if pickup is not None and location.get("latitude") is not None and location.get("longitude") is not None:
+                try:
+                    from app.transport.services.pickup_timezone import (
+                        timezone_for_pickup_coordinates,
+                    )
+                    from app.utils.time_policy import require_iana_timezone
+                    zone_name = timezone_for_pickup_coordinates(
+                        location["latitude"], location["longitude"]
+                    )
+                    zone = require_iana_timezone(zone_name)
+                    local_pickup = pickup.astimezone(zone)
+                    pickup_schedule = {
+                        "utc_datetime": pickup.isoformat(),
+                        "local_datetime": local_pickup.replace(tzinfo=None).isoformat(),
+                        "timezone_name": zone.key,
+                        "utc_offset": local_pickup.strftime("%z"),
+                        "display_timezone_derived": True,
+                    }
+                except (ValueError, TypeError, KeyError):
+                    pickup_schedule = None
         return {
             **booking.to_dict(),
             "booking_mode": mode,
             "can_mark_no_show": can_mark_no_show,
+            "pickup_schedule": pickup_schedule,
             "pickup_location_text": booking.pickup_location_text,
             "dropoff_location_text": booking.dropoff_location_text,
             # Explicit driver-workspace display facts. Do not expose the full

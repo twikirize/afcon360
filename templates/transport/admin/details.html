@@ -33,12 +33,19 @@
 {% endblock %}
 
 {% block content %}
+{% set _pickup_schedule = (booking.booking_metadata or {}).get('pickup_schedule') or {} %}
+{% set _pickup_utc = _pickup_schedule.get('utc_datetime') or (booking.pickup_time.isoformat() if booking.pickup_time else '') %}
 <div class="page-header">
   <div class="page-header-left">
     <h1 class="page-title">{{ booking.booking_reference }}</h1>
     <p class="page-subtitle">
       {{ booking.service_type.value|replace('_',' ')|title if booking.service_type else 'Transport' }} ·
-      {{ booking.pickup_time|datetimeformat|default('—') }} ·
+      {% if booking.pickup_time %}
+      <time data-afcon360-instant="{{ _pickup_utc }}"
+            data-afcon360-business-timezone="{{ _pickup_schedule.get('timezone_name') or '' }}"
+            data-afcon360-business-label="{{ (booking.pickup_location or {}).get('label') if (booking.pickup_location or {}) is mapping else 'Pickup' }}"
+            data-afcon360-show-viewer-time="true">{{ booking.pickup_time|datetimeformat }}</time>
+      {% else %}—{% endif %} ·
       Internal ID #{{ booking_id }}
     </p>
   </div>
@@ -69,7 +76,14 @@
         <div class="info-row"><div class="info-k">Provider ID</div><div class="info-v">{{ booking.provider_id or '—' }}</div></div>
         <div class="info-row"><div class="info-k">Pickup</div><div class="info-v">{{ loc_text(booking.pickup_location) }}</div></div>
         <div class="info-row"><div class="info-k">Drop-off</div><div class="info-v">{{ loc_text(booking.dropoff_location) }}</div></div>
-        <div class="info-row"><div class="info-k">Pickup Time</div><div class="info-v">{{ booking.pickup_time|datetimeformat }}</div></div>
+        <div class="info-row"><div class="info-k">Pickup Time</div><div class="info-v">
+          {% if booking.pickup_time %}
+          <time data-afcon360-instant="{{ _pickup_utc }}"
+                data-afcon360-business-timezone="{{ _pickup_schedule.get('timezone_name') or '' }}"
+                data-afcon360-business-label="{{ (booking.pickup_location or {}).get('label') if (booking.pickup_location or {}) is mapping else 'Pickup' }}"
+                data-afcon360-show-viewer-time="true">{{ booking.pickup_time|datetimeformat }}</time>
+          {% else %}—{% endif %}
+        </div></div>
         <div class="info-row"><div class="info-k">Created</div><div class="info-v">{{ booking.created_at|datetimeformat }}</div></div>
         <div class="info-row"><div class="info-k">Passengers</div><div class="info-v">{{ booking.passenger_count }}</div></div>
         <div class="info-row"><div class="info-k">Luggage</div><div class="info-v">{{ booking.luggage_count|default(0) }}</div></div>
