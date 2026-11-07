@@ -421,9 +421,11 @@ class MarketplaceService:
 
     @staticmethod
     def _record_refund_history(booking, actor_user_id, trigger, metadata):
-        """Append an immutable decision/event record to the booking audit history."""
+        """Append one booking-history event and one canonical audit record."""
         from app.accommodation.models.booking import BookingStatusHistory
+        from app.audit.models import AuditLog
 
+        details = dict(metadata or {})
         db.session.add(
             BookingStatusHistory(
                 booking_id=booking.id,
@@ -431,8 +433,23 @@ class MarketplaceService:
                 to_status=booking.status,
                 changed_by=actor_user_id,
                 trigger=trigger,
-                change_metadata=dict(metadata or {}),
+                change_metadata=details,
             )
+        )
+        # The canonical audit writer does not commit: the audit event and
+        # business decision are committed atomically by the calling service.
+        AuditLog.log(
+            user_id=actor_user_id,
+            action="accommodation_refund." + str(trigger),
+            resource_type="accommodation_refund",
+            resource_id=str(booking.booking_reference),
+            meta={
+                "booking_id": booking.id,
+                "booking_reference": booking.booking_reference,
+                "booking_status": booking.status,
+                **details,
+            },
+            db_session=db.session,
         )
 
     @staticmethod
