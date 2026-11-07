@@ -237,7 +237,9 @@ class TestGuestCancellationRoute:
         with app.app_context():
             booking = _create_paid_booking(app, test_db, test_property, test_guest_user, test_host_user)
             booking_ref = booking.booking_reference
+            booking_id = booking.id
             guest_public_id = test_guest_user.public_id
+            guest_user_id = test_guest_user.id
 
         _login_as_guest(client, guest_public_id)
 
@@ -253,9 +255,9 @@ class TestGuestCancellationRoute:
 
             mock_cancelled_signal.assert_called_once()
             signal_args, signal_kwargs = mock_cancelled_signal.call_args
-            assert signal_args[0].id == booking.id
-            assert signal_kwargs["booking"].id == booking.id
-            assert signal_kwargs["cancelled_by"] == test_guest_user.id
+            assert signal_args[0].id == booking_id
+            assert signal_kwargs["booking"].id == booking_id
+            assert signal_kwargs["cancelled_by"] == guest_user_id
 
             # Debug: check where it redirects
             print(f"DEBUG: response status={resp.status_code}, location={resp.location}")
@@ -265,7 +267,7 @@ class TestGuestCancellationRoute:
             assert resp.status_code == 302
             mock_refund.assert_called_once()
             args, kwargs = mock_refund.call_args
-            assert args[0] == booking.id
+            assert args[0] == booking_id
             assert args[1] == Decimal("230.00")  # full refund for FLEXIBLE policy
 
     def test_cancel_no_refund_when_policy_zero(self, app, client, test_db, test_property, test_guest_user, test_host_user, platform_org_id):
