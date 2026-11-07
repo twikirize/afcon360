@@ -1703,6 +1703,12 @@ class BookingService:
                     (snapshot.get("cancellation_policy_rules") or {}).get("snapshot_version")
                 ),
             }
+            from app.accommodation.services.marketplace_service import MarketplaceService
+            snapshot["cancellation_outcome_hmac"] = (
+                MarketplaceService.sign_cancellation_outcome(
+                    booking, snapshot["cancellation_outcome"]
+                )
+            )
 
             # Record host policy violation if host cancels a confirmed/active booking.
             is_host_cancellation = cancelled_by_user_id == booking.host_user_id
@@ -1726,7 +1732,7 @@ class BookingService:
                 # Provider-cancellation liability rules are not yet represented
                 # by the guest cancellation policy; platform review decides it.
                 review_flags.append("provider_cancellation_liability_review")
-            if not (snapshot.get("cancellation_policy_rules") or {}).get("snapshot_version") == 1:
+            if not (snapshot.get("cancellation_policy_rules") or {}).get("snapshot_version") == 2:
                 review_flags.append("booking_time_policy_snapshot_incomplete")
 
             if refundable_cash_amount > 0 or review_flags:
