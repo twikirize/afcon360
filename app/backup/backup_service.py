@@ -481,17 +481,33 @@ class BackupService:
         )
         file_size = os.path.getsize(backup_path)
 
-        client.upload_file(
-            backup_path,
-            bucket,
-            object_key,
-            ExtraArgs={
-                "Metadata": {
-                    "sha256": checksum,
-                    "backup-type": str(backup_type),
-                }
-            },
-        )
+        metadata = {
+            "sha256": checksum,
+            "backup-type": str(backup_type),
+        }
+        # OCI's single PutObject API accepts objects up to 50 GiB. Use a
+        # seekable file stream for ordinary backups so the backup identity
+        # does not need OBJECT_DELETE solely to abort failed multipart uploads.
+        # For larger artifacts, boto3 switches to multipart; those deployments
+        # must grant the additional multipart permissions documented in the
+        # operations guide and keep OCI's ABORT lifecycle rule enabled.
+        max_single_put_bytes = 50 * 1024 * 1024 * 1024
+        if file_size <= max_single_put_bytes:
+            with open(backup_path, "rb") as source:
+                client.put_object(
+                    Bucket=bucket,
+                    Key=object_key,
+                    Body=source,
+                    ContentLength=file_size,
+                    Metadata=metadata,
+                )
+        else:
+            client.upload_file(
+                backup_path,
+                bucket,
+                object_key,
+                ExtraArgs={"Metadata": metadata},
+            )
 
         head = client.head_object(Bucket=bucket, Key=object_key)
         remote_size = int(head.get("ContentLength", -1))
