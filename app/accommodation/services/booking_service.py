@@ -1635,9 +1635,18 @@ class BookingService:
         if not booking:
             return False, "Booking not found", None
 
-        # Authority check (D-004): only the Booking Owner, the booker, or the host may cancel.
-        owner_id = booking.booking_owner_id or booking.booked_by_user_id
-        if cancelled_by_user_id not in (owner_id, booking.host_user_id):
+        # Match the guest cancellation route's authorization contract:
+        # booking owner, booker, named guest, primary guest or property host.
+        # The later refund boundary records this exact actor and will not allow
+        # a different guest/host to start the policy refund.
+        authorized_cancel_actor_ids = {
+            booking.booking_owner_id,
+            booking.booked_by_user_id,
+            booking.guest_user_id,
+            booking.primary_guest_id,
+            booking.host_user_id,
+        }
+        if cancelled_by_user_id not in authorized_cancel_actor_ids:
             return False, "You are not authorised to cancel this booking.", None
 
         # Get cancellation quote with user type for permission enforcement
