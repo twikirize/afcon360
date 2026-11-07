@@ -27,8 +27,6 @@ Design rules honoured here (F-03b prompt):
   lacked).
 """
 
-import hashlib
-import json
 import threading
 import time
 import uuid
@@ -471,8 +469,7 @@ def _commission(app, booking_id):
 
 
 def _frozen_policy_snapshot(
-    booking_id,
-    property_id,
+    booking,
     refund_amount,
     *,
     workflow_state="screening",
@@ -480,7 +477,7 @@ def _frozen_policy_snapshot(
     risk_flags=None,
 ):
     rules = {
-        "snapshot_version": 1,
+        "snapshot_version": 2,
         "name": "FLEX",
         "pre_checkin_days": 1,
         "pre_checkin_refund_pct": "100.00",
@@ -491,26 +488,27 @@ def _frozen_policy_snapshot(
         "refundable_cleaning_fee": False,
         "refundable_service_fee": False,
         "refundable_taxes": False,
-        "source_property_id": property_id,
+        "source_property_id": booking.property_id,
         "captured_at": datetime.now(timezone.utc).isoformat(),
     }
-    rules["sha256"] = hashlib.sha256(
-        json.dumps(rules, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    rules["hmac_sha256"] = MarketplaceService.sign_cancellation_policy_rules(
+        booking, rules
+    )
     amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
-    return {
+    outcome = {
+        "policy": "FLEX",
+        "phase": "pre_checkin",
+        "refundable_base": "230.00",
+        "refund": str(amount),
+        "fine": str(Decimal("230.00") - amount),
+        "nights_remaining": 0,
+        "days_until_checkin": 3,
+        "policy_snapshot_version": 2,
+    }
+    snapshot = {
         "cancellation_policy": "FLEX",
         "cancellation_policy_rules": rules,
-        "cancellation_outcome": {
-            "policy": "FLEX",
-            "phase": "pre_checkin",
-            "refundable_base": "230.00",
-            "refund": str(amount),
-            "fine": str(Decimal("230.00") - amount),
-            "nights_remaining": 0,
-            "days_until_checkin": 3,
-            "policy_snapshot_version": 1,
-        },
+        "cancellation_outcome": outcome,
         "refund_workflow": {
             "state": workflow_state,
             "proposed_amount": str(amount),
@@ -523,6 +521,11 @@ def _frozen_policy_snapshot(
             "submitted_at": datetime.now(timezone.utc).isoformat(),
         },
     }
+    booking.policy_snapshot = snapshot
+    snapshot["cancellation_outcome_hmac"] = (
+        MarketplaceService.sign_cancellation_outcome(booking, outcome)
+    )
+    return snapshot
 
 
 def _prepare_cancelled_booking_for_review(
@@ -545,8 +548,7 @@ def _prepare_cancelled_booking_for_review(
         booking.payment_status = AccommodationPaymentStatus.PAID.value
         booking.amount_paid = Decimal("230.00")
         booking.policy_snapshot = _frozen_policy_snapshot(
-            booking.id,
-            booking.property_id,
+            booking,
             refund_amount,
             workflow_state=workflow_state,
             requester_user_id=requester_user_id,
