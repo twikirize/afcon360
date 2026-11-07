@@ -25,3 +25,65 @@ def test_host_dashboard_upcoming_query_is_bounded_and_property_timezone_aware():
         assert "accommodation_bookings.check_in >=" in sql
     finally:
         session.close()
+
+
+
+def test_property_move_does_not_reuse_old_coordinates_or_timezone():
+    from types import SimpleNamespace
+
+    prop = SimpleNamespace(
+        address_line1="Kampala Road",
+        city="Kampala",
+        state="Central",
+        country="UG",
+        postal_code="",
+        latitude=0.3136,
+        longitude=32.5811,
+        timezone_name="Africa/Kampala",
+    )
+    resolved = HostService._resolve_property_timezone_for_update(
+        prop,
+        {
+            "address_line1": "King Street West",
+            "city": "Toronto",
+            "state": "Ontario",
+            "country": "CA",
+            "postal_code": "M5H 1A1",
+            "timezone_name": "America/Toronto",
+        },
+    )
+
+    assert resolved["location_changed"] is True
+    assert resolved["timezone_name"] == "America/Toronto"
+    assert resolved["latitude"] is None
+    assert resolved["longitude"] is None
+
+
+def test_property_move_to_single_zone_country_replaces_old_zone():
+    from types import SimpleNamespace
+
+    prop = SimpleNamespace(
+        address_line1="Kampala Road",
+        city="Kampala",
+        state="Central",
+        country="UG",
+        postal_code="",
+        latitude=0.3136,
+        longitude=32.5811,
+        timezone_name="Africa/Kampala",
+    )
+    resolved = HostService._resolve_property_timezone_for_update(
+        prop,
+        {
+            "address_line1": "Kimathi Street",
+            "city": "Nairobi",
+            "state": "Nairobi County",
+            "country": "KE",
+            "postal_code": "",
+        },
+    )
+
+    assert resolved["location_changed"] is True
+    assert resolved["timezone_name"] == "Africa/Nairobi"
+    assert resolved["latitude"] is None
+    assert resolved["longitude"] is None
