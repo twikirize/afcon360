@@ -208,7 +208,7 @@ def _restore_to_test_database(
         verification_sql += (
             " || '|' || (SELECT count(*)::text "
             "FROM public.oci_backup_drill_marker WHERE marker = "
-            + "'" + expected_marker + "'"
+            + "'" + expected_marker + "')"
         )
 
     verify_command = [
