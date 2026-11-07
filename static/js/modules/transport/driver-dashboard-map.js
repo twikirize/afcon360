@@ -27,6 +27,91 @@
     state.classList.toggle('badge-gray', !isError);
   }
 
+  function setupDemandOverlay(map, container) {
+    var demandUrl = container.dataset.demandUrl;
+    var state = document.getElementById('driverDemandState');
+    var refreshButton = document.getElementById('driverDemandRefreshBtn');
+    if (!state || !refreshButton) return;
+
+    var layer = window.L && typeof window.L.layerGroup === 'function'
+      ? window.L.layerGroup().addTo(map) : null;
+
+    function setDemandState(message, isError) {
+      state.textContent = message;
+      state.classList.toggle('badge-amber', !!isError);
+      state.classList.toggle('badge-gray', !isError);
+    }
+
+    async function refreshDemand() {
+      if (!layer || !demandUrl || typeof window.fetch !== 'function') {
+        setDemandState('Recent demand map unavailable', true);
+        return;
+      }
+
+      refreshButton.disabled = true;
+      setDemandState('Loading recent demand…', false);
+      try {
+        var response = await window.fetch(demandUrl, {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' }
+        });
+        if (!response.ok) throw new Error('Demand request failed');
+        var payload = await response.json();
+        if (!payload || payload.success !== true || !Array.isArray(payload.cells)) {
+          throw new Error('Invalid demand response');
+        }
+
+        layer.clearLayers();
+        if (payload.state === 'location_unavailable') {
+          setDemandState('Waiting for a fresh driver location', true);
+          return;
+        }
+
+        var drawn = 0;
+        payload.cells.forEach(function (cell) {
+          var center = cell && cell.center;
+          var latitude = center ? Number(center.latitude) : NaN;
+          var longitude = center ? Number(center.longitude) : NaN;
+          var count = Number(cell && cell.request_count);
+          if (!Number.isInteger(count) || count < 3 ||
+              !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+              !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            return;
+          }
+
+          var tone = count >= 10 ? '#dc2626' : count >= 6 ? '#ea580c' : '#d97706';
+          window.L.circle([latitude, longitude], {
+            radius: 420,
+            color: tone,
+            weight: 1,
+            fillColor: tone,
+            fillOpacity: Math.min(0.36, 0.16 + (count / 40))
+          }).bindTooltip('Booking requests in last 24 hours: ' + count, {
+            direction: 'top'
+          }).addTo(layer);
+          drawn += 1;
+        });
+
+        setDemandState(
+          drawn
+            ? drawn + ' nearby request zones · last 24 hours'
+            : 'No recent request clusters nearby (24h)',
+          false
+        );
+      } catch (error) {
+        layer.clearLayers();
+        setDemandState('Recent demand unavailable; driver tools remain available', true);
+      } finally {
+        refreshButton.disabled = false;
+      }
+    }
+
+    refreshButton.addEventListener('click', refreshDemand);
+    refreshDemand();
+  }
+
   function boot() {
     var root = document.getElementById('driverDashboard');
     var container = document.getElementById('driverMap');
@@ -82,6 +167,7 @@
     }
 
     var map = handle.map;
+    setupDemandOverlay(map, container);
     var deviceMarker = null;
     window.setTimeout(function () {
       try { map.invalidateSize({ pan: false }); } catch (error) { /* map may have been closed */ }

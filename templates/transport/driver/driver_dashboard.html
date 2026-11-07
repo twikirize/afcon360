@@ -518,12 +518,17 @@
            data-last-lat="{{ driver_profile.last_location.get('latitude') if driver_profile.last_location and driver_profile.last_location.get('latitude') is not none else '' }}"
            data-last-lng="{{ driver_profile.last_location.get('longitude') if driver_profile.last_location and driver_profile.last_location.get('longitude') is not none else '' }}"
            data-last-ts="{{ driver_profile.location_updated_at.isoformat() if driver_profile.location_updated_at else '' }}"
+           data-demand-url="{{ url_for('transport.driver_demand_cells') }}"
            aria-label="Map showing the driver's last published position when available"></div>
     </div>
     <div class="driver-location-map__tools">
       <span id="driverMapNote" class="driver-location-map__note">
         The map uses the shared GEO renderer. A default map centre is not a tracked driver location.
       </span>
+      <span id="driverDemandState" class="badge badge-gray" role="status" aria-live="polite">Recent demand: loading…</span>
+      <button type="button" class="btn btn-secondary btn-sm" id="driverDemandRefreshBtn">
+        <i class="fa-solid fa-rotate"></i> Refresh demand
+      </button>
       <button type="button" class="btn btn-secondary btn-sm" id="driverMapLocateBtn">
         <i class="fa-solid fa-location-crosshairs"></i> Center on this device
       </button>

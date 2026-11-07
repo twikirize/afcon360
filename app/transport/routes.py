@@ -243,6 +243,7 @@ _PUBLIC_ENDPOINTS = {
     "transport.vehicle_dashboard",
     "transport.driver_dashboard",
     "transport.driver_dashboard_slash",
+    "transport.driver_demand_cells",
     "transport.transport_service_worker",
     "transport.vehicle_marketplace",
     # Personal/driver/org vehicle detail surfaces enforce owner-scoped access
@@ -2722,6 +2723,128 @@ def driver_dashboard():
         notifications=notifications,
         notification_unread=notification_unread,
     )
+
+
+
+# Driver demand overlay — aggregate booking requests, never live driver supply.
+DRIVER_DEMAND_WINDOW_HOURS = 24
+DRIVER_DEMAND_RADIUS_M = 25_000.0
+DRIVER_DEMAND_MIN_CELL_REQUESTS = 3
+
+
+@transport_bp.get("/api/driver/demand/cells")
+@module_enabled_required("transport")
+@login_required
+@active_context_required(ContextType.DRIVER)
+def driver_demand_cells():
+    """Read-only, driver-scoped recent booking-request concentration.
+
+    The response contains only aggregated cells near this driver's fresh,
+    last-published position. It never returns booking IDs, raw pickup points,
+    fares, supply counts, or dispatch recommendations.
+    """
+    from app.geo.activity import aggregate_cells
+    from app.geo.services import LOCATION_TTL_SECONDS, straight_line_distance_m
+    from app.geo.validation import is_fresh, normalize_point
+    from app.transport.services.booking_service import booking_request_points
+
+    now = datetime.now(timezone.utc)
+
+    def private_json(payload):
+        response = jsonify(payload)
+        response.headers["Cache-Control"] = "private, no-store, max-age=0"
+        response.headers["Vary"] = "Cookie"
+        return response
+
+    profile = DriverProfile.query.filter_by(
+        user_id=current_user.id,
+        is_deleted=False,
+    ).first()
+    location = getattr(profile, "last_location", None) if profile else None
+    updated_at = getattr(profile, "location_updated_at", None) if profile else None
+
+    if (
+        profile is None
+        or not isinstance(location, dict)
+        or not isinstance(updated_at, datetime)
+    ):
+        return private_json({
+            "success": True,
+            "state": "location_unavailable",
+            "cells": [],
+            "computed_at": now.isoformat(),
+        })
+
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
+
+    try:
+        driver_point = normalize_point(
+            location.get("latitude"),
+            location.get("longitude"),
+            timestamp=updated_at,
+        )
+    except (TypeError, ValueError, ValidationError):
+        return private_json({
+            "success": True,
+            "state": "location_unavailable",
+            "cells": [],
+            "computed_at": now.isoformat(),
+        })
+
+    # A future timestamp is not a trustworthy current position either.
+    age_seconds = (now - updated_at).total_seconds()
+    if age_seconds < 0 or not is_fresh(
+        driver_point, LOCATION_TTL_SECONDS, now=now
+    ):
+        return private_json({
+            "success": True,
+            "state": "location_unavailable",
+            "cells": [],
+            "computed_at": now.isoformat(),
+        })
+
+    window_start = now - timedelta(hours=DRIVER_DEMAND_WINDOW_HOURS)
+    points, skipped_invalid = booking_request_points(window_start, now)
+
+    # Filter individual points around the driver's current area BEFORE
+    # aggregation, so busy cities elsewhere cannot consume the cell cap.
+    nearby_points = []
+    for latitude, longitude, _tag in points:
+        try:
+            candidate = normalize_point(latitude, longitude)
+        except (TypeError, ValueError, ValidationError):
+            skipped_invalid += 1
+            continue
+        if straight_line_distance_m(driver_point, candidate) <= DRIVER_DEMAND_RADIUS_M:
+            nearby_points.append((
+                candidate.latitude,
+                candidate.longitude,
+                None,
+            ))
+
+    aggregated = aggregate_cells(nearby_points)
+    cells = [
+        {
+            "center": cell["center"],
+            "request_count": cell["count"],
+        }
+        for cell in aggregated["cells"]
+        if cell["count"] >= DRIVER_DEMAND_MIN_CELL_REQUESTS
+    ]
+
+    return private_json({
+        "success": True,
+        "state": "available" if cells else "no_recent_demand",
+        "cells": cells,
+        "window": {
+            "since": window_start.isoformat(),
+            "until": now.isoformat(),
+        },
+        "computed_at": now.isoformat(),
+        "skipped_invalid": skipped_invalid + aggregated["skipped_invalid"],
+        "truncated": aggregated["truncated"],
+    })
 
 
 @transport_bp.route("/driver/dashboard/compare")
