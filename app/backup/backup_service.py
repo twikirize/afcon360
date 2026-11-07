@@ -637,8 +637,17 @@ class BackupService:
         body = response["Body"]
         digest = hashlib.sha256()
         downloaded_size = 0
+        temporary_created = False
         try:
-            with open(temporary_path, "xb") as output:
+            # Backup artifacts can contain personal and financial data. Create
+            # the partial download with owner-only permissions from the start.
+            fd = os.open(
+                temporary_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o600,
+            )
+            temporary_created = True
+            with os.fdopen(fd, "wb") as output:
                 for chunk in iter(lambda: body.read(1024 * 1024), b""):
                     output.write(chunk)
                     digest.update(chunk)
@@ -646,10 +655,11 @@ class BackupService:
                 output.flush()
                 os.fsync(output.fileno())
         except Exception:
-            try:
-                os.remove(temporary_path)
-            except OSError:
-                pass
+            if temporary_created:
+                try:
+                    os.remove(temporary_path)
+                except OSError:
+                    pass
             raise
         finally:
             body.close()
