@@ -11,6 +11,7 @@ from flask import session, current_app, request, abort
 from flask_login import current_user
 
 from app.extensions import db
+from app.utils.time_policy import local_day_utc_bounds, local_month_utc_bounds, require_iana_timezone
 from app.identity.individuals.individual_verification import IndividualVerification
 from app.profile.models import UserProfile, get_profile_by_user, IMMUTABLE_AFTER_VERIFICATION
 from app.identity.models.organisation import Organisation
@@ -488,6 +489,61 @@ def get_limits_for_tier(tier: int) -> Dict[str, Optional[int]]:
         "tier_info": TIER_REQUIREMENTS.get(tier, {})
     }
 
+def _resolve_kyc_policy_timezone(account):
+    """Resolve the account's regulatory calendar without trusting profile or device data.
+
+    Priority: explicit account regulatory_jurisdiction_code, latest verified
+    KYC document country, then the explicit product policy default (currently
+    Uganda because this KYC tier engine is the Bank of Uganda policy engine).
+    """
+    account_metadata = getattr(account, "extra_data", None) or {}
+    jurisdiction_code = (
+        account_metadata.get("regulatory_jurisdiction_code")
+        if isinstance(account_metadata, dict) else None
+    )
+    if not jurisdiction_code:
+        try:
+            from app.kyc.models import KycRecord
+            verified_record = (
+                KycRecord.query.filter_by(
+                    user_id=account.user_id,
+                    status="verified",
+                )
+                .filter(KycRecord.country.isnot(None))
+                .order_by(
+                    KycRecord.verified_at.desc().nullslast(),
+                    KycRecord.created_at.desc(),
+                )
+                .first()
+            )
+            if verified_record and verified_record.country:
+                jurisdiction_code = verified_record.country
+        except Exception:
+            # Absence of a verified document is handled by the explicit
+            # product default below; query failures are not swallowed.
+            raise
+    if not jurisdiction_code:
+        jurisdiction_code = current_app.config.get(
+            "KYC_DEFAULT_JURISDICTION_CODE", "UG"
+        )
+    jurisdiction_code = str(jurisdiction_code).strip().upper()
+    if not jurisdiction_code:
+        raise ValueError("KYC regulatory jurisdiction is not configured")
+
+    from app.compliance.aml_regulatory_models import JurisdictionProfile
+    profile = JurisdictionProfile.query.filter_by(
+        country_code=jurisdiction_code, is_active=True
+    ).first()
+    if profile is None:
+        raise ValueError(
+            f"No active KYC regulatory profile exists for {jurisdiction_code}"
+        )
+    require_iana_timezone(
+        profile.timezone_name, field="KYC regulatory jurisdiction timezone"
+    )
+    return profile
+
+
 def get_user_limits(user_identifier) -> Dict[str, Any]:
     """Get current user's limits based on their KYC tier."""
     from app.identity.models.user import User
@@ -513,26 +569,32 @@ def get_user_limits(user_identifier) -> Dict[str, Any]:
         # Try to import Transaction model
         from app.wallet.models.transaction import TransactionModel
         from app.wallet.models.ledger import AccountModel, AccountOwnerType
-        today = date.today()
 
-        # Get user's account first (filter by owner_type for users)
+        # The account's governing compliance jurisdiction, not the browser,
+        # host OS, profile address or PostgreSQL session, defines the calendar.
         account = AccountModel.query.filter_by(
             user_id=user.id,
             owner_type=AccountOwnerType.USER
         ).first()
         if account:
-            # Calculate daily usage via account.id
+            jurisdiction = _resolve_kyc_policy_timezone(account)
+            policy_timezone = jurisdiction.timezone_name
+            policy_zone = require_iana_timezone(policy_timezone)
+            today = datetime.now(policy_zone).date()
+            daily_start, daily_end = local_day_utc_bounds(today, policy_timezone)
+            month_start, month_end = local_month_utc_bounds(today, policy_timezone)
+
             daily_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(
                 TransactionModel.account_id == account.id,
-                db.func.date(TransactionModel.created_at) == today,
+                TransactionModel.created_at >= daily_start,
+                TransactionModel.created_at < daily_end,
                 TransactionModel.status == "completed"
             ).scalar() or 0
 
-            # Calculate monthly usage
-            month_start = date(today.year, today.month, 1)
             monthly_total = db.session.query(db.func.sum(TransactionModel.amount)).filter(
                 TransactionModel.account_id == account.id,
                 TransactionModel.created_at >= month_start,
+                TransactionModel.created_at < month_end,
                 TransactionModel.status == "completed"
             ).scalar() or 0
         else:
@@ -544,9 +606,15 @@ def get_user_limits(user_identifier) -> Dict[str, Any]:
         daily_total = 0
         monthly_total = 0
     except Exception as e:
-        current_app.logger.warning(f"Could not calculate transaction usage for user {user_identifier}: {e}")
-        daily_total = 0
-        monthly_total = 0
+        # A calendar/configuration/database failure must never report zero usage
+        # and accidentally widen a regulated wallet limit. Fail closed for the
+        # current read by consuming the complete allowance.
+        current_app.logger.error(
+            f"Could not calculate transaction usage for user {user_identifier}; "
+            f"failing closed for KYC limits: {e}"
+        )
+        daily_total = limits.get("daily") or 0
+        monthly_total = limits.get("monthly") or 0
 
     limits["daily_used"] = daily_total
     limits["monthly_used"] = monthly_total

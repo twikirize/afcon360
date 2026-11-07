@@ -253,7 +253,9 @@ class Config:
     # App wall-clock zone used when a naive datetime (e.g. the booking
     # form's pickup_time) arrives without an offset. Interpretation
     # contract for transport booking_service.create_booking.
-    APP_TZ = os.getenv("APP_TZ", "Africa/Nairobi")
+    APP_TZ = os.getenv("APP_TZ", "Africa/Nairobi")  # Legacy compatibility only; new business scheduling uses pickup location.
+    KYC_DEFAULT_JURISDICTION_CODE = os.getenv("KYC_DEFAULT_JURISDICTION_CODE", "UG").strip().upper()
+    REGULATOR_REPORT_TIMEZONE = os.getenv("REGULATOR_REPORT_TIMEZONE", "UTC").strip()
 
     # ---- Email --------------------------------------------------------------
     MAIL_SERVER         = os.getenv("MAIL_SERVER",    "smtp.gmail.com")

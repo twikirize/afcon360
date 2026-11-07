@@ -32,52 +32,52 @@ from app.compliance.aml_regulatory_models import (
 # types / identifiers. Unknown or smaller jurisdictions fall back to ``INT``.
 _JURISDICTIONS = {
     'INT': dict(country_code='INT', country_name='International (FATF Baseline)',
-                currency_code='USD', cash_threshold_amount=15000, str_sla_working_days=2,
+                currency_code='USD', timezone_name='UTC', cash_threshold_amount=15000, str_sla_working_days=2,
                 structuring_band_percent=10,
                 supported_report_types=['str', 'sar', 'ctr', 'lctr', 'iwtr', 'tfr'],
                 identifier_types=['tin'], retention_years=5, is_default=True),
-    'UG': dict(country_code='UG', country_name='Uganda', currency_code='UGX',
+    'UG': dict(country_code='UG', country_name='Uganda', currency_code='UGX', timezone_name='Africa/Kampala',
                cash_threshold_amount=20000000, currency_point_value=20000, cash_threshold_points=1000,
                str_sla_working_days=2, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'lctr', 'iwtr', 'tfr', 'alctr'],
                identifier_types=['nin', 'ursb'], retention_years=10),
-    'KE': dict(country_code='KE', country_name='Kenya', currency_code='KES',
+    'KE': dict(country_code='KE', country_name='Kenya', currency_code='KES', timezone_name='Africa/Nairobi',
                cash_threshold_amount=1000000, str_sla_working_days=3, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'iwtr', 'tfr'],
                identifier_types=['id_number', 'kra_pin'], retention_years=10),
-    'TZ': dict(country_code='TZ', country_name='Tanzania', currency_code='TZS',
+    'TZ': dict(country_code='TZ', country_name='Tanzania', currency_code='TZS', timezone_name='Africa/Dar_es_Salaam',
                cash_threshold_amount=10000000, str_sla_working_days=1, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'iwtr', 'tfr'],
                identifier_types=['nida'], retention_years=10),
-    'ZM': dict(country_code='ZM', country_name='Zambia', currency_code='ZMW',
+    'ZM': dict(country_code='ZM', country_name='Zambia', currency_code='ZMW', timezone_name='Africa/Lusaka',
                cash_threshold_amount=500000, str_sla_working_days=2, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'iwtr', 'tfr'],
                identifier_types=['nrc', 'tin'], retention_years=10),
-    'RW': dict(country_code='RW', country_name='Rwanda', currency_code='RWF',
+    'RW': dict(country_code='RW', country_name='Rwanda', currency_code='RWF', timezone_name='Africa/Kigali',
                cash_threshold_amount=10000000, str_sla_working_days=2, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'iwtr', 'tfr'],
                identifier_types=['national_id'], retention_years=10),
-    'NG': dict(country_code='NG', country_name='Nigeria', currency_code='NGN',
+    'NG': dict(country_code='NG', country_name='Nigeria', currency_code='NGN', timezone_name='Africa/Lagos',
                cash_threshold_amount=5000000, str_sla_working_days=2, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'iwtr', 'tfr'],
                identifier_types=['bvn', 'tin'], retention_years=10),
-    'GH': dict(country_code='GH', country_name='Ghana', currency_code='GHS',
+    'GH': dict(country_code='GH', country_name='Ghana', currency_code='GHS', timezone_name='Africa/Accra',
                cash_threshold_amount=15000, str_sla_working_days=2, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'iwtr', 'tfr'],
                identifier_types=['ghana_card'], retention_years=10),
-    'ZA': dict(country_code='ZA', country_name='South Africa', currency_code='ZAR',
+    'ZA': dict(country_code='ZA', country_name='South Africa', currency_code='ZAR', timezone_name='Africa/Johannesburg',
                cash_threshold_amount=24900, str_sla_working_days=2, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'iwtr', 'tfr'],
                identifier_types=['id_number', 'tax_number'], retention_years=5),
-    'GB': dict(country_code='GB', country_name='United Kingdom', currency_code='GBP',
+    'GB': dict(country_code='GB', country_name='United Kingdom', currency_code='GBP', timezone_name='Europe/London',
                cash_threshold_amount=10000, str_sla_working_days=2, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'iwtr', 'tfr'],
                identifier_types=['nino', 'utr'], retention_years=6),
-    'US': dict(country_code='US', country_name='United States', currency_code='USD',
+    'US': dict(country_code='US', country_name='United States', currency_code='USD', timezone_name='America/New_York',
                cash_threshold_amount=10000, str_sla_working_days=1, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'iwtr', 'tfr'],
                identifier_types=['ssn', 'tin'], retention_years=5),
-    'EU': dict(country_code='EU', country_name='European Union', currency_code='EUR',
+    'EU': dict(country_code='EU', country_name='European Union', currency_code='EUR', timezone_name='Europe/Brussels',
                cash_threshold_amount=10000, str_sla_working_days=2, structuring_band_percent=10,
                supported_report_types=['str', 'sar', 'ctr', 'iwtr', 'tfr'],
                identifier_types=['tin'], retention_years=5),
@@ -95,6 +95,7 @@ def seed_jurisdictions() -> int:
             country_code=data['country_code'],
             country_name=data['country_name'],
             currency_code=data['currency_code'],
+            timezone_name=data['timezone_name'],
             cash_threshold_amount=Decimal(str(data['cash_threshold_amount'])),
             currency_point_value=Decimal(str(data['currency_point_value'])) if data.get('currency_point_value') else None,
             cash_threshold_points=Decimal(str(data['cash_threshold_points'])) if data.get('cash_threshold_points') else None,
@@ -124,8 +125,14 @@ def get_jurisdiction(country_code: Optional[str]) -> JurisdictionProfile:
     if country_code:
         profile = JurisdictionProfile.query.filter_by(country_code=country_code.upper(), is_active=True).first()
         if profile:
+            from app.utils.time_policy import require_iana_timezone
+            require_iana_timezone(profile.timezone_name, field="jurisdiction timezone")
             return profile
-    return get_default_jurisdiction()
+    profile = get_default_jurisdiction()
+    if profile:
+        from app.utils.time_policy import require_iana_timezone
+        require_iana_timezone(profile.timezone_name, field="default jurisdiction timezone")
+    return profile
 
 
 def list_jurisdictions() -> List[JurisdictionProfile]:
@@ -283,15 +290,37 @@ def detect_cash_and_structuring(user_id: Optional[int] = None, day=None,
     band = Decimal(str(jurisdiction.structuring_band_percent)) if jurisdiction else Decimal('0')
     lower = threshold * (Decimal('1') - band / Decimal('100')) if threshold else Decimal('0')
 
+    from app.utils.time_policy import local_day_utc_bounds, require_iana_timezone
+    from datetime import date as calendar_date
+
+    if not jurisdiction or not jurisdiction.timezone_name:
+        raise ValueError("An active AML jurisdiction with an IANA timezone is required")
+    business_zone = require_iana_timezone(
+        jurisdiction.timezone_name, field="AML jurisdiction timezone"
+    )
+    if day is None:
+        period = datetime.now(business_zone).date()
+    elif isinstance(day, str):
+        period = calendar_date.fromisoformat(day)
+    elif isinstance(day, datetime):
+        period = day.date()
+    elif isinstance(day, calendar_date):
+        period = day
+    else:
+        raise ValueError("day must be an ISO date or date object")
+    start_utc, end_utc = local_day_utc_bounds(period, jurisdiction.timezone_name)
+
     query = db.session.query(
         TransactionModel.user_id,
         func.coalesce(func.sum(TransactionModel.amount), 0),
         func.count(TransactionModel.id),
-    ).filter(TransactionModel.status == 'completed')
+    ).filter(
+        TransactionModel.status == 'completed',
+        TransactionModel.created_at >= start_utc,
+        TransactionModel.created_at < end_utc,
+    )
     if user_id:
         query = query.filter(TransactionModel.user_id == user_id)
-    if day:
-        query = query.filter(func.date(TransactionModel.created_at) == day)
     rows = query.group_by(TransactionModel.user_id).all()
 
     created_alerts: List[CtrAlert] = []
@@ -299,7 +328,6 @@ def detect_cash_and_structuring(user_id: Optional[int] = None, day=None,
         if not uid or total is None:
             continue
         total = Decimal(str(total))
-        period = (day or datetime.now(timezone.utc).date())
         existing = CtrAlert.query.filter_by(
             user_id=uid, period_date=period, status='open'
         ).first()
