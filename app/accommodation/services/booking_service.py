@@ -1767,6 +1767,12 @@ class BookingService:
                     "payment_timing": payment_timing,
                 }
             booking.policy_snapshot = snapshot
+            snapshot["refund_workflow"]["hmac_sha256"] = (
+                MarketplaceService.sign_refund_workflow(
+                    booking, snapshot["refund_workflow"]
+                )
+            )
+            booking.policy_snapshot = snapshot
 
             # Do not set booking.refund_amount, refunded_at, payment_status=REFUNDED,
             # or booking.status=REFUNDED here. Those are written only after a
