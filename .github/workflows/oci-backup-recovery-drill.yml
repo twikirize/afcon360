@@ -241,6 +241,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Download the real OCI object and restore into the disposable database
+        shell: bash
         env:
           BACKUP_OFFSITE_BUCKET: ${{ vars.BACKUP_OFFSITE_BUCKET }}
           BACKUP_OFFSITE_ACCESS_KEY: ${{ secrets.BACKUP_OFFSITE_ACCESS_KEY }}
@@ -248,8 +249,6 @@ jobs:
           BACKUP_OFFSITE_ENVIRONMENT: staging
           OCI_REGION: ${{ vars.OCI_REGION }}
           OCI_ENDPOINT_URL: ${{ vars.OCI_ENDPOINT_URL }}
-        shell: bash
-        env:
           OBJECT_KEY: ${{ steps.backup.outputs.object_key }}
           EXPECTED_SHA256: ${{ steps.backup.outputs.sha256 }}
           EXPECTED_SIZE: ${{ steps.backup.outputs.size }}
