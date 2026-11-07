@@ -1112,6 +1112,7 @@ class MarketplaceService:
         amount: Decimal,
         provider_reference: str,
         *,
+        verification_note: str,
         reviewer_user_id: int,
     ) -> Tuple[bool, Optional[str]]:
         """Record verified completion by the original payment channel."""
@@ -1134,8 +1135,11 @@ class MarketplaceService:
             ):
                 return False, "Platform administrator authorization is required"
             reference = str(provider_reference or "").strip()
+            verification_note = str(verification_note or "").strip()
             if not reference:
                 return False, "Original provider refund reference is required"
+            if len(verification_note) < 10:
+                return False, "Record what you independently checked in the original provider's system"
             from sqlalchemy import select
             booking = db.session.execute(
                 select(AccommodationBooking)
@@ -1196,6 +1200,8 @@ class MarketplaceService:
                 "state": "refunded" if full_refund else "partially_refunded",
                 "actual_amount": str(amount),
                 "external_provider_reference": reference,
+                "execution_verification_note": verification_note,
+                "execution_verification_method": "independent_manual_provider_reconciliation",
                 "execution_verified_by_user_id": reviewer_user_id,
                 "execution_verified_at": datetime.now(timezone.utc).isoformat(),
             })
@@ -1211,6 +1217,8 @@ class MarketplaceService:
                     "amount": str(amount),
                     "currency": booking.currency,
                     "external_provider_reference": reference,
+                    "verification_note": verification_note,
+                    "verification_method": "independent_manual_provider_reconciliation",
                     "full_refund": full_refund,
                 },
             )
