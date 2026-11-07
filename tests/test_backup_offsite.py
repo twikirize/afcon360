@@ -90,6 +90,9 @@ def test_offsite_backup_upload_verifies_remote_content_checksum(
     assert service_name == "s3"
     assert kwargs["aws_access_key_id"] == "test-access-key"
     assert kwargs["aws_secret_access_key"] == "test-secret-key"
+    # OCI's S3 compatibility API requires Signature Version 4 and path-style URLs.
+    assert kwargs["config"].signature_version == "s3v4"
+    assert kwargs["config"].s3 == {"addressing_style": "path"}
 
 
 def test_offsite_backup_upload_rejects_remote_content_mismatch(
@@ -165,7 +168,13 @@ def test_offsite_backup_download_verifies_and_writes_new_file(
     checksum = hashlib.sha256(payload).hexdigest()
     fake_client = _FakeS3Client(payload)
     fake_client.object_metadata = {"sha256": checksum}
-    monkeypatch.setattr(boto3, "client", lambda service_name, **kwargs: fake_client)
+    client_calls = []
+
+    def _client_factory(service_name, **kwargs):
+        client_calls.append((service_name, kwargs))
+        return fake_client
+
+    monkeypatch.setattr(boto3, "client", _client_factory)
     _configure_offsite(app)
 
     destination = tmp_path / "recovery" / "database.sql.gz"
@@ -183,6 +192,9 @@ def test_offsite_backup_download_verifies_and_writes_new_file(
     assert result["size"] == len(payload)
     assert destination.read_bytes() == payload
     assert destination.stat().st_mode & 0o777 == 0o600
+    assert len(client_calls) == 1
+    assert client_calls[0][1]["config"].signature_version == "s3v4"
+    assert client_calls[0][1]["config"].s3 == {"addressing_style": "path"}
 
     # A recovery file is never silently overwritten.
     with app.app_context():
