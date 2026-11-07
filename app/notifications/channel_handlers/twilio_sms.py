@@ -13,27 +13,73 @@ from . import BaseChannelHandler
 logger = logging.getLogger(__name__)
 
 
+def _as_bool(value) -> bool:
+    """Parse owner/environment feature flags consistently."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "enabled"}
+    return bool(value)
+
+
+def _read_owner_setting(key: str):
+    """Read a DB-backed setting only inside a Flask app context.
+
+    NotificationService constructs channel handlers during module import, before
+    Flask has pushed an application context. In that phase the handler must not
+    query Flask-SQLAlchemy. A real decrypt failure must still fail closed.
+    """
+    from flask import has_app_context
+
+    if not has_app_context():
+        return None
+
+    from app.models.system_config import SystemConfig
+    try:
+        return SystemConfig.get(key)
+    except RuntimeError:
+        # Never fall back to plaintext/env secrets if Fernet decryption fails.
+        raise
+    except Exception as exc:
+        logger.warning(
+            "System SMS setting unavailable (key=%s, exception_type=%s)",
+            key,
+            type(exc).__name__,
+        )
+        return None
+
+
 class TwilioSmsHandler(BaseChannelHandler):
     """SMS handler using Twilio REST API."""
     channel_name = 'twilio_sms'
 
-    def __init__(self):
+    def __init__(self, auth_config=None):
+        self.auth_config = auth_config
         self.account_sid = self._get_config('TWILIO_ACCOUNT_SID')
         self.auth_token = self._get_config('TWILIO_AUTH_TOKEN')
         self.from_number = self._get_config('TWILIO_FROM_NUMBER')
         self.messaging_service_sid = self._get_config('TWILIO_MESSAGING_SERVICE_SID')
-        self._enabled = self._get_config('TWILIO_SMS_ENABLED', False)
+        self._enabled = bool(self._get_config('TWILIO_SMS_ENABLED', False)) or bool(
+            getattr(auth_config, 'twilio_enabled', False)
+        )
         self._client = None
 
     def _get_config(self, key: str, default=None):
-        """Read from SystemConfig (DB) first, then env, then default."""
-        try:
-            from app.models.system_config import SystemConfig
-            val = SystemConfig.get(key)
-            if val is not None:
-                return val
-        except Exception:
-            pass
+        """Resolve owner settings first, then compatible auth config/env values."""
+        val = _read_owner_setting(key)
+        if val is not None and val != '':
+            return val
+
+        auth_fields = {
+            'TWILIO_ACCOUNT_SID': 'twilio_account_sid',
+            'TWILIO_AUTH_TOKEN': 'twilio_auth_token',
+            'TWILIO_FROM_NUMBER': 'twilio_phone_number',
+        }
+        field = auth_fields.get(key)
+        if field and self.auth_config is not None:
+            value = getattr(self.auth_config, field, None)
+            if value:
+                return value
 
         import os
         env_val = os.getenv(key)
@@ -41,8 +87,25 @@ class TwilioSmsHandler(BaseChannelHandler):
             return env_val
         return default
 
+    def _refresh_config(self):
+        """Refresh owner settings and invalidate a client after credential rotation."""
+        previous_credentials = (self.account_sid, self.auth_token)
+        account_sid = self._get_config('TWILIO_ACCOUNT_SID')
+        auth_token = self._get_config('TWILIO_AUTH_TOKEN')
+        if previous_credentials != (account_sid, auth_token):
+            self._client = None
+
+        self.account_sid = account_sid
+        self.auth_token = auth_token
+        self.from_number = self._get_config('TWILIO_FROM_NUMBER')
+        self.messaging_service_sid = self._get_config('TWILIO_MESSAGING_SERVICE_SID')
+        self._enabled = _as_bool(self._get_config('TWILIO_SMS_ENABLED', False)) or _as_bool(
+            getattr(self.auth_config, 'twilio_enabled', False)
+        )
+
     def _get_client(self):
-        """Lazy initialization of Twilio client."""
+        """Lazy initialization and refresh of the owner-managed Twilio client."""
+        self._refresh_config()
         if not self._enabled:
             logger.warning("[Twilio SMS] SMS not enabled (TWILIO_SMS_ENABLED=false)")
             return None
@@ -54,8 +117,11 @@ class TwilioSmsHandler(BaseChannelHandler):
                 from twilio.rest import Client
                 self._client = Client(self.account_sid, self.auth_token)
                 logger.info("[Twilio SMS] Client initialized")
-            except Exception as e:
-                logger.error(f"[Twilio SMS] Failed to initialize client: {e}")
+            except Exception as exc:
+                logger.warning(
+                    "[Twilio SMS] Client initialization failed (exception_type=%s)",
+                    type(exc).__name__,
+                )
                 return None
         return self._client
 
@@ -101,12 +167,15 @@ class TwilioSmsHandler(BaseChannelHandler):
                 'response_body': f'Twilio SMS sent: {message.status}',
             }
 
-        except Exception as e:
-            logger.error(f"[Twilio SMS] Failed to send to {to_phone}: {e}")
+        except Exception as exc:
+            logger.warning(
+                "[Twilio SMS] Delivery failed (exception_type=%s)",
+                type(exc).__name__,
+            )
             return {
                 'success': False,
-                'response_code': 500,
-                'response_body': str(e),
+                'response_code': 502,
+                'response_body': 'Twilio SMS delivery failed',
             }
 
 
@@ -122,14 +191,10 @@ class TwilioWhatsAppHandler(BaseChannelHandler):
         self._client = None
 
     def _get_config(self, key: str, default=None):
-        """Read from SystemConfig (DB) first, then env, then default."""
-        try:
-            from app.models.system_config import SystemConfig
-            val = SystemConfig.get(key)
-            if val is not None:
-                return val
-        except Exception:
-            pass
+        """Read owner-managed settings only when a Flask app context exists."""
+        val = _read_owner_setting(key)
+        if val is not None and val != '':
+            return val
 
         import os
         env_val = os.getenv(key)
@@ -137,8 +202,22 @@ class TwilioWhatsAppHandler(BaseChannelHandler):
             return env_val
         return default
 
+    def _refresh_config(self):
+        """Refresh owner settings and invalidate a client after credential rotation."""
+        previous_credentials = (self.account_sid, self.auth_token)
+        account_sid = self._get_config('TWILIO_ACCOUNT_SID')
+        auth_token = self._get_config('TWILIO_AUTH_TOKEN')
+        if previous_credentials != (account_sid, auth_token):
+            self._client = None
+
+        self.account_sid = account_sid
+        self.auth_token = auth_token
+        self.whatsapp_from = self._get_config('TWILIO_WHATSAPP_FROM')
+        self._enabled = _as_bool(self._get_config('TWILIO_WHATSAPP_ENABLED', False))
+
     def _get_client(self):
-        """Lazy initialization of Twilio client."""
+        """Lazy initialization and refresh of the owner-managed Twilio client."""
+        self._refresh_config()
         if not self._enabled:
             logger.warning("[Twilio WhatsApp] WhatsApp not enabled (TWILIO_WHATSAPP_ENABLED=false)")
             return None
@@ -150,8 +229,11 @@ class TwilioWhatsAppHandler(BaseChannelHandler):
                 from twilio.rest import Client
                 self._client = Client(self.account_sid, self.auth_token)
                 logger.info("[Twilio WhatsApp] Client initialized")
-            except Exception as e:
-                logger.error(f"[Twilio WhatsApp] Failed to initialize client: {e}")
+            except Exception as exc:
+                logger.warning(
+                    "[Twilio WhatsApp] Client initialization failed (exception_type=%s)",
+                    type(exc).__name__,
+                )
                 return None
         return self._client
 
@@ -196,10 +278,13 @@ class TwilioWhatsAppHandler(BaseChannelHandler):
                 'response_body': f'Twilio WhatsApp sent: {message.status}',
             }
 
-        except Exception as e:
-            logger.error(f"[Twilio WhatsApp] Failed to send to {to_whatsapp}: {e}")
+        except Exception as exc:
+            logger.warning(
+                "[Twilio WhatsApp] Delivery failed (exception_type=%s)",
+                type(exc).__name__,
+            )
             return {
                 'success': False,
-                'response_code': 500,
-                'response_body': str(e),
+                'response_code': 502,
+                'response_body': 'Twilio WhatsApp delivery failed',
             }

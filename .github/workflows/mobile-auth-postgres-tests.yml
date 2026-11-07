@@ -11,6 +11,7 @@ on:
       - "app/auth/account_deletion_service.py"
       - "app/auth/mobile_tokens.py"
       - "app/auth/otp_service.py"
+      - "tests/notifications/test_sms_service_adapter.py"
       - "app/notifications/channel_handlers/email.py"
       - "app/auth/otp_store.py"
       - "app/auth/mobile_password_reset.py"
@@ -43,6 +44,7 @@ on:
       - "app/auth/account_deletion_service.py"
       - "app/auth/mobile_tokens.py"
       - "app/auth/otp_service.py"
+      - "tests/notifications/test_sms_service_adapter.py"
       - "app/notifications/channel_handlers/email.py"
       - "app/auth/otp_store.py"
       - "app/auth/mobile_password_reset.py"
@@ -180,6 +182,7 @@ jobs:
           tests/auth/test_mobile_registration_api.py
           tests/auth/test_mobile_wallet_api.py
           tests/auth/test_pending_registration_expiry.py
+          tests/notifications/test_sms_service_adapter.py
           tests/test_public_app_download.py
 
       - name: Run native bearer-token lifecycle tests against Redis

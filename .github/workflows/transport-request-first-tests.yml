@@ -362,6 +362,7 @@ jobs:
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
               tests/notifications/test_scheduled_notification_delivery.py
               tests/notifications/test_models.py
+              tests/notifications/test_sms_service_adapter.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
             )
             if [[ ${#TARGETS[@]} -eq 0 ]]; then

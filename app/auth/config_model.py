@@ -144,22 +144,40 @@ class AuthConfiguration(BaseModel):
         Returns:
             String: 'twilio' or 'africa_talking'
         """
+        # The unified owner OTP settings page writes these operational toggles
+        # to SystemConfig. The AuthConfiguration flags remain a compatibility
+        # source for the older authentication settings page.
+        try:
+            from app.models.system_config import SystemConfig
+            twilio_enabled = bool(self.twilio_enabled) or bool(
+                SystemConfig.get('TWILIO_SMS_ENABLED', False)
+            )
+        except Exception:
+            twilio_enabled = bool(self.twilio_enabled)
+        try:
+            from app.models.system_config import SystemConfig
+            africa_enabled = bool(self.africa_talking_enabled) or bool(
+                SystemConfig.get('AFRICA_TALKING_SMS_ENABLED', False)
+            )
+        except Exception:
+            africa_enabled = bool(self.africa_talking_enabled)
+
         if self.sms_provider_preference == 'twilio':
-            return 'twilio' if self.twilio_enabled else None
+            return 'twilio' if twilio_enabled else None
         elif self.sms_provider_preference == 'africa_talking':
-            return 'africa_talking' if self.africa_talking_enabled else None
-        
+            return 'africa_talking' if africa_enabled else None
+
         # Auto routing based on location
         african_countries = self.african_countries or []
         if country_code in african_countries:
-            if self.africa_talking_enabled:
+            if africa_enabled:
                 return 'africa_talking'
-            elif self.twilio_enabled:
+            elif twilio_enabled:
                 return 'twilio'
         else:
-            if self.twilio_enabled:
+            if twilio_enabled:
                 return 'twilio'
-            elif self.africa_talking_enabled:
+            elif africa_enabled:
                 return 'africa_talking'
         
         return None
@@ -237,7 +255,10 @@ class AuthConfiguration(BaseModel):
                 'sendgrid_from_email': self.sendgrid_from_email,
                 'sendgrid_from_name': self.sendgrid_from_name,
                 'twilio_account_sid': self.twilio_account_sid,
-                'twilio_auth_token': self.twilio_auth_token,
+                # Never serialize the credential itself, even for a legacy
+                # include_secrets caller. The runtime adapter reads it from
+                # the encrypted SystemConfig store.
+                'twilio_auth_token_configured': bool(self.twilio_auth_token),
                 'twilio_phone_number': self.twilio_phone_number,
                 'africa_talking_username': self.africa_talking_username,
                 'africa_talking_api_key': self.africa_talking_api_key,

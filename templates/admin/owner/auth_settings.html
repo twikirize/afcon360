@@ -265,9 +265,12 @@
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Auth Token</label>
-                            <input type="password" class="form-control" name="twilio_auth_token" 
-                                   value="{{ config.twilio_auth_token or '' }}" 
-                                   placeholder="Your Auth Token">
+                            <input type="password" class="form-control" name="twilio_auth_token"
+                                   value="" autocomplete="new-password"
+                                   placeholder="Leave blank to keep the saved token">
+                            <small class="text-muted">
+                                {% if twilio_token_configured %}A saved token is present; its value is hidden.{% else %}Enter a token to configure or rotate it.{% endif %}
+                            </small>
                         </div>
                         <div class="col-md-4 mb-3 d-flex align-items-end">
                             <button type="button" class="test-btn" onclick="testService('twilio')">
