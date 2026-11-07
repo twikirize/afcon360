@@ -714,6 +714,56 @@ class TestEscrowHumanAuthorization:
         assert _count_transfers_for(held_booking, "refund") == 0
         assert booking.refunded_at is None
 
+    def test_policy_integrity_exception_needs_explicit_admin_acknowledgement(
+        self, app, guest, platform_admin, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            workflow_state="screening",
+            refund_amount=Decimal("230.00"),
+        )
+        booking = db.session.get(AccommodationBooking, held_booking)
+        snapshot = dict(booking.policy_snapshot)
+        rules = dict(snapshot["cancellation_policy_rules"])
+        rules["pre_checkin_refund_pct"] = "1.00"
+        snapshot["cancellation_policy_rules"] = rules
+        booking.policy_snapshot = snapshot
+        db.session.commit()
+
+        with _login_as(app, guest["user_id"]):
+            queued, message = MarketplaceService.refund_guest(
+                held_booking, Decimal("230.00")
+            )
+        assert queued is True
+        assert "review" in message.lower()
+
+        with _login_as(app, platform_admin["user_id"]):
+            first_ok, first_error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Reviewed the booking and policy evidence",
+            )
+        assert first_ok is False
+        assert "integrity" in first_error.lower()
+        assert _count_transfers_for(held_booking, "refund") == 0
+
+        with _login_as(app, platform_admin["user_id"]):
+            approved, approval_error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="I checked the original payment and independently approved this integrity exception",
+                integrity_exception_acknowledged=True,
+            )
+
+        assert approved, approval_error
+        booking = db.session.get(AccommodationBooking, held_booking)
+        workflow = booking.policy_snapshot["refund_workflow"]
+        assert workflow["state"] == "refunded"
+        assert workflow["integrity_exception_acknowledged_by_user_id"] == platform_admin["user_id"]
+        assert _count_transfers_for(held_booking, "refund") == 1
+
     def test_tampered_cancellation_outcome_queues_review_without_transfer(
         self, app, guest, held_booking
     ):
