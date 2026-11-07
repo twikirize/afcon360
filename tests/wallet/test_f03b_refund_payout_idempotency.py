@@ -874,59 +874,70 @@ class TestPayoutIdempotency:
 
 class TestRefundIdempotency:
     def test_sequential_duplicate_refund_single_transfer(
-        self, app, platform, guest, host, held_booking
+        self, app, platform, guest, host, platform_admin, held_booking
     ):
-        """GREEN contract: a second refund attempt is refused and the wallet
-        transfer happened exactly once."""
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+        )
         guest_before = _balance(guest["account_id"])
         platform_before = _balance(platform["account_id"])
 
-        with _login_as(app, host["user_id"]):
+        with _login_as(app, platform_admin["user_id"]):
             ok1, err1 = _guarded_call(
                 lambda: MarketplaceService.refund_guest_approved(
-                    held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
+                    held_booking,
+                    Decimal("230.00"),
+                    approval_reason="Independently approved full cancellation refund",
                 )
             )
             ok2, err2 = _guarded_call(
                 lambda: MarketplaceService.refund_guest_approved(
-                    held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
+                    held_booking,
+                    Decimal("230.00"),
+                    approval_reason="Duplicate approval attempt",
                 )
             )
 
         assert ok1, err1
         assert ok2 is False
-        assert "already" in err2.lower()
-
+        assert "already refunded" in err2.lower()
         assert _count_transfers_for(held_booking, "refund") == 1
-        assert _balance(guest["account_id"]) == guest_before + Decimal(
-            "100.00"
-        )
-        assert _balance(platform["account_id"]) == platform_before - Decimal(
-            "100.00"
-        )
+        assert _balance(guest["account_id"]) == guest_before + Decimal("230.00")
+        assert _balance(platform["account_id"]) == platform_before - Decimal("230.00")
+
         commission = _commission(app, held_booking)
         assert commission.status == "refunded"
-        assert commission.refund_amount == Decimal("100.00")
+        assert commission.refund_amount == Decimal("230.00")
         refund_tx = (
             db.session.query(TransactionModel)
             .filter_by(client_request_id=REFUND_KEY_TEMPLATE.format(booking_id=held_booking))
             .first()
         )
-        assert refund_tx.tx_metadata["approved_by_user_id"] == host["user_id"]
-        assert refund_tx.tx_metadata["approval_source"] == "host_manual_refund"
+        assert refund_tx.tx_metadata["approved_by_user_id"] == platform_admin["user_id"]
+        assert refund_tx.tx_metadata["authorization_source"] == "platform_human_review"
 
     def test_concurrent_refund_single_transfer(
-        self, app, platform, guest, host, held_booking
+        self, app, platform, guest, host, platform_admin, held_booking
     ):
-        """RED→GREEN: two concurrent refunds must move money exactly once."""
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+        )
         guest_before = _balance(guest["account_id"])
         platform_before = _balance(platform["account_id"])
 
         outcomes = _run_two_threads(
             app,
-            host["user_id"],
+            platform_admin["user_id"],
             lambda: MarketplaceService.refund_guest_approved(
-                held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Independent concurrent approval",
             ),
         )
 
@@ -934,85 +945,79 @@ class TestRefundIdempotency:
             "Exactly ONE refund transfer expected; "
             f"threads returned {outcomes}"
         )
-        assert _balance(guest["account_id"]) == guest_before + Decimal(
-            "100.00"
-        ), "Guest must be credited exactly once"
-        assert _balance(platform["account_id"]) == platform_before - Decimal(
-            "100.00"
-        ), "Platform must be debited exactly once"
+        assert _balance(guest["account_id"]) == guest_before + Decimal("230.00")
+        assert _balance(platform["account_id"]) == platform_before - Decimal("230.00")
         commission = _commission(app, held_booking)
         assert commission.status == "refunded"
-        assert commission.refund_amount == Decimal("100.00")
+        assert commission.refund_amount == Decimal("230.00")
         tx = (
             db.session.query(TransactionModel)
-            .filter(
-                TransactionModel.client_request_id
-                == REFUND_KEY_TEMPLATE.format(booking_id=held_booking)
-            )
+            .filter_by(client_request_id=REFUND_KEY_TEMPLATE.format(booking_id=held_booking))
             .first()
         )
         assert tx is not None
-        ledger_count = (
+        assert tx.tx_metadata["approved_by_user_id"] == platform_admin["user_id"]
+        assert (
             db.session.query(LedgerEntryModel)
             .filter_by(transaction_id=tx.id)
             .count()
+            == 2
         )
-        assert ledger_count == 2
 
     def test_refund_retry_after_wallet_commit_converges(
-        self, app, platform, guest, host, held_booking
+        self, app, platform, guest, host, platform_admin, held_booking
     ):
-        """RED→GREEN: if the wallet leg committed but the business leg failed
-        (crash between the two commits), the retry must NOT move money again —
-        it converges the business state to the recorded transfer."""
+        """A committed wallet leg is reconciled after a business-state crash."""
         from app.wallet.services.wallet_service import WalletService
 
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+        )
         guest_before = _balance(guest["account_id"])
         platform_before = _balance(platform["account_id"])
         key = REFUND_KEY_TEMPLATE.format(booking_id=held_booking)
 
-        with _login_as(app, host["user_id"]):
-            # Simulate the ORIGINAL attempt: wallet leg committed...
+        with _login_as(app, platform_admin["user_id"]):
             _guarded_call(
                 lambda: WalletService().transfer(
                     from_account_id=platform["account_id"],
                     to_account_id=guest["account_id"],
-                    amount=Decimal("100.00"),
+                    amount=Decimal("230.00"),
                     currency="USD",
                     client_request_id=key,
-                    note="Refund: simulated wallet leg",
+                    note="Refund: simulated wallet leg before business commit",
                     metadata={
-                        "approved_by_user_id": host["user_id"],
-                        "approval_source": "host_manual_refund",
-                        "approval_reason": "Host approved retry-recovery test",
+                        "booking_id": str(held_booking),
+                        "authorization_source": "platform_human_review",
+                        "authorized_by_user_id": platform_admin["user_id"],
+                        "approved_by_user_id": platform_admin["user_id"],
+                        "approval_reason": "Independent reviewer authorized the refund",
+                        "approved_at": datetime.now(timezone.utc).isoformat(),
                     },
                     system_initiated=True,
                 )
             )
-        # ...but the business leg never ran (commission still 'held').
-        assert _commission(app, held_booking).status == "held"
 
-        # Retry via the canonical service — must converge, not double-pay.
-        with _login_as(app, host["user_id"]):
-            ok, err = _guarded_call(
+        assert _commission(app, held_booking).status == "held"
+        with _login_as(app, platform_admin["user_id"]):
+            ok, error = _guarded_call(
                 lambda: MarketplaceService.refund_guest_approved(
-                    held_booking, Decimal("100.00"), approval_reason="Host approved test refund"
+                    held_booking,
+                    Decimal("230.00"),
+                    approval_reason="Retry after wallet commit",
                 )
             )
-        assert ok, err
 
-        assert _count_transfers_for(held_booking, "refund") == 1, (
-            "Retry must reuse the committed transfer, not create a new one"
-        )
-        assert _balance(guest["account_id"]) == guest_before + Decimal(
-            "100.00"
-        ), "Guest must be credited exactly once across retry"
-        assert _balance(platform["account_id"]) == platform_before - Decimal(
-            "100.00"
-        ), "Platform must be debited exactly once across retry"
+        assert ok, error
+        assert _count_transfers_for(held_booking, "refund") == 1
+        assert _balance(guest["account_id"]) == guest_before + Decimal("230.00")
+        assert _balance(platform["account_id"]) == platform_before - Decimal("230.00")
         commission = _commission(app, held_booking)
         assert commission.status == "refunded"
-        assert commission.refund_amount == Decimal("100.00")
+        assert commission.refund_amount == Decimal("230.00")
 
 
 # ---------------- F-03B-TI: mock isolation / concurrency proof ----------------
