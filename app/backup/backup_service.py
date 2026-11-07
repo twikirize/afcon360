@@ -587,7 +587,10 @@ class BackupService:
             endpoint_url=endpoint,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=BotoConfig(signature_version="s3"),
+            config=BotoConfig(
+                signature_version="s3v4",
+                s3={"addressing_style": "path"},
+            ),
         )
         head = client.head_object(Bucket=bucket, Key=object_key)
         remote_size = int(head.get("ContentLength", -1))
