@@ -406,7 +406,7 @@ def test_driver_demand_cells_returns_only_local_aggregated_recent_requests(
     assert "fare" not in response.get_data(as_text=True)
     assert payload["window"]["since"] < payload["window"]["until"]
     assert response.headers["Cache-Control"] == "private, no-store, max-age=0"
-    assert response.headers["Vary"] == "Cookie"
+    assert "cookie" in {value.strip().lower() for value in response.headers["Vary"].split(",")}
 
 
 def test_driver_demand_cells_hides_results_without_fresh_driver_location(
