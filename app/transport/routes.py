@@ -2765,7 +2765,6 @@ def driver_demand_cells():
 
     if (
         profile is None
-        or not bool(getattr(profile, "is_active", False))
         or not isinstance(location, dict)
         or not isinstance(updated_at, datetime)
     ):
