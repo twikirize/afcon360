@@ -419,6 +419,7 @@ class BackupService:
         backup_path: str,
         backup_type: str,
         checksum: str,
+        backup_public_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Upload one local artifact to a private OCI bucket and verify its bytes.
 
@@ -458,7 +459,10 @@ class BackupService:
             endpoint_url=endpoint,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=BotoConfig(signature_version="s3"),
+            config=BotoConfig(
+                signature_version="s3v4",
+                s3={"addressing_style": "path"},
+            ),
         )
 
         prefix = str(cfg.get("BACKUP_OFFSITE_PREFIX") or "afcon360/backups").strip("/")
@@ -469,10 +473,11 @@ class BackupService:
             or "production"
         ).strip("/")
         filename = os.path.basename(backup_path)
+        backup_id = str(backup_public_id or uuid.uuid4().hex)
         now = datetime.now(timezone.utc)
         object_key = (
             f"{prefix}/{environment}/{backup_type}/"
-            f"{now:%Y/%m}/{filename}"
+            f"{now:%Y/%m}/{backup_id}/{filename}"
         )
         file_size = os.path.getsize(backup_path)
 
@@ -696,6 +701,7 @@ class BackupService:
                 backup_path=backup_path,
                 backup_type=record.backup_type,
                 checksum=record.checksum,
+                backup_public_id=record.public_id,
             )
 
         record.metadata_json = metadata_payload or None
