@@ -182,8 +182,17 @@ class MarketplaceService:
 
     @staticmethod
     def _store_refund_workflow(booking, snapshot: dict, workflow: dict) -> dict:
-        signed = dict(workflow or {})
-        signed["hmac_sha256"] = MarketplaceService.sign_refund_workflow(booking, signed)
+        signed = {
+            key: value for key, value in (workflow or {}).items()
+            if key != "hmac_sha256"
+        }
+        # The signer binds to the currently persisted policy and cancellation
+        # signatures, so install the new snapshot context before signing.
+        snapshot["refund_workflow"] = signed
+        booking.policy_snapshot = snapshot
+        signed["hmac_sha256"] = MarketplaceService.sign_refund_workflow(
+            booking, signed
+        )
         snapshot["refund_workflow"] = signed
         booking.policy_snapshot = snapshot
         return signed
@@ -406,8 +415,9 @@ class MarketplaceService:
     @staticmethod
     def _save_refund_workflow(booking, workflow):
         snapshot = dict(booking.policy_snapshot or {})
-        snapshot["refund_workflow"] = dict(workflow)
-        booking.policy_snapshot = snapshot
+        return MarketplaceService._store_refund_workflow(
+            booking, snapshot, workflow
+        )
 
     @staticmethod
     def _record_refund_history(booking, actor_user_id, trigger, metadata):
