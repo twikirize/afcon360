@@ -300,6 +300,12 @@
 
     <nav class="main-nav desktop-nav" aria-label="Main menu">
       <ul class="menu">
+        {% if current_user.is_authenticated %}
+          {% from "components/workspace_context_switcher.html" import render_workspace_context_switcher with context %}
+          <li class="menu-item workspace-context-switcher-desktop">
+            {{ render_workspace_context_switcher('desktop') }}
+          </li>
+        {% endif %}
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
 
         <li class="menu-item has-dropdown">

@@ -2024,7 +2024,10 @@ def create_app(config_object=None) -> Flask:
                 _pk = str(_cu.public_id)
                 if _pk not in _g._req_profiles:
                     from app.profile.models import get_profile_by_user
-                    _g._req_profiles[_pk] = get_profile_by_user(_cu.public_id)
+                    # UserProfile.user_id is the public-ID string. Normalize
+                    # UUID-like values before querying the String FK so
+                    # navigation does not incorrectly fall back to "incomplete".
+                    _g._req_profiles[_pk] = get_profile_by_user(_pk)
                 _p = _g._req_profiles[_pk]
                 _profile_completed = bool(_p and _p.profile_completed)
             except Exception:
