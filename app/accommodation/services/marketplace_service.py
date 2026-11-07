@@ -854,8 +854,8 @@ class MarketplaceService:
             ):
                 return False, "Platform administrator review is required"
             reason = str(reason or "").strip()
-            if not reason:
-                return False, "A rejection reason is required"
+            if len(reason) < 5:
+                return False, "A rejection reason of at least five characters is required"
             booking = db.session.execute(
                 select(AccommodationBooking)
                 .where(AccommodationBooking.id == booking_id)
