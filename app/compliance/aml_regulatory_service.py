@@ -220,8 +220,6 @@ def compute_due_date(
     suspicion_formed_at: datetime,
     working_days: int,
     jurisdiction: Optional[JurisdictionProfile] = None,
-    *,
-    approved_calendar: Optional[Dict[str, Any]] = None,
 ) -> datetime:
     """Return a UTC due instant after jurisdiction-local approved business days.
 
@@ -249,7 +247,7 @@ def compute_due_date(
     if not isinstance(start, datetime) or start.tzinfo is None or start.utcoffset() is None:
         raise ValueError("suspicion_formed_at must be a timezone-aware instant")
 
-    calendar = approved_calendar or _approved_working_calendar(jurisdiction)
+    calendar = _approved_working_calendar(jurisdiction)
     local_start = start.astimezone(business_zone)
     due_day = local_start.date()
     remaining = sla
@@ -324,7 +322,6 @@ def create_regulatory_report(
         suspicion_formed_at,
         jurisdiction.str_sla_working_days,
         jurisdiction,
-        approved_calendar=calendar_policy,
     )
 
     payload = {
