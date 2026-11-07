@@ -128,6 +128,7 @@ def test_driver_map_search_uses_geo_geocoder_and_displays_attribution():
     assert "credentials: 'same-origin'" in adapter
     assert "encodeURIComponent(query)" in adapter
     assert "button.textContent = String(item.label" in adapter
+    assert "popupContent.textContent = label" in adapter
 
 
 def test_driver_map_demand_filter_uses_only_real_aggregated_request_counts():
