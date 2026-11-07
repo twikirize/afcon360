@@ -974,67 +974,67 @@ class MarketplaceService:
             )
             if amount > Decimal(str(booking.amount_paid or 0)):
                 return False, "Approved refund cannot exceed the amount actually collected"
-            if payment_method in {"wallet", "mock_gateway"}:
-                screening_flags = MarketplaceService._refund_screening_flags(
-                    booking, amount, commission
+            screening_flags = MarketplaceService._refund_screening_flags(
+                booking, amount, commission
+            )
+            integrity_flags = {
+                "booking_time_policy_snapshot_incomplete",
+                "booking_time_policy_snapshot_integrity_failed",
+                "cancellation_outcome_integrity_failed",
+            }
+            discovered_integrity_flags = integrity_flags.intersection(screening_flags)
+            if discovered_integrity_flags and not integrity_exception_acknowledged:
+                workflow.update({
+                    "risk_flags": list(dict.fromkeys(
+                        list(workflow.get("risk_flags") or [])
+                        + sorted(discovered_integrity_flags)
+                    )),
+                    "integrity_review_required": True,
+                    "integrity_reviewed_at": datetime.now(timezone.utc).isoformat(),
+                })
+                MarketplaceService._store_refund_workflow(
+                    booking, snapshot, workflow
                 )
-                integrity_flags = {
-                    "booking_time_policy_snapshot_incomplete",
-                    "booking_time_policy_snapshot_integrity_failed",
-                    "cancellation_outcome_integrity_failed",
-                }
-                discovered_integrity_flags = integrity_flags.intersection(screening_flags)
-                if discovered_integrity_flags and not integrity_exception_acknowledged:
-                    workflow.update({
-                        "risk_flags": list(dict.fromkeys(
-                            list(workflow.get("risk_flags") or [])
-                            + sorted(discovered_integrity_flags)
-                        )),
-                        "integrity_review_required": True,
-                        "integrity_reviewed_at": datetime.now(timezone.utc).isoformat(),
-                    })
-                    MarketplaceService._store_refund_workflow(
-                        booking, snapshot, workflow
-                    )
-                    booking.policy_snapshot = snapshot
-                    MarketplaceService._record_refund_history(
-                        booking,
-                        actor.id,
-                        "refund_policy_integrity_rechecked",
-                        {
-                            "integrity_flags": sorted(discovered_integrity_flags),
-                            "approval_blocked": True,
-                        },
-                    )
-                    db.session.commit()
-                    return False, (
-                        "The booking policy evidence failed its integrity check. "
-                        "Review the warning and explicitly acknowledge the exception before approval."
-                    )
-                if discovered_integrity_flags:
-                    workflow.update({
-                        "integrity_exception_acknowledged_by_user_id": actor.id,
-                        "integrity_exception_acknowledged_at": datetime.now(timezone.utc).isoformat(),
-                        "integrity_exception_reason": reason,
-                        "risk_flags": list(dict.fromkeys(
-                            list(workflow.get("risk_flags") or [])
-                            + sorted(discovered_integrity_flags)
-                        )),
-                    })
-                    MarketplaceService._store_refund_workflow(
-                        booking, snapshot, workflow
-                    )
-                    booking.policy_snapshot = snapshot
-                    MarketplaceService._record_refund_history(
-                        booking,
-                        actor.id,
-                        "refund_policy_integrity_exception_acknowledged",
-                        {
-                            "integrity_flags": sorted(discovered_integrity_flags),
-                            "approval_reason": reason,
-                        },
-                    )
+                booking.policy_snapshot = snapshot
+                MarketplaceService._record_refund_history(
+                    booking,
+                    actor.id,
+                    "refund_policy_integrity_rechecked",
+                    {
+                        "integrity_flags": sorted(discovered_integrity_flags),
+                        "approval_blocked": True,
+                    },
+                )
+                db.session.commit()
+                return False, (
+                    "The booking policy evidence failed its integrity check. "
+                    "Review the warning and explicitly acknowledge the exception before approval."
+                )
+            if discovered_integrity_flags:
+                workflow.update({
+                    "integrity_exception_acknowledged_by_user_id": actor.id,
+                    "integrity_exception_acknowledged_at": datetime.now(timezone.utc).isoformat(),
+                    "integrity_exception_reason": reason,
+                    "risk_flags": list(dict.fromkeys(
+                        list(workflow.get("risk_flags") or [])
+                        + sorted(discovered_integrity_flags)
+                    )),
+                })
+                MarketplaceService._store_refund_workflow(
+                    booking, snapshot, workflow
+                )
+                booking.policy_snapshot = snapshot
+                MarketplaceService._record_refund_history(
+                    booking,
+                    actor.id,
+                    "refund_policy_integrity_exception_acknowledged",
+                    {
+                        "integrity_flags": sorted(discovered_integrity_flags),
+                        "approval_reason": reason,
+                    },
+                )
 
+            if payment_method in {"wallet", "mock_gateway"}:
                 hard_flags = {
                     "original_platform_transaction_missing",
                     "original_payment_cannot_be_reconciled",
@@ -1044,9 +1044,7 @@ class MarketplaceService:
                     "refund_exceeds_escrow_amount",
                     "previous_refund_recorded",
                 }
-                flags = set(MarketplaceService._refund_screening_flags(
-                    booking, amount, commission
-                ))
+                flags = set(screening_flags)
                 if flags.intersection(hard_flags):
                     return False, "The original payment or escrow cannot be reconciled; keep this request in review"
             if payment_method not in {"wallet", "mock_gateway"}:
