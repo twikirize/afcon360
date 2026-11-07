@@ -1,22 +1,7 @@
 ﻿<!-- templates/accommodation/host/edit_listing.html -->
 {% extends "base.html" %}
 
-{% block title %}Edit Listing | AFCON 360<script>
-(function () {
-  var form = document.getElementById('listingForm');
-  if (!form) return;
-  var timezone = form.querySelector('[name="timezone_name"]');
-  if (!timezone) return;
-  ['address_line1', 'address_line2', 'city', 'state', 'country', 'postal_code'].forEach(function (name) {
-    var field = form.querySelector('[name="' + name + '"]');
-    if (field) field.addEventListener('change', function () {
-      timezone.value = '';
-      timezone.setCustomValidity('');
-    });
-  });
-})();
-</script>
-{% endblock %}
+{% block title %}Edit Listing | AFCON 360{% endblock %}
 
 {% block module_styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/media/media.css') }}">
@@ -503,6 +488,19 @@
 {% block scripts %}
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/global/media-manager.js') }}"></script>
 <script nonce="{{ csp_nonce }}">
+// A physical-location edit invalidates the stored zone; the host must confirm
+// the correct IANA timezone for the new address.
+(function () {
+    var form = document.getElementById('listingForm');
+    var timezone = form && form.querySelector('[name="timezone_name"]');
+    if (!timezone) return;
+    ['address_line1', 'address_line2', 'city', 'state', 'country', 'postal_code'].forEach(function (name) {
+        var field = form.querySelector('[name="' + name + '"]');
+        if (field) field.addEventListener('change', function () {
+            timezone.value = '';
+        });
+    });
+})();
   document.addEventListener('DOMContentLoaded', function() {
     // ── Tooltips ──────────────────────────────────────────────
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
