@@ -873,7 +873,9 @@ class MarketplaceService:
             if len(reason) < 5:
                 return False, "A review reason of at least five characters is required"
             amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
-            if amount < 0 or amount > Decimal(str(booking.amount_paid or 0)):
+            if amount <= 0:
+                return False, "Requested refund must be greater than zero"
+            if amount > Decimal(str(booking.amount_paid or 0)):
                 return False, "Requested refund must not exceed the confirmed amount paid"
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
             workflow_signature_valid = MarketplaceService.verify_refund_workflow(
