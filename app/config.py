@@ -106,6 +106,12 @@ class Config:
 
     # ---- Auth secrets -------------------------------------------------------
     SECRET_KEY    = os.getenv("SECRET_KEY")
+    # Keep this identical across every web/worker node and stable for the
+    # lifetime of signed accommodation cancellation records. When omitted,
+    # the application SECRET_KEY is used as the signing key.
+    REFUND_POLICY_SIGNING_KEY = (
+        os.getenv("REFUND_POLICY_SIGNING_KEY") or SECRET_KEY
+    )
     SECURITY_SALT = os.getenv("SECURITY_SALT")
 
     # Owner MFA can be bootstrapped after every active owner has enrolled.
