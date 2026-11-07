@@ -45,6 +45,7 @@ from app.accommodation.models.booking import (
     BookingStatusHistory,
 )
 from app.accommodation.models.commission import BookingCommission
+from app.audit.models import AuditLog
 from app.accommodation.models.property import Property
 from app.accommodation.models.room import RoomType
 from app.accommodation.services.marketplace_service import MarketplaceService
@@ -684,6 +685,55 @@ class TestEscrowHumanAuthorization:
         assert _count_transfers_for(held_booking, "refund") == 1
 
 
+    def test_zero_policy_refund_can_be_requested_as_an_exception(
+        self, app, guest, host, platform_admin, platform, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            workflow_state="pending_human_review",
+            requester_user_id=guest["user_id"],
+            refund_amount=Decimal("0.00"),
+            risk_flags=["human_review_requested"],
+        )
+        booking = db.session.get(AccommodationBooking, held_booking)
+        assert booking.policy_snapshot["cancellation_outcome"]["refund"] == "0.00"
+        assert booking.policy_snapshot["refund_workflow"]["state"] == "pending_human_review"
+        assert _count_transfers_for(held_booking, "refund") == 0
+
+        with _login_as(app, platform_admin["user_id"]):
+            ok, error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("75.00"),
+                approval_reason="Guest requested an exception to the non-refundable policy; evidence reviewed",
+            )
+
+        assert ok, error
+        booking = db.session.get(AccommodationBooking, held_booking)
+        assert booking.refund_amount == Decimal("75.00")
+        assert booking.payment_status == AccommodationPaymentStatus.PARTIAL_REFUND.value
+        assert booking.policy_snapshot["refund_workflow"]["state"] == "partially_refunded"
+        assert _count_transfers_for(held_booking, "refund") == 1
+
+    def test_provider_request_cannot_impersonate_another_authenticated_user(
+        self, app, guest, host, held_booking
+    ):
+        with _login_as(app, guest["user_id"]):
+            ok, error = MarketplaceService.submit_refund_review(
+                held_booking,
+                Decimal("75.00"),
+                "Host requested a manual provider refund",
+                requested_by_user_id=host["user_id"],
+                request_source="host_manual_refund",
+            )
+
+        assert ok is False
+        assert "authenticated property manager" in error.lower()
+        booking = db.session.get(AccommodationBooking, held_booking)
+        assert booking.policy_snapshot.get("refund_workflow", {}).get("state") != "pending_human_review"
+        assert _count_transfers_for(held_booking, "refund") == 0
+
     def test_tampered_policy_snapshot_queues_human_review_without_transfer(
         self, app, guest, held_booking
     ):
@@ -959,6 +1009,14 @@ class TestEscrowHumanAuthorization:
         assert history.change_metadata["rejection_reason"] == (
             "Evidence does not support the requested exception"
         )
+        audit = AuditLog.query.filter_by(
+            action="accommodation_refund.refund_review_rejected",
+            resource_id=_booking_reference(app, held_booking),
+        ).one()
+        assert audit.user_id == platform_admin["user_id"]
+        assert audit.meta["rejection_reason"] == (
+            "Evidence does not support the requested exception"
+        )
         from app.audit.models import AuditLog
         audit = AuditLog.query.filter_by(
             action="accommodation_refund.refund_review_rejected",
@@ -1003,6 +1061,20 @@ class TestEscrowHumanAuthorization:
             )
         assert same_admin_ok is False
         assert "different platform administrator" in same_admin_error.lower()
+
+        with _login_as(app, platform_admin_two["user_id"]):
+            no_evidence_ok, no_evidence_error = MarketplaceService.record_external_refund_execution(
+                held_booking,
+                Decimal("230.00"),
+                "CARD-REFUND-001",
+                verification_note=" ",
+                reviewer_user_id=platform_admin_two["user_id"],
+            )
+        assert no_evidence_ok is False
+        assert "verification notes" in no_evidence_error.lower()
+        booking = db.session.get(AccommodationBooking, held_booking)
+        assert booking.policy_snapshot["refund_workflow"]["state"] == "approved_external_execution_pending"
+        assert booking.refunded_at is None
 
         with _login_as(app, platform_admin_two["user_id"]):
             verified, verify_error = MarketplaceService.record_external_refund_execution(
