@@ -27,19 +27,189 @@
     state.classList.toggle('badge-gray', !isError);
   }
 
+  function setupPlaceSearch(map, container) {
+    var searchUrl = container.dataset.geocodeUrl;
+    var input = document.getElementById('driverMapSearch');
+    var searchButton = document.getElementById('driverMapSearchBtn');
+    var resultsBox = document.getElementById('driverMapSearchResults');
+    var state = document.getElementById('driverMapSearchState');
+    var attribution = document.getElementById('driverMapAttribution');
+    if (!input || !searchButton || !resultsBox || !state) return;
+
+    var searchMarker = null;
+    var latestResults = [];
+
+    function setSearchState(message, isError) {
+      state.textContent = message;
+      state.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+    }
+
+    function hideResults() {
+      resultsBox.hidden = true;
+      resultsBox.replaceChildren();
+      latestResults = [];
+    }
+
+    function focusResult(result) {
+      var latitude = finiteCoordinate(result && result.latitude, -90, 90);
+      var longitude = finiteCoordinate(result && result.longitude, -180, 180);
+      if (latitude === null || longitude === null || !window.L) {
+        setSearchState('This search result has invalid coordinates.', true);
+        return;
+      }
+
+      var label = String(result.label || 'Selected place');
+      var coordinates = [latitude, longitude];
+      if (searchMarker) {
+        searchMarker.setLatLng(coordinates);
+      } else {
+        searchMarker = window.L.marker(coordinates, {
+          title: 'Searched place'
+        }).addTo(map);
+      }
+      searchMarker.bindPopup(label).openPopup();
+      map.setView(coordinates, Math.max(map.getZoom(), 14));
+      setSearchState('Map centered on ' + label, false);
+      hideResults();
+    }
+
+    function renderResults(items) {
+      hideResults();
+      latestResults = items.slice(0, 5);
+      latestResults.forEach(function (item, index) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'driver-map-search__result';
+        button.setAttribute('role', 'option');
+        button.textContent = String(item.label || 'Unnamed place');
+        button.addEventListener('click', function () {
+          focusResult(latestResults[index]);
+        });
+        resultsBox.appendChild(button);
+      });
+      resultsBox.hidden = latestResults.length === 0;
+    }
+
+    async function searchPlaces() {
+      var query = input.value.trim();
+      if (query.length < 2) {
+        hideResults();
+        if (attribution) {
+          attribution.textContent = '';
+          attribution.hidden = true;
+        }
+        setSearchState('Enter at least two characters to search.', true);
+        return;
+      }
+      if (!searchUrl || typeof window.fetch !== 'function') {
+        setSearchState('Place search is unavailable. The map is still usable.', true);
+        return;
+      }
+
+      searchButton.disabled = true;
+      hideResults();
+      setSearchState('Searching places…', false);
+      if (attribution) {
+        attribution.textContent = '';
+        attribution.hidden = true;
+      }
+
+      try {
+        var response = await window.fetch(
+          searchUrl + '?q=' + encodeURIComponent(query) + '&limit=5',
+          {
+            method: 'GET',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' }
+          }
+        );
+        if (!response.ok) throw new Error('Place search failed');
+        var payload = await response.json();
+        if (!payload || payload.success !== true || !Array.isArray(payload.results)) {
+          throw new Error('Invalid place search response');
+        }
+
+        var validResults = payload.results.filter(function (item) {
+          return item &&
+            finiteCoordinate(item.latitude, -90, 90) !== null &&
+            finiteCoordinate(item.longitude, -180, 180) !== null;
+        });
+        if (attribution && typeof payload.attribution === 'string' && payload.attribution.trim()) {
+          attribution.textContent = payload.attribution;
+          attribution.hidden = false;
+        }
+        if (!validResults.length) {
+          setSearchState('No places found. Try a town, area or nearby landmark.', false);
+          return;
+        }
+        renderResults(validResults);
+        setSearchState(validResults.length + ' place result(s). Select one to center the map.', false);
+      } catch (error) {
+        hideResults();
+        setSearchState('Place search is unavailable right now. Try again later.', true);
+      } finally {
+        searchButton.disabled = false;
+      }
+    }
+
+    searchButton.addEventListener('click', searchPlaces);
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        searchPlaces();
+      } else if (event.key === 'Escape') {
+        hideResults();
+      }
+    });
+  }
+
   function setupDemandOverlay(map, container) {
     var demandUrl = container.dataset.demandUrl;
     var state = document.getElementById('driverDemandState');
     var refreshButton = document.getElementById('driverDemandRefreshBtn');
+    var filter = document.getElementById('driverDemandFilter');
     if (!state || !refreshButton) return;
 
     var layer = window.L && typeof window.L.layerGroup === 'function'
       ? window.L.layerGroup().addTo(map) : null;
+    var entries = [];
 
     function setDemandState(message, isError) {
       state.textContent = message;
       state.classList.toggle('badge-amber', !!isError);
       state.classList.toggle('badge-gray', !isError);
+    }
+
+    function bandForCount(count) {
+      if (count >= 10) return 'high';
+      if (count >= 6) return 'medium';
+      return 'low';
+    }
+
+    function applyDemandFilter() {
+      if (!layer) return;
+      var selected = filter ? filter.value : 'all';
+      var visible = 0;
+      entries.forEach(function (entry) {
+        var show = selected === 'all' || bandForCount(entry.count) === selected;
+        if (show) {
+          layer.addLayer(entry.circle);
+          visible += 1;
+        } else {
+          layer.removeLayer(entry.circle);
+        }
+      });
+
+      if (entries.length === 0) {
+        setDemandState('No recent request clusters nearby (24h)', false);
+      } else {
+        var level = selected === 'all' ? 'all' : selected + ' demand';
+        setDemandState(
+          visible + ' of ' + entries.length + ' nearby request zones · ' + level + ' · last 24 hours',
+          false
+        );
+      }
     }
 
     async function refreshDemand() {
@@ -64,12 +234,12 @@
         }
 
         layer.clearLayers();
+        entries = [];
         if (payload.state === 'location_unavailable') {
           setDemandState('Waiting for a fresh driver location', true);
           return;
         }
 
-        var drawn = 0;
         payload.cells.forEach(function (cell) {
           var center = cell && cell.center;
           var latitude = center ? Number(center.latitude) : NaN;
@@ -82,7 +252,7 @@
           }
 
           var tone = count >= 10 ? '#dc2626' : count >= 6 ? '#ea580c' : '#d97706';
-          window.L.circle([latitude, longitude], {
+          var circle = window.L.circle([latitude, longitude], {
             radius: 420,
             color: tone,
             weight: 1,
@@ -90,24 +260,21 @@
             fillOpacity: Math.min(0.36, 0.16 + (count / 40))
           }).bindTooltip('Booking requests in last 24 hours: ' + count, {
             direction: 'top'
-          }).addTo(layer);
-          drawn += 1;
+          });
+          entries.push({ circle: circle, count: count });
         });
 
-        setDemandState(
-          drawn
-            ? drawn + ' nearby request zones · last 24 hours'
-            : 'No recent request clusters nearby (24h)',
-          false
-        );
+        applyDemandFilter();
       } catch (error) {
         layer.clearLayers();
+        entries = [];
         setDemandState('Recent demand unavailable; driver tools remain available', true);
       } finally {
         refreshButton.disabled = false;
       }
     }
 
+    if (filter) filter.addEventListener('change', applyDemandFilter);
     refreshButton.addEventListener('click', refreshDemand);
     refreshDemand();
   }
@@ -167,6 +334,7 @@
     }
 
     var map = handle.map;
+    setupPlaceSearch(map, container);
     setupDemandOverlay(map, container);
     var deviceMarker = null;
     window.setTimeout(function () {
