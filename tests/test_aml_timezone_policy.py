@@ -91,7 +91,7 @@ def test_due_date_fails_when_approved_calendar_does_not_cover_deadline(aml_app):
         str_sla_working_days=2,
     )
     with aml_app.app_context():
-        aml_app.config["AML_APPROVED_WORKING_CALENDARS"]["UG"]["valid_until"] = "2026-11-07"
+        aml_app.config["AML_APPROVED_WORKING_CALENDARS"]["UG"]["valid_until"] = "2026-11-09"
         with pytest.raises(ValueError, match="does not cover"):
             compute_due_date(
                 datetime(2026, 11, 6, 12, tzinfo=timezone.utc),
