@@ -62,8 +62,7 @@ def _default_concurrency(pool: str) -> int | None:
     if pool == "solo":
         return 1
     if pool == "threads":
-        # Windows dev on 1GiB: 8 threads may OOM. Default to 2, override via env.
-        return 2
+        return 8  # I/O-bound tasks (webhooks, media) benefit from more threads
     return None  # let Celery/prefork pick os.cpu_count()
 
 
@@ -285,12 +284,12 @@ def make_celery(app=None):
         task_default_queue="default",
     )
 
-    # Bind Flask app context so tasks can use current_app. Keep Flask's
-    # application config out of Celery's config namespace: Flask exposes the
-    # legacy uppercase CELERY_* keys, while Celery's constructor has already
-    # populated the modern broker_url/result_backend keys. Passing the whole
-    # Flask config mixes both naming conventions and raises
-    # ImproperlyConfigured when Celery finalizes its settings.
+    # Bind every task to a Flask application context without constructing the
+    # Flask app while app.celery_app is imported. Eager create_app() here would
+    # risk an app<->Celery import cycle and adds startup memory on the 1 GiB
+    # worker. The shared context helper creates one app lazily per process and
+    # caches it for later tasks. A caller may still supply an already-created
+    # app (e.g. an integration smoke test).
     if app is not None:
         broker_url = app.config.get("CELERY_BROKER_URL") or app.config.get("REDIS_URL")
         result_backend = (
@@ -301,12 +300,24 @@ def make_celery(app=None):
             result_backend=result_backend,
         )
 
-        class ContextTask(celery.Task):
-            def __call__(self, *args, **kwargs):
-                with app.app_context():
-                    return self.run(*args, **kwargs)
+    class ContextTask(celery.Task):
+        abstract = True
 
-        celery.Task = ContextTask
+        def __call__(self, *args, **kwargs):
+            from flask import has_app_context
+
+            if has_app_context():
+                return super().__call__(*args, **kwargs)
+
+            task_app = app
+            if task_app is None:
+                from app.tasks.context import _get_task_flask_app
+                task_app = _get_task_flask_app()
+
+            with task_app.app_context():
+                return super().__call__(*args, **kwargs)
+
+    celery.Task = ContextTask
 
     return celery
 

@@ -106,12 +106,9 @@ class Config:
 
     # ---- Auth secrets -------------------------------------------------------
     SECRET_KEY    = os.getenv("SECRET_KEY")
-    # Keep this identical across every web/worker node and stable for the
-    # lifetime of signed accommodation cancellation records. When omitted,
-    # the application SECRET_KEY is used as the signing key.
-    REFUND_POLICY_SIGNING_KEY = (
-        os.getenv("REFUND_POLICY_SIGNING_KEY") or SECRET_KEY
-    )
+    # Keep identical across web/worker nodes and stable for existing bookings.
+    # Fall back to SECRET_KEY only when a dedicated policy signing key is absent.
+    REFUND_POLICY_SIGNING_KEY = os.getenv("REFUND_POLICY_SIGNING_KEY") or SECRET_KEY
     SECURITY_SALT = os.getenv("SECURITY_SALT")
 
     # Owner MFA can be bootstrapped after every active owner has enrolled.
@@ -302,6 +299,11 @@ class Config:
     SIGNUP_RATE_WINDOW         = int(os.getenv("SIGNUP_RATE_WINDOW",         "900"))   # 15 min
     # Log the OTP instead of failing when mail is unconfigured. Never enable in
     # production - it is auto-detected for local development.
+    # Global outbound SMS/WhatsApp kill switch. Leave off until a provider has
+    # credentials, a verified sender, and a successful owner-run delivery test.
+    SMS_DELIVERY_ENABLED      = os.getenv("SMS_DELIVERY_ENABLED", "false").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
     OTP_DEV_LOG_FALLBACK       = os.getenv("OTP_DEV_LOG_FALLBACK",       "false").lower() == "true"
     OTP_FAILURE_ALERT_THRESHOLD = int(os.getenv("OTP_FAILURE_ALERT_THRESHOLD", "10"))
     OTP_PEPPER                 = os.getenv("OTP_PEPPER")  # falls back to SECRET_KEY
@@ -447,7 +449,10 @@ class Config:
         if not cls.ENCRYPTION_KEY_VALUE or cls.ENCRYPTION_KEY_VALUE.startswith("REPLACE_"):
             missing.append("ENCRYPTION_KEY")
 
-        # Warn (not fail) for service credentials — they may not be needed at boot
+        # SMTP environment values are now a migration fallback only. The
+        # canonical provider may be configured in the encrypted
+        # communication_settings row by the Owner, so missing process-level
+        # username/password is not itself evidence that mail is unconfigured.
         warnings = []
         if not cls.MAIL_USERNAME:
             warnings.append("MAIL_USERNAME")
@@ -456,7 +461,10 @@ class Config:
 
         if warnings:
             logger.warning(
-                f"[CONFIG] Production service credentials not set: {', '.join(warnings)}"
+                "[CONFIG] SMTP environment fallback credentials not set: "
+                f"{', '.join(warnings)}. The Owner-managed encrypted email "
+                "provider may still be configured; verify it through the "
+                "communication settings page and asynchronous delivery test."
             )
 
         if missing:

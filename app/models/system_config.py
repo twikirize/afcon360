@@ -8,6 +8,10 @@ from app.models.base import BaseModel
 from app.extensions import db
 from datetime import datetime, timezone
 import json
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class SystemConfig(BaseModel):
@@ -23,8 +27,44 @@ class SystemConfig(BaseModel):
     requires_restart = Column(Boolean, default=False)
     updated_by = Column(BigInteger, ForeignKey('users.id'), nullable=True)
     
+    _SECRET_KEYS = frozenset({"TWILIO_AUTH_TOKEN"})
+    _SECRET_PREFIX = "afcon360:fernet:v1:"
+
+    @classmethod
+    def _encrypt_secret(cls, value: str) -> str:
+        """Encrypt an owner-supplied integration secret using the deployment key."""
+        from app.utils.security import _get_fernet
+
+        encrypted = _get_fernet().encrypt(value.encode("utf-8")).decode("ascii")
+        return f"{cls._SECRET_PREFIX}{encrypted}"
+
+    @classmethod
+    def _decrypt_secret(cls, value: str) -> str:
+        """Read current encrypted values and legacy plaintext values during rotation."""
+        if not isinstance(value, str) or not value.startswith(cls._SECRET_PREFIX):
+            # Existing deployments may have saved this value before encryption
+            # was added. Continue reading it so the owner can rotate/re-save it.
+            return value or ""
+
+        from app.utils.security import _get_fernet
+
+        try:
+            token = value[len(cls._SECRET_PREFIX):].encode("ascii")
+            return _get_fernet().decrypt(token).decode("utf-8")
+        except Exception:
+            logger.error(
+                "Unable to decrypt stored Twilio Auth Token; check preserved ENCRYPTION_KEY"
+            )
+            raise RuntimeError(
+                "Stored Twilio Auth Token cannot be decrypted with the configured ENCRYPTION_KEY"
+            ) from None
+
     def __repr__(self):
-        return f'<SystemConfig {self.key}={self.value}>'
+        if self.key in self._SECRET_KEYS:
+            display_value = "[REDACTED]"
+        else:
+            display_value = self.value
+        return f'<SystemConfig {self.key}={display_value}>'
     
     @classmethod
     def get(cls, key: str, default=None):
@@ -33,6 +73,12 @@ class SystemConfig(BaseModel):
         if not setting:
             return default
         
+        if key in cls._SECRET_KEYS:
+            if setting.value is None:
+                return default
+            secret = cls._decrypt_secret(setting.value)
+            return secret or default
+
         if setting.value_type == 'bool':
             return setting.value.lower() in ('true', '1', 'yes', 'on') if setting.value else False
         elif setting.value_type == 'int':
@@ -56,7 +102,21 @@ class SystemConfig(BaseModel):
             setting = cls(key=key)
             db.session.add(setting)
 
-        if value is None:
+        if key in cls._SECRET_KEYS:
+            if value is None:
+                setting.value = None
+            elif str(value).strip():
+                # Blank password fields mean "keep the saved token". The owner
+                # rotates it by entering a new value; a missing form value never
+                # erases working production credentials.
+                setting.value = cls._encrypt_secret(str(value).strip())
+            elif setting.value and not setting.value.startswith(cls._SECRET_PREFIX):
+                # A save from the owner settings page also upgrades a legacy
+                # plaintext value without requiring the owner to retype it.
+                setting.value = cls._encrypt_secret(setting.value)
+            elif not setting.value:
+                setting.value = ''
+        elif value is None:
             setting.value = None
         else:
             if value_type == 'bool':

@@ -80,10 +80,10 @@ case "$1" in
             exec celery "$@"
         fi
 
-        queue_args=()
-        if [ -n "${CELERY_QUEUES:-}" ]; then
-            queue_args=(-Q "${CELERY_QUEUES}")
-        fi
+        # The app routes critical, default and bulk task families to
+        # separate queues. The constrained single-worker deployment must
+        # consume all three unless an operator explicitly overrides the list.
+        queue_args=(-Q "${CELERY_QUEUES:-critical,default,bulk}")
         exec celery -A app.celery_app worker \
             --loglevel=info \
             --concurrency="${CELERY_CONCURRENCY:-1}" \

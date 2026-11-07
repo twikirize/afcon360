@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}Communication Settings | AFCON360{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width: 1040px;">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">System communication settings</h1>
+      <p class="text-muted mb-0">Configure the shared email provider used by the website and background workers.</p>
+    </div>
+    <span class="badge text-bg-secondary" id="config-source">Loading configuration…</span>
+  </div>
+
+  <div class="alert alert-info" role="note">
+    <strong>One shared configuration.</strong> Once saved here, the SMTP settings are encrypted in PostgreSQL and are read by both Server 1 web processes and Server 2 Celery workers. Password fields are write-only; leaving them blank preserves the stored value.
+  </div>
+
+  <div class="alert alert-warning" id="environment-migration-note" role="alert" hidden>
+    <strong>One-time environment credential migration.</strong> The current SMTP username and/or password comes from the server environment and is hidden here. Before the first Owner-managed save, re-enter every configured credential in its write-only field. Once the database row exists, it becomes authoritative for both web and Celery; blank fields cannot carry over credentials from the environment. To deliberately remove SMTP authentication instead, select the explicit clear-auth option.
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header">
+      <h2 class="h5 mb-0">SMTP provider</h2>
+    </div>
+    <div class="card-body">
+      <form id="smtp-form" novalidate>
+        <input type="hidden" id="csrf-token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label" for="smtp-host">SMTP server</label>
+            <input class="form-control" id="smtp-host" name="smtp_host" autocomplete="off" required placeholder="smtp.example.com">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="smtp-port">Port</label>
+            <input class="form-control" id="smtp-port" name="smtp_port" type="number" min="1" max="65535" required value="587">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="smtp-user">SMTP username</label>
+            <input class="form-control" id="smtp-user" name="smtp_user" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved username">
+            <div class="form-text" id="smtp-user-state">Not loaded</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="smtp-pass">SMTP password / provider key</label>
+            <input class="form-control" id="smtp-pass" name="smtp_pass" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved password">
+            <div class="form-text" id="smtp-pass-state">Not loaded</div>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label" for="default-sender">Default sender</label>
+            <input class="form-control" id="default-sender" name="default_sender" required placeholder="AFCON360 <noreply@example.com>">
+          </div>
+          <div class="col-md-4 d-flex flex-column justify-content-end">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="use-tls" checked>
+              <label class="form-check-label" for="use-tls">Use STARTTLS</label>
+            </div>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="use-ssl">
+              <label class="form-check-label" for="use-ssl">Use SSL/TLS from connect</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="enabled" checked>
+              <label class="form-check-label" for="enabled">Enable email delivery</label>
+            </div>
+          </div>
+          <div class="col-12">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="clear-auth">
+              <label class="form-check-label text-danger" for="clear-auth">Clear the saved SMTP username and password</label>
+            </div>
+            <div class="form-text">Select only when deliberately removing SMTP authentication. Do not paste secrets into support messages, GitHub issues or logs.</div>
+          </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-4">
+          <button class="btn btn-primary" id="save-smtp" type="submit">Save email configuration</button>
+          <button class="btn btn-outline-secondary" id="reload-smtp" type="button">Reload settings</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header">
+      <h2 class="h5 mb-0">Test the actual background delivery path</h2>
+    </div>
+    <div class="card-body">
+      <p class="text-muted">This queues a one-message test on the Celery notification queue. The worker sends it using the same stored SMTP configuration used for normal notifications.</p>
+      <form id="test-form" class="row g-3">
+        <div class="col-md-8">
+          <label class="form-label" for="test-recipient">Test mailbox you control</label>
+          <input class="form-control" id="test-recipient" type="email" required placeholder="you@example.com">
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <button class="btn btn-outline-primary w-100" id="send-test" type="submit">Queue email test</button>
+        </div>
+      </form>
+      <div id="test-status" class="mt-3 small" role="status" aria-live="polite">No test queued.</div>
+    </div>
+  </div>
+
+  <div class="alert alert-warning mt-4 mb-0">
+    <strong>Infrastructure root keys are not configured here.</strong> ENCRYPTION_KEY, SECRET_KEY, database credentials and Redis credentials must remain in the protected server secret store/runtime environment. In particular, Server 1 and Server 2 must use the same existing ENCRYPTION_KEY to decrypt the shared provider credentials. Never rotate it as part of ordinary mail changes.
+  </div>
+</div>
+
+<script>
+(() => {
+  const settingsUrl = {{ url_for('notifications_api.get_email_provider_settings')|tojson }};
+  const testUrl = {{ url_for('notifications_api.queue_email_provider_test')|tojson }};
+  const statusBase = {{ url_for('notifications_api.email_provider_test_status', task_id='TASK_ID')|tojson }};
+  const csrf = document.getElementById('csrf-token').value;
+  const form = document.getElementById('smtp-form');
+  const saveButton = document.getElementById('save-smtp');
+  const testButton = document.getElementById('send-test');
+  const statusNode = document.getElementById('test-status');
+
+  function showStatus(message, kind = 'secondary') {
+    statusNode.className = 'mt-3 small text-' + kind;
+    statusNode.textContent = message;
+  }
+
+  async function requestJson(url, options = {}) {
+    const response = await fetch(url, {
+      credentials: 'same-origin',
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrf,
+        ...(options.headers || {})
+      }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || 'Request failed (' + response.status + ')');
+    }
+    return payload;
+  }
+
+  async function loadSettings() {
+    const data = await requestJson(settingsUrl, { method: 'GET', headers: {} });
+    document.getElementById('config-source').textContent =
+      data.source === 'database' ? 'Owner-managed / encrypted' : 'Environment fallback';
+    document.getElementById('environment-migration-note').hidden = !(
+      data.source === 'environment' &&
+      (data.smtp_user_configured || data.smtp_password_configured)
+    );
+    document.getElementById('smtp-host').value = data.smtp_host || '';
+    document.getElementById('smtp-port').value = data.smtp_port || 587;
+    document.getElementById('default-sender').value = data.default_sender || '';
+    document.getElementById('use-tls').checked = !!data.use_tls;
+    document.getElementById('use-ssl').checked = !!data.use_ssl;
+    document.getElementById('enabled').checked = !!data.enabled;
+    document.getElementById('smtp-user-state').textContent =
+      data.smtp_user_configured ? 'A username is saved; the value is hidden.' : 'No username is saved.';
+    document.getElementById('smtp-pass-state').textContent =
+      data.smtp_password_configured ? 'A password/key is saved; the value is hidden.' : 'No password/key is saved.';
+    document.getElementById('smtp-user').value = '';
+    document.getElementById('smtp-pass').value = '';
+    document.getElementById('clear-auth').checked = false;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving…';
+    try {
+      await requestJson(settingsUrl, {
+        method: 'PUT',
+        body: JSON.stringify({
+          provider: 'smtp',
+          smtp_host: document.getElementById('smtp-host').value.trim(),
+          smtp_port: Number(document.getElementById('smtp-port').value),
+          smtp_user: document.getElementById('smtp-user').value,
+          smtp_pass: document.getElementById('smtp-pass').value,
+          default_sender: document.getElementById('default-sender').value.trim(),
+          use_tls: document.getElementById('use-tls').checked,
+          use_ssl: document.getElementById('use-ssl').checked,
+          enabled: document.getElementById('enabled').checked,
+          clear_auth: document.getElementById('clear-auth').checked
+        })
+      });
+      await loadSettings();
+      window.alert('Email configuration saved. Secret values remain hidden.');
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = 'Save email configuration';
+    }
+  });
+
+  document.getElementById('reload-smtp').addEventListener('click', async () => {
+    try { await loadSettings(); }
+    catch (error) { window.alert(error.message); }
+  });
+
+  async function pollTask(taskId) {
+    const url = statusBase.replace('TASK_ID', encodeURIComponent(taskId));
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise(resolve => window.setTimeout(resolve, 2000));
+      const state = await requestJson(url, { method: 'GET', headers: {} });
+      if (state.state === 'SUCCESS') {
+        if (state.delivery_status === 'accepted') {
+          showStatus('The Celery worker sent the message and the SMTP provider accepted it. Check Inbox and Spam/Junk.', 'success');
+        } else {
+          showStatus('The worker attempted delivery but it failed. Safe error code: ' + (state.error_code || 'unknown'), 'danger');
+        }
+        return;
+      }
+      if (state.state === 'FAILURE') {
+        showStatus('The test task failed. Check protected worker logs for the sanitized diagnostic.', 'danger');
+        return;
+      }
+      showStatus('Worker task state: ' + state.state.toLowerCase() + '…', 'muted');
+    }
+    showStatus('The task is still running. Reload this page later to check worker logs; no credentials are displayed here.', 'warning');
+  }
+
+  document.getElementById('test-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    testButton.disabled = true;
+    testButton.textContent = 'Queueing…';
+    try {
+      const queued = await requestJson(testUrl, {
+        method: 'POST',
+        body: JSON.stringify({ recipient: document.getElementById('test-recipient').value.trim() })
+      });
+      showStatus('Queued test task ' + queued.task_id + '.', 'info');
+      await pollTask(queued.task_id);
+    } catch (error) {
+      showStatus(error.message, 'danger');
+    } finally {
+      testButton.disabled = false;
+      testButton.textContent = 'Queue email test';
+    }
+  });
+
+  loadSettings().catch(error => {
+    document.getElementById('config-source').textContent = 'Configuration unavailable';
+    window.alert(error.message);
+  });
+})();
+</script>
+{% endblock %}

@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 from celery import shared_task
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import create_app
+from app.tasks.context import _get_task_flask_app, with_flask_app_context
 from app.extensions import db
 from app.notifications.models import (
     Notification, NotificationStatus, NotificationType,
@@ -36,7 +36,7 @@ def send_notification_task(self, notification_id: int) -> dict:
     Asynchronously deliver a single notification record.
     Retries with exponential backoff on failure.
     """
-    app = create_app()
+    app = _get_task_flask_app()
     with app.app_context():
         try:
             notification = db.session.get(Notification, notification_id)
@@ -74,24 +74,40 @@ def send_notification_task(self, notification_id: int) -> dict:
                 existing_notification=notification,
             )
 
-            if result:
-                logger.info(f"Notification {notification_id} delivered successfully")
-                return {"status": "delivered", "notification_id": notification_id}
-            else:
-                raise Exception(f"NotificationService.send returned None for {notification_id}")
+            if result is None:
+                raise RuntimeError("notification_service_returned_no_result")
+
+            if result.status == NotificationStatus.FAILED:
+                # A handler can return a failed result instead of raising.
+                # Do not let Celery report that delivery as SUCCESS.
+                raise RuntimeError("notification_delivery_failed")
+
+            status_value = getattr(result.status, "value", result.status)
+            logger.info(
+                "Notification task completed (notification_id=%s, status=%s)",
+                notification_id,
+                status_value,
+            )
+            return {"status": status_value, "notification_id": notification_id}
 
         except SQLAlchemyError as e:
             db.session.rollback()
-            logger.error(f"DB error processing notification {notification_id}: {e}")
+            logger.error(
+                "DB error processing notification %s (exception_type=%s)",
+                notification_id, type(e).__name__,
+            )
             self.retry(countdown=calculate_backoff(self.request.retries))
-            return {"status": "retry", "notification_id": notification_id, "error": str(e)}
+            return {"status": "retry", "notification_id": notification_id, "error_code": type(e).__name__}
         except Exception as e:
             db.session.rollback()
-            logger.error(f"Failed to process notification {notification_id}: {e}", exc_info=True)
+            logger.error(
+                "Failed to process notification %s (exception_type=%s)",
+                notification_id, type(e).__name__, exc_info=True,
+            )
             try:
                 notification = db.session.get(Notification, notification_id)
                 if notification:
-                    notification.mark_failed(str(e))
+                    notification.mark_failed(str(getattr(e, "code", type(e).__name__))[:80])
                     db.session.commit()
             except Exception:
                 db.session.rollback()
@@ -105,7 +121,7 @@ def send_bulk_task(notification_ids: list) -> dict:
     """
     Process multiple notifications concurrently.
     """
-    app = create_app()
+    app = _get_task_flask_app()
     with app.app_context():
         logger.info(f"[Celery] Processing bulk notification batch size: {len(notification_ids)}")
         results = {"processed": 0, "failed": 0, "notification_ids": []}
@@ -128,7 +144,7 @@ def notify_kyc_submitted_task(user_id: int, kyc_record_id: int) -> dict:
     Fan out KYC *submission* notifications (submitter + review team) off the
     request thread. Enqueued by dispatch_notification when a worker is present.
     """
-    app = create_app()
+    app = _get_task_flask_app()
     with app.app_context():
         try:
             from app.notifications.delivery import deliver_kyc_submitted
@@ -147,7 +163,7 @@ def notify_kyc_approved_task(user_id: int, kyc_record_id: int) -> dict:
     Fan out KYC *approval* notifications (submitter + review team) off the
     request thread. Enqueued by dispatch_notification when a worker is present.
     """
-    app = create_app()
+    app = _get_task_flask_app()
     with app.app_context():
         try:
             from app.notifications.delivery import deliver_kyc_approved
@@ -175,7 +191,7 @@ def schedule_reminders_task(self, batch_size: int = 25) -> dict:
     batch_size = max(1, min(int(batch_size), 100))
     import time
     t_start = time.perf_counter()
-    app = create_app()
+    app = _get_task_flask_app()
     t_app = time.perf_counter()
     with app.app_context():
         try:
@@ -277,7 +293,7 @@ def cleanup_old_notifications_task(
     and soft-deletes old read notifications.
     """
     batch_size = max(1, min(int(batch_size), 500))
-    app = create_app()
+    app = _get_task_flask_app()
     with app.app_context():
         try:
             cutoff = datetime.now(timezone.utc) - timedelta(days=days)
@@ -351,7 +367,7 @@ def resend_failed_task(max_retries: int = 3) -> dict:
     """
     Celery Beat task: resend failed notifications with exponential backoff.
     """
-    app = create_app()
+    app = _get_task_flask_app()
     with app.app_context():
         try:
             count = NotificationService.resend_failed(max_retries=max_retries, limit=10)
@@ -360,3 +376,51 @@ def resend_failed_task(max_retries: int = 3) -> dict:
         except Exception as e:
             logger.error(f"Failed to resend notifications: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
+
+@shared_task(
+    name="notifications.send_email_test",
+)
+@with_flask_app_context
+def send_email_test_task(recipient: str, requested_by_user_id: int = None) -> dict:
+    """Perform one real SMTP delivery from the asynchronous worker.
+
+    The task's Celery base and this direct-call decorator share the same lazily
+    cached Flask app context. No per-message app instance is constructed.
+    Results and logs contain only safe status/error codes.
+    """
+    from types import SimpleNamespace
+
+    from app.notifications.channel_handlers.email import EmailHandler
+    from app.utils.security import validate_email
+
+    if not validate_email(str(recipient or "")):
+        return {"status": "failed", "error_code": "invalid_recipient"}
+
+    notification = SimpleNamespace(
+        id=None,
+        type="system_alert",
+        subject="AFCON360 email delivery test",
+        body=(
+            "This is a test message sent through the AFCON360 Owner-managed "
+            "email provider using the asynchronous worker."
+        ),
+        context={"purpose": "owner_email_configuration_test"},
+        link=None,
+        user_id=requested_by_user_id,
+        email=recipient,
+    )
+    result = EmailHandler().deliver(
+        notification,
+        {"email": recipient, "user_id": requested_by_user_id},
+    )
+    if result.get("success"):
+        logger.info("Asynchronous email configuration test was accepted by the provider")
+        return {"status": "accepted", "error_code": None}
+    logger.warning(
+        "Asynchronous email configuration test failed (error_code=%s)",
+        result.get("error_code", "email_delivery_failed"),
+    )
+    return {
+        "status": "failed",
+        "error_code": result.get("error_code", "email_delivery_failed"),
+    }

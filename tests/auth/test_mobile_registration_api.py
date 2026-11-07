@@ -887,12 +887,16 @@ def test_email_verification_otp_keeps_existing_notification_contract(client, mon
 
 def test_password_reset_email_handler_renders_the_dedicated_html_template(client, monkeypatch):
     from types import SimpleNamespace
-    from app.extensions import mail
+    from app.notifications import email_transport
     from app.notifications.channel_handlers.email import EmailHandler
     from app.notifications.models import NotificationType
 
     captured = {}
-    monkeypatch.setattr(mail, "send", lambda message: captured.update(message=message))
+    def fake_smtp_send(**kwargs):
+        captured.update(kwargs)
+        return "smtp"
+
+    monkeypatch.setattr(email_transport, "send_smtp_email", fake_smtp_send)
 
     notification = SimpleNamespace(
         id=9102,
@@ -917,11 +921,11 @@ def test_password_reset_email_handler_renders_the_dedicated_html_template(client
         )
 
     assert result["success"] is True
-    html = captured["message"].html
+    html = captured["html"]
     assert "one-time code in your AFCON360 app" in html
     assert "482915" in html
     assert "10 minutes" in html
-    assert "reset@example.test" in captured["message"].recipients
+    assert captured["recipient"] == "reset@example.test"
 
 def test_account_deletion_service_requires_exact_confirmation_before_any_database_work():
     from app.auth.account_deletion_service import AccountDeletionError, request_account_deletion

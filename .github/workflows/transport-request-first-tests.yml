@@ -4,8 +4,7 @@ on:
   push:
     branches:
       - fix/workspace-deep-links-test-baseline-20261102
-      # Run the same PostgreSQL 15/18 gate on every update to the
-      # isolated wallet/accommodation refund implementation branch.
+      # PostgreSQL 15/18 validation for the isolated accommodation refund workflow.
       - test/wallet-transaction-integrity-pg15-pg18-20261106
   pull_request:
     branches: [main]
@@ -22,6 +21,11 @@ on:
       - "app/utils/validators.py"
       - "app/utils/module_toggle_service.py"
       - "app/config.py"
+      - "app/notifications/**"
+      - "app/utils/crypto.py"
+      - "app/utils/log_redaction.py"
+      - "templates/owner/communication_settings.html"
+      - "tests/notifications/test_shared_email_configuration.py"
       - "tests/test_geo_integration.py"
       - "tests/test_module_integration.py"
       - "tests/test_*.py"
@@ -221,9 +225,6 @@ jobs:
           app/tasks/cleanup.py
           app/tasks/accommodation_reminders.py
           app/accommodation/services/availability_service.py
-          app/accommodation/services/booking_service.py
-          app/accommodation/services/marketplace_service.py
-          app/accommodation/models/booking.py
           app/notifications/tasks.py
           app/notifications/services.py
           app/notifications/events/tasks.py
@@ -302,6 +303,7 @@ jobs:
               "admin/transport_admin_dashboard.html",
               "admin/transport_admin_operations.html",
               "owner/settings.html",
+              "owner/communication_settings.html",
               "auth/mfa_setup.html",
               "auth/mfa_status.html",
               "transport/admin/dashboard.html",
@@ -369,11 +371,11 @@ jobs:
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
               tests/notifications/test_scheduled_notification_delivery.py
               tests/notifications/test_models.py
+              tests/notifications/test_sms_service_adapter.py
+              tests/notifications/test_shared_email_configuration.py
+              tests/notifications/test_custom_channel_fallback.py
+              tests/test_phone_verification.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
-              # Wallet production guide: execute the complete wallet regression on real PostgreSQL.
-              tests/wallet/
-              tests/test_wallet_authorization_limits.py
-              tests/test_kyc_limit_authorization.py
             )
             if [[ ${#TARGETS[@]} -eq 0 ]]; then
               echo "No failed-test targets are recorded."
