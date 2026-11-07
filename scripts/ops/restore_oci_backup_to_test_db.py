@@ -48,6 +48,19 @@ def _configuration() -> dict:
             "BACKUP_RESTORE_TEST_DATABASE must start with afcon360_restore_test_"
         )
 
+    pg_host = _required_env("BACKUP_RESTORE_TEST_PGHOST").lower()
+    if pg_host not in {"localhost", "127.0.0.1", "::1"}:
+        raise RuntimeError(
+            "Restore target host must be loopback-only; use an SSH tunnel for a remote staging database"
+        )
+    pg_port = _required_env("BACKUP_RESTORE_TEST_PGPORT")
+    try:
+        port_number = int(pg_port)
+    except ValueError:
+        raise RuntimeError("BACKUP_RESTORE_TEST_PGPORT must be an integer") from None
+    if not 1 <= port_number <= 65535:
+        raise RuntimeError("BACKUP_RESTORE_TEST_PGPORT must be between 1 and 65535")
+
     return {
         "bucket": _required_env("BACKUP_OFFSITE_BUCKET"),
         "access_key": _required_env("BACKUP_OFFSITE_ACCESS_KEY"),
@@ -55,8 +68,8 @@ def _configuration() -> dict:
         "endpoint": _required_env("OCI_ENDPOINT_URL"),
         "region": _required_env("OCI_REGION"),
         "database": database,
-        "pg_host": _required_env("BACKUP_RESTORE_TEST_PGHOST"),
-        "pg_port": _required_env("BACKUP_RESTORE_TEST_PGPORT"),
+        "pg_host": pg_host,
+        "pg_port": str(port_number),
         "pg_user": _required_env("BACKUP_RESTORE_TEST_PGUSER"),
         "pg_password": _required_env("BACKUP_RESTORE_TEST_PGPASSWORD"),
     }
@@ -149,6 +162,45 @@ def _restore_to_test_database(
     if not psql:
         raise RuntimeError("psql was not found on PATH")
 
+    env = os.environ.copy()
+    env["PGPASSWORD"] = config["pg_password"]
+
+    # Refuse to restore over an existing schema. The database must be freshly
+    # created and empty, even though its name also carries the test-only prefix.
+    preflight = [
+        psql,
+        "--no-psqlrc",
+        "--host", config["pg_host"],
+        "--port", config["pg_port"],
+        "--username", config["pg_user"],
+        "--dbname", config["database"],
+        "--no-align",
+        "--tuples-only",
+        "--command",
+        (
+            "SELECT current_database() || '|' || "
+            "(SELECT count(*)::text FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') "
+            "AND n.nspname NOT LIKE 'pg_toast%' "
+            "AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f'))"
+        ),
+    ]
+    preflight_result = subprocess.run(
+        preflight, capture_output=True, text=True, env=env, timeout=60, check=False
+    )
+    if preflight_result.returncode:
+        raise RuntimeError("Restore-target preflight query failed")
+    try:
+        target_database, target_objects = (preflight_result.stdout or "").strip().split("|", 1)
+        object_count = int(target_objects)
+    except (ValueError, TypeError):
+        raise RuntimeError("Restore-target preflight returned an invalid result") from None
+    if target_database != config["database"] or object_count != 0:
+        raise RuntimeError(
+            "Restore target must be the requested, freshly created empty test database"
+        )
+
     command = [
         psql,
         "--no-psqlrc",
@@ -161,9 +213,6 @@ def _restore_to_test_database(
         "--echo-errors",
         "--quiet",
     ]
-    env = os.environ.copy()
-    env["PGPASSWORD"] = config["pg_password"]
-
     try:
         if backup_path.suffix.lower() == ".gz":
             with gzip.open(backup_path, "rt", encoding="utf-8") as source:
