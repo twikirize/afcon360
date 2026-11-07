@@ -19,6 +19,8 @@ def aml_app():
             "approved_by": "compliance-test-approver",
             "approved_at": "2026-01-01",
             "version": "UG-2026-v1",
+            "valid_from": "2026-01-01",
+            "valid_until": "2026-12-31",
             "working_weekdays": [0, 1, 2, 3, 4],
             "public_holidays": ["2026-11-09"],
         },
@@ -28,6 +30,8 @@ def aml_app():
             "approved_by": "compliance-test-approver",
             "approved_at": "2026-01-01",
             "version": "US-2026-v1",
+            "valid_from": "2026-01-01",
+            "valid_until": "2026-12-31",
             "working_weekdays": [0, 1, 2, 3, 4],
             "public_holidays": ["2026-03-09"],
         },
@@ -77,3 +81,22 @@ def test_aware_detection_datetime_is_converted_before_date_is_taken():
 def test_naive_detection_datetime_is_rejected():
     with pytest.raises(ValueError, match="timezone offset"):
         _resolve_aml_period_date(datetime(2026, 11, 7, 23, 30), ZoneInfo("Africa/Kampala"))
+
+
+
+def test_due_date_fails_when_approved_calendar_does_not_cover_deadline(aml_app):
+    jurisdiction = SimpleNamespace(
+        country_code="UG",
+        timezone_name="Africa/Kampala",
+        str_sla_working_days=2,
+    )
+    with aml_app.app_context():
+        calendar = dict(aml_app.config["AML_APPROVED_WORKING_CALENDARS"]["UG"])
+        calendar["valid_until"] = "2026-11-07"
+        with pytest.raises(ValueError, match="does not cover"):
+            compute_due_date(
+                datetime(2026, 11, 6, 12, tzinfo=timezone.utc),
+                2,
+                jurisdiction,
+                approved_calendar=calendar,
+            )
