@@ -154,9 +154,6 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install boto3
 
-      - name: Run binary-safe restore utility regression tests
-        run: python -m pytest -q tests/test_oci_restore_utils.py
-
       - name: Verify disposable source PostgreSQL credentials and test target
         shell: bash
         run: |
@@ -194,6 +191,9 @@ jobs:
 
       - name: Build source database from reviewed migrations
         run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Run binary-safe restore utility regression tests
+        run: python -m pytest -q tests/test_oci_restore_utils.py
 
       - name: Create synthetic source data and upload a real database backup to OCI
         id: backup
