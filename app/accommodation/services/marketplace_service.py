@@ -11,7 +11,9 @@ Integrates with the real wallet module (double-entry ledger) to handle:
 from decimal import Decimal
 from typing import Optional, Tuple, Dict, Any
 from datetime import datetime, timezone
+from contextlib import contextmanager
 
+from sqlalchemy import text
 from flask import current_app
 from flask_login import current_user
 from sqlalchemy.exc import OperationalError
@@ -38,6 +40,92 @@ class MarketplaceService:
 
     # Default platform commission rate (overridable per booking)
     DEFAULT_COMMISSION_PCT = Decimal('10.0')
+
+    @staticmethod
+    @contextmanager
+    def _booking_settlement_lock(booking_id: int):
+        """
+        Reserve this booking's escrow settlement across wallet transaction
+        boundaries and across every web/worker process.
+
+        WalletService.transfer() deliberately rolls back the caller's scoped
+        SQLAlchemy session before opening its own atomic transaction. A row
+        lock taken through that session would therefore disappear before the
+        ledger movement. This session-level PostgreSQL advisory lock is held
+        on a separate checked-out connection, so that rollback cannot release
+        it. The lock is shared by host payout and both internal-refund paths.
+
+        A non-blocking acquisition avoids tying up a pool connection while a
+        competing settlement is in progress. The caller must retry after the
+        active settlement completes.
+        """
+        if isinstance(booking_id, bool):
+            raise ValueError("A valid booking ID is required")
+        try:
+            normalized_booking_id = int(booking_id)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("A valid booking ID is required") from exc
+        if normalized_booking_id <= 0:
+            raise ValueError("A valid booking ID is required")
+
+        if db.engine.dialect.name != "postgresql":
+            # Never silently fall back to an in-process mutex or an unprotected
+            # settlement: multiple Gunicorn/Celery nodes must share this guard.
+            raise RuntimeError(
+                "Accommodation escrow settlement requires PostgreSQL advisory locks"
+            )
+
+        lock_name = (
+            "afcon360:accommodation:escrow-settlement:"
+            f"{normalized_booking_id}"
+        )
+        lock_connection = db.engine.connect()
+        acquired = False
+        try:
+            acquired = bool(
+                lock_connection.execute(
+                    text(
+                        "SELECT pg_try_advisory_lock("
+                        "hashtextextended(:lock_name, 0))"
+                    ),
+                    {"lock_name": lock_name},
+                ).scalar_one()
+            )
+            # Session-level advisory locks survive COMMIT and ROLLBACK.
+            lock_connection.commit()
+            yield acquired
+        finally:
+            if acquired:
+                try:
+                    unlocked = bool(
+                        lock_connection.execute(
+                            text(
+                                "SELECT pg_advisory_unlock("
+                                "hashtextextended(:lock_name, 0))"
+                            ),
+                            {"lock_name": lock_name},
+                        ).scalar_one()
+                    )
+                    lock_connection.commit()
+                    if not unlocked:
+                        logger.critical(
+                            "Booking escrow settlement advisory lock was not "
+                            "released normally for booking %s; invalidating "
+                            "the dedicated connection",
+                            normalized_booking_id,
+                        )
+                        lock_connection.invalidate()
+                except Exception:
+                    # Do not return a possibly still-locked connection to the
+                    # pool. Invalidating closes the PostgreSQL session, which
+                    # releases all session-level advisory locks it owns.
+                    logger.exception(
+                        "Could not release booking escrow settlement lock for "
+                        "booking %s; invalidating its connection",
+                        normalized_booking_id,
+                    )
+                    lock_connection.invalidate()
+            lock_connection.close()
 
     @staticmethod
     def _refund_policy_signing_key() -> bytes:
@@ -323,6 +411,28 @@ class MarketplaceService:
 
     @staticmethod
     def release_host_payout(booking_id: int) -> Tuple[bool, Optional[str]]:
+        """Execute a host payout under the shared per-booking settlement guard."""
+        try:
+            with MarketplaceService._booking_settlement_lock(booking_id) as acquired:
+                if not acquired:
+                    return False, (
+                        "Another refund or host payout is processing for this "
+                        "booking; retry after it completes"
+                    )
+                return MarketplaceService._release_host_payout_locked(booking_id)
+        except Exception:
+            db.session.rollback()
+            logger.exception(
+                "Could not safely reserve host payout settlement for booking %s",
+                booking_id,
+            )
+            return False, (
+                "Host payout could not safely reserve this booking's escrow; "
+                "no payout was initiated"
+            )
+
+    @staticmethod
+    def _release_host_payout_locked(booking_id: int) -> Tuple[bool, Optional[str]]:
         """
         Release escrow only after the authenticated property manager who
         confirmed check-in is verified again at the financial boundary.
@@ -824,6 +934,33 @@ class MarketplaceService:
         booking_id: int,
         refund_amount: Decimal,
     ) -> Tuple[bool, Optional[str]]:
+        """Execute a policy refund under the shared per-booking settlement guard."""
+        try:
+            with MarketplaceService._booking_settlement_lock(booking_id) as acquired:
+                if not acquired:
+                    return False, (
+                        "Another refund or host payout is processing for this "
+                        "booking; retry after it completes"
+                    )
+                return MarketplaceService._refund_guest_locked(
+                    booking_id, refund_amount
+                )
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Could not safely reserve automatic refund settlement for booking %s",
+                booking_id,
+            )
+            return False, (
+                "Refund could not safely reserve this booking's escrow; "
+                "no refund was initiated"
+            )
+
+    @staticmethod
+    def _refund_guest_locked(
+        booking_id: int,
+        refund_amount: Decimal,
+    ) -> Tuple[bool, Optional[str]]:
         """
         Process a guest-authorized, booking-policy refund automatically when
         the booking-time policy and platform escrow reconcile. Any ambiguity
@@ -1068,6 +1205,39 @@ class MarketplaceService:
 
     @staticmethod
     def refund_guest_approved(
+        booking_id: int,
+        refund_amount: Decimal,
+        approval_reason: Optional[str] = None,
+        *,
+        integrity_exception_acknowledged: bool = False,
+    ) -> Tuple[bool, Optional[str]]:
+        """Approve and execute a wallet refund under the shared settlement guard."""
+        try:
+            with MarketplaceService._booking_settlement_lock(booking_id) as acquired:
+                if not acquired:
+                    return False, (
+                        "Another refund or host payout is processing for this "
+                        "booking; retry after it completes"
+                    )
+                return MarketplaceService._refund_guest_approved_locked(
+                    booking_id,
+                    refund_amount,
+                    approval_reason,
+                    integrity_exception_acknowledged=integrity_exception_acknowledged,
+                )
+        except Exception:
+            db.session.rollback()
+            logger.exception(
+                "Could not safely reserve approved refund settlement for booking %s",
+                booking_id,
+            )
+            return False, (
+                "Approved refund could not safely reserve this booking's escrow; "
+                "no refund was initiated"
+            )
+
+    @staticmethod
+    def _refund_guest_approved_locked(
         booking_id: int,
         refund_amount: Decimal,
         approval_reason: Optional[str] = None,
