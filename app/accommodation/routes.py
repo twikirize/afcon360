@@ -6180,10 +6180,12 @@ def admin_record_external_refund_execution(booking_id):
         flash("Enter a valid external refund amount.", "danger")
         return redirect(url_for("accommodation.admin_refund_review_queue"))
     reference = request.form.get("provider_reference", "").strip()
+    verification_note = request.form.get("verification_note", "").strip()
     success, error = MarketplaceService.record_external_refund_execution(
         booking_id,
         amount,
         reference,
+        verification_note=verification_note,
         reviewer_user_id=current_user.id,
     )
     if success:
