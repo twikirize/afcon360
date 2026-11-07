@@ -4984,6 +4984,7 @@ def host_edit_listing(property_id: int):
                 "city": prop.city,
                 "state": prop.state,
                 "country": prop.country,
+                "timezone_name": prop.timezone_name or "",
                 "postal_code": prop.postal_code,
                 "base_price_per_night": prop.base_price_per_night,
                 "currency": prop.currency,
