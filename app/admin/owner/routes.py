@@ -2957,10 +2957,14 @@ def auth_settings():
             # by the current SMS adapter work. They are deliberately not copied
             # into the shared auth_providers record.
             twilio_sid = (
-                request.form.get('twilio_account_sid', '').strip()
-                or SystemConfig.get('TWILIO_ACCOUNT_SID', '')
-                or config.twilio_account_sid
-                or ''
+                None
+                if request.form.get('clear_twilio_account_sid') == 'on'
+                else (
+                    request.form.get('twilio_account_sid', '').strip()
+                    or SystemConfig.get('TWILIO_ACCOUNT_SID', '')
+                    or config.twilio_account_sid
+                    or ''
+                )
             )
             twilio_phone = (
                 request.form.get('twilio_phone_number', '').strip()
@@ -2968,10 +2972,20 @@ def auth_settings():
                 or config.twilio_phone_number
                 or ''
             )
+            clear_twilio_token = request.form.get('clear_twilio_auth_token') == 'on'
             token_input = request.form.get('twilio_auth_token', '').strip()
             existing_system_token = SystemConfig.get('TWILIO_AUTH_TOKEN', '')
             legacy_token = config.twilio_auth_token
-            if token_input:
+            if clear_twilio_token:
+                SystemConfig.set(
+                    'TWILIO_AUTH_TOKEN',
+                    None,
+                    value_type='str',
+                    category='sms',
+                    description='Twilio Auth Token',
+                    commit=False,
+                )
+            elif token_input:
                 SystemConfig.set(
                     'TWILIO_AUTH_TOKEN',
                     token_input,
@@ -2980,7 +2994,7 @@ def auth_settings():
                     description='Twilio Auth Token',
                     commit=False,
                 )
-            elif legacy_token and not existing_system_token:
+            elif legacy_token and not existing_system_token and not clear_twilio_token:
                 # One-time compatibility migration from the old plaintext field.
                 SystemConfig.set(
                     'TWILIO_AUTH_TOKEN',

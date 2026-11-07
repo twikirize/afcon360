@@ -41,10 +41,14 @@ def test_sms_service_restores_twilio_send_message_contract(app, monkeypatch):
     assert delivered["body"] == "Your AFCON360 code is 123456"
 
 
-def test_sms_service_refuses_unknown_provider_without_console_fallback():
+def test_sms_service_refuses_unknown_provider_without_console_fallback(app):
     from app.notifications.sms_service import SMSService
 
-    result = SMSService(provider="console").send_message("+256700000001", "test")
+    # This test checks provider validation, so explicitly pass the global
+    # delivery gate before exercising the unsupported-provider branch.
+    app.config["SMS_DELIVERY_ENABLED"] = True
+    with app.app_context():
+        result = SMSService(provider="console").send_message("+256700000001", "test")
 
     assert result["success"] is False
     assert result["error"] == "unsupported_sms_provider"

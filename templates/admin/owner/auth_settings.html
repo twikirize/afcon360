@@ -267,6 +267,7 @@
                                    value="" autocomplete="new-password"
                                    placeholder="Leave blank to keep the saved Account SID">
                             <small class="text-muted">{% if secret_status.twilio_account_sid %}An Account SID is saved; its value is hidden.{% else %}No Account SID is saved.{% endif %}</small>
+                            <div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="clear_twilio_account_sid" id="clear_twilio_account_sid"><label class="form-check-label" for="clear_twilio_account_sid">Clear saved Account SID</label></div>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Auth Token</label>
@@ -274,6 +275,7 @@
                                    value="" autocomplete="new-password"
                                    placeholder="Leave blank to keep the saved token">
                             <small class="text-muted">{% if secret_status.twilio_auth_token %}A saved token is present; its value is hidden.{% else %}No Auth Token is saved yet.{% endif %}</small>
+                            <div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="clear_twilio_auth_token" id="clear_twilio_auth_token"><label class="form-check-label" for="clear_twilio_auth_token">Clear saved Auth Token</label></div>
                         </div>
                         <div class="col-md-4 mb-3 d-flex align-items-end">
                             <button type="button" class="test-btn" onclick="testService('twilio')" {% if not sms_delivery_enabled %}disabled{% endif %}>

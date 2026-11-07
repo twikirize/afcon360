@@ -545,8 +545,6 @@ def test_auth_configuration_hydrates_provider_secrets_from_encrypted_settings(mo
     encrypted_config = CommunicationSettingsService._encrypt_config({
         "google_client_secret": "google-client-secret-12aa",
         "sendgrid_api_key": "sendgrid-api-key-34bb",
-        "twilio_account_sid": "AC_PRIVATE_56cc",
-        "twilio_auth_token": "twilio-auth-token-78dd",
         "africa_talking_username": "africa-talking-user-90ee",
         "africa_talking_api_key": "africa-talking-key-aabb",
     })
@@ -566,8 +564,10 @@ def test_auth_configuration_hydrates_provider_secrets_from_encrypted_settings(mo
 
     assert config.google_client_secret == "google-client-secret-12aa"
     assert config.sendgrid_api_key == "sendgrid-api-key-34bb"
-    assert config.twilio_account_sid == "AC_PRIVATE_56cc"
-    assert config.twilio_auth_token == "twilio-auth-token-78dd"
+    # Twilio remains in the dedicated encrypted SystemConfig store (PR #51),
+    # not in this shared auth_providers record.
+    assert config.twilio_account_sid is None
+    assert config.twilio_auth_token is None
     assert config.africa_talking_username == "africa-talking-user-90ee"
     assert config.africa_talking_api_key == "africa-talking-key-aabb"
 
