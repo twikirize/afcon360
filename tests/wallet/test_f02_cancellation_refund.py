@@ -241,13 +241,21 @@ class TestGuestCancellationRoute:
 
         _login_as_guest(client, guest_public_id)
 
-        # Patch MarketplaceService.refund_guest to avoid needing real wallet accounts
+        # Patch the wallet call and observe the existing lifecycle signal.
+        # The notification subsystem itself is not replaced or changed here.
         with patch.object(MarketplaceService, 'refund_guest', return_value=(True, None)) as mock_refund:
-            resp = client.post(
-                f'/accommodation/guest/booking/{booking_ref}/cancel',
-                data={'reason': 'Test cancellation'},
-                follow_redirects=False
-            )
+            with patch('app.notifications.signals.booking_cancelled.send') as mock_cancelled_signal:
+                resp = client.post(
+                    f'/accommodation/guest/booking/{booking_ref}/cancel',
+                    data={'reason': 'Test cancellation'},
+                    follow_redirects=False
+                )
+
+            mock_cancelled_signal.assert_called_once()
+            signal_args, signal_kwargs = mock_cancelled_signal.call_args
+            assert signal_args[0].id == booking.id
+            assert signal_kwargs["booking"].id == booking.id
+            assert signal_kwargs["cancelled_by"] == test_guest_user.id
 
             # Debug: check where it redirects
             print(f"DEBUG: response status={resp.status_code}, location={resp.location}")
