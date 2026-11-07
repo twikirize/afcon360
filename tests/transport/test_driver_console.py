@@ -439,3 +439,20 @@ def test_driver_demand_cells_requires_explicit_driver_context(
 
     response = client.get("/transport/api/driver/demand/cells")
     assert response.status_code == 403, response.get_data(as_text=True)
+
+
+def test_driver_dashboard_exposes_place_search_and_demand_filter_controls(
+        app, client, db_session):
+    driver = _seed_driver(app)
+    _enter_driver_context(client, driver)
+
+    response = client.get("/transport/driver-dashboard", follow_redirects=False)
+    assert response.status_code == 200, response.get_data(as_text=True)
+    body = response.get_data(as_text=True)
+    assert 'id="driverMapSearch"' in body
+    assert 'id="driverMapSearchBtn"' in body
+    assert 'id="driverMapSearchResults"' in body
+    assert 'id="driverMapAttribution"' in body
+    assert 'id="driverDemandFilter"' in body
+    assert "/geo/api/geocode" in body
+
