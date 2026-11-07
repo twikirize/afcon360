@@ -18,7 +18,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 CONFIRMATION = "RESTORE_ONLY_TO_DISPOSABLE_TEST_DATABASE"
@@ -83,7 +83,10 @@ def _download_and_verify(
         endpoint_url=config["endpoint"],
         aws_access_key_id=config["access_key"],
         aws_secret_access_key=config["secret_key"],
-        config=BotoConfig(signature_version="s3"),
+        config=BotoConfig(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+        ),
     )
     head = client.head_object(Bucket=config["bucket"], Key=object_key)
     remote_size = int(head.get("ContentLength", -1))
@@ -133,7 +136,15 @@ def _download_and_verify(
     }
 
 
-def _restore_to_test_database(config: dict, backup_path: Path, timeout: int) -> int:
+def _restore_to_test_database(
+    config: dict,
+    backup_path: Path,
+    timeout: int,
+    expected_revision: Optional[str] = None,
+    expected_table_count: Optional[int] = None,
+    expected_users_count: Optional[int] = None,
+    expected_marker: Optional[str] = None,
+) -> dict[str, Any]:
     psql = shutil.which(os.getenv("PSQL_PATH") or "psql")
     if not psql:
         raise RuntimeError("psql was not found on PATH")
@@ -199,6 +210,11 @@ def _restore_to_test_database(config: dict, backup_path: Path, timeout: int) -> 
             "(SELECT count(*)::text FROM information_schema.tables "
             "WHERE table_schema NOT IN ('pg_catalog', 'information_schema')) || '|' || "
             "(SELECT count(*)::text FROM users)"
+            + (
+                " || '|' || (SELECT count(*)::text "
+                "FROM public.oci_backup_drill_marker WHERE marker = "
+                + "'" + expected_marker + "'"
+            ) if expected_marker else ""
         ),
     ]
     check = subprocess.run(
@@ -213,9 +229,13 @@ def _restore_to_test_database(config: dict, backup_path: Path, timeout: int) -> 
         raise RuntimeError("Post-restore schema verification query failed")
     value = (check.stdout or "").strip()
     try:
-        database, revision, count_text, users_text = value.split("|", 3)
+        parts = value.split("|")
+        if len(parts) != (5 if expected_marker else 4):
+            raise ValueError("Unexpected verification field count")
+        database, revision, count_text, users_text = parts[:4]
         table_count = int(count_text)
         users_count = int(users_text)
+        marker_count = int(parts[4]) if expected_marker else None
     except (ValueError, TypeError):
         raise RuntimeError("Post-restore verification returned an invalid result") from None
     if database != config["database"] or not revision or table_count <= 0 or users_count < 1:
@@ -223,10 +243,19 @@ def _restore_to_test_database(config: dict, backup_path: Path, timeout: int) -> 
             "Post-restore verification did not find the expected test database, "
             "Alembic revision, tables, and at least one user"
         )
+    if expected_revision is not None and revision != expected_revision:
+        raise RuntimeError("Restored Alembic revision does not match the source backup")
+    if expected_table_count is not None and table_count != expected_table_count:
+        raise RuntimeError("Restored table count does not match the source database")
+    if expected_users_count is not None and users_count != expected_users_count:
+        raise RuntimeError("Restored user count does not match the source database")
+    if expected_marker is not None and marker_count != 1:
+        raise RuntimeError("The expected synthetic recovery marker is missing after restore")
     return {
         "table_count": table_count,
         "alembic_revision": revision,
         "users_count": users_count,
+        "marker_count": marker_count,
     }
 
 
@@ -237,6 +266,13 @@ def main() -> int:
     parser.add_argument("--object-key", required=True)
     parser.add_argument("--sha256", required=True)
     parser.add_argument("--expected-size", type=int)
+    parser.add_argument("--expected-alembic-revision")
+    parser.add_argument("--expected-table-count", type=int)
+    parser.add_argument("--expected-users-count", type=int)
+    parser.add_argument(
+        "--expected-marker",
+        help="Require this synthetic marker row to exist exactly once after restore",
+    )
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument(
         "--keep-download",
@@ -257,7 +293,17 @@ def main() -> int:
             args.expected_size,
             backup_path,
         )
-        verification = _restore_to_test_database(config, backup_path, args.timeout)
+        if args.expected_marker and not re.fullmatch(r"[A-Z0-9_]{1,100}", args.expected_marker):
+            raise ValueError("--expected-marker must contain only uppercase letters, digits and underscores")
+        verification = _restore_to_test_database(
+            config,
+            backup_path,
+            args.timeout,
+            expected_revision=args.expected_alembic_revision,
+            expected_table_count=args.expected_table_count,
+            expected_users_count=args.expected_users_count,
+            expected_marker=args.expected_marker,
+        )
         print("OFFSITE_DOWNLOAD_VERIFIED=true")
         print(f"OBJECT_KEY={downloaded['object_key']}")
         print(f"DOWNLOADED_BYTES={downloaded['size']}")
@@ -266,6 +312,8 @@ def main() -> int:
         print(f"ALEMBIC_REVISION={verification['alembic_revision']}")
         print(f"RESTORED_TABLES={verification['table_count']}")
         print(f"RESTORED_USERS={verification['users_count']}")
+        if verification["marker_count"] is not None:
+            print(f"RESTORED_MARKER_ROWS={verification['marker_count']}")
         print("RESTORE_VERIFIED=true")
         return 0
     finally:
