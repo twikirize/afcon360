@@ -688,14 +688,6 @@ class BookingService:
             # unexplainable. Same engine, same inputs — no price change.
             _applied_surge = _estimate["surge_multiplier"]
 
-            from zoneinfo import ZoneInfo
-
-            # Resolve the app zone once, from config. Never from the
-            # machine's local timezone, and never implicitly UTC — both
-            # are silent-bug factories.
-            _APP_TZ_NAME = current_app.config.get('APP_TZ', 'Africa/Nairobi')
-            _APP_TZ = ZoneInfo(_APP_TZ_NAME)
-
             _raw_mode = sanitized_data.get('booking_mode')
             if _raw_mode is None or str(_raw_mode).strip() == '':
                 raise ValidationError(
@@ -712,33 +704,42 @@ class BookingService:
                     field="booking_mode",
                 )
 
+            pickup_schedule_metadata = None
             if booking_mode == 'scheduled':
                 try:
                     raw = sanitized_data["pickup_time"]
-                    pickup_time = datetime.fromisoformat(str(raw))
-                    if pickup_time.tzinfo is None:
-                        # Naive input is interpreted as the configured app
-                        # zone — the contract the form posts under. Never
-                        # machine-local, never UTC by accident.
-                        pickup_time = pickup_time.replace(tzinfo=_APP_TZ)
-                except (ValueError, TypeError, KeyError):
-                    raise ValidationError(
-                        message="Scheduled pickups require an explicit pickup_time",
-                        field="pickup_time",
+                    from app.transport.services.pickup_timezone import (
+                        timezone_for_pickup_coordinates,
                     )
-                # Lead time is measured from request receipt (6C), not from
-                # a clock read after fare/dedupe latency. The DB constraint
-                # (ck_pickup_time_sane) stays universal — it catches
-                # clearly-past bookings regardless of mode.
+                    from app.utils.time_policy import resolve_local_datetime
+                    pickup_timezone = timezone_for_pickup_coordinates(
+                        pickup_snapshot["latitude"],
+                        pickup_snapshot["longitude"],
+                    )
+                    resolved_schedule = resolve_local_datetime(raw, pickup_timezone)
+                    pickup_time = resolved_schedule["utc_datetime"]
+                except (ValueError, TypeError, KeyError) as exc:
+                    raise ValidationError(
+                        message=str(exc) or "Scheduled pickups require a valid local pickup time",
+                        field="pickup_time",
+                    ) from exc
+                # Lead time is checked against the resolved UTC instant, not
+                # against the server, browser or machine-local wall clock.
                 minimum_lead = request_received_at + timedelta(minutes=15)
                 if pickup_time < minimum_lead:
                     raise ValidationError(
                         message=(
-                            "Scheduled pickups must be at least 15 minutes from now. "
-                            "For an immediate ride, choose 'Now'."
+                            "Scheduled pickups must be at least 15 minutes from now "
+                            "at the pickup location. For an immediate ride, choose 'Now'."
                         ),
                         field="pickup_time",
                     )
+                pickup_schedule_metadata = {
+                    "local_datetime": resolved_schedule["local_datetime"],
+                    "timezone_name": resolved_schedule["timezone_name"],
+                    "utc_offset": resolved_schedule["utc_offset"],
+                    "utc_datetime": pickup_time.isoformat(),
+                }
             else:
                 # Instant: the server clock is the pickup-time authority.
                 # Any client-supplied pickup_time is IGNORED — the stale-UI
@@ -787,6 +788,7 @@ class BookingService:
                     if distance_for_fare is not None else None,
                     "distance_basis": distance_basis,
                     "booking_mode": booking_mode,  # 'instant' | 'scheduled'
+                    "pickup_schedule": pickup_schedule_metadata,
                     "trip_fingerprint": _trip_fingerprint(sanitized_data),
                 }
             )
@@ -861,6 +863,7 @@ class BookingService:
                     "pickup_time": booking.pickup_time.isoformat()
                     if booking.pickup_time else None,
                     "booking_mode": booking_mode,
+                    "pickup_schedule": pickup_schedule_metadata,
                 }
             }
 

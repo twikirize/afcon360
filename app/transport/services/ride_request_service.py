@@ -204,6 +204,7 @@ def serialize_request(ride_request: "RideRequest", cycle: "SearchCycle") -> Dict
         "passenger_count": ride_request.passenger_count,
         "pickup_time": (ride_request.requested_pickup_time.isoformat()
                         if ride_request.requested_pickup_time else None),
+        "pickup_schedule": meta.get("pickup_schedule"),
         "fare_estimate": {
             "amount": fare.get("amount"),
             "currency": fare.get("currency"),
@@ -379,44 +380,49 @@ class RideRequestService:
                 message="Scheduled pickups require an explicit pickup_time",
                 field="pickup_time",
             )
+        pickup_schedule_metadata = None
         try:
             if booking_mode == "instant":
                 requested_at = request_received_at
-                raw_was_naive = False
+                pickup_time_fp = "immediate"
             else:
-                requested_at = datetime.fromisoformat(str(raw_time))
-                # Match the legacy booking service contract: naive form values
-                # are interpreted in the configured application zone.
-                if requested_at.tzinfo is None:
-                    raw_was_naive = True
-                    app_tz_name = current_app.config.get("APP_TZ", "Africa/Nairobi")
-                    requested_at = requested_at.replace(tzinfo=ZoneInfo(app_tz_name))
-                else:
-                    raw_was_naive = False
+                from app.transport.services.pickup_timezone import (
+                    timezone_for_pickup_coordinates,
+                )
+                from app.utils.time_policy import resolve_local_datetime
+                pickup_timezone = timezone_for_pickup_coordinates(
+                    pickup_snapshot["latitude"],
+                    pickup_snapshot["longitude"],
+                )
+                resolved_schedule = resolve_local_datetime(raw_time, pickup_timezone)
+                requested_at = resolved_schedule["utc_datetime"]
                 minimum_lead = request_received_at + timedelta(minutes=15)
                 if requested_at < minimum_lead:
                     raise ValidationError(
                         message=(
-                            "Scheduled pickups must be at least 15 minutes from now. "
-                            "For an immediate ride, choose 'Now'."
+                            "Scheduled pickups must be at least 15 minutes from now "
+                            "at the pickup location. For an immediate ride, choose 'Now'."
                         ),
                         field="pickup_time",
                     )
-        except (ValueError, TypeError) as exc:
+                pickup_schedule_metadata = {
+                    "local_datetime": resolved_schedule["local_datetime"],
+                    "timezone_name": resolved_schedule["timezone_name"],
+                    "utc_offset": resolved_schedule["utc_offset"],
+                    "utc_datetime": requested_at.isoformat(),
+                }
+                pickup_time_fp = "schedule:%s|%s|%s" % (
+                    resolved_schedule["local_datetime"],
+                    resolved_schedule["timezone_name"],
+                    resolved_schedule["utc_offset"],
+                )
+        except ValidationError:
+            raise
+        except (ValueError, TypeError, KeyError) as exc:
             raise ValidationError(
-                message="pickup_time must be a valid datetime",
+                message=str(exc) or "pickup_time must be a valid local datetime",
                 field="pickup_time",
             ) from exc
-
-        # Fingerprint the server clock for instant intent (so retries do not
-        # conflict because transport latency changed the timestamp); scheduled
-        # trips fingerprint their explicitly validated requested time.
-        if booking_mode == "instant":
-            pickup_time_fp = "immediate"
-        elif raw_was_naive:
-            pickup_time_fp = "naive-local:%s" % requested_at.replace(tzinfo=None).isoformat()
-        else:
-            pickup_time_fp = requested_at.astimezone(timezone.utc).isoformat()
         trip_hash = _trip_hash(service_type.value, vehicle_class,
                                passenger_count, pickup_snapshot,
                                dropoff_snapshot, payment_method, currency_code,
@@ -474,6 +480,7 @@ class RideRequestService:
                     "created_via": "ride_request_api",
                     "created_at": now.isoformat(),
                     "booking_mode": booking_mode,
+                    "pickup_schedule": pickup_schedule_metadata,
                     "payment_timing": "pay_on_completion",
                 },
             )
