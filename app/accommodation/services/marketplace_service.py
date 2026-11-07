@@ -385,18 +385,13 @@ class MarketplaceService:
         snapshot = booking.policy_snapshot if isinstance(booking.policy_snapshot, dict) else {}
         rules = snapshot.get("cancellation_policy_rules") or {}
 
-        if rules.get("snapshot_version") != 1:
+        if rules.get("snapshot_version") != 2:
             flags.append("booking_time_policy_snapshot_incomplete")
-        else:
-            recorded_hash = rules.get("sha256")
-            hash_payload = {key: value for key, value in rules.items() if key != "sha256"}
-            import hashlib
-            import json
-            actual_hash = hashlib.sha256(
-                json.dumps(hash_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-            ).hexdigest()
-            if not recorded_hash or recorded_hash != actual_hash:
-                flags.append("booking_time_policy_snapshot_integrity_failed")
+        elif not MarketplaceService.verify_cancellation_policy_rules(booking, rules):
+            flags.append("booking_time_policy_snapshot_integrity_failed")
+
+        if not MarketplaceService.verify_cancellation_outcome(booking):
+            flags.append("cancellation_outcome_integrity_failed")
         if payment_method not in {"wallet", "mock_gateway"}:
             flags.append("payment_not_held_in_platform_wallet")
         if not booking.wallet_txn_id:
