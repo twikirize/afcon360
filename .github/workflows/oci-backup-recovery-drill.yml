@@ -162,12 +162,13 @@ jobs:
             exit 1
           fi
           restore_db="afcon360_restore_test_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
-          docker exec afcon360-oci-restore-drill createdb -U postgres --owner=postgres "$restore_db"
+          docker exec afcon360-oci-restore-drill psql -U postgres --no-psqlrc --set=ON_ERROR_STOP=on --command="CREATE ROLE afcon_restore_login LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'AFCON360-Disposable-Restore-Only';"
+          docker exec afcon360-oci-restore-drill createdb -U postgres --owner=afcon_restore_login "$restore_db"
           {
             echo "BACKUP_RESTORE_TEST_DATABASE=$restore_db"
             echo "BACKUP_RESTORE_TEST_PGHOST=127.0.0.1"
             echo "BACKUP_RESTORE_TEST_PGPORT=5433"
-            echo "BACKUP_RESTORE_TEST_PGUSER=postgres"
+            echo "BACKUP_RESTORE_TEST_PGUSER=afcon_restore_login"
             echo "BACKUP_RESTORE_TEST_PGPASSWORD=AFCON360-Disposable-Restore-Only"
             echo "BACKUP_RESTORE_CONFIRMATION=RESTORE_ONLY_TO_DISPOSABLE_TEST_DATABASE"
           } >> "$GITHUB_ENV"
