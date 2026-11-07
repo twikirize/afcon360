@@ -705,8 +705,8 @@ class MarketplaceService:
             ):
                 return False, "Platform administrator approval is required"
             reason = str(approval_reason or "").strip()
-            if not reason:
-                return False, "An approval reason is required"
+            if len(reason) < 5:
+                return False, "An approval reason of at least five characters is required"
 
             booking = db.session.execute(
                 select(AccommodationBooking)
@@ -717,6 +717,8 @@ class MarketplaceService:
                 return False, "Booking not found"
 
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            if workflow.get("state") in {"refunded", "partially_refunded"}:
+                return False, "Already refunded"
             if workflow.get("state") != "pending_human_review":
                 return False, "This refund is not awaiting human review"
             prohibited_actors = {
@@ -772,6 +774,17 @@ class MarketplaceService:
                 })
                 snapshot["refund_workflow"] = workflow
                 booking.policy_snapshot = snapshot
+                MarketplaceService._record_refund_history(
+                    booking,
+                    actor.id,
+                    "refund_review_approved_external",
+                    {
+                        "approved_amount": str(amount),
+                        "currency": booking.currency,
+                        "approval_reason": reason,
+                        "execution_owner": workflow["execution_owner"],
+                    },
+                )
                 db.session.commit()
                 return True, "Approved. Refund remains pending execution by the original payment provider or property"
 
@@ -786,6 +799,17 @@ class MarketplaceService:
                 })
                 snapshot["refund_workflow"] = workflow
                 booking.policy_snapshot = snapshot
+                MarketplaceService._record_refund_history(
+                    booking,
+                    actor.id,
+                    "refund_review_approved_recovery_required",
+                    {
+                        "approved_amount": str(amount),
+                        "currency": booking.currency,
+                        "approval_reason": reason,
+                        "commission_status": commission.status if commission else None,
+                    },
+                )
                 db.session.commit()
                 return True, "Approved, but escrow recovery is required before the refund can be executed"
 
