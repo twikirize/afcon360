@@ -256,6 +256,8 @@
                     {% endif %}
                     {% if refund_workflow.get('state') == 'refunded' and booking.refund_amount and booking.refund_amount > 0 %}
                     <p class="mb-0 text-success"><strong>Refund completed:</strong> {{ booking.currency }} {{ "%.2f"|format(booking.refund_amount) }}. Reference: {{ refund_workflow.get('transaction_id') or refund_workflow.get('external_provider_reference') or 'Recorded' }}.</p>
+                    {% elif refund_workflow.get('state') == 'partially_refunded' and booking.refund_amount and booking.refund_amount > 0 %}
+                    <p class="mb-0 text-success"><strong>Partial refund completed:</strong> {{ booking.currency }} {{ "%.2f"|format(booking.refund_amount) }}. Reference: {{ refund_workflow.get('transaction_id') or refund_workflow.get('external_provider_reference') or 'Recorded' }}.</p>
                     {% elif refund_workflow.get('state') == 'pending_human_review' %}
                     <div class="alert alert-info mb-0">
                         <strong>Refund awaiting platform review.</strong>
