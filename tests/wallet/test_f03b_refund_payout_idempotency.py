@@ -525,6 +525,13 @@ def _frozen_policy_snapshot(
     snapshot["cancellation_outcome_hmac"] = (
         MarketplaceService.sign_cancellation_outcome(booking, outcome)
     )
+    booking.policy_snapshot = snapshot
+    workflow = snapshot["refund_workflow"]
+    workflow["hmac_sha256"] = MarketplaceService.sign_refund_workflow(
+        booking, workflow
+    )
+    snapshot["refund_workflow"] = workflow
+    booking.policy_snapshot = snapshot
     return snapshot
 
 
