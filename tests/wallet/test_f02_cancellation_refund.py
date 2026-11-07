@@ -237,17 +237,31 @@ class TestGuestCancellationRoute:
         with app.app_context():
             booking = _create_paid_booking(app, test_db, test_property, test_guest_user, test_host_user)
             booking_ref = booking.booking_reference
+            booking_id = booking.id
             guest_public_id = test_guest_user.public_id
+            guest_user_id = test_guest_user.id
 
         _login_as_guest(client, guest_public_id)
+        from sqlalchemy import inspect as sa_inspect
 
-        # Patch MarketplaceService.refund_guest to avoid needing real wallet accounts
+        # Patch the wallet call and observe the existing lifecycle signal.
+        # The notification subsystem itself is not replaced or changed here.
         with patch.object(MarketplaceService, 'refund_guest', return_value=(True, None)) as mock_refund:
-            resp = client.post(
-                f'/accommodation/guest/booking/{booking_ref}/cancel',
-                data={'reason': 'Test cancellation'},
-                follow_redirects=False
-            )
+            with patch('app.notifications.signals.booking_cancelled.send') as mock_cancelled_signal:
+                resp = client.post(
+                    f'/accommodation/guest/booking/{booking_ref}/cancel',
+                    data={'reason': 'Test cancellation'},
+                    follow_redirects=False
+                )
+
+            mock_cancelled_signal.assert_called_once()
+            signal_args, signal_kwargs = mock_cancelled_signal.call_args
+            # The signal may carry a detached/expired ORM object after
+            # the service commits. Inspect its stored identity without trying
+            # to lazy-load expired columns on that detached instance.
+            assert sa_inspect(signal_args[0]).identity == (booking_id,)
+            assert sa_inspect(signal_kwargs["booking"]).identity == (booking_id,)
+            assert signal_kwargs["cancelled_by"] == guest_user_id
 
             # Debug: check where it redirects
             print(f"DEBUG: response status={resp.status_code}, location={resp.location}")
@@ -257,7 +271,7 @@ class TestGuestCancellationRoute:
             assert resp.status_code == 302
             mock_refund.assert_called_once()
             args, kwargs = mock_refund.call_args
-            assert args[0] == booking.id
+            assert args[0] == booking_id
             assert args[1] == Decimal("230.00")  # full refund for FLEXIBLE policy
 
     def test_cancel_no_refund_when_policy_zero(self, app, client, test_db, test_property, test_guest_user, test_host_user, platform_org_id):
@@ -314,27 +328,30 @@ class TestGuestCancellationRoute:
 
 
 class TestHostRefundRoute:
-    """Verify the existing host_refund_booking route still works (uses refund_guest correctly)."""
+    """Host refund requests must wait for independent platform approval."""
 
-    def test_host_refund_uses_refund_guest(self, app, client, test_db, test_property, test_guest_user, test_host_user, platform_org_id):
-        """Host refund route should call MarketplaceService.refund_guest."""
+    def test_host_refund_submits_for_admin_review(self, app, client, test_db, test_property, test_guest_user, test_host_user, platform_org_id):
+        """The host cannot approve and execute its own escrow refund."""
         with app.app_context():
             booking = _create_paid_booking(app, test_db, test_property, test_guest_user, test_host_user)
             booking_id = booking.id
 
         _login_as_host(client, test_host_user.public_id)
 
-        # Mock _ensure_host_identity to return a valid host identity
+        # Host approval submits a refund request for independent platform review.
         with patch('app.accommodation.routes._ensure_host_identity', return_value={"type": "individual", "id": test_host_user.id}):
-            with patch.object(MarketplaceService, 'refund_guest', return_value=(True, None)) as mock_refund:
+            with patch.object(MarketplaceService, 'submit_refund_review', return_value=(True, None)) as mock_review:
                 resp = client.post(
                     f'/accommodation/host/booking/{booking_id}/refund',
-                    data={'refund_amount': '100.00', 'reason': 'Partial refund'},
+                    data={'refund_amount': '100.00', 'reason': 'Partial refund exception'},
                     follow_redirects=False
                 )
 
                 assert resp.status_code == 302
-                mock_refund.assert_called_once()
-                args, kwargs = mock_refund.call_args
+                mock_review.assert_called_once()
+                args, kwargs = mock_review.call_args
                 assert args[0] == booking_id
                 assert args[1] == Decimal("100.00")
+                assert args[2] == "Partial refund exception"
+                assert kwargs["requested_by_user_id"] == test_host_user.id
+                assert kwargs["request_source"] == "host_manual_refund"

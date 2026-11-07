@@ -107,6 +107,10 @@ class Config:
 
     # ---- Auth secrets -------------------------------------------------------
     SECRET_KEY    = os.getenv("SECRET_KEY")
+    # A dedicated key is mandatory in production; the SECRET_KEY fallback is
+    # retained only for local/test compatibility. validate_for_production()
+    # refuses production startup unless this key is independently configured.
+    REFUND_POLICY_SIGNING_KEY = os.getenv("REFUND_POLICY_SIGNING_KEY") or SECRET_KEY
     SECURITY_SALT = os.getenv("SECURITY_SALT")
 
     # Owner MFA can be bootstrapped after every active owner has enrolled.
@@ -478,6 +482,23 @@ class Config:
             missing.append("SECURITY_SALT")
         if not cls.ENCRYPTION_KEY_VALUE or cls.ENCRYPTION_KEY_VALUE.startswith("REPLACE_"):
             missing.append("ENCRYPTION_KEY")
+
+        # Refund policy HMAC evidence must verify identically on every web and
+        # worker node. A SECRET_KEY fallback is not an acceptable production
+        # configuration because it can mask a missing dedicated key or couple
+        # refund evidence to unrelated application-secret rotation.
+        refund_policy_signing_key = (
+            os.getenv("REFUND_POLICY_SIGNING_KEY") or ""
+        ).strip()
+        if (
+            len(refund_policy_signing_key) < 32
+            or refund_policy_signing_key.startswith("REPLACE_")
+            or not cls.SECRET_KEY
+            or refund_policy_signing_key == cls.SECRET_KEY
+        ):
+            missing.append(
+                "REFUND_POLICY_SIGNING_KEY (independent key, at least 32 characters)"
+            )
 
         if cls.BACKUP_OFFSITE_ENABLED:
             for name in (

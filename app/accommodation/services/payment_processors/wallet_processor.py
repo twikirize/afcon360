@@ -68,5 +68,7 @@ class WalletProcessor(PaymentProcessor):
         if not commission:
             return False, "Commission record not found for transaction"
 
-        success, error = MarketplaceService.refund_guest(commission.booking_id, amount)
+        success, error = MarketplaceService.refund_guest_approved(
+            commission.booking_id, amount, approval_reason=reason
+        )
         return success, error

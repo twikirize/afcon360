@@ -1046,9 +1046,15 @@ class WalletService:
                     if not from_account:
                         raise WalletNotFoundError(wallet_ref=from_account_id)
 
+                    # Reject a non-owner before revealing whether the account has
+                    # a configured PIN. Ownership is an authorization boundary;
+                    # PIN verification only applies after that boundary passes.
+                    if from_account.user_id != current_user.id and not self._is_admin():
+                        raise PermissionError("You do not have permission to operate on this account")
+
                     sender_user = self.db.query(User).filter_by(
                         id=from_account.user_id
-                    ).with_for_update().one_or_none()
+                    ).with_for_update(of=User).one_or_none()
                     if sender_user is None:
                         raise TransactionPINError("Sender PIN authority could not be verified")
                     if not sender_user.transaction_pin_hash:
@@ -1058,7 +1064,7 @@ class WalletService:
 
                     if not sender_user.verify_transaction_pin(pin, session=self.db):
                         raise TransactionPINError("Invalid or locked PIN")
-                except (TransactionPINError, WalletNotFoundError):
+                except (TransactionPINError, WalletNotFoundError, PermissionError):
                     raise
                 except Exception as exc:
                     current_app.logger.exception(
