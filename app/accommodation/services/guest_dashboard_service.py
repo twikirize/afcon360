@@ -50,7 +50,8 @@ class GuestDashboardService:
             AccommodationBookingAmendment,
         )
 
-        today = date.today()
+        # The aggregate header date is UTC; each stay below is classified using its own property's calendar.
+        today = datetime.now(timezone.utc).date()
 
         # All bookings where the user is the guest, primary guest, or booker.
         bookings = (
@@ -73,7 +74,11 @@ class GuestDashboardService:
                 prop = search_service.get_property_by_identifier(str(booking.property_id))
             except Exception:
                 prop = None
-            enriched.append(cls._enrich(booking, prop, today))
+            try:
+                property_today = booking.accommodation_property.local_today()
+            except (AttributeError, ValueError):
+                property_today = None
+            enriched.append(cls._enrich(booking, prop, property_today))
 
         current_stay = next((e for e in enriched if e["is_current"]), None)
         upcoming = [e for e in enriched if e["is_upcoming"]]
@@ -148,15 +153,22 @@ class GuestDashboardService:
         status = booking.status
 
         is_current = status == AccommodationBookingStatus.CHECKED_IN.value
+        # With a missing legacy property zone, keep the active booking visible
+        # as upcoming rather than falsely labelling it past from server time.
         is_upcoming = (
             status in cls.ACTIVE_STATUSES
             and not is_current
-            and (booking.check_out >= today or status == AccommodationBookingStatus.PENDING_APPROVAL.value)
+            and (
+                today is None
+                or booking.check_out >= today
+                or status == AccommodationBookingStatus.PENDING_APPROVAL.value
+            )
         )
         is_past = (
             status in cls.HISTORY_STATUSES
             or (
-                status in cls.ACTIVE_STATUSES
+                today is not None
+                and status in cls.ACTIVE_STATUSES
                 and not is_current
                 and booking.check_out < today
                 and status != AccommodationBookingStatus.PENDING_APPROVAL.value
@@ -237,6 +249,11 @@ class GuestDashboardService:
         return {
             "booking": booking,
             "property": property_summary,
+            "property_timezone": (
+                getattr(booking.accommodation_property, "timezone_name", None)
+                if getattr(booking, "accommodation_property", None) else None
+            ),
+            "property_calendar_configured": today is not None,
             "status": status,
             "is_current": is_current,
             "is_upcoming": is_upcoming,

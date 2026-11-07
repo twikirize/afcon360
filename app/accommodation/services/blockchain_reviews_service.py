@@ -262,8 +262,14 @@ class BlockchainReviewsService:
         if booking.status != "confirmed":
             return {"is_authentic": False, "reason": "Booking not confirmed"}
         
-        # Check if stay is completed or in progress
-        today = date.today()
+        # A stay completes according to the property's local calendar.
+        try:
+            today = booking.accommodation_property.local_today()
+        except (AttributeError, ValueError):
+            return {
+                "is_authentic": False,
+                "reason": "Property timezone is not configured; stay completion cannot be verified",
+            }
         if booking.check_out > today:
             return {"is_authentic": False, "reason": "Stay not completed"}
         

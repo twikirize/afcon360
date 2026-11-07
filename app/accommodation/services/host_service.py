@@ -350,7 +350,7 @@ class HostService:
                      AccommodationBookingStatus.PENDING.value,
                      AccommodationBookingStatus.PENDING_APPROVAL.value]
                 ),
-                AccommodationBooking.check_in >= date.today() - timedelta(days=2),
+                AccommodationBooking.check_in >= datetime.now(timezone.utc).date() - timedelta(days=2),
             )
             .order_by(AccommodationBooking.check_in.asc())
             .all()

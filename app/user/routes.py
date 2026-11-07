@@ -295,12 +295,26 @@ def _get_shell_context(user=None):
 
 
 def _split_registrations(all_regs):
-    """Split a flat list of reg dicts into upcoming / past by event.start_date."""
-    today = date.today().isoformat()
+    """Split registrations by each event venue's local calendar day."""
+    from zoneinfo import ZoneInfo
+    from app.utils.location_timezone import resolve_location_timezone
+
     upcoming, past = [], []
     for reg in all_regs:
-        sd = reg.get('event', {}).get('start_date', '')
-        if isinstance(sd, str) and sd[:10] >= today:
+        event_data = reg.get("event", {}) or {}
+        start_date = event_data.get("start_date") or ""
+        try:
+            zone_name = resolve_location_timezone(
+                explicit_timezone=event_data.get("timezone_name"),
+                country=event_data.get("country"),
+            )
+            local_today = datetime.now(ZoneInfo(zone_name)).date().isoformat()
+        except ValueError:
+            # Unknown legacy venue calendar: never mark its event past using
+            # the server's date. Preserve it in upcoming until configured.
+            upcoming.append(reg)
+            continue
+        if isinstance(start_date, str) and start_date[:10] >= local_today:
             upcoming.append(reg)
         else:
             past.append(reg)
