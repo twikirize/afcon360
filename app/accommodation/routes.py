@@ -6008,8 +6008,12 @@ def host_refund_booking(booking_id):
         flash("You do not have permission to refund this booking.", "danger")
         return redirect(url_for("accommodation.host_bookings"))
 
-    refund_amount = Decimal(request.form.get('refund_amount', '0'))
-    reason = request.form.get('reason', 'Host issued refund')
+    try:
+        refund_amount = Decimal(request.form.get('refund_amount', '0'))
+    except Exception:
+        flash("Enter a valid refund amount.", "warning")
+        return redirect(url_for("accommodation.host_booking_detail", booking_id=booking_id))
+    reason = request.form.get('reason', '').strip()
 
     if refund_amount <= 0:
         flash("Refund amount must be greater than zero.", "warning")
@@ -6116,6 +6120,8 @@ def admin_approve_refund_review(booking_id):
         state = workflow.get("state")
         if state == "refunded":
             flash("Refund approved and executed. The approver and decision are recorded.", "success")
+        elif state == "partially_refunded":
+            flash("Partial refund approved and executed. The remaining balance is not marked refunded.", "success")
         elif state == "approved_external_execution_pending":
             flash(
                 "Refund entitlement approved. The original payment provider or property must execute it; "
