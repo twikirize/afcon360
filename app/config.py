@@ -250,12 +250,11 @@ class Config:
     TRANSPORT_BOOKING_SCHEMA_ENFORCE = (
         os.environ.get("TRANSPORT_BOOKING_SCHEMA_ENFORCE", "false").lower() == "true"
     )
-    # App wall-clock zone used when a naive datetime (e.g. the booking
-    # form's pickup_time) arrives without an offset. Interpretation
-    # contract for transport booking_service.create_booking.
-    APP_TZ = os.getenv("APP_TZ", "Africa/Nairobi")  # Legacy compatibility only; new business scheduling uses pickup location.
+    # Explicit business/reporting calendar policies. No global APP_TZ is used.
     KYC_DEFAULT_JURISDICTION_CODE = os.getenv("KYC_DEFAULT_JURISDICTION_CODE", "UG").strip().upper()
     REGULATOR_REPORT_TIMEZONE = os.getenv("REGULATOR_REPORT_TIMEZONE", "UTC").strip()
+    EVENT_REPORT_TIMEZONE = os.getenv("EVENT_REPORT_TIMEZONE", "UTC").strip()
+    ACCOMMODATION_REPORT_TIMEZONE = os.getenv("ACCOMMODATION_REPORT_TIMEZONE", "UTC").strip()
 
     # ---- Email --------------------------------------------------------------
     MAIL_SERVER         = os.getenv("MAIL_SERVER",    "smtp.gmail.com")

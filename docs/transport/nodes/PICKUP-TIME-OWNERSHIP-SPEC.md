@@ -1,7 +1,7 @@
 # PICKUP-TIME-OWNERSHIP-SPEC — Instant/Scheduled Pickup-Time Semantics
 
-**Mode:** SPECIFICATION (read-only analysis; no implementation authorized)
-**Status:** DRAFT — awaiting owner decision
+**Mode:** HISTORICAL ANALYSIS (preserved for the original instant-booking defect)
+**Status:** SUPERSEDED by the implemented platform timezone contract
 **Date:** 2026-10-25
 **Node class:** BEHAVIORAL / HIGH_RISK boundary (any fix path may touch a production CHECK constraint)
 
@@ -13,6 +13,8 @@
 > (§48 populated-table safety rules apply).
 
 ---
+
+> **Superseded — 2026-11-07.** This document records the 2026-10-25 defect investigation and design debate. Its old `APP_TZ=Africa/Nairobi` scheduled-time behavior, frontend checks and unimplemented decision request are historical evidence only. The current implementation is governed by [Platform Time Architecture](../../architecture/PLATFORM_TIME_ARCHITECTURE.md): a scheduled pickup is submitted as a local wall time, its IANA timezone is resolved from the pickup coordinates on the server, and the resulting UTC instant plus local scheduling provenance is stored. Both Booking-first and RideRequest-first paths enforce that contract. Do not use this historical spec to reintroduce global `APP_TZ`.
 
 ## 1. Purpose
 
@@ -205,32 +207,21 @@ A hybrid — Option 2 as an immediate honest-failure fix plus Option 1b as a
 separately authorized follow-up node — is available; it still requires explicit
 migration authorization for the 1b half.
 
-## 6. Scheduled-mode contract (explicitly separate)
+## 6. Current scheduled-mode contract (implemented 2026-11-07)
 
-These rules are **not** in dispute and must not be altered by any option above:
+The historical `APP_TZ` contract above is retired. The current contract is:
 
-- **Mode validation:** `booking_mode` must be `instant` or `scheduled`
-  (`booking_service.py:528–533`, `ValidationError`).
-- **Explicit time required:** scheduled bookings without `pickup_time` raise
-  `ValidationError` (`:545–550`).
-- **15-minute minimum lead:** `pickup_time` must be ≥ server-now + 15 min
-  (`:558–567`), message:
-  *"Scheduled pickups must be at least 15 minutes from now. For an immediate ride, choose 'Now'."*
-  Enforced in Python before the DB (probe `test_scheduled_near_past_rejected_by_app`).
-- **Timezone:** naive `pickup_time` is interpreted as `APP_TZ`
-  (default `Africa/Nairobi`), never machine-local and never implicitly UTC
-  (`:525–526`, `:538–542`; probe `test_naive_timestamp_interpreted_as_nairobi`).
-- **Universal backstop:** `ck_pickup_time_sane` applies to both modes
-  (`:554–557` comment; constraint is mode-agnostic).
-- **Frontend mirror:** `SCHED_MIN_LEAD_MS` = 15 min and `isScheduleValid()`
-  (`new_home.html:1466–1467`, lead check at `:1473`); UI-14-F1/F2 block commit of
-  empty/invalid/past schedule selections (`:1919–1928`, `:1979–1982`).
-- **Observed invalid-input quirk (recorded, not adjudicated):** a malformed
-  `pickup_time` is caught by `except (ValueError, TypeError, KeyError)` at
-  `:543`; for scheduled it becomes the clear `ValidationError` above, but for
-  instant it falls through to the server-now default (`:550–552`). If the owner
-  wants malformed-input behavior specified, it needs its own decision — it is
-  out of scope for the instant-semantics choice.
+- `booking_mode` must be `instant` or `scheduled`.
+- Scheduled mode requires a local `pickup_time` and validated pickup coordinates.
+- The server resolves the pickup's IANA timezone using the offline timezone-boundary dataset. It never trusts the browser/device timezone.
+- Naive `datetime-local` wall time is interpreted in that pickup zone. Offset-bearing ISO-8601 inputs are accepted only if the supplied offset agrees with the zone at that instant.
+- Nonexistent and ambiguous daylight-saving local times are rejected; the customer must choose an unambiguous wall time.
+- The selected local wall time is converted to an aware UTC instant and persisted as `pickup_time` / `requested_pickup_time`. The original local wall time, IANA zone, offset and UTC instant are retained in `pickup_schedule` metadata.
+- The 15-minute minimum lead is checked against the resolved UTC instant and the server's UTC request-receipt time.
+- Both Booking-first and RideRequest-first services apply the same contract. New instant rides use server UTC request time; client-supplied pickup time is not trusted.
+- Existing bookings are not reinterpreted. Legacy display zones may be derived from saved pickup coordinates; no stored instant is shifted.
+
+See [Platform Time Architecture](../../architecture/PLATFORM_TIME_ARCHITECTURE.md) and `tests/transport/test_pickup_timezone_policy.py`.
 
 ## 7. Test evidence mapping
 
@@ -246,15 +237,9 @@ migration-built `afcon360_test` (rev `1792869659`): **6 passed, 0 errors, exit 0
 | `test_scheduled_near_past_rejected_by_app` | +3 min scheduled rejected in Python with 15-min message (`:120–129`) | n/a — scheduled rule |
 | `test_naive_timestamp_interpreted_as_nairobi` | naive input → APP_TZ (`:131–146`) | n/a — timezone rule |
 
-## 8. Decision request
+## 8. Decision record
 
-Owner to select: **Option 1b** (spec → separate implementation node with migration
-authorization), **Option 2**, **Option 3**, or a **hybrid** (e.g., 2 now, 1b as a
-follow-up node). Whichever is chosen, a follow-up node contract must name the
-authorized files, the verification commands, and — for 1b/3 — the migration
-authorization explicitly.
-
-**No code, constraint, or migration changes are authorized by this document.**
+The instant-mode defect was closed by making the server's UTC request-receipt time the instant-ride authority and ignoring a client-supplied timestamp. Scheduled-mode location-aware resolution is implemented as described in §6. This historical document no longer requests an owner decision or authorizes a return to the old global-timezone behavior.
 
 ## 9. Evidence index (all re-verified 2026-10-25)
 

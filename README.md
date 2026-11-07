@@ -11,6 +11,7 @@ every environment.
 ## Contents
 
 - [Architecture](#architecture)
+- [Platform Time Architecture](docs/architecture/PLATFORM_TIME_ARCHITECTURE.md)
 - [Modules](#modules)
 - [Important invariants](#important-invariants)
 - [Technology](#technology)
@@ -640,6 +641,10 @@ A revision number alone does not prove schema parity. Verify the actual database
 - Standalone `psql`/libpq clients do not use the Flask engine options. They inherit the PostgreSQL server/database default; use `PGTZ=UTC` as an explicit client override when operating against a server whose UTC default has not yet been verified.
 - Convert to a user's local timezone only at the presentation/scheduling boundary. Do not shift stored instants to local wall time.
 - A naive external timestamp is not automatically UTC unless its input contract explicitly says so. Establish its source timezone before converting it to an aware UTC instant.
+- Business calendars do not use UTC, the browser or the database session implicitly. Every KYC/AML day, property/venue calendar and scheduled pickup declares its governing IANA timezone. Date-only fields stay `DATE`; location-local day/month filters use explicit UTC half-open boundaries.
+- Display precedence is business context → user profile timezone → browser timezone → UTC. The personal timezone preference must not override a pickup, property or venue's business timezone.
+
+The full implementation contract, data-source precedence, migration safeguards and examples are documented in [Platform Time Architecture](docs/architecture/PLATFORM_TIME_ARCHITECTURE.md).
 
 ### Why historical conversion used Africa/Nairobi
 
