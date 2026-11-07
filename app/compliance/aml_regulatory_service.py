@@ -159,7 +159,7 @@ def _approved_working_calendar(jurisdiction: JurisdictionProfile) -> Dict[str, A
     approved_by = str(calendar.get("approved_by") or "").strip()
     approved_at = str(calendar.get("approved_at") or "").strip()
     version = str(calendar.get("version") or "").strip()
-    if not calendar.get("approved") or not all((source, approved_by, approved_at, version)):
+    if calendar.get("approved") is not True or not all((source, approved_by, approved_at, version)):
         raise ValueError(
             f"The working-day calendar for {jurisdiction.country_code} must have "
             "an approval flag, source, approver, approval date and version"
@@ -403,8 +403,6 @@ def detect_cash_and_structuring(user_id: Optional[int] = None, day=None,
     lower = threshold * (Decimal('1') - band / Decimal('100')) if threshold else Decimal('0')
 
     from app.utils.time_policy import local_day_utc_bounds, require_iana_timezone
-    from datetime import date as calendar_date
-
     if not jurisdiction or not jurisdiction.timezone_name:
         raise ValueError("An active AML jurisdiction with an IANA timezone is required")
     business_zone = require_iana_timezone(
