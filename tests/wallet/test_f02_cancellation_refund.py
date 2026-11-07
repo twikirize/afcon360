@@ -314,27 +314,30 @@ class TestGuestCancellationRoute:
 
 
 class TestHostRefundRoute:
-    """Verify the existing host_refund_booking route still works (uses refund_guest correctly)."""
+    """Host refund requests must wait for independent platform approval."""
 
-    def test_host_refund_uses_refund_guest(self, app, client, test_db, test_property, test_guest_user, test_host_user, platform_org_id):
-        """Host refund route should call MarketplaceService.refund_guest."""
+    def test_host_refund_submits_for_admin_review(self, app, client, test_db, test_property, test_guest_user, test_host_user, platform_org_id):
+        """The host cannot approve and execute its own escrow refund."""
         with app.app_context():
             booking = _create_paid_booking(app, test_db, test_property, test_guest_user, test_host_user)
             booking_id = booking.id
 
         _login_as_host(client, test_host_user.public_id)
 
-        # Mock _ensure_host_identity to return a valid host identity
+        # Host approval submits a refund request for independent platform review.
         with patch('app.accommodation.routes._ensure_host_identity', return_value={"type": "individual", "id": test_host_user.id}):
-            with patch.object(MarketplaceService, 'refund_guest', return_value=(True, None)) as mock_refund:
+            with patch.object(MarketplaceService, 'submit_refund_review', return_value=(True, None)) as mock_review:
                 resp = client.post(
                     f'/accommodation/host/booking/{booking_id}/refund',
-                    data={'refund_amount': '100.00', 'reason': 'Partial refund'},
+                    data={'refund_amount': '100.00', 'reason': 'Partial refund exception'},
                     follow_redirects=False
                 )
 
                 assert resp.status_code == 302
-                mock_refund.assert_called_once()
-                args, kwargs = mock_refund.call_args
+                mock_review.assert_called_once()
+                args, kwargs = mock_review.call_args
                 assert args[0] == booking_id
                 assert args[1] == Decimal("100.00")
+                assert args[2] == "Partial refund exception"
+                assert kwargs["requested_by_user_id"] == test_host_user.id
+                assert kwargs["request_source"] == "host_manual_refund"
