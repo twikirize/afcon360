@@ -7,7 +7,7 @@ keeps this compliant with the "wallet is high-risk, do not modify" rule. All
 new state lives in the ``aml_regulatory_models`` tables.
 """
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Dict, List, Optional, Any
 
@@ -145,20 +145,119 @@ def list_jurisdictions() -> List[JurisdictionProfile]:
 # ---------------------------------------------------------------------------
 # Working-day SLA computation
 # ---------------------------------------------------------------------------
-def compute_due_date(suspicion_formed_at: datetime, working_days: int,
-                     jurisdiction: Optional[JurisdictionProfile] = None) -> datetime:
-    """Return the SLA due datetime by advancing ``working_days`` business days."""
+def _approved_working_calendar(jurisdiction: JurisdictionProfile) -> Dict[str, Any]:
+    """Load a regulator-approved calendar; do not silently assume weekends-only rules."""
+    if not jurisdiction or not jurisdiction.country_code:
+        raise ValueError("An AML jurisdiction is required for working-day calculation")
+    configured = current_app.config.get("AML_APPROVED_WORKING_CALENDARS", {})
+    calendar = configured.get(str(jurisdiction.country_code).upper()) if isinstance(configured, dict) else None
+    if not isinstance(calendar, dict):
+        raise ValueError(
+            f"No approved working-day calendar is configured for {jurisdiction.country_code}"
+        )
+    source = str(calendar.get("source") or "").strip()
+    approved_by = str(calendar.get("approved_by") or "").strip()
+    approved_at = str(calendar.get("approved_at") or "").strip()
+    version = str(calendar.get("version") or "").strip()
+    if not calendar.get("approved") or not all((source, approved_by, approved_at, version)):
+        raise ValueError(
+            f"The working-day calendar for {jurisdiction.country_code} must have "
+            "an approval flag, source, approver, approval date and version"
+        )
+    weekdays = calendar.get("working_weekdays", [0, 1, 2, 3, 4])
+    if (
+        not isinstance(weekdays, list)
+        or not weekdays
+        or any(type(day) is not int or day < 0 or day > 6 for day in weekdays)
+        or len(set(weekdays)) != len(weekdays)
+    ):
+        raise ValueError(f"Invalid working_weekdays for AML jurisdiction {jurisdiction.country_code}")
+    holiday_values = calendar.get("public_holidays", [])
+    if not isinstance(holiday_values, list):
+        raise ValueError(f"public_holidays must be a list for AML jurisdiction {jurisdiction.country_code}")
+    try:
+        holidays = {date.fromisoformat(str(value)) for value in holiday_values}
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Invalid ISO public-holiday date for AML jurisdiction {jurisdiction.country_code}"
+        ) from exc
+    return {
+        "working_weekdays": frozenset(weekdays),
+        "public_holidays": frozenset(holidays),
+        "source": source,
+        "approved_by": approved_by,
+        "approved_at": approved_at,
+        "version": version,
+    }
+
+
+def compute_due_date(
+    suspicion_formed_at: datetime,
+    working_days: int,
+    jurisdiction: Optional[JurisdictionProfile] = None,
+    *,
+    approved_calendar: Optional[Dict[str, Any]] = None,
+) -> datetime:
+    """Return a UTC due instant after jurisdiction-local approved business days.
+
+    The input is an absolute instant and must be timezone-aware. Calculation is
+    performed on the jurisdiction's local calendar while preserving its local
+    wall-clock time. Holidays and non-Monday-Friday work weeks come only from
+    an explicitly approved calendar.
+    """
     if jurisdiction is None:
         jurisdiction = get_default_jurisdiction()
-    sla = int(working_days if working_days is not None else
-              (jurisdiction.str_sla_working_days if jurisdiction else 2))
-    cursor = suspicion_formed_at or datetime.now(timezone.utc)
+    if jurisdiction is None or not jurisdiction.timezone_name:
+        raise ValueError("An active AML jurisdiction with an IANA timezone is required")
+    try:
+        sla = int(working_days if working_days is not None else jurisdiction.str_sla_working_days)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("working_days must be a non-negative integer") from exc
+    if sla < 0 or (working_days is not None and str(sla) != str(working_days)):
+        raise ValueError("working_days must be a non-negative integer")
+
+    from app.utils.time_policy import require_iana_timezone, resolve_local_datetime
+    business_zone = require_iana_timezone(
+        jurisdiction.timezone_name, field="AML jurisdiction timezone"
+    )
+    start = suspicion_formed_at or datetime.now(timezone.utc)
+    if not isinstance(start, datetime) or start.tzinfo is None or start.utcoffset() is None:
+        raise ValueError("suspicion_formed_at must be a timezone-aware instant")
+
+    calendar = approved_calendar or _approved_working_calendar(jurisdiction)
+    local_start = start.astimezone(business_zone)
+    due_day = local_start.date()
     remaining = sla
-    while remaining > 0:
-        cursor = cursor + timedelta(days=1)
-        if cursor.weekday() < 5:  # Monday=0 .. Friday=4
+    while remaining:
+        due_day += timedelta(days=1)
+        if (
+            due_day.weekday() in calendar["working_weekdays"]
+            and due_day not in calendar["public_holidays"]
+        ):
             remaining -= 1
-    return cursor
+    due_local_wall = datetime.combine(
+        due_day, local_start.timetz().replace(tzinfo=None)
+    )
+    # DST-ambiguous/nonexistent computed deadlines fail closed rather than shift.
+    return resolve_local_datetime(due_local_wall, business_zone.key)["utc_datetime"]
+
+
+def _resolve_aml_period_date(day, business_zone) -> date:
+    """Normalize daily-detection input into the jurisdiction's calendar date."""
+    if day is None:
+        return datetime.now(business_zone).date()
+    if isinstance(day, datetime):
+        if day.tzinfo is None or day.utcoffset() is None:
+            raise ValueError("day datetime must include a timezone offset")
+        return day.astimezone(business_zone).date()
+    if isinstance(day, str):
+        try:
+            return date.fromisoformat(day)
+        except ValueError as exc:
+            raise ValueError("day string must be an ISO calendar date (YYYY-MM-DD)") from exc
+    if isinstance(day, date):
+        return day
+    raise ValueError("day must be an ISO calendar date, date object or aware datetime")
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +288,13 @@ def create_regulatory_report(
     """Create a regulatory filing record with SLA due date and structured payload."""
     jurisdiction = get_jurisdiction(jurisdiction_code)
     suspicion_formed_at = suspicion_formed_at or datetime.now(timezone.utc)
-    due_at = compute_due_date(suspicion_formed_at, jurisdiction.str_sla_working_days, jurisdiction)
+    calendar_policy = _approved_working_calendar(jurisdiction)
+    due_at = compute_due_date(
+        suspicion_formed_at,
+        jurisdiction.str_sla_working_days,
+        jurisdiction,
+        approved_calendar=calendar_policy,
+    )
 
     payload = {
         'report_type': report_type,
@@ -203,6 +308,13 @@ def create_regulatory_report(
         'suspicion_formed_at': suspicion_formed_at.isoformat() if suspicion_formed_at else None,
         'due_at': due_at.isoformat() if due_at else None,
         'jurisdiction': jurisdiction.country_code if jurisdiction else None,
+        'due_calendar': {
+            'timezone_name': jurisdiction.timezone_name,
+            'source': calendar_policy['source'],
+            'approved_by': calendar_policy['approved_by'],
+            'approved_at': calendar_policy['approved_at'],
+            'version': calendar_policy['version'],
+        },
     }
 
     report = RegulatoryReport(
@@ -298,16 +410,7 @@ def detect_cash_and_structuring(user_id: Optional[int] = None, day=None,
     business_zone = require_iana_timezone(
         jurisdiction.timezone_name, field="AML jurisdiction timezone"
     )
-    if day is None:
-        period = datetime.now(business_zone).date()
-    elif isinstance(day, str):
-        period = calendar_date.fromisoformat(day)
-    elif isinstance(day, datetime):
-        period = day.date()
-    elif isinstance(day, calendar_date):
-        period = day
-    else:
-        raise ValueError("day must be an ISO date or date object")
+    period = _resolve_aml_period_date(day, business_zone)
     start_utc, end_utc = local_day_utc_bounds(period, jurisdiction.timezone_name)
 
     query = db.session.query(
