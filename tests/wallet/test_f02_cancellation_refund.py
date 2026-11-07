@@ -242,6 +242,7 @@ class TestGuestCancellationRoute:
             guest_user_id = test_guest_user.id
 
         _login_as_guest(client, guest_public_id)
+        from sqlalchemy import inspect as sa_inspect
 
         # Patch the wallet call and observe the existing lifecycle signal.
         # The notification subsystem itself is not replaced or changed here.
@@ -255,8 +256,11 @@ class TestGuestCancellationRoute:
 
             mock_cancelled_signal.assert_called_once()
             signal_args, signal_kwargs = mock_cancelled_signal.call_args
-            assert signal_args[0].id == booking_id
-            assert signal_kwargs["booking"].id == booking_id
+            # The signal may carry a detached/expired ORM object after
+            # the service commits. Inspect its stored identity without trying
+            # to lazy-load expired columns on that detached instance.
+            assert sa_inspect(signal_args[0]).identity == (booking_id,)
+            assert sa_inspect(signal_kwargs["booking"]).identity == (booking_id,)
             assert signal_kwargs["cancelled_by"] == guest_user_id
 
             # Debug: check where it redirects
