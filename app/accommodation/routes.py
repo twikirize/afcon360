@@ -6006,15 +6006,12 @@ def admin_refund_review_queue():
     """Platform-only queue for cancellation exceptions and machine-screened risks."""
     candidates = (
         AccommodationBooking.query
-        .filter(
-            AccommodationBooking.status.in_([
-                AccommodationBookingStatus.CANCELLED.value,
-                AccommodationBookingStatus.REFUNDED.value,
-            ]),
-            AccommodationBooking.is_deleted.is_(False),
+        .filter(AccommodationBooking.is_deleted.is_(False))
+        .order_by(
+            AccommodationBooking.cancelled_at.desc().nullslast(),
+            AccommodationBooking.created_at.desc(),
         )
-        .order_by(AccommodationBooking.cancelled_at.desc())
-        .limit(500)
+        .limit(1000)
         .all()
     )
     reviews = []
