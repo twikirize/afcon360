@@ -194,6 +194,23 @@ def _restore_to_test_database(
         detail = (result.stderr or "").strip()[-2000:]
         raise RuntimeError(f"psql restore failed (exit {result.returncode}): {detail}")
 
+    if expected_marker is not None and not re.fullmatch(r"[A-Z0-9_]{1,100}", expected_marker):
+        raise ValueError("expected_marker must contain only uppercase letters, digits and underscores")
+
+    verification_sql = (
+        "SELECT current_database() || '|' || "
+        "COALESCE((SELECT string_agg(version_num, ',') FROM alembic_version), '') || '|' || "
+        "(SELECT count(*)::text FROM information_schema.tables "
+        "WHERE table_schema NOT IN ('pg_catalog', 'information_schema')) || '|' || "
+        "(SELECT count(*)::text FROM users)"
+    )
+    if expected_marker is not None:
+        verification_sql += (
+            " || '|' || (SELECT count(*)::text "
+            "FROM public.oci_backup_drill_marker WHERE marker = "
+            + "'" + expected_marker + "'"
+        )
+
     verify_command = [
         psql,
         "--no-psqlrc",
@@ -204,18 +221,7 @@ def _restore_to_test_database(
         "--no-align",
         "--tuples-only",
         "--command",
-        (
-            "SELECT current_database() || '|' || "
-            "COALESCE((SELECT string_agg(version_num, ',') FROM alembic_version), '') || '|' || "
-            "(SELECT count(*)::text FROM information_schema.tables "
-            "WHERE table_schema NOT IN ('pg_catalog', 'information_schema')) || '|' || "
-            "(SELECT count(*)::text FROM users)"
-            + (
-                " || '|' || (SELECT count(*)::text "
-                "FROM public.oci_backup_drill_marker WHERE marker = "
-                + "'" + expected_marker + "'"
-            ) if expected_marker else ""
-        ),
+        verification_sql,
     ]
     check = subprocess.run(
         verify_command,
@@ -293,8 +299,6 @@ def main() -> int:
             args.expected_size,
             backup_path,
         )
-        if args.expected_marker and not re.fullmatch(r"[A-Z0-9_]{1,100}", args.expected_marker):
-            raise ValueError("--expected-marker must contain only uppercase letters, digits and underscores")
         verification = _restore_to_test_database(
             config,
             backup_path,
