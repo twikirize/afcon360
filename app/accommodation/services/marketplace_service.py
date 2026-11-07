@@ -530,7 +530,7 @@ class MarketplaceService:
         approved_by_user_id: Optional[int] = None,
     ) -> Tuple[bool, Optional[str]]:
         """Move an approved refund through the real wallet ledger exactly once."""
-        from app.wallet.models.transaction import TransactionModel
+        from app.wallet.models.transaction import TransactionModel, TransactionStatus
         from app.wallet.repositories.transaction_repository import TransactionRepository
         from app.accommodation.state_machine.booking_states import BookingStateMachine
         from app.accommodation.models.booking import AccommodationBookingStatus, AccommodationPaymentStatus
@@ -575,20 +575,40 @@ class MarketplaceService:
             system_initiated=True,
         )
 
+        if not isinstance(result, dict) or result.get("status") != "success":
+            return False, "Wallet did not confirm successful refund execution"
+
         existing = TransactionRepository(db.session).get_by_client_request_id(refund_key)
         if existing is None:
             existing = TransactionModel.query.filter_by(client_request_id=refund_key).first()
         if existing is None:
             return False, "Wallet did not return a durable refund transaction"
+
+        existing_status = str(
+            getattr(existing.status, "value", existing.status) or ""
+        ).lower()
+        if existing_status != TransactionStatus.COMPLETED.value:
+            return False, (
+                "The wallet refund transaction is not completed; the booking "
+                "must remain unrefunded until ledger settlement is confirmed"
+            )
         if Decimal(str(existing.amount)) != amount:
             return False, "An earlier refund exists for a different amount; human reconciliation is required"
+        if str(existing.currency or "").upper() != str(booking.currency or "").upper():
+            return False, "The durable refund transaction currency does not match the booking"
+        if existing.recipient_user_id != booking.booked_by_user_id:
+            return False, "The durable refund transaction recipient does not match the booking payer"
 
         transaction_metadata = dict(existing.tx_metadata or {})
+        if str(transaction_metadata.get("booking_id")) != str(booking.id):
+            return False, "The durable wallet transaction is not tied to this booking"
         if result.get("already_processed"):
             # A retry may finish the business record only when the durable
-            # wallet transaction carries an approval record.
+            # completed wallet transaction carries valid authorization evidence.
             if not transaction_metadata.get("authorization_source"):
                 return False, "Existing refund transaction has no authorization evidence"
+            if not transaction_metadata.get("authorized_by_user_id"):
+                return False, "Existing refund transaction has no authorizing actor"
             refund_authorization = {
                 "authorization_source": transaction_metadata.get("authorization_source"),
                 "authorized_by_user_id": transaction_metadata.get("authorized_by_user_id"),
