@@ -629,7 +629,7 @@ class MarketplaceService:
             "completed_at": now.isoformat(),
             "authorization": refund_authorization,
         })
-        snapshot["refund_workflow"] = workflow
+        MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
         booking.policy_snapshot = snapshot
         MarketplaceService._record_refund_history(
             booking,
@@ -719,7 +719,7 @@ class MarketplaceService:
                     "review_submitted_at": datetime.now(timezone.utc).isoformat(),
                     "review_reason": "Machine screening could not safely authorize automatic refund",
                 })
-                snapshot["refund_workflow"] = workflow
+                MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
                 booking.policy_snapshot = snapshot
                 MarketplaceService._record_refund_history(
                     booking,
@@ -764,7 +764,7 @@ class MarketplaceService:
                             list(workflow.get("risk_flags") or []) + ["automatic_refund_execution_failed"]
                         )),
                     })
-                    snapshot["refund_workflow"] = workflow
+                    MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
                     booking.policy_snapshot = snapshot
                     db.session.commit()
             except Exception:
@@ -828,7 +828,7 @@ class MarketplaceService:
                     list(workflow.get("risk_flags") or []) + ["provider_or_manual_exception"]
                 )),
             })
-            snapshot["refund_workflow"] = workflow
+            MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
             booking.policy_snapshot = snapshot
             MarketplaceService._record_refund_history(
                 booking,
@@ -934,7 +934,7 @@ class MarketplaceService:
                     "execution_owner": "original_payment_provider_or_property",
                     "execution_note": "Do not mark refunded until the original payment channel supplies an execution reference.",
                 })
-                snapshot["refund_workflow"] = workflow
+                MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
                 booking.policy_snapshot = snapshot
                 MarketplaceService._record_refund_history(
                     booking,
@@ -959,7 +959,7 @@ class MarketplaceService:
                     "approved_at": datetime.now(timezone.utc).isoformat(),
                     "execution_note": "Escrow has already been released or cannot be reconciled. Financial recovery is required before payment.",
                 })
-                snapshot["refund_workflow"] = workflow
+                MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
                 booking.policy_snapshot = snapshot
                 MarketplaceService._record_refund_history(
                     booking,
@@ -1034,7 +1034,7 @@ class MarketplaceService:
                 "rejection_reason": reason,
                 "rejected_at": datetime.now(timezone.utc).isoformat(),
             })
-            snapshot["refund_workflow"] = workflow
+            MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
             booking.policy_snapshot = snapshot
             MarketplaceService._record_refund_history(
                 booking,
@@ -1137,7 +1137,7 @@ class MarketplaceService:
                 "execution_verified_by_user_id": reviewer_user_id,
                 "execution_verified_at": datetime.now(timezone.utc).isoformat(),
             })
-            snapshot["refund_workflow"] = workflow
+            MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
             booking.policy_snapshot = snapshot
             MarketplaceService._record_refund_history(
                 booking,
