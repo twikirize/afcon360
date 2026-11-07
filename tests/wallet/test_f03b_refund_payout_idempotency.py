@@ -927,6 +927,46 @@ class TestEscrowHumanAuthorization:
         assert "host" in host_error.lower()
         assert _count_transfers_for(held_booking, "refund") == 0
 
+    def test_property_owner_with_platform_admin_role_cannot_review_own_provider_case(
+        self, app, guest, host, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+        )
+        with app.app_context():
+            property_owner = _make_user("provider-property-owner")
+            _grant_global_role(property_owner, "admin")
+            booking = db.session.get(AccommodationBooking, held_booking)
+            prop = db.session.get(Property, booking.property_id)
+            prop.owner_user_id = property_owner.id
+            db.session.commit()
+            owner_id = property_owner.id
+
+        with _login_as(app, owner_id):
+            approve_ok, approve_error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Provider-side property owner attempts self-review",
+            )
+        with _login_as(app, owner_id):
+            reject_ok, reject_error = MarketplaceService.reject_refund_review(
+                held_booking,
+                "Provider-side owner attempts to reject a refund dispute",
+                reviewer_user_id=owner_id,
+            )
+
+        assert approve_ok is False
+        assert reject_ok is False
+        assert "property-side manager" in approve_error.lower()
+        assert "property-side manager" in reject_error.lower()
+        booking = db.session.get(AccommodationBooking, held_booking)
+        assert booking.policy_snapshot["refund_workflow"]["state"] == "pending_human_review"
+        assert _count_transfers_for(held_booking, "refund") == 0
+
+
     def test_only_independent_platform_admin_can_approve(
         self, app, guest, host, platform_admin, held_booking
     ):
