@@ -138,6 +138,57 @@ class MarketplaceService:
         return hmac.compare_digest(recorded, expected)
 
     @staticmethod
+    def sign_refund_workflow(booking, workflow: dict) -> str:
+        """Authenticate every workflow state and decision stored in booking JSON."""
+        import hashlib
+        import hmac
+        import json
+
+        snapshot = booking.policy_snapshot if isinstance(booking.policy_snapshot, dict) else {}
+        unsigned_workflow = {
+            key: value for key, value in (workflow or {}).items()
+            if key != "hmac_sha256"
+        }
+        payload = json.dumps(
+            {
+                "booking": MarketplaceService._refund_policy_booking_context(booking),
+                "policy_rules_signature": (
+                    snapshot.get("cancellation_policy_rules") or {}
+                ).get("hmac_sha256"),
+                "cancellation_outcome_signature": snapshot.get("cancellation_outcome_hmac"),
+                "workflow": unsigned_workflow,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hmac.new(
+            MarketplaceService._refund_policy_signing_key(),
+            payload,
+            hashlib.sha256,
+        ).hexdigest()
+
+    @staticmethod
+    def verify_refund_workflow(booking, workflow: dict) -> bool:
+        import hmac
+
+        recorded = str((workflow or {}).get("hmac_sha256") or "")
+        if not recorded:
+            return False
+        try:
+            expected = MarketplaceService.sign_refund_workflow(booking, workflow)
+        except Exception:
+            return False
+        return hmac.compare_digest(recorded, expected)
+
+    @staticmethod
+    def _store_refund_workflow(booking, snapshot: dict, workflow: dict) -> dict:
+        signed = dict(workflow or {})
+        signed["hmac_sha256"] = MarketplaceService.sign_refund_workflow(booking, signed)
+        snapshot["refund_workflow"] = signed
+        booking.policy_snapshot = snapshot
+        return signed
+
+    @staticmethod
     def _get_platform_account_id(currency: str = 'USD') -> str:
         """
         Get or create the platform escrow account.
