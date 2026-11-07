@@ -204,10 +204,23 @@ class EventService:
             != str(event.country or "").strip().upper()
         )
         requested_timezone = str(data.get("timezone_name") or "").strip() or None
-        if not location_changed and not requested_timezone:
+        timezone_confirmed = str(
+            data.get("timezone_name_confirmed") or ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        if location_changed:
+            # A prefilled old venue zone is not evidence for the new location.
+            # A different zone is a new selection; reusing the same zone needs confirmation.
+            if not (
+                requested_timezone
+                and (
+                    timezone_confirmed
+                    or requested_timezone != event.timezone_name
+                )
+            ):
+                requested_timezone = None
+        elif not requested_timezone:
             requested_timezone = event.timezone_name
-        # A changed venue with no selected zone may use only a safe single-zone
-        # country default. Multi-zone countries must submit the new IANA zone.
+        # Multi-zone countries fail closed if the organiser has not selected a zone.
         return resolve_location_timezone(
             explicit_timezone=requested_timezone,
             country=new_country,

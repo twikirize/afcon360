@@ -493,12 +493,17 @@
 (function () {
     var form = document.getElementById('listingForm');
     var timezone = form && form.querySelector('[name="timezone_name"]');
-    if (!timezone) return;
+    var confirmed = form && form.querySelector('[name="timezone_name_confirmed"]');
+    if (!timezone || !confirmed) return;
     ['address_line1', 'address_line2', 'city', 'state', 'country', 'postal_code'].forEach(function (name) {
         var field = form.querySelector('[name="' + name + '"]');
-        if (field) field.addEventListener('change', function () {
+        if (field) field.addEventListener('input', function () {
             timezone.value = '';
+            confirmed.value = 'false';
         });
+    });
+    timezone.addEventListener('input', function () {
+        confirmed.value = 'true';
     });
 })();
   document.addEventListener('DOMContentLoaded', function() {

@@ -47,6 +47,7 @@
                                 <input type="text" name="timezone_name" class="form-control"
                                        value="{{ event.timezone_name or '' }}"
                                        placeholder="e.g. Africa/Kampala or America/New_York">
+                                <input type="hidden" name="timezone_name_confirmed" value="false">
                                 <small class="text-muted">Controls event calendar dates and venue-local deadlines. Multi-timezone countries require an exact IANA name.</small>
                             </div>
                         </div>
@@ -193,12 +194,17 @@
 (function () {
     const form = document.getElementById('event-form');
     const timezone = form && form.querySelector('[name="timezone_name"]');
-    if (!timezone) return;
+    const confirmed = form && form.querySelector('[name="timezone_name_confirmed"]');
+    if (!timezone || !confirmed) return;
     ['city', 'country', 'venue'].forEach(function (name) {
         const field = form.querySelector('[name="' + name + '"]');
-        if (field) field.addEventListener('change', function () {
+        if (field) field.addEventListener('input', function () {
             timezone.value = '';
+            confirmed.value = 'false';
         });
+    });
+    timezone.addEventListener('input', function () {
+        confirmed.value = 'true';
     });
 })();
 

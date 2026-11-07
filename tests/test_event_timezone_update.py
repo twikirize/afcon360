@@ -53,3 +53,36 @@ def test_submitted_event_deadlines_are_applied_in_new_venue_timezone():
     assert event.registration_closes_at == datetime(
         2026, 11, 8, 6, 30, tzinfo=timezone.utc
     )
+
+
+def test_event_location_change_does_not_reuse_stale_same_timezone_without_confirmation():
+    event = SimpleNamespace(
+        city="New York", venue="Old Venue", country="US",
+        timezone_name="America/New_York",
+    )
+    with pytest.raises(ValueError, match="timezone is required"):
+        EventService._resolve_event_timezone_for_update(
+            event,
+            {
+                "city": "Los Angeles", "venue": "New Venue",
+                "timezone_name": "America/New_York",
+                "timezone_name_confirmed": "false",
+            },
+        )
+
+
+def test_event_location_change_can_reconfirm_the_same_timezone():
+    event = SimpleNamespace(
+        city="New York", venue="Old Venue", country="US",
+        timezone_name="America/New_York",
+    )
+    zone = EventService._resolve_event_timezone_for_update(
+        event,
+        {
+            "city": "Another New York City", "venue": "New Venue",
+            "timezone_name": "America/New_York",
+            "timezone_name_confirmed": "true",
+        },
+    )
+    assert zone == "America/New_York"
+

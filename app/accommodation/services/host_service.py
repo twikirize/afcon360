@@ -246,13 +246,26 @@ class HostService:
             new_longitude = None
 
         supplied_timezone = str(data.get("timezone_name") or "").strip() or None
+        timezone_confirmed = str(
+            data.get("timezone_name_confirmed") or ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
         from app.utils.location_timezone import resolve_location_timezone
-        timezone_name = resolve_location_timezone(
-            explicit_timezone=(
+
+        if location_changed:
+            # Do not accept a prefilled previous zone as evidence for a new location.
+            # A changed zone is a new selection; the same zone requires confirmation.
+            explicit_timezone = (
                 supplied_timezone
-                if location_changed
-                else supplied_timezone or prop.timezone_name
-            ),
+                if supplied_timezone and (
+                    timezone_confirmed or supplied_timezone != prop.timezone_name
+                )
+                else None
+            )
+        else:
+            explicit_timezone = supplied_timezone or prop.timezone_name
+
+        timezone_name = resolve_location_timezone(
+            explicit_timezone=explicit_timezone,
             latitude=new_latitude,
             longitude=new_longitude,
             country=new_country,
