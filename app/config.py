@@ -17,6 +17,7 @@
 # ============================================================================
 
 import os
+import json
 import logging
 from decimal import Decimal
 from datetime import timedelta
@@ -253,6 +254,15 @@ class Config:
     # Explicit business/reporting calendar policies. No global APP_TZ is used.
     KYC_DEFAULT_JURISDICTION_CODE = os.getenv("KYC_DEFAULT_JURISDICTION_CODE", "UG").strip().upper()
     REGULATOR_REPORT_TIMEZONE = os.getenv("REGULATOR_REPORT_TIMEZONE", "UTC").strip()
+    # AML deadlines fail closed until a regulator-sourced calendar is approved.
+    try:
+        AML_APPROVED_WORKING_CALENDARS = json.loads(
+            os.getenv("AML_APPROVED_WORKING_CALENDARS", "{}")
+        )
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("AML_APPROVED_WORKING_CALENDARS must be valid JSON") from exc
+    if not isinstance(AML_APPROVED_WORKING_CALENDARS, dict):
+        raise RuntimeError("AML_APPROVED_WORKING_CALENDARS must be a JSON object")
     EVENT_REPORT_TIMEZONE = os.getenv("EVENT_REPORT_TIMEZONE", "UTC").strip()
     ACCOMMODATION_REPORT_TIMEZONE = os.getenv("ACCOMMODATION_REPORT_TIMEZONE", "UTC").strip()
 
