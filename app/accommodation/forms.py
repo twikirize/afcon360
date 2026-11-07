@@ -9,6 +9,7 @@ from wtforms import (
     BooleanField,
     DecimalField,
     IntegerField,
+    HiddenField,
     SelectField,
     StringField,
     TextAreaField,
@@ -82,6 +83,12 @@ class PropertyForm(FlaskForm):
         "Country code",
         validators=[DataRequired(), Length(min=2, max=2)],
     )
+    timezone_name = StringField(
+        "Property timezone (IANA)",
+        validators=[Optional(), Length(max=64)],
+        description="e.g. Africa/Kampala or America/New_York",
+    )
+    timezone_name_confirmed = HiddenField(default="false")
     postal_code = StringField(
         "Postal code",
         validators=[Optional(), Length(max=20)],

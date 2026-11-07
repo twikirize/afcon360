@@ -51,7 +51,7 @@ from sqlalchemy import (
     ForeignKey, Text, Numeric, JSON, Index, UniqueConstraint, CheckConstraint,
     Sequence,
 )
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship, backref, validates
 from sqlalchemy.sql import func
 
 from app.extensions import db
@@ -188,6 +188,8 @@ class Event(BaseModel):
     city = Column(String(100), nullable=False)
     country = Column(String(100), default="Uganda")
     venue = Column(String(255))
+    # IANA timezone governing venue-local event and registration calendars.
+    timezone_name = Column(String(64), nullable=True)
     start_date = Column(Date)
     end_date = Column(Date)
     max_capacity = Column(Integer, default=0, nullable=False)
@@ -209,6 +211,32 @@ class Event(BaseModel):
         nullable=False,
         index=True
     )
+
+    @validates("timezone_name")
+    def validate_timezone_name(self, key, value):
+        if value is None or not str(value).strip():
+            return None
+        from app.utils.time_policy import require_iana_timezone
+        return require_iana_timezone(
+            str(value).strip(), field="event venue timezone"
+        ).key
+
+    def business_timezone(self):
+        """Resolve the authoritative venue calendar zone; reject unknown multi-zone venues."""
+        from app.utils.location_timezone import resolve_location_timezone
+        return resolve_location_timezone(
+            explicit_timezone=self.timezone_name,
+            country=self.country,
+        )
+
+    def local_today(self):
+        """Return the current calendar date at the event venue."""
+        from datetime import datetime
+        from app.utils.time_policy import require_iana_timezone
+        zone = require_iana_timezone(
+            self.business_timezone(), field="event venue timezone"
+        )
+        return datetime.now(zone).date()
 
     # ── Organiser (the public-facing contact, may differ from creator/owner) ─
     organizer_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)

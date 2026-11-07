@@ -35,22 +35,34 @@
                                 <input type="text" name="city" class="form-control" value="{{ event.city }}" required>
                             </div>
                             <div class="col-md-6 mb-3">
+                                <label class="form-label">Country</label>
+                                <input type="text" name="country" class="form-control" value="{{ event.country or 'UG' }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
                                 <label class="form-label">Venue</label>
                                 <input type="text" name="venue" class="form-control" value="{{ event.venue }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Venue IANA Timezone</label>
+                                <input type="text" name="timezone_name" class="form-control"
+                                       value="{{ event.timezone_name or '' }}"
+                                       placeholder="e.g. Africa/Kampala or America/New_York">
+                                <input type="hidden" name="timezone_name_confirmed" value="false">
+                                <small class="text-muted">Controls event calendar dates and venue-local deadlines. Multi-timezone countries require an exact IANA name.</small>
                             </div>
                         </div>
 
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label class="form-label">Registration Opens (UTC)</label>
+                                <label class="form-label">Registration Opens (Venue local time)</label>
                                 <input type="datetime-local" name="registration_opens_at" class="form-control"
-                                       value="{{ event.registration_opens_at[:16] if event.registration_opens_at else '' }}">
+                                       value="{{ event.registration_opens_at_local or '' }}">
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label class="form-label">Registration Deadline (UTC)</label>
+                                <label class="form-label">Registration Deadline (Venue local time)</label>
                                 <input type="datetime-local" name="registration_closes_at" class="form-control"
-                                       value="{{ event.registration_closes_at[:16] if event.registration_closes_at else '' }}">
-                                <small class="text-muted">Without a deadline, registration closes at the start of the event.</small>
+                                       value="{{ event.registration_closes_at_local or '' }}">
+                                <small class="text-muted">Deadlines are interpreted in the selected venue timezone. When changing the venue location or timezone, review both deadline values before saving; submitted values are interpreted in the newly selected venue-local time.</small>
                             </div>
                         </div>
 
@@ -177,6 +189,25 @@
 </div>
 
 <script nonce="{{ csp_nonce }}">
+// Location edits invalidate the selected timezone until the organiser confirms
+// the timezone for the new venue.
+(function () {
+    const form = document.getElementById('event-form');
+    const timezone = form && form.querySelector('[name="timezone_name"]');
+    const confirmed = form && form.querySelector('[name="timezone_name_confirmed"]');
+    if (!timezone || !confirmed) return;
+    ['city', 'country', 'venue'].forEach(function (name) {
+        const field = form.querySelector('[name="' + name + '"]');
+        if (field) field.addEventListener('input', function () {
+            timezone.value = '';
+            confirmed.value = 'false';
+        });
+    });
+    timezone.addEventListener('input', function () {
+        confirmed.value = 'true';
+    });
+})();
+
 // Main event edit form
 document.getElementById('event-form').addEventListener('submit', async function(e) {
     e.preventDefault();

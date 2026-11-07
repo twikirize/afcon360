@@ -708,21 +708,37 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                             </div>
                             
                             <div class="form-group-modern">
+                                <label class="form-label-modern">Country</label>
+                                <input type="text" name="country" class="form-control-modern"
+                                       value="UG" placeholder="e.g. UG or Uganda">
+                            </div>
+
+                            <div class="form-group-modern">
                                 <label class="form-label-modern">Venue</label>
                                 <input type="text" name="venue" class="form-control-modern" 
                                        placeholder="e.g. Namboole Stadium">
+                            </div>
+
+                            <div class="form-group-modern">
+                                <label class="form-label-modern">Venue IANA Timezone</label>
+                                <input type="text" name="timezone_name" class="form-control-modern"
+                                       placeholder="e.g. Africa/Kampala or America/New_York">
+                                <div class="form-help-text">
+                                    Governs event dates, registration deadlines and venue schedules.
+                                    AFCON host-country defaults are applied where unambiguous; multi-timezone countries need an exact IANA name.
+                                </div>
                             </div>
                         </div>
 
                         <div class="form-row-modern">
                             <div class="form-group-modern">
-                                <label class="form-label-modern">Registration Opens (UTC)</label>
+                                <label class="form-label-modern">Registration Opens (Venue local time)</label>
                                 <input type="datetime-local" name="registration_opens_at" class="form-control-modern">
                             </div>
                             <div class="form-group-modern">
-                                <label class="form-label-modern">Registration Deadline (UTC)</label>
+                                <label class="form-label-modern">Registration Deadline (Venue local time)</label>
                                 <input type="datetime-local" name="registration_closes_at" class="form-control-modern">
-                                <div class="form-help-text">Without a deadline, registration closes at the start of the event.</div>
+                                <div class="form-help-text">Enter both deadlines in the venue's IANA timezone. Without a deadline, registration closes at venue-local midnight on the event start date.</div>
                             </div>
                         </div>
                     </div>

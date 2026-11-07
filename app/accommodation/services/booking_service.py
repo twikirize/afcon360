@@ -760,19 +760,26 @@ class BookingService:
         if target_check_in == old_check_in and target_check_out == old_check_out:
             return False, "No date changes provided — new dates match the current booking", None
 
-        today = date.today()
+        # Check-in/check-out are calendar dates governed by the property,
+        # never by the app host or the guest's browser timezone.
+        prop = db.session.get(Property, booking.property_id)
+        if not prop:
+            return False, "Property not found", None
+        try:
+            today = prop.local_today()
+        except ValueError:
+            return False, (
+                "This property needs a valid IANA timezone before booking dates can be changed."
+            ), None
+
         if target_check_in < today:
-            return False, "New check-in date cannot be in the past", None
+            return False, "New check-in date cannot be in the past at the property", None
         if target_check_out <= today:
-            return False, "New check-out date must be in the future", None
+            return False, "New check-out date must be in the future at the property", None
         if target_check_out <= target_check_in:
             return False, "Check-out must be after check-in", None
 
         # Min / max stay validation
-        prop = db.session.get(Property, booking.property_id)
-        if not prop:
-            return False, "Property not found", None
-
         new_nights = (target_check_out - target_check_in).days
         if prop.min_stay_nights and new_nights < prop.min_stay_nights:
             return False, (
@@ -971,8 +978,13 @@ class BookingService:
         if booking.status != AccommodationBookingStatus.CONFIRMED.value:
             return f"Booking must be confirmed to check in (currently {booking.status})."
 
-        if booking.check_in > date.today():
-            return f"Check-in date is {booking.check_in.strftime('%b %d, %Y')} - too early to check in."
+        try:
+            property_today = booking.accommodation_property.local_today()
+        except (AttributeError, ValueError):
+            return "Property IANA timezone is not configured; check-in cannot be authorized."
+
+        if booking.check_in > property_today:
+            return f"Check-in date is {booking.check_in.strftime('%b %d, %Y')} - too early at the property."
 
         # Use policy evaluator for comprehensive check-in validation
         checkin_decision = BookingPolicyEvaluator.can_check_in(booking)
@@ -1007,8 +1019,13 @@ class BookingService:
         adjust_info: Optional[dict] = None
 
         try:
-            # Early-arrival adjustment: bring check-in forward to today
-            today = date.today()
+            # Early-arrival adjustment uses the property's current calendar day.
+            try:
+                today = booking.accommodation_property.local_today()
+            except (AttributeError, ValueError):
+                return False, (
+                    "Property IANA timezone is not configured; early check-in cannot be adjusted."
+                ), None
             if adjust_checkin_to_today and booking.check_in > today:
                 # Re-check availability for the shortened stay
                 ok, err, result = BookingService.modify_booking_dates(
@@ -1160,7 +1177,12 @@ class BookingService:
         adjust_info: Optional[dict] = None
 
         try:
-            today = date.today()
+            try:
+                today = booking.accommodation_property.local_today()
+            except (AttributeError, ValueError):
+                return False, (
+                    "Property IANA timezone is not configured; early check-out cannot be adjusted."
+                ), None
 
             # Early departure adjustment: move check-out forward to today
             if adjust_checkout_to_today and booking.check_out > today:

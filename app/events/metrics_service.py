@@ -21,20 +21,28 @@ class EventMetricsService:
             if not event:
                 return {"error": "Event not found"}
 
-            # Calculate date range
-            end_date = datetime.now(timezone.utc)
+            # The event's daily trend uses the venue calendar, not PostgreSQL's
+            # session timezone or the analytics worker's operating-system date.
+            from app.utils.time_policy import require_iana_timezone
+            event_zone = require_iana_timezone(
+                event.business_timezone(), field="event venue timezone"
+            )
+            report_now = datetime.now(event_zone).astimezone(timezone.utc)
+            end_date = report_now
             start_date = end_date - timedelta(days=days)
+            local_created_date = func.date(
+                func.timezone(event_zone.key, EventRegistration.created_at)
+            )
 
-            # Registration trends
             daily_registrations = db.session.query(
-                func.date(EventRegistration.created_at).label('date'),
+                local_created_date.label('date'),
                 func.count(EventRegistration.id).label('count')
             ).filter(
                 EventRegistration.event_id == event_id,
                 EventRegistration.created_at >= start_date,
-                EventRegistration.created_at <= end_date
+                EventRegistration.created_at < end_date
             ).group_by(
-                func.date(EventRegistration.created_at)
+                local_created_date
             ).order_by('date').all()
 
             # Payment metrics
@@ -242,9 +250,15 @@ class EventMetricsService:
             return {"error": str(e)}
 
     @staticmethod
-    def get_system_wide_metrics(days: int = 30) -> Dict:
-        """Get system-wide metrics across all events"""
+    def get_system_wide_metrics(days: int = 30, report_timezone: str = None) -> Dict:
+        """Get system-wide event metrics in an explicit reporting calendar."""
         try:
+            from app.utils.time_policy import require_iana_timezone
+            from flask import current_app
+            zone = require_iana_timezone(
+                report_timezone or current_app.config.get("EVENT_REPORT_TIMEZONE", "UTC"),
+                field="event reporting timezone",
+            )
             end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=days)
 
@@ -258,7 +272,7 @@ class EventMetricsService:
                 EventRegistration, Event.id == EventRegistration.event_id
             ).filter(
                 Event.created_at >= start_date,
-                Event.created_at <= end_date
+                Event.created_at < end_date
             ).first()
 
             # Event status breakdown
@@ -267,7 +281,7 @@ class EventMetricsService:
                 func.count(Event.id).label('count')
             ).filter(
                 Event.created_at >= start_date,
-                Event.created_at <= end_date
+                Event.created_at < end_date
             ).group_by(
                 Event.status
             ).all()
@@ -278,22 +292,25 @@ class EventMetricsService:
                 func.count(Event.id).label('count')
             ).filter(
                 Event.created_at >= start_date,
-                Event.created_at <= end_date
+                Event.created_at < end_date
             ).group_by(
                 Event.category
             ).order_by(
                 func.count(Event.id).desc()
             ).limit(10).all()
 
-            # Daily event creation trend
+            # Event creation instants are grouped in the selected reporting zone.
+            local_event_created_date = func.date(
+                func.timezone(zone.key, Event.created_at)
+            )
             daily_events = db.session.query(
-                func.date(Event.created_at).label('date'),
+                local_event_created_date.label('date'),
                 func.count(Event.id).label('count')
             ).filter(
                 Event.created_at >= start_date,
-                Event.created_at <= end_date
+                Event.created_at < end_date
             ).group_by(
-                func.date(Event.created_at)
+                local_event_created_date
             ).order_by('date').all()
 
             # Convert to dictionaries
@@ -310,6 +327,8 @@ class EventMetricsService:
                 "status_breakdown": status_data,
                 "category_breakdown": category_data,
                 "daily_event_creation": daily_trend,
+                "report_timezone": zone.key,
+                "period_basis": "UTC instants grouped by report_timezone",
                 "calculated_at": datetime.now(timezone.utc).isoformat()
             }
 
@@ -318,23 +337,32 @@ class EventMetricsService:
             return {"error": str(e)}
 
     @staticmethod
-    def get_revenue_metrics(days: int = 30) -> Dict:
-        """Get revenue-specific metrics"""
+    def get_revenue_metrics(days: int = 30, report_timezone: str = None) -> Dict:
+        """Get revenue-specific metrics in an explicit reporting calendar."""
         try:
+            from app.utils.time_policy import require_iana_timezone
+            from flask import current_app
+            zone = require_iana_timezone(
+                report_timezone or current_app.config.get("EVENT_REPORT_TIMEZONE", "UTC"),
+                field="event reporting timezone",
+            )
             end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=days)
+            local_created_date = func.date(
+                func.timezone(zone.key, EventRegistration.created_at)
+            )
 
-            # Daily revenue
+            # Daily revenue belongs to the selected reporting calendar.
             daily_revenue = db.session.query(
-                func.date(EventRegistration.created_at).label('date'),
+                local_created_date.label('date'),
                 func.sum(EventRegistration.registration_fee).label('revenue'),
                 func.count(EventRegistration.id).label('transactions')
             ).filter(
                 EventRegistration.payment_status == 'paid',
                 EventRegistration.created_at >= start_date,
-                EventRegistration.created_at <= end_date
+                EventRegistration.created_at < end_date
             ).group_by(
-                func.date(EventRegistration.created_at)
+                local_created_date
             ).order_by('date').all()
 
             # Revenue by event category
@@ -347,7 +375,7 @@ class EventMetricsService:
             ).filter(
                 EventRegistration.payment_status == 'paid',
                 EventRegistration.created_at >= start_date,
-                EventRegistration.created_at <= end_date
+                EventRegistration.created_at < end_date
             ).group_by(
                 Event.category
             ).order_by(
@@ -378,6 +406,8 @@ class EventMetricsService:
                 "average_transaction_value": total_revenue / total_transactions if total_transactions > 0 else 0,
                 "daily_revenue": daily_data,
                 "revenue_by_category": category_data,
+                "report_timezone": zone.key,
+                "period_basis": "UTC instants grouped by report_timezone",
                 "calculated_at": datetime.now(timezone.utc).isoformat()
             }
 

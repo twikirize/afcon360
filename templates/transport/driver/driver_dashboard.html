@@ -231,13 +231,18 @@
 
   {# Focus card — state-driven #}
   {% if active_trip %}
-    {% set pt = active_trip.pickup_time if active_trip.pickup_time is string else (active_trip.pickup_time.strftime('%Y-%m-%dT%H:%M') if active_trip.pickup_time else '') %}
+    {% set _pickup_schedule = active_trip.pickup_schedule or {} %}
+    {% set pt = _pickup_schedule.get('local_datetime') or (active_trip.pickup_time if active_trip.pickup_time is string else (active_trip.pickup_time.isoformat() if active_trip.pickup_time else '')) %}
     {% set trip_icon = {'en_route': 'road', 'arrive': 'location-dot', 'start': 'play', 'complete': 'flag-checkered'}.get(active_trip.next_action, 'circle-play') %}
     {% set trip_label = {'en_route': 'En route', 'arrive': 'Arrived at pickup', 'start': 'Start trip', 'complete': 'Complete trip'}.get(active_trip.next_action, 'Update trip') %}
   <div class="ck-focus ck-focus--trip">
     <div class="ck-focus-top">
       <span class="ck-pill ck-pill--blue"><i class="fa-solid fa-circle-play"></i> Active Trip</span>
-      <span class="ck-focus-phase">{{ pt[11:16] if pt else '—' }} · {{ pt[:10] if pt else '—' }}</span>
+      <span class="ck-focus-phase"><time
+        data-afcon360-instant="{{ _pickup_schedule.get('utc_datetime') or (active_trip.pickup_time if active_trip.pickup_time is string else (active_trip.pickup_time.isoformat() if active_trip.pickup_time else '')) }}"
+        data-afcon360-business-timezone="{{ _pickup_schedule.get('timezone_name') or '' }}"
+        data-afcon360-business-label="{{ active_trip.pickup_location_text or 'Pickup' }}"
+        data-afcon360-show-viewer-time="true">{{ pt[11:16] if pt else '—' }} · {{ pt[:10] if pt else '—' }}</time></span>
     </div>
     <h2 class="ck-focus-title">
       {{ active_trip.pickup_location_text or active_trip.pickup_address or 'Pickup' }}
@@ -615,10 +620,15 @@
       </div>
       {% if upcoming %}
         {% for b in upcoming %}
-        {% set pt = b.pickup_time if b.pickup_time is string else (b.pickup_time.strftime('%Y-%m-%dT%H:%M') if b.pickup_time else '') %}
+        {% set _pickup_schedule = b.pickup_schedule or {} %}
+        {% set pt = _pickup_schedule.get('local_datetime') or (b.pickup_time if b.pickup_time is string else (b.pickup_time.isoformat() if b.pickup_time else '')) %}
         <div class="trip-card">
           <div class="trip-time">
-            <div class="th">{{ pt[11:16] if pt else '—' }}</div>
+            <div class="th"><time
+              data-afcon360-instant="{{ _pickup_schedule.get('utc_datetime') or (b.pickup_time if b.pickup_time is string else (b.pickup_time.isoformat() if b.pickup_time else '')) }}"
+              data-afcon360-business-timezone="{{ _pickup_schedule.get('timezone_name') or '' }}"
+              data-afcon360-business-label="{{ b.pickup_location_text or 'Pickup' }}"
+              data-afcon360-show-viewer-time="true">{{ pt[11:16] if pt else '—' }}</time></div>
             <div class="td">{{ pt[:10] if pt else '—' }}</div>
           </div>
           <div class="trip-info">
@@ -778,10 +788,15 @@
       {% endif %}
     </div>
     {% if active_trip %}
-    {% set pt = active_trip.pickup_time if active_trip.pickup_time is string else (active_trip.pickup_time.strftime('%Y-%m-%dT%H:%M') if active_trip.pickup_time else '') %}
+    {% set _pickup_schedule = active_trip.pickup_schedule or {} %}
+    {% set pt = _pickup_schedule.get('local_datetime') or (active_trip.pickup_time if active_trip.pickup_time is string else (active_trip.pickup_time.isoformat() if active_trip.pickup_time else '')) %}
     <div class="trip-card">
       <div class="trip-time">
-        <div class="th">{{ pt[11:16] if pt else '—' }}</div>
+        <div class="th"><time
+          data-afcon360-instant="{{ _pickup_schedule.get('utc_datetime') or (active_trip.pickup_time if active_trip.pickup_time is string else (active_trip.pickup_time.isoformat() if active_trip.pickup_time else '')) }}"
+          data-afcon360-business-timezone="{{ _pickup_schedule.get('timezone_name') or '' }}"
+          data-afcon360-business-label="{{ active_trip.pickup_location_text or 'Pickup' }}"
+          data-afcon360-show-viewer-time="true">{{ pt[11:16] if pt else '—' }}</time></div>
         <div class="td">{{ pt[:10] if pt else '—' }}</div>
       </div>
       <div class="trip-info">
@@ -822,10 +837,15 @@
     </div>
     {% if upcoming %}
       {% for b in upcoming %}
-      {% set pt = b.pickup_time if b.pickup_time is string else (b.pickup_time.strftime('%Y-%m-%dT%H:%M') if b.pickup_time else '') %}
+      {% set _pickup_schedule = b.pickup_schedule or {} %}
+      {% set pt = _pickup_schedule.get('local_datetime') or (b.pickup_time if b.pickup_time is string else (b.pickup_time.isoformat() if b.pickup_time else '')) %}
       <div class="trip-card">
         <div class="trip-time">
-          <div class="th">{{ pt[11:16] if pt else '—' }}</div>
+          <div class="th"><time
+            data-afcon360-instant="{{ _pickup_schedule.get('utc_datetime') or (b.pickup_time if b.pickup_time is string else (b.pickup_time.isoformat() if b.pickup_time else '')) }}"
+            data-afcon360-business-timezone="{{ _pickup_schedule.get('timezone_name') or '' }}"
+            data-afcon360-business-label="{{ b.pickup_location_text or 'Pickup' }}"
+            data-afcon360-show-viewer-time="true">{{ pt[11:16] if pt else '—' }}</time></div>
           <div class="td">{{ pt[:10] if pt else '—' }}</div>
         </div>
         <div class="trip-info">
@@ -854,10 +874,15 @@
     {% if recent %}
       {% for b in recent %}
       {% if b.status not in ['assigned','confirmed','driver_en_route','in_progress'] %}
-      {% set pt = b.pickup_time if b.pickup_time is string else (b.pickup_time.strftime('%Y-%m-%dT%H:%M') if b.pickup_time else '') %}
+      {% set _pickup_schedule = b.pickup_schedule or {} %}
+      {% set pt = _pickup_schedule.get('local_datetime') or (b.pickup_time if b.pickup_time is string else (b.pickup_time.isoformat() if b.pickup_time else '')) %}
       <div class="trip-card">
         <div class="trip-time">
-          <div class="th">{{ pt[11:16] if pt else '—' }}</div>
+          <div class="th"><time
+            data-afcon360-instant="{{ _pickup_schedule.get('utc_datetime') or (b.pickup_time if b.pickup_time is string else (b.pickup_time.isoformat() if b.pickup_time else '')) }}"
+            data-afcon360-business-timezone="{{ _pickup_schedule.get('timezone_name') or '' }}"
+            data-afcon360-business-label="{{ b.pickup_location_text or 'Pickup' }}"
+            data-afcon360-show-viewer-time="true">{{ pt[11:16] if pt else '—' }}</time></div>
           <div class="td">{{ pt[:10] if pt else '—' }}</div>
         </div>
         <div class="trip-info">
@@ -904,10 +929,15 @@
     </div>
     {% if bookings %}
       {% for b in bookings %}
-      {% set pt = b.pickup_time if b.pickup_time is string else (b.pickup_time.strftime('%Y-%m-%dT%H:%M') if b.pickup_time else '') %}
+      {% set _pickup_schedule = b.pickup_schedule or {} %}
+      {% set pt = _pickup_schedule.get('local_datetime') or (b.pickup_time if b.pickup_time is string else (b.pickup_time.isoformat() if b.pickup_time else '')) %}
       <div class="trip-card">
         <div class="trip-time">
-          <div class="th">{{ pt[11:16] if pt else '—' }}</div>
+          <div class="th"><time
+            data-afcon360-instant="{{ _pickup_schedule.get('utc_datetime') or (b.pickup_time if b.pickup_time is string else (b.pickup_time.isoformat() if b.pickup_time else '')) }}"
+            data-afcon360-business-timezone="{{ _pickup_schedule.get('timezone_name') or '' }}"
+            data-afcon360-business-label="{{ b.pickup_location_text or 'Pickup' }}"
+            data-afcon360-show-viewer-time="true">{{ pt[11:16] if pt else '—' }}</time></div>
           <div class="td">{{ pt[:10] if pt else '—' }}</div>
         </div>
         <div class="trip-info">

@@ -454,6 +454,31 @@ def edit_event(identifier):
         return redirect(url_for('events.my_events'))
 
     if request.method == 'GET':
+        event = dict(event or {})
+        try:
+            from zoneinfo import ZoneInfo
+            event_zone = ZoneInfo(event_model.business_timezone())
+            def _local_datetime_value(value):
+                if not value:
+                    return ""
+                parsed = (
+                    value if isinstance(value, datetime)
+                    else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                )
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed.astimezone(event_zone).strftime("%Y-%m-%dT%H:%M")
+            event["registration_opens_at_local"] = _local_datetime_value(
+                event_model.registration_opens_at
+            )
+            event["registration_closes_at_local"] = _local_datetime_value(
+                event_model.registration_closes_at
+            )
+        except (ValueError, TypeError):
+            # Older multi-timezone events require an owner/admin to set their
+            # venue zone before venue-local deadlines can be edited.
+            event["registration_opens_at_local"] = ""
+            event["registration_closes_at_local"] = ""
         return render_template('events/organizer/edit.html', event=event)
 
     try:

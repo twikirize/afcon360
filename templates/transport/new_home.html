@@ -1607,23 +1607,23 @@
     var lng = document.getElementById('dropoff_longitude').value;
     return !!(lat && lng);
   }
-  // UI-14-F1: Later requires a non-empty, parseable scheduled time.
-  // Validity mirrors the server contract (pickup_time must be valid
-  // ISO-8601); no timezone policy is introduced here.
-  // UI-14-F2: the time must also lie in the future — a scheduled
-  // pickup that is already in the past cannot be honored.
-  // UI-14-LEAD: a scheduled pickup must be at least 15 minutes out,
-  // mirroring the server rule in booking_service.create_booking
-  // (scheduled branch). Without this mirror, every gate passes a
-  // +5-minute selection that the backend then rejects at Confirm.
-  var SCHED_MIN_LEAD_MS = 15 * 60 * 1000;
+  // A datetime-local value is a business wall time, not a browser instant.
+  // Validate its calendar shape only. The server resolves the IANA timezone
+  // from the pickup point and enforces future/15-minute lead-time rules.
   function isScheduleValid(){
     if (state.schedule !== 'later') return true;
     var v = schedAt ? schedAt.value : '';
-    if (!v) return false;
-    var d = new Date(v);
-    if (isNaN(d.getTime())) return false;
-    return d.getTime() > Date.now() + SCHED_MIN_LEAD_MS;
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(v || '');
+    if (!m) return false;
+    var d = new Date(Date.UTC(
+      Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+      Number(m[4]), Number(m[5])
+    ));
+    return d.getUTCFullYear() === Number(m[1]) &&
+      d.getUTCMonth() === Number(m[2]) - 1 &&
+      d.getUTCDate() === Number(m[3]) &&
+      d.getUTCHours() === Number(m[4]) &&
+      d.getUTCMinutes() === Number(m[5]);
   }
   function syncReviewGate(){
     // Review may only be reachable with a committable schedule. Never
@@ -1664,9 +1664,7 @@
     else if (!isPickupResolved() && !isDropoffResolved()) msg = 'Select pickup and destination on the map to continue.';
     else if (!isPickupResolved()) msg = 'Select a pickup to continue – use GPS or tap the map.';
     else if (!isDropoffResolved()) msg = 'Select destination on the map to continue – chips set text only.';
-    else if (!isScheduleValid()) msg = (state.schedule === 'later' && schedAt && schedAt.value)
-      ? 'Choose a pickup time at least 15 minutes from now.'
-      : 'Select a scheduled time to continue.';
+    else if (!isScheduleValid()) msg = 'Enter a valid local pickup date and time.';
     continueDisabledReason.textContent = msg;
     btnContinue.setAttribute('title', msg);
   }
@@ -2130,13 +2128,10 @@
     // into the form. The server stamps pickup_time for instant rides;
     // a stale client clock must never be able to replay an old value.
     if (state.schedule === 'later') {
-      if (!schedAt.value) return false;
-      var d = new Date(schedAt.value);
-      if (isNaN(d.getTime())) return false;
-      // UI-14-F2: a past scheduled time is not committable either.
-      if (d.getTime() <= Date.now()) return false;
-      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-      hPickupTime.value = d.toISOString().slice(0, 16);
+      if (!isScheduleValid()) return false;
+      // Preserve the selected local wall time verbatim. The backend resolves
+      // it against the pickup location's server-derived IANA timezone.
+      hPickupTime.value = schedAt.value;
       return true;
     }
     hPickupTime.value = '';

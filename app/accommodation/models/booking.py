@@ -372,13 +372,20 @@ class AccommodationBooking(BaseModel):
         Computed property - not stored in DB.
         Returns True if guest can check in.
         """
+        try:
+            property_today = self.accommodation_property.local_today()
+        except (AttributeError, ValueError):
+            # Check-in is a property-local business decision. Unknown location
+            # timezones must not be interpreted using the application host date.
+            return False
+
         if (
             self.status != AccommodationBookingStatus.CONFIRMED.value
             or self.payment_status_enum not in [
                 AccommodationPaymentStatus.PAID,
                 AccommodationPaymentStatus.PARTIALLY_PAID,
             ]
-            or self.check_in > date.today()
+            or self.check_in > property_today
             or not self.all_required_guests_registered
         ):
             return False
@@ -399,8 +406,13 @@ class AccommodationBooking(BaseModel):
 
     @property
     def check_in_date_reached(self) -> bool:
-        """True once the check-in date is today or in the past."""
-        return bool(self.check_in) and self.check_in <= date.today()
+        """True once check-in day has arrived at the property's location."""
+        if not self.check_in:
+            return False
+        try:
+            return self.check_in <= self.accommodation_property.local_today()
+        except (AttributeError, ValueError):
+            return False
 
     @property
     def registration_deadline_passed(self) -> bool:

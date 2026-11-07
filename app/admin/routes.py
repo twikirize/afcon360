@@ -182,17 +182,27 @@ def super_dashboard():
             readiness_issues_count = AccommodationBooking.query.filter(
                 AccommodationBooking.is_deleted == False,
             ).count()
-            # Count bookings that are not ready for check-in
-            from datetime import date as dt_date
-            today = dt_date.today()
-            readiness_issues_count = AccommodationBooking.query.filter(
+            # Check-in readiness is evaluated in each property's local calendar.
+            from app.accommodation.models.property import Property
+            readiness_candidates = AccommodationBooking.query.join(
+                Property, AccommodationBooking.property_id == Property.id
+            ).filter(
                 AccommodationBooking.is_deleted == False,
-                db.or_(
-                    AccommodationBooking.status != 'confirmed',
-                    AccommodationBooking.payment_status.not_in(('paid', 'partially_paid')),
-                    AccommodationBooking.check_in > today,
-                )
-            ).count()
+            ).all()
+            readiness_issues_count = 0
+            for candidate in readiness_candidates:
+                try:
+                    property_today = candidate.accommodation_property.local_today()
+                except (AttributeError, ValueError):
+                    # Unknown business timezone is itself a readiness issue.
+                    readiness_issues_count += 1
+                    continue
+                if (
+                    candidate.status != "confirmed"
+                    or candidate.payment_status not in ("paid", "partially_paid")
+                    or candidate.check_in > property_today
+                ):
+                    readiness_issues_count += 1
         except Exception as e:
             logger.warning(f"Could not load accommodation dashboard stats: {e}")
 

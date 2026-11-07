@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, date, timezone
 from decimal import Decimal
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from sqlalchemy import func, and_, desc
+from sqlalchemy import func, and_, desc, cast, Date
 
 from app.extensions import db
 from app.accommodation.utils import enum_value
@@ -124,6 +124,16 @@ class HostService:
                     "activated."
                 )
 
+        from app.utils.location_timezone import resolve_location_timezone
+
+        property_country = (data.get("country") or "").strip().upper()
+        property_timezone = resolve_location_timezone(
+            explicit_timezone=data.get("timezone_name"),
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+            country=property_country,
+        )
+
         title = data["title"].strip()
         slug = ensure_unique_slug(slugify(title), db.session, Property)
 
@@ -140,10 +150,11 @@ class HostService:
             address_line2=data.get("address_line2") or None,
             city=data["city"].strip(),
             state=data.get("state") or None,
-            country=data["country"].upper(),
+            country=property_country,
             postal_code=data.get("postal_code") or None,
-            latitude=None,
-            longitude=None,
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+            timezone_name=property_timezone,
             max_guests=data.get("max_guests", 2),
             bedrooms=data.get("bedrooms") or 0,
             beds=data.get("beds") or 0,
@@ -208,12 +219,73 @@ class HostService:
         return prop
 
     @staticmethod
+    def _resolve_property_timezone_for_update(prop: Property, data: Dict) -> Dict:
+        """Resolve timezone from the new location, never from stale old coordinates."""
+        old_location = (
+            prop.address_line1,
+            prop.city,
+            prop.state,
+            (prop.country or "").strip().upper(),
+            prop.postal_code,
+        )
+        new_country = (data.get("country") or prop.country or "").strip().upper()
+        new_location = (
+            data.get("address_line1", prop.address_line1),
+            data.get("city", prop.city),
+            data.get("state", prop.state),
+            new_country,
+            data.get("postal_code", prop.postal_code),
+        )
+        coordinates_supplied = "latitude" in data or "longitude" in data
+        new_latitude = data.get("latitude") if coordinates_supplied else prop.latitude
+        new_longitude = data.get("longitude") if coordinates_supplied else prop.longitude
+        location_changed = old_location != new_location or coordinates_supplied
+        if location_changed and not coordinates_supplied:
+            # Coordinates are tied to the old physical location.
+            new_latitude = None
+            new_longitude = None
+
+        supplied_timezone = str(data.get("timezone_name") or "").strip() or None
+        timezone_confirmed = str(
+            data.get("timezone_name_confirmed") or ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        from app.utils.location_timezone import resolve_location_timezone
+
+        if location_changed:
+            # Do not accept a prefilled previous zone as evidence for a new location.
+            # A changed zone is a new selection; the same zone requires confirmation.
+            explicit_timezone = (
+                supplied_timezone
+                if supplied_timezone and (
+                    timezone_confirmed or supplied_timezone != prop.timezone_name
+                )
+                else None
+            )
+        else:
+            explicit_timezone = supplied_timezone or prop.timezone_name
+
+        timezone_name = resolve_location_timezone(
+            explicit_timezone=explicit_timezone,
+            latitude=new_latitude,
+            longitude=new_longitude,
+            country=new_country,
+        )
+        return {
+            "timezone_name": timezone_name,
+            "latitude": float(new_latitude) if new_latitude not in (None, "") else None,
+            "longitude": float(new_longitude) if new_longitude not in (None, "") else None,
+            "country": new_country,
+            "location_changed": location_changed,
+        }
+
+    @staticmethod
     def update_property(prop: Property, data: Dict) -> Property:
         """Update an existing property with validated form data."""
         # Reduce any Enum members to their string .value before persistence.
         # The project stores these as String columns (no PostgreSQL ENUM types),
         # so SQLAlchemy would otherwise fail to adapt the enum objects.
         data = convert_enum_values(data)
+        timezone_update = HostService._resolve_property_timezone_for_update(prop, data)
 
         prop.title = data["title"].strip()
         prop.summary = data.get("summary")
@@ -224,8 +296,11 @@ class HostService:
         prop.address_line2 = data.get("address_line2") or None
         prop.city = data["city"].strip()
         prop.state = data.get("state") or None
-        prop.country = data["country"].upper()
+        prop.country = timezone_update["country"]
         prop.postal_code = data.get("postal_code") or None
+        prop.timezone_name = timezone_update["timezone_name"]
+        prop.latitude = timezone_update["latitude"]
+        prop.longitude = timezone_update["longitude"]
         prop.max_guests = data.get("max_guests", prop.max_guests)
         prop.bedrooms = data.get("bedrooms") or 0
         prop.beds = data.get("beds") or 0
@@ -255,6 +330,31 @@ class HostService:
         # not mutate the host's configured RoomTypes.
 
         return prop
+
+    @staticmethod
+    def _build_upcoming_bookings_query(bookings_query):
+        """Limit upcoming bookings in SQL using each property's own IANA zone."""
+        property_local_today = cast(
+            func.timezone(Property.timezone_name, func.now()), Date
+        )
+        return (
+            bookings_query.filter(
+                Property.timezone_name.isnot(None),
+                AccommodationBooking.status.in_(
+                    [
+                        AccommodationBookingStatus.CONFIRMED.value,
+                        AccommodationBookingStatus.PENDING.value,
+                        AccommodationBookingStatus.PENDING_APPROVAL.value,
+                    ]
+                ),
+                AccommodationBooking.check_in >= property_local_today,
+            )
+            .order_by(
+                AccommodationBooking.check_in.asc(),
+                AccommodationBooking.id.asc(),
+            )
+            .limit(10)
+        )
 
     @staticmethod
     def get_dashboard_data(*, owner_user_id: Optional[int], owner_org_id: Optional[int]) -> Dict:
@@ -296,20 +396,11 @@ class HostService:
         if owner_org_id:
             bookings_query = bookings_query.filter(Property.owner_org_id == owner_org_id)
 
-        # Upcoming bookings (next 10)
-        upcoming_bookings = (
-            bookings_query.filter(
-                AccommodationBooking.status.in_(
-                    [AccommodationBookingStatus.CONFIRMED.value, 
-                     AccommodationBookingStatus.PENDING.value,
-                     AccommodationBookingStatus.PENDING_APPROVAL.value]
-                ),
-                AccommodationBooking.check_in >= date.today(),
-            )
-            .order_by(AccommodationBooking.check_in.asc())
-            .limit(10)
-            .all()
-        )
+        # PostgreSQL evaluates each booking against its property's IANA zone;
+        # the query is capped before rows are loaded into application memory.
+        upcoming_bookings = HostService._build_upcoming_bookings_query(
+            bookings_query
+        ).all()
 
         # Recent bookings (last 10)
         recent_bookings = (
@@ -1458,12 +1549,17 @@ class HostService:
         )
         blocked_map = {row.blocked_date: row for row in blocked_rows}
 
+        try:
+            property_today = prop.local_today()
+        except (AttributeError, ValueError):
+            property_today = None
+
         days: List[Dict[str, object]] = []
         cursor = start_date
         while cursor <= end_date:
             day_info: Dict[str, object] = {
                 "date": cursor.isoformat(),
-                "is_today": cursor == date.today(),
+                "is_today": cursor == property_today if property_today else False,
                 "status": "available",
                 "blocked_reason": None,
                 "bookings": [],

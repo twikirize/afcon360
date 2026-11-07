@@ -104,6 +104,16 @@ from sqlalchemy.engine import Engine
 from flask import g, has_request_context
 
 
+def _sqla_assert_postgresql_utc(dbapi_connection, connection_record):
+    """Fail closed if a new PostgreSQL application connection is not UTC."""
+    from app.utils.database_timezone import assert_postgresql_utc_dbapi_connection
+
+    assert_postgresql_utc_dbapi_connection(
+        dbapi_connection,
+        operation="AFCON360 application database connection",
+    )
+
+
 def _sqla_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
     if not has_request_context():
         return
@@ -1088,6 +1098,10 @@ def create_app(config_object=None) -> Flask:
     # Register SQLAlchemy timing on the actual engine instance (once per engine)
     with app.app_context():
         engine = db.engine
+        if engine.dialect.name == "postgresql" and not event.contains(
+            engine, "connect", _sqla_assert_postgresql_utc
+        ):
+            event.listen(engine, "connect", _sqla_assert_postgresql_utc)
         if not event.contains(engine, 'before_cursor_execute', _sqla_before_cursor_execute):
             event.listen(engine, 'before_cursor_execute', _sqla_before_cursor_execute)
         if not event.contains(engine, 'after_cursor_execute', _sqla_after_cursor_execute):
@@ -2019,7 +2033,10 @@ def create_app(config_object=None) -> Flask:
                 _pk = str(_cu.public_id)
                 if _pk not in _g._req_profiles:
                     from app.profile.models import get_profile_by_user
-                    _g._req_profiles[_pk] = get_profile_by_user(_cu.public_id)
+                    # UserProfile.user_id is the public-ID string. Normalize
+                    # UUID-like values before querying the String FK so
+                    # navigation does not incorrectly fall back to "incomplete".
+                    _g._req_profiles[_pk] = get_profile_by_user(_pk)
                 _p = _g._req_profiles[_pk]
                 _profile_completed = bool(_p and _p.profile_completed)
             except Exception:

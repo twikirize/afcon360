@@ -17,6 +17,7 @@
 # ============================================================================
 
 import os
+import json
 import logging
 from decimal import Decimal
 from datetime import timedelta
@@ -142,7 +143,12 @@ class Config:
         "pool_recycle":     int(os.getenv("DB_POOL_RECYCLE",  "1800")),
         "pool_pre_ping":    True,
         "connect_args": {
-            "options": "-c lock_timeout=5000 -c statement_timeout=60000 -c idle_in_transaction_session_timeout=60000"
+            "options": (
+                "-c timezone=UTC "
+                "-c lock_timeout=5000 "
+                "-c statement_timeout=60000 "
+                "-c idle_in_transaction_session_timeout=60000"
+            )
         }
     }
 
@@ -245,10 +251,20 @@ class Config:
     TRANSPORT_BOOKING_SCHEMA_ENFORCE = (
         os.environ.get("TRANSPORT_BOOKING_SCHEMA_ENFORCE", "false").lower() == "true"
     )
-    # App wall-clock zone used when a naive datetime (e.g. the booking
-    # form's pickup_time) arrives without an offset. Interpretation
-    # contract for transport booking_service.create_booking.
-    APP_TZ = os.getenv("APP_TZ", "Africa/Nairobi")
+    # Explicit business/reporting calendar policies. No global APP_TZ is used.
+    KYC_DEFAULT_JURISDICTION_CODE = os.getenv("KYC_DEFAULT_JURISDICTION_CODE", "UG").strip().upper()
+    REGULATOR_REPORT_TIMEZONE = os.getenv("REGULATOR_REPORT_TIMEZONE", "UTC").strip()
+    # AML deadlines fail closed until a regulator-sourced calendar is approved.
+    try:
+        AML_APPROVED_WORKING_CALENDARS = json.loads(
+            os.getenv("AML_APPROVED_WORKING_CALENDARS", "{}")
+        )
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("AML_APPROVED_WORKING_CALENDARS must be valid JSON") from exc
+    if not isinstance(AML_APPROVED_WORKING_CALENDARS, dict):
+        raise RuntimeError("AML_APPROVED_WORKING_CALENDARS must be a JSON object")
+    EVENT_REPORT_TIMEZONE = os.getenv("EVENT_REPORT_TIMEZONE", "UTC").strip()
+    ACCOMMODATION_REPORT_TIMEZONE = os.getenv("ACCOMMODATION_REPORT_TIMEZONE", "UTC").strip()
 
     # ---- Email --------------------------------------------------------------
     MAIL_SERVER         = os.getenv("MAIL_SERVER",    "smtp.gmail.com")

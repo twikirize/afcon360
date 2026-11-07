@@ -46,6 +46,8 @@ class JurisdictionProfile(BaseModel):
     country_code = Column(String(2), unique=True, nullable=False, index=True)
     country_name = Column(String(120), nullable=False)
     currency_code = Column(String(3), nullable=False)
+    # Business-calendar IANA timezone for jurisdictional reporting days.
+    timezone_name = Column(String(64), nullable=False, default='UTC')
     # Cash / large-transaction reporting threshold in local currency.
     cash_threshold_amount = Column(Numeric(18, 2), nullable=False, default=0)
     # Optional "currency points" style threshold (e.g. Uganda 1 point = UGX 20,000).

@@ -141,7 +141,13 @@ class EventService:
         if not event or not event.end_date:
             return False
         end_date = event.end_date.date() if isinstance(event.end_date, datetime) else event.end_date
-        return end_date < (today or date.today())
+        if today is None:
+            try:
+                today = event.local_today()
+            except ValueError:
+                # Unknown venue calendar is not assumed to be the process date.
+                return False
+        return end_date < today
 
     @staticmethod
     def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
@@ -157,19 +163,84 @@ class EventService:
         if close_at:
             return close_at
         if event.start_date:
-            return datetime.combine(event.start_date, datetime.min.time(), tzinfo=timezone.utc)
+            from app.utils.time_policy import require_iana_timezone
+            zone = require_iana_timezone(
+                event.business_timezone(), field="event venue timezone"
+            )
+            return datetime.combine(
+                event.start_date, datetime.min.time(), tzinfo=zone
+            ).astimezone(timezone.utc)
         return None
 
     @staticmethod
-    def _parse_datetime(value) -> Optional[datetime]:
-        if not value:
+    def _parse_datetime(value, timezone_name: str = None) -> Optional[datetime]:
+        """Parse a venue-local wall time into a UTC instant.
+
+        Offset-bearing timestamps must agree with the event's IANA zone;
+        ambiguous/nonexistent DST times are rejected by the shared resolver.
+        """
+        if value in (None, ""):
             return None
-        if isinstance(value, datetime):
-            return EventService._as_utc(value)
+        if not timezone_name:
+            raise ValueError("An event venue IANA timezone is required for registration deadlines")
+        from app.utils.time_policy import resolve_local_datetime
         try:
-            return EventService._as_utc(datetime.fromisoformat(str(value).replace("Z", "+00:00")))
-        except (TypeError, ValueError):
-            raise ValueError("Registration times must use ISO-8601 format.")
+            return resolve_local_datetime(value, timezone_name)["utc_datetime"]
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid venue-local registration time: {exc}") from exc
+
+    @classmethod
+    def _resolve_event_timezone_for_update(cls, event, data: Dict) -> str:
+        """Re-resolve the venue calendar when its physical location changes."""
+        from app.utils.location_timezone import resolve_location_timezone
+
+        new_country = data.get("country") or event.country
+        location_changed = (
+            str(data.get("city", event.city) or "").strip().casefold()
+            != str(event.city or "").strip().casefold()
+            or str(data.get("venue", event.venue) or "").strip().casefold()
+            != str(event.venue or "").strip().casefold()
+            or str(new_country or "").strip().upper()
+            != str(event.country or "").strip().upper()
+        )
+        requested_timezone = str(data.get("timezone_name") or "").strip() or None
+        timezone_confirmed = str(
+            data.get("timezone_name_confirmed") or ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        if location_changed:
+            # A prefilled old venue zone is not evidence for the new location.
+            # A different zone is a new selection; reusing the same zone needs confirmation.
+            if not (
+                requested_timezone
+                and (
+                    timezone_confirmed
+                    or requested_timezone != event.timezone_name
+                )
+            ):
+                requested_timezone = None
+        elif not requested_timezone:
+            requested_timezone = event.timezone_name
+        # Multi-zone countries fail closed if the organiser has not selected a zone.
+        return resolve_location_timezone(
+            explicit_timezone=requested_timezone,
+            country=new_country,
+        )
+
+    @classmethod
+    def _apply_registration_deadline_updates(
+        cls, event, data: Dict, timezone_name: str
+    ) -> None:
+        """Apply submitted venue-local wall times even when the venue zone changed."""
+        for input_name, model_attribute in (
+            ("registration_opens_at", "registration_opens_at"),
+            ("registration_closes_at", "registration_closes_at"),
+        ):
+            if input_name in data:
+                setattr(
+                    event,
+                    model_attribute,
+                    cls._parse_datetime(data.get(input_name), timezone_name),
+                )
 
     @staticmethod
     def _parse_bool(value, default: bool = False) -> bool:
@@ -253,13 +324,33 @@ class EventService:
     def _availability_snapshot(cls, event, now: datetime) -> Dict[str, Any]:
         """Pure computation of the public availability snapshot (no caching)."""
         event_end = event.end_date
-        expired = bool(event_end and event_end < now.date())
+        try:
+            from app.utils.time_policy import require_iana_timezone
+            event_zone = require_iana_timezone(
+                event.business_timezone(), field="event venue timezone"
+            )
+            event_today = now.astimezone(event_zone).date()
+            venue_calendar_ready = True
+        except ValueError:
+            event_zone = None
+            event_today = None
+            venue_calendar_ready = False
+
+        expired = bool(venue_calendar_ready and event_end and event_end < event_today)
         event_phase = "upcoming"
-        if event_end and event_end >= now.date():
-            event_phase = "live" if event.start_date and event.start_date <= now.date() else "upcoming"
+        if venue_calendar_ready and event_end and event_end >= event_today:
+            event_phase = "live" if event.start_date and event.start_date <= event_today else "upcoming"
 
         opens_at = cls._as_utc(getattr(event, "registration_opens_at", None))
-        closes_at = cls._registration_close_at(event)
+        if venue_calendar_ready:
+            closes_at = cls._registration_close_at(event)
+        else:
+            # Do not compute the default venue-midnight cutoff without a
+            # resolvable venue calendar. An explicit UTC instant remains
+            # readable, but the availability state below stays closed.
+            closes_at = cls._as_utc(
+                getattr(event, "registration_closes_at", None)
+            )
         total_statuses = ("confirmed", "checked_in")
         Registration = cls._get_registration_class()
         total_regs = Registration.query.filter(
@@ -312,7 +403,9 @@ class EventService:
             })
 
         reason = None
-        if expired:
+        if not venue_calendar_ready:
+            state, reason = RegistrationAvailability.CLOSED.value, "timezone_unconfigured"
+        elif expired:
             state = RegistrationAvailability.EXPIRED.value
         elif not cls._is_public_registration_status(event.status):
             state, reason = RegistrationAvailability.CLOSED.value, "not_published"
@@ -691,15 +784,25 @@ class EventService:
             registration_required = cls._parse_bool(
                 data.get("registration_required"), default=True
             )
+            from app.utils.location_timezone import resolve_location_timezone
+            event_country = data.get("country") or "UG"
+            event_timezone = resolve_location_timezone(
+                explicit_timezone=data.get("timezone_name"),
+                country=event_country,
+            )
             event = Event(
                 slug=slug, name=data["name"], description=data.get("description", ""),
-                category=data.get("category", "other"), city=data["city"], country=data.get("country", "Uganda"),
-                venue=data.get("venue", ""),
+                category=data.get("category", "other"), city=data["city"], country=event_country,
+                venue=data.get("venue", ""), timezone_name=event_timezone,
                 start_date=datetime.strptime(data["start_date"], "%Y-%m-%d").date() if data.get("start_date") else None,
                 end_date=datetime.strptime(data["end_date"], "%Y-%m-%d").date() if data.get("end_date") else None,
                 registration_required=registration_required,
-                registration_opens_at=cls._parse_datetime(data.get("registration_opens_at")),
-                registration_closes_at=cls._parse_datetime(data.get("registration_closes_at")),
+                registration_opens_at=cls._parse_datetime(
+                    data.get("registration_opens_at"), event_timezone
+                ),
+                registration_closes_at=cls._parse_datetime(
+                    data.get("registration_closes_at"), event_timezone
+                ),
                 currency=data.get("currency", "USD"),
                 website=data.get("website"), contact_email=data.get("contact_email"),
                 contact_phone=data.get("contact_phone"), event_metadata=data.get("metadata", {}),
@@ -737,15 +840,13 @@ class EventService:
                         available_from = None
                         available_until = None
                         if tier_data.get("available_from"):
-                            try:
-                                available_from = datetime.fromisoformat(tier_data["available_from"].replace('Z', '+00:00'))
-                            except (ValueError, AttributeError):
-                                pass
+                            available_from = cls._parse_datetime(
+                                tier_data["available_from"], event_timezone
+                            )
                         if tier_data.get("available_until"):
-                            try:
-                                available_until = datetime.fromisoformat(tier_data["available_until"].replace('Z', '+00:00'))
-                            except (ValueError, AttributeError):
-                                pass
+                            available_until = cls._parse_datetime(
+                                tier_data["available_until"], event_timezone
+                            )
                         ticket = TicketType(event_id=event.id, name=tier_data["name"], price=tier_data["price"],
                                           capacity=tier_data.get("capacity", 0), is_active=True,
                                           available_from=available_from, available_until=available_until)
@@ -851,7 +952,14 @@ class EventService:
         if not user or not _is_event_owner(user, event):
             return False, "Unauthorized"
         try:
+            new_country = data.get("country") or event.country
+            new_timezone = cls._resolve_event_timezone_for_update(event, data)
+            event.country = new_country
+            event.timezone_name = new_timezone
+
             for key, value in data.items():
+                if key in {"country", "timezone_name"}:
+                    continue
                 if key == "name":
                     event.name = value
                 elif key == "description":
@@ -864,10 +972,9 @@ class EventService:
                     event.start_date = datetime.strptime(value, "%Y-%m-%d").date()
                 elif key == "end_date" and value:
                     event.end_date = datetime.strptime(value, "%Y-%m-%d").date()
-                elif key == "registration_opens_at":
-                    event.registration_opens_at = cls._parse_datetime(value)
-                elif key == "registration_closes_at":
-                    event.registration_closes_at = cls._parse_datetime(value)
+                elif key in {"registration_opens_at", "registration_closes_at"}:
+                    # Applied below in one operation using the newly selected venue zone.
+                    pass
                 elif key == "registration_required":
                     event.registration_required = cls._parse_bool(value)
                 elif key == "website":
@@ -876,6 +983,7 @@ class EventService:
                     event.contact_email = value
                 elif key == "contact_phone":
                     event.contact_phone = value
+            cls._apply_registration_deadline_updates(event, data, new_timezone)
             event.updated_at = datetime.now(timezone.utc)
             db.session.commit()
             cls.invalidate_registration_availability(event)
@@ -1244,6 +1352,7 @@ class EventService:
             "id": event.public_id, "slug": event.slug, "event_ref": event.event_ref,
             "name": event.name, "description": event.description or '', "category": event.category,
             "city": event.city, "country": event.country, "venue": event.venue,
+            "timezone_name": event.timezone_name,
             "start_date": event.start_date.isoformat() if event.start_date else None,
             "end_date": event.end_date.isoformat() if event.end_date else None,
             "created_at": event.created_at.isoformat() if event.created_at else None,

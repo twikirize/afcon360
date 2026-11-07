@@ -295,6 +295,7 @@ def admin_edit_property(property_id):
                 "city": prop.city,
                 "state": prop.state,
                 "country": prop.country,
+                "timezone_name": prop.timezone_name or "",
                 "postal_code": prop.postal_code,
                 "base_price_per_night": prop.base_price_per_night,
                 "currency": prop.currency,
@@ -324,6 +325,13 @@ def admin_edit_property(property_id):
     
     if form.validate_on_submit():
         try:
+            old_property_location = (
+                prop.address_line1,
+                prop.city,
+                prop.state,
+                (prop.country or "").strip().upper(),
+                prop.postal_code,
+            )
             # Update all fields
             prop.title = form.title.data
             prop.summary = form.summary.data
@@ -334,7 +342,37 @@ def admin_edit_property(property_id):
             prop.address_line2 = form.address_line2.data
             prop.city = form.city.data
             prop.state = form.state.data
-            prop.country = form.country.data
+            old_country = (prop.country or "").strip().upper()
+            new_country = (form.country.data or old_country).strip().upper()
+            location_changed = old_property_location != (
+                prop.address_line1,
+                prop.city,
+                prop.state,
+                new_country,
+                form.postal_code.data,
+            )
+            from app.utils.location_timezone import resolve_location_timezone
+            requested_timezone = (
+                form.timezone_name.data.strip()
+                if form.timezone_name.data and form.timezone_name.data.strip()
+                else None
+            )
+            if location_changed:
+                # Old coordinates cannot resolve the property's new address.
+                prop.latitude = None
+                prop.longitude = None
+                prop.timezone_name = resolve_location_timezone(
+                    explicit_timezone=requested_timezone,
+                    country=new_country,
+                )
+            else:
+                prop.timezone_name = resolve_location_timezone(
+                    explicit_timezone=requested_timezone or prop.timezone_name,
+                    latitude=prop.latitude,
+                    longitude=prop.longitude,
+                    country=new_country,
+                )
+            prop.country = new_country
             prop.postal_code = form.postal_code.data
             prop.base_price_per_night = form.base_price_per_night.data
             prop.currency = form.currency.data
@@ -555,8 +593,14 @@ def admin_analytics():
     """Platform-wide accommodation analytics dashboard."""
     from sqlalchemy import func
 
-    # Revenue by month (last 12 months)
-    today = date.today()
+    # Platform-wide revenue uses the explicitly configured report calendar,
+    # not the application host's operating-system date.
+    from app.utils.time_policy import require_iana_timezone
+    report_zone = require_iana_timezone(
+        current_app.config.get("ACCOMMODATION_REPORT_TIMEZONE", "UTC"),
+        field="accommodation report timezone",
+    )
+    today = datetime.now(report_zone).date()
     monthly_revenue = []
     for i in range(11, -1, -1):
         month_start = (today.replace(day=1) - timedelta(days=30 * i)).replace(day=1)
@@ -1260,8 +1304,18 @@ def guest_detail(identifier):
             # ============================================================
             # VALIDATION: Past date check for display
             # ============================================================
-            today = date.today()
-            if check_in_date < today:
+            try:
+                today = property_model.local_today() if property_model else None
+            except ValueError:
+                today = None
+            if today is None:
+                availability_status = "timezone_unconfigured"
+                flash(
+                    "This property needs an IANA timezone before availability can be confirmed. "
+                    "Please contact the host or accommodation support.",
+                    "warning",
+                )
+            elif check_in_date < today:
                 availability_status = "past_date"
                 flash('Please select a future date for your stay.', 'warning')
             elif check_out_date <= check_in_date:
@@ -4519,20 +4573,29 @@ def host_dashboard():
 
     # Get blocked dates for host's properties
     from app.accommodation.models.availability import BlockedDate
-    from datetime import date, timedelta
-    from sqlalchemy import and_
+    from sqlalchemy import and_, cast, Date, func
 
     host_property_ids = [p.id for p in dashboard_data["properties"]]
     blocked_dates = []
     if host_property_ids:
-        today = date.today()
-        blocked_dates = BlockedDate.query.filter(
-            and_(
-                BlockedDate.property_id.in_(host_property_ids),
-                BlockedDate.blocked_date >= today,
-                BlockedDate.reason == 'temporary_hold'
+        property_local_today = cast(
+            func.timezone(Property.timezone_name, func.now()), Date
+        )
+        blocked_dates = (
+            BlockedDate.query.join(
+                Property, BlockedDate.property_id == Property.id
             )
-        ).order_by(BlockedDate.blocked_date).all()
+            .filter(
+                and_(
+                    BlockedDate.property_id.in_(host_property_ids),
+                    Property.timezone_name.isnot(None),
+                    BlockedDate.blocked_date >= property_local_today,
+                    BlockedDate.reason == 'temporary_hold',
+                )
+            )
+            .order_by(BlockedDate.blocked_date)
+            .all()
+        )
 
     return render_template(
         "accommodation/host/dashboard.html",
@@ -4921,6 +4984,7 @@ def host_edit_listing(property_id: int):
                 "city": prop.city,
                 "state": prop.state,
                 "country": prop.country,
+                "timezone_name": prop.timezone_name or "",
                 "postal_code": prop.postal_code,
                 "base_price_per_night": prop.base_price_per_night,
                 "currency": prop.currency,
