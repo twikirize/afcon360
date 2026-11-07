@@ -1116,6 +1116,15 @@ def audit_logs():
         flash("Error loading audit logs", "danger")
         return redirect(url_for('admin.owner.dashboard'))
 
+@owner_bp.route('/communication-settings', methods=['GET'])
+@login_required
+@owner_or_superadmin_required
+@audit_owner_action('viewed_communication_settings', 'settings')
+def communication_settings():
+    """Owner/Super Admin UI for the shared email provider configuration."""
+    return render_template('owner/communication_settings.html')
+
+
 @owner_bp.route('/settings', methods=['GET', 'POST'])
 @owner_or_superadmin_required
 @audit_owner_action('viewed_settings', 'settings')
@@ -1218,8 +1227,9 @@ def settings():
         twilio_from_number = SystemConfig.get('TWILIO_FROM_NUMBER', '')
         twilio_messaging_service_sid = SystemConfig.get('TWILIO_MESSAGING_SERVICE_SID', '')
         twilio_whatsapp_from = SystemConfig.get('TWILIO_WHATSAPP_FROM', '')
-        twilio_whatsapp_enabled = SystemConfig.get('TWILIO_WHATSAPP_ENABLED', False)
-        twilio_sms_enabled = SystemConfig.get('TWILIO_SMS_ENABLED', False)
+        sms_delivery_enabled = bool(current_app.config.get('SMS_DELIVERY_ENABLED', False))
+        twilio_whatsapp_enabled = bool(sms_delivery_enabled and SystemConfig.get('TWILIO_WHATSAPP_ENABLED', False))
+        twilio_sms_enabled = bool(sms_delivery_enabled and SystemConfig.get('TWILIO_SMS_ENABLED', False))
 
         logger.info(f"Rendering settings template with org_registration_mode={org_registration_mode}")
         return render_template('owner/settings.html',
@@ -1244,7 +1254,8 @@ def settings():
                              twilio_messaging_service_sid=twilio_messaging_service_sid,
                              twilio_whatsapp_from=twilio_whatsapp_from,
                              twilio_whatsapp_enabled=twilio_whatsapp_enabled,
-                             twilio_sms_enabled=twilio_sms_enabled)
+                             twilio_sms_enabled=twilio_sms_enabled,
+                              sms_delivery_enabled=sms_delivery_enabled)
     except Exception as e:
         current_app.logger.exception(
             "❌ Owner settings page crashed"
@@ -1335,9 +1346,11 @@ def save_twilio_config():
                          value_type='str', category='sms', description='Twilio Messaging Service SID', commit=False)
         SystemConfig.set('TWILIO_WHATSAPP_FROM', request.form.get('TWILIO_WHATSAPP_FROM', ''),
                          value_type='str', category='sms', description='Twilio WhatsApp sender', commit=False)
-        SystemConfig.set('TWILIO_WHATSAPP_ENABLED', request.form.get('TWILIO_WHATSAPP_ENABLED', 'false').lower() == 'true',
+        sms_delivery_enabled = bool(current_app.config.get('SMS_DELIVERY_ENABLED', False))
+        whatsapp_enabled = sms_delivery_enabled and request.form.get('TWILIO_WHATSAPP_ENABLED', 'false').lower() == 'true'
+        SystemConfig.set('TWILIO_WHATSAPP_ENABLED', whatsapp_enabled,
                          value_type='bool', category='sms', description='Enable WhatsApp via Twilio', commit=False)
-        sms_enabled = request.form.get('TWILIO_SMS_ENABLED', 'false').lower() == 'true'
+        sms_enabled = sms_delivery_enabled and request.form.get('TWILIO_SMS_ENABLED', 'false').lower() == 'true'
         SystemConfig.set('TWILIO_SMS_ENABLED', sms_enabled,
                          value_type='bool', category='sms', description='Enable SMS via Twilio', commit=False)
 
@@ -1364,6 +1377,8 @@ def save_twilio_config():
 @audit_owner_action('tested_twilio_sms', 'settings')
 def test_twilio_sms():
     """Send a test SMS via Twilio"""
+    if not current_app.config.get('SMS_DELIVERY_ENABLED', False):
+        return jsonify({'success': False, 'error': 'SMS delivery is disabled platform-wide.'}), 403
     try:
         from app.notifications.channel_handlers.twilio_sms import TwilioSmsHandler
 
@@ -1407,6 +1422,8 @@ def test_twilio_sms():
 @audit_owner_action('tested_twilio_whatsapp', 'settings')
 def test_twilio_whatsapp():
     """Send a test WhatsApp message via Twilio"""
+    if not current_app.config.get('SMS_DELIVERY_ENABLED', False):
+        return jsonify({'success': False, 'error': 'SMS and WhatsApp delivery are disabled platform-wide.'}), 403
     try:
         from app.notifications.channel_handlers.twilio_sms import TwilioWhatsAppHandler
 
@@ -1489,8 +1506,9 @@ def save_otp_delivery_config():
 
         # Twilio settings. SystemConfig encrypts the Auth Token at rest; a blank
         # password field deliberately preserves the previously saved token.
-        sms_enabled = request.form.get('TWILIO_SMS_ENABLED', 'false').lower() == 'true'
-        whatsapp_enabled = request.form.get('TWILIO_WHATSAPP_ENABLED', 'false').lower() == 'true'
+        sms_delivery_enabled = bool(current_app.config.get('SMS_DELIVERY_ENABLED', False))
+        sms_enabled = sms_delivery_enabled and request.form.get('TWILIO_SMS_ENABLED', 'false').lower() == 'true'
+        whatsapp_enabled = sms_delivery_enabled and request.form.get('TWILIO_WHATSAPP_ENABLED', 'false').lower() == 'true'
         for key, value, value_type, description in (
             ('TWILIO_SMS_ENABLED', sms_enabled, 'bool', 'Enable SMS via Twilio'),
             ('TWILIO_ACCOUNT_SID', request.form.get('TWILIO_ACCOUNT_SID', ''), 'str', 'Twilio Account SID'),
@@ -2853,102 +2871,185 @@ def api_suspicious_patterns():
 @owner_login_required
 @audit_owner_action('view_auth_settings')
 def auth_settings():
-    """
-    Authentication and verification service settings.
-    Only accessible by app owner.
+    """Owner-managed authentication and verification settings.
+
+    Provider secrets are written to encrypted storage and never returned to
+    templates or serialized responses. Phone verification defaults to email
+    until an SMS provider has been deliberately configured and enabled.
     """
     config = AuthConfiguration.get_config()
-    
+    sms_delivery_enabled = bool(current_app.config.get('SMS_DELIVERY_ENABLED', False))
+
     if request.method == 'POST':
-        # Update configuration
         try:
             previous_phone_transport = config.get_phone_verification_transport()
-            phone_transport = request.form.get(
+            requested_phone_transport = request.form.get(
                 'phone_verification_transport',
                 previous_phone_transport,
             ).strip().lower()
+            phone_transport = requested_phone_transport if sms_delivery_enabled else 'email'
             config.set_phone_verification_transport(phone_transport)
 
-            # Service enable/disable toggles
             config.google_oauth_enabled = request.form.get('google_oauth_enabled') == 'on'
             config.sendgrid_enabled = request.form.get('sendgrid_enabled') == 'on'
-            config.twilio_enabled = request.form.get('twilio_enabled') == 'on'
-            config.africa_talking_enabled = request.form.get('africa_talking_enabled') == 'on'
-            
-            # API credentials
+            config.twilio_enabled = sms_delivery_enabled and request.form.get('twilio_enabled') == 'on'
+            config.africa_talking_enabled = sms_delivery_enabled and request.form.get('africa_talking_enabled') == 'on'
+
+            from app.notifications.settings import CommunicationSettingsService
+            from app.models.system_config import SystemConfig
+
+            def _secret_input(field, existing, clear_field):
+                if request.form.get(clear_field) == 'on':
+                    return None
+                return request.form.get(field, '').strip() or existing
+
+            provider_secrets = {
+                'google_client_secret': _secret_input(
+                    'google_client_secret',
+                    config.google_client_secret,
+                    'clear_google_client_secret',
+                ),
+                'sendgrid_api_key': _secret_input(
+                    'sendgrid_api_key',
+                    config.sendgrid_api_key,
+                    'clear_sendgrid_api_key',
+                ),
+                'africa_talking_username': _secret_input(
+                    'africa_talking_username',
+                    config.africa_talking_username,
+                    'clear_africa_talking_username',
+                ),
+                'africa_talking_api_key': _secret_input(
+                    'africa_talking_api_key',
+                    config.africa_talking_api_key,
+                    'clear_africa_talking_api_key',
+                ),
+            }
+            clear_provider_secrets = [
+                key for key, form_key in {
+                    'google_client_secret': 'clear_google_client_secret',
+                    'sendgrid_api_key': 'clear_sendgrid_api_key',
+                    'africa_talking_username': 'clear_africa_talking_username',
+                    'africa_talking_api_key': 'clear_africa_talking_api_key',
+                }.items()
+                if request.form.get(form_key) == 'on'
+            ]
+
+            CommunicationSettingsService.upsert_setting(
+                key='auth_providers',
+                channel='auth',
+                provider='system',
+                enabled=True,
+                config=provider_secrets,
+                description='Encrypted credentials for OAuth, email and non-Twilio SMS providers',
+                updated_by=current_user.id,
+                clear_secret_keys=clear_provider_secrets,
+                commit=False,
+            )
+
             config.google_client_id = request.form.get('google_client_id', '').strip()
-            config.google_client_secret = request.form.get('google_client_secret', '').strip()
-            config.sendgrid_api_key = request.form.get('sendgrid_api_key', '').strip()
+            config.google_client_secret = None
+            config.sendgrid_api_key = None
             config.sendgrid_from_email = request.form.get('sendgrid_from_email', '').strip()
             config.sendgrid_from_name = request.form.get('sendgrid_from_name', 'AFCON360').strip()
-            # Keep Twilio credentials in the encrypted SystemConfig store.
-            # The legacy AuthConfiguration token column is cleared after migration.
-            from app.models.system_config import SystemConfig
+
+            # Twilio credentials stay in the encrypted SystemConfig store added
+            # by the current SMS adapter work. They are deliberately not copied
+            # into the shared auth_providers record.
             twilio_sid = (
-                request.form.get('twilio_account_sid', '').strip()
-                or SystemConfig.get('TWILIO_ACCOUNT_SID', '')
+                None
+                if request.form.get('clear_twilio_account_sid') == 'on'
+                else (
+                    request.form.get('twilio_account_sid', '').strip()
+                    or SystemConfig.get('TWILIO_ACCOUNT_SID', '')
+                    or config.twilio_account_sid
+                    or ''
+                )
             )
             twilio_phone = (
                 request.form.get('twilio_phone_number', '').strip()
                 or SystemConfig.get('TWILIO_FROM_NUMBER', '')
+                or config.twilio_phone_number
+                or ''
             )
+            clear_twilio_token = request.form.get('clear_twilio_auth_token') == 'on'
             token_input = request.form.get('twilio_auth_token', '').strip()
+            existing_system_token = SystemConfig.get('TWILIO_AUTH_TOKEN', '')
             legacy_token = config.twilio_auth_token
-            if token_input:
+            if clear_twilio_token:
                 SystemConfig.set(
-                    'TWILIO_AUTH_TOKEN', token_input, value_type='str',
-                    category='sms', description='Twilio Auth Token', commit=False,
+                    'TWILIO_AUTH_TOKEN',
+                    None,
+                    value_type='str',
+                    category='sms',
+                    description='Twilio Auth Token',
+                    commit=False,
                 )
-            elif legacy_token and not SystemConfig.get('TWILIO_AUTH_TOKEN', ''):
-                # One-time compatibility migration from the old plaintext column.
+            elif token_input:
                 SystemConfig.set(
-                    'TWILIO_AUTH_TOKEN', legacy_token, value_type='str',
-                    category='sms', description='Twilio Auth Token', commit=False,
+                    'TWILIO_AUTH_TOKEN',
+                    token_input,
+                    value_type='str',
+                    category='sms',
+                    description='Twilio Auth Token',
+                    commit=False,
                 )
+            elif legacy_token and not existing_system_token and not clear_twilio_token:
+                # One-time compatibility migration from the old plaintext field.
+                SystemConfig.set(
+                    'TWILIO_AUTH_TOKEN',
+                    legacy_token,
+                    value_type='str',
+                    category='sms',
+                    description='Twilio Auth Token',
+                    commit=False,
+                )
+
             SystemConfig.set(
-                'TWILIO_ACCOUNT_SID', twilio_sid, value_type='str',
-                category='sms', description='Twilio Account SID', commit=False,
+                'TWILIO_ACCOUNT_SID',
+                twilio_sid,
+                value_type='str',
+                category='sms',
+                description='Twilio Account SID',
+                commit=False,
             )
             SystemConfig.set(
-                'TWILIO_FROM_NUMBER', twilio_phone, value_type='str',
-                category='sms', description='Twilio verified sender phone number', commit=False,
+                'TWILIO_FROM_NUMBER',
+                twilio_phone,
+                value_type='str',
+                category='sms',
+                description='Twilio verified sender phone number',
+                commit=False,
             )
             SystemConfig.set(
-                'TWILIO_SMS_ENABLED', config.twilio_enabled, value_type='bool',
-                category='sms', description='Enable SMS via Twilio', commit=False,
+                'TWILIO_SMS_ENABLED',
+                config.twilio_enabled,
+                value_type='bool',
+                category='sms',
+                description='Enable SMS via Twilio',
+                commit=False,
             )
-            config.twilio_account_sid = twilio_sid
+
+            config.twilio_account_sid = None
             config.twilio_auth_token = None
             config.twilio_phone_number = twilio_phone
-            config.africa_talking_username = request.form.get('africa_talking_username', '').strip()
-            config.africa_talking_api_key = request.form.get('africa_talking_api_key', '').strip()
-            
-            # SMS routing
+            config.africa_talking_username = None
+            config.africa_talking_api_key = None
+
             config.sms_provider_preference = request.form.get('sms_provider_preference', 'auto')
-            
-            # Feature flags
             config.email_verification_required = request.form.get('email_verification_required') == 'on'
             config.phone_verification_required = request.form.get('phone_verification_required') == 'on'
             config.google_oauth_required = request.form.get('google_oauth_required') == 'on'
-            
-            # KYC requirements
             config.kyc_required_for_tier_2 = request.form.get('kyc_required_for_tier_2') == 'on'
             config.kyc_required_for_tier_3 = request.form.get('kyc_required_for_tier_3') == 'on'
-            
-            # Signup restrictions
             config.allow_email_password_signup = request.form.get('allow_email_password_signup') == 'on'
             config.allow_google_oauth_signup = request.form.get('allow_google_oauth_signup') == 'on'
-            
-            # Rate limits
             config.email_verification_rate_limit = int(request.form.get('email_verification_rate_limit', 5))
             config.sms_verification_rate_limit = int(request.form.get('sms_verification_rate_limit', 3))
-            
-            # Audit
             config.updated_by = current_user.id
             config.updated_at = datetime.now(timezone.utc)
-            
+
             db.session.commit()
-            
             log_owner_action(
                 'update_auth_settings',
                 current_user.id,
@@ -2961,12 +3062,20 @@ def auth_settings():
             if phone_transport == 'sms':
                 provider = config.get_sms_provider_for_phone('+256')
                 if provider:
-                    flash(f'Authentication settings updated. Phone OTP delivery is set to SMS via {provider}.', 'success')
+                    flash(
+                        f'Authentication settings updated. Phone OTP delivery is set to SMS via {provider}.',
+                        'success',
+                    )
                 else:
-                    flash('Settings saved, but SMS is not ready. Configure and test an SMS provider before using SMS verification.', 'warning')
+                    flash(
+                        'Settings saved, but SMS is not ready. Configure and test an SMS provider before using SMS verification.',
+                        'warning',
+                    )
             else:
-                flash('Authentication settings updated. Phone OTP delivery is set to email.', 'success')
-            
+                flash(
+                    'Authentication settings updated. Phone OTP delivery is set to email.',
+                    'success',
+                )
         except Exception as exc:
             db.session.rollback()
             logger.error(
@@ -2974,10 +3083,49 @@ def auth_settings():
                 type(exc).__name__,
             )
             flash(
-                "Authentication settings could not be saved securely. Check the values and try again.",
-                "danger",
+                'Settings could not be saved securely. Check the values and try again.',
+                'danger',
             )
 
+        return redirect(url_for('admin.owner.auth_settings'))
+
+    from app.models.system_config import SystemConfig
+
+    try:
+        twilio_sid_configured = bool(
+            SystemConfig.get('TWILIO_ACCOUNT_SID', '') or config.twilio_account_sid
+        )
+        twilio_token_configured = bool(
+            SystemConfig.get('TWILIO_AUTH_TOKEN', '') or config.twilio_auth_token
+        )
+        twilio_phone_number = (
+            SystemConfig.get('TWILIO_FROM_NUMBER', '')
+            or config.twilio_phone_number
+            or ''
+        )
+    except Exception as exc:
+        logger.error(
+            "Could not read Twilio configuration status (exception_type=%s)",
+            type(exc).__name__,
+        )
+        twilio_sid_configured = False
+        twilio_token_configured = False
+        twilio_phone_number = config.twilio_phone_number or ''
+
+    return render_template(
+        'admin/owner/auth_settings.html',
+        config=config,
+        twilio_phone_number=twilio_phone_number,
+        sms_delivery_enabled=sms_delivery_enabled,
+        secret_status={
+            'google_client_secret': bool(config.google_client_secret),
+            'sendgrid_api_key': bool(config.sendgrid_api_key),
+            'twilio_account_sid': twilio_sid_configured,
+            'twilio_auth_token': twilio_token_configured,
+            'africa_talking_username': bool(config.africa_talking_username),
+            'africa_talking_api_key': bool(config.africa_talking_api_key),
+        },
+    )
 
 
 @owner_bp.route('/owner/settings/auth/test/<service>', methods=['POST'])

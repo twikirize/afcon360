@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 
-def test_sms_service_restores_twilio_send_message_contract(monkeypatch):
+def test_sms_service_restores_twilio_send_message_contract(app, monkeypatch):
     from app.notifications import sms_service
 
     delivered = {}
@@ -23,13 +23,15 @@ def test_sms_service_restores_twilio_send_message_contract(monkeypatch):
     )
     auth_config = SimpleNamespace(twilio_enabled=True)
 
-    result = sms_service.SMSService(
-        provider="twilio",
-        auth_config=auth_config,
-    ).send_message(
-        phone_number="+256700000001",
-        message="Your AFCON360 code is 123456",
-    )
+    app.config["SMS_DELIVERY_ENABLED"] = True
+    with app.app_context():
+        result = sms_service.SMSService(
+            provider="twilio",
+            auth_config=auth_config,
+        ).send_message(
+            phone_number="+256700000001",
+            message="Your AFCON360 code is 123456",
+        )
 
     assert result["success"] is True
     assert result["provider"] == "twilio"
@@ -39,10 +41,14 @@ def test_sms_service_restores_twilio_send_message_contract(monkeypatch):
     assert delivered["body"] == "Your AFCON360 code is 123456"
 
 
-def test_sms_service_refuses_unknown_provider_without_console_fallback():
+def test_sms_service_refuses_unknown_provider_without_console_fallback(app):
     from app.notifications.sms_service import SMSService
 
-    result = SMSService(provider="console").send_message("+256700000001", "test")
+    # This test checks provider validation, so explicitly pass the global
+    # delivery gate before exercising the unsupported-provider branch.
+    app.config["SMS_DELIVERY_ENABLED"] = True
+    with app.app_context():
+        result = SMSService(provider="console").send_message("+256700000001", "test")
 
     assert result["success"] is False
     assert result["error"] == "unsupported_sms_provider"
@@ -85,7 +91,7 @@ def test_system_config_repr_redacts_twilio_token():
     assert "[REDACTED]" in repr(setting)
 
 
-def test_twilio_sms_handler_uses_shared_settings_and_verified_sender(monkeypatch):
+def test_twilio_sms_handler_uses_shared_settings_and_verified_sender(app, monkeypatch):
     from app.models.system_config import SystemConfig
     from app.notifications.channel_handlers.twilio_sms import TwilioSmsHandler
 
@@ -124,10 +130,12 @@ def test_twilio_sms_handler_uses_shared_settings_and_verified_sender(monkeypatch
     class Notification:
         body = "AFCON360 code 654321"
 
-    result = TwilioSmsHandler().deliver(
-        Notification(),
-        {"phone": "+256700000001"},
-    )
+    app.config["SMS_DELIVERY_ENABLED"] = True
+    with app.app_context():
+        result = TwilioSmsHandler().deliver(
+            Notification(),
+            {"phone": "+256700000001"},
+        )
 
     assert result["success"] is True
     assert result["external_id"] == "SM-handler-test"
@@ -160,6 +168,7 @@ def test_multi_channel_storage_happens_before_provider_delivery(app, monkeypatch
         lambda: FakeHandler(),
     )
 
+    app.config["SMS_DELIVERY_ENABLED"] = True
     with app.app_context():
         result = OTPService.send_otp_multi_channel(
             identifier="account-123",
@@ -215,6 +224,7 @@ def test_sms_otp_storage_uses_same_identity_as_verification(app, monkeypatch):
     )
     monkeypatch.setattr(sms_service, "send_sms", lambda phone, message: True)
 
+    app.config["SMS_DELIVERY_ENABLED"] = True
     with app.app_context():
         sent, returned_code = OTPService.send_sms_otp(
             phone="+256700000003",
@@ -229,3 +239,95 @@ def test_sms_otp_storage_uses_same_identity_as_verification(app, monkeypatch):
         "purpose": "sms_verification",
         "ttl": 300,
     }
+
+
+
+def test_sms_service_blocks_delivery_when_global_switch_is_off(app, monkeypatch):
+    from app.notifications.sms_service import SMSService
+
+    attempted = []
+    monkeypatch.setattr(
+        "app.notifications.channel_handlers.twilio_sms.TwilioSmsHandler",
+        lambda **kwargs: attempted.append(True),
+    )
+    app.config["SMS_DELIVERY_ENABLED"] = False
+
+    with app.app_context():
+        result = SMSService(provider="twilio").send_message(
+            "+256700000001",
+            "This message must not be sent",
+        )
+
+    assert result["success"] is False
+    assert result["error"] == "sms_delivery_disabled"
+    assert attempted == []
+
+
+def test_explicit_sms_otp_channel_falls_back_to_email_when_master_switch_is_off(app, monkeypatch):
+    from app.auth.otp_service import OTPService
+
+    stored = []
+    sent = {}
+    sms_attempts = []
+    monkeypatch.setattr(OTPService, "store_otp", staticmethod(lambda **kwargs: stored.append(kwargs) or True))
+    monkeypatch.setattr(OTPService, "_dev_fallback_allowed", staticmethod(lambda: False))
+    monkeypatch.setattr(OTPService, "send_email_otp_checked", staticmethod(
+        lambda **kwargs: sent.update(kwargs) or {"success": True}
+    ))
+    monkeypatch.setattr(
+        "app.notifications.channel_handlers.twilio_sms.TwilioSmsHandler",
+        lambda: sms_attempts.append(True),
+    )
+    app.config["SMS_DELIVERY_ENABLED"] = False
+
+    with app.app_context():
+        result = OTPService.send_otp_multi_channel(
+            identifier="account-email-otp",
+            otp="384921",
+            purpose="phone_verification",
+            channels=["twilio_sms"],
+            email="person@example.test",
+            phone="+256700000001",
+            max_retries=1,
+        )
+
+    assert result["success"] is True
+    assert result["channel_used"] == "email"
+    assert sent["email"] == "person@example.test"
+    assert sms_attempts == []
+
+
+
+def test_twilio_handler_cannot_send_when_global_switch_is_off(app, monkeypatch):
+    from app.models.system_config import SystemConfig
+    from app.notifications.channel_handlers.twilio_sms import TwilioSmsHandler
+
+    values = {
+        "TWILIO_ACCOUNT_SID": "AC" + "1" * 32,
+        "TWILIO_AUTH_TOKEN": "configured-test-token",
+        "TWILIO_FROM_NUMBER": "+15005550006",
+        "TWILIO_SMS_ENABLED": True,
+    }
+    monkeypatch.setattr(
+        SystemConfig,
+        "get",
+        classmethod(lambda cls, key, default=None: values.get(key, default)),
+    )
+    client_attempts = []
+    monkeypatch.setattr(
+        "twilio.rest.Client",
+        lambda *args, **kwargs: client_attempts.append((args, kwargs)),
+    )
+    app.config["SMS_DELIVERY_ENABLED"] = False
+
+    class TestNotification:
+        body = "This must not be sent while the master switch is off."
+
+    with app.app_context():
+        result = TwilioSmsHandler().deliver(
+            TestNotification(),
+            {"phone": "+256700000001"},
+        )
+
+    assert result["success"] is False
+    assert client_attempts == []

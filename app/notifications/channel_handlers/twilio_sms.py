@@ -9,6 +9,7 @@ import logging
 from typing import Dict, Any
 from flask import current_app
 from . import BaseChannelHandler
+from app.notifications.sms_service import sms_delivery_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,9 @@ class TwilioSmsHandler(BaseChannelHandler):
 
     def _get_client(self):
         """Lazy initialization and refresh of the owner-managed Twilio client."""
+        if not sms_delivery_enabled():
+            logger.info("[Twilio SMS] Delivery blocked by SMS_DELIVERY_ENABLED=false")
+            return None
         self._refresh_config()
         if not self._enabled:
             logger.warning("[Twilio SMS] SMS not enabled (TWILIO_SMS_ENABLED=false)")
@@ -217,6 +221,9 @@ class TwilioWhatsAppHandler(BaseChannelHandler):
 
     def _get_client(self):
         """Lazy initialization and refresh of the owner-managed Twilio client."""
+        if not sms_delivery_enabled():
+            logger.info("[Twilio WhatsApp] Delivery blocked by SMS_DELIVERY_ENABLED=false")
+            return None
         self._refresh_config()
         if not self._enabled:
             logger.warning("[Twilio WhatsApp] WhatsApp not enabled (TWILIO_WHATSAPP_ENABLED=false)")
