@@ -563,6 +563,55 @@ class MarketplaceService:
         return list(dict.fromkeys(flags))
 
     @staticmethod
+    def _queue_refund_execution_reconciliation(
+        booking,
+        workflow_context: dict,
+        authorized_by_user_id: int,
+        message: str,
+        *,
+        transaction_id: Optional[str] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """Keep a failed wallet execution in the durable platform review queue."""
+        snapshot, workflow = MarketplaceService._refund_workflow(booking)
+        workflow.update({
+            key: value for key, value in (workflow_context or {}).items()
+            if key != "hmac_sha256"
+        })
+        workflow.update({
+            "state": "pending_human_review",
+            "last_error": str(message)[:500],
+            "failed_at": datetime.now(timezone.utc).isoformat(),
+            "reconciliation_transaction_id": (
+                str(transaction_id) if transaction_id else None
+            ),
+            "risk_flags": list(dict.fromkeys(
+                list(workflow.get("risk_flags") or [])
+                + ["refund_execution_reconciliation_failed"]
+            )),
+            "review_reason": (
+                "Wallet execution or its durable transaction could not be "
+                "reconciled automatically; administrator review is required."
+            ),
+        })
+        MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
+        booking.policy_snapshot = snapshot
+        MarketplaceService._record_refund_history(
+            booking,
+            authorized_by_user_id,
+            "refund_execution_reconciliation_queued",
+            {
+                "error": str(message)[:500],
+                "transaction_id": str(transaction_id) if transaction_id else None,
+                "risk_flag": "refund_execution_reconciliation_failed",
+            },
+        )
+        db.session.commit()
+        return False, (
+            "The refund was not marked complete. The payment execution could not "
+            "be reconciled and has been sent to the platform review queue."
+        )
+
+    @staticmethod
     def _execute_escrow_refund(
         booking,
         commission,
@@ -628,39 +677,71 @@ class MarketplaceService:
         )
 
         if not isinstance(result, dict) or result.get("status") != "success":
-            return False, "Wallet did not confirm successful refund execution"
+            return MarketplaceService._queue_refund_execution_reconciliation(
+                booking,
+                pre_transfer_workflow,
+                authorized_by_user_id,
+                "Wallet did not confirm successful refund execution",
+                transaction_id=(result.get("transaction_id") if isinstance(result, dict) else None),
+            )
 
         existing = TransactionRepository(db.session).get_by_client_request_id(refund_key)
         if existing is None:
             existing = TransactionModel.query.filter_by(client_request_id=refund_key).first()
         if existing is None:
-            return False, "Wallet did not return a durable refund transaction"
+            return MarketplaceService._queue_refund_execution_reconciliation(
+                booking, pre_transfer_workflow, authorized_by_user_id,
+                "Wallet did not return a durable refund transaction",
+                transaction_id=result.get("transaction_id"),
+            )
 
         existing_status = str(
             getattr(existing.status, "value", existing.status) or ""
         ).lower()
         if existing_status != TransactionStatus.COMPLETED.value:
-            return False, (
-                "The wallet refund transaction is not completed; the booking "
-                "must remain unrefunded until ledger settlement is confirmed"
+            return MarketplaceService._queue_refund_execution_reconciliation(
+                booking, pre_transfer_workflow, authorized_by_user_id,
+                "The wallet refund transaction is not completed; keep the booking unrefunded",
+                transaction_id=existing.id,
             )
         if Decimal(str(existing.amount)) != amount:
-            return False, "An earlier refund exists for a different amount; human reconciliation is required"
+            return MarketplaceService._queue_refund_execution_reconciliation(
+                booking, pre_transfer_workflow, authorized_by_user_id,
+                "An earlier refund transaction exists for a different amount",
+                transaction_id=existing.id,
+            )
         if str(existing.currency or "").upper() != str(booking.currency or "").upper():
-            return False, "The durable refund transaction currency does not match the booking"
+            return MarketplaceService._queue_refund_execution_reconciliation(
+                booking, pre_transfer_workflow, authorized_by_user_id,
+                "The durable refund transaction currency does not match the booking",
+                transaction_id=existing.id,
+            )
         if existing.recipient_user_id != booking.booked_by_user_id:
-            return False, "The durable refund transaction recipient does not match the booking payer"
+            return MarketplaceService._queue_refund_execution_reconciliation(
+                booking, pre_transfer_workflow, authorized_by_user_id,
+                "The durable refund transaction recipient does not match the booking payer",
+                transaction_id=existing.id,
+            )
 
         transaction_metadata = dict(existing.tx_metadata or {})
         if str(transaction_metadata.get("booking_id")) != str(booking.id):
-            return False, "The durable wallet transaction is not tied to this booking"
+            return MarketplaceService._queue_refund_execution_reconciliation(
+                booking, pre_transfer_workflow, authorized_by_user_id,
+                "The durable wallet transaction is not tied to this booking",
+                transaction_id=existing.id,
+            )
         if result.get("already_processed"):
             # A retry may finish the business record only when the durable
             # completed wallet transaction carries valid authorization evidence.
-            if not transaction_metadata.get("authorization_source"):
-                return False, "Existing refund transaction has no authorization evidence"
-            if not transaction_metadata.get("authorized_by_user_id"):
-                return False, "Existing refund transaction has no authorizing actor"
+            if (
+                not transaction_metadata.get("authorization_source")
+                or not transaction_metadata.get("authorized_by_user_id")
+            ):
+                return MarketplaceService._queue_refund_execution_reconciliation(
+                    booking, pre_transfer_workflow, authorized_by_user_id,
+                    "Existing refund transaction has no complete authorization evidence",
+                    transaction_id=existing.id,
+                )
             refund_authorization = {
                 "authorization_source": transaction_metadata.get("authorization_source"),
                 "authorized_by_user_id": transaction_metadata.get("authorized_by_user_id"),
