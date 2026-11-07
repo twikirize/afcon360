@@ -89,7 +89,7 @@ jobs:
       DB_USER: postgres
       DB_PASS: postgres
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/afcon360_oci_source
-      BACKUP_DIR: ${{ runner.temp }}/afcon360-oci-drill-backups
+      BACKUP_DIR: /tmp/afcon360-oci-drill-backups
       BACKUP_DUMP_TIMEOUT: "1800"
       BACKUP_OFFSITE_ENABLED: "true"
       BACKUP_OFFSITE_BUCKET: ${{ vars.BACKUP_OFFSITE_BUCKET }}
