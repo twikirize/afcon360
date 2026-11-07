@@ -54,6 +54,8 @@ jobs:
     env:
       APP_ENV: testing
       FLASK_ENV: testing
+      DISABLE_REDIS: "1"
+      SOCKETIO_ENABLED: "false"
       DEBUG: "false"
       TZ: UTC
       PGTZ: UTC
