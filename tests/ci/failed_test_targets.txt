@@ -1,3 +1,7 @@
 tests/test_database_contract.py::test_pytest_code_does_not_use_sqlite_or_schema_ddl
 tests/test_isolation_baseline.py
 tests/test_driver_context_recovery.py
+tests/wallet/test_f02_cancellation_refund.py
+tests/wallet/test_f03b_refund_payout_idempotency.py
+tests/wallet/test_f03c_is_admin_fix.py
+tests/wallet/test_wallet_config_transaction_boundary.py
