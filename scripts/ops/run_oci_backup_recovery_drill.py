@@ -60,6 +60,17 @@ def main() -> int:
     from app.identity.models.user import User
 
     app = create_app()
+    backup_dir = os.getenv("BACKUP_DIR")
+    if not backup_dir or not backup_dir.startswith("/tmp/afcon360-oci-drill-"):
+        raise RuntimeError(
+            "The OCI drill requires BACKUP_DIR to point to its dedicated /tmp workspace"
+        )
+    # BackupService reads Flask's app config, not os.environ directly. Apply
+    # this drill-only temporary path explicitly instead of the production
+    # default /var/backups/afcon360.
+    app.config["BACKUP_DIR"] = backup_dir
+    os.makedirs(backup_dir, mode=0o700, exist_ok=True)
+
     with app.app_context():
         # A dedicated marker table makes the restored contents independently
         # verifiable. It contains no production or personal information.
