@@ -2293,7 +2293,7 @@ def guest_checkout():
         from app.accommodation.models.cancellation_policy import CancellationPolicy
         raw_policy_name = (
             str(policy_obj.cancellation_policy).strip().lower()
-            if policy_obj else ""
+            if policy_obj else str(getattr(property_obj, "cancellation_policy", "flexible") or "flexible").strip().lower()
         )
         policy_aliases = {
             "flexible": "FLEX",
@@ -2323,6 +2323,49 @@ def guest_checkout():
                 property_obj.id,
                 policy_name=policy_name or None,
             )
+
+        # Catalog-backed fallback: the host-facing policy tiers are seeded
+        # independently from CancellationPolicy ORM rows. Freeze the canonical
+        # catalog rules when no persisted advanced-policy row exists, instead
+        # of silently sending every routine cancellation to manual review.
+        if cancellation_policy is None and policy_name != "NON_REFUNDABLE":
+            from app.accommodation.catalog_data import CANCELLATION_POLICY_TYPES
+            catalog_rule = next(
+                (
+                    rule for rule in CANCELLATION_POLICY_TYPES
+                    if str(rule.get("code", "")).upper() == str(policy_name).upper()
+                ),
+                None,
+            )
+            if catalog_rule:
+                cancellation_policy = CancellationPolicy(
+                    property_id=property_obj.id,
+                    name=catalog_rule["code"],
+                    pre_checkin_days=int(catalog_rule["pre_checkin_days"]),
+                    pre_checkin_refund_pct=Decimal(str(catalog_rule["pre_checkin_refund_pct"])),
+                    mid_stay_refund_pct=Decimal(str(catalog_rule["mid_stay_refund_pct"])),
+                    no_show_penalty=Decimal(str(catalog_rule["no_show_penalty"])),
+                    pay_on_arrival_penalty_type=(
+                        policy_obj.pay_on_arrival_penalty_type
+                        if policy_obj else "debt"
+                    ),
+                    deposit_refundable=(
+                        bool(policy_obj.deposit_refundable)
+                        if policy_obj else True
+                    ),
+                    refundable_cleaning_fee=(
+                        bool(policy_obj.refundable_cleaning_fee)
+                        if policy_obj else False
+                    ),
+                    refundable_service_fee=(
+                        bool(policy_obj.refundable_service_fee)
+                        if policy_obj else False
+                    ),
+                    refundable_taxes=(
+                        bool(policy_obj.refundable_taxes)
+                        if policy_obj else False
+                    ),
+                )
         policy_snapshot = {
             'cancellation_policy': (
                 cancellation_policy.name if cancellation_policy else raw_policy_name or None
