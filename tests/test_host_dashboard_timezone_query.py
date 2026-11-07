@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from app.accommodation.models.booking import AccommodationBooking
 from app.accommodation.models.property import Property
 from app.accommodation.services.host_service import HostService
+# Register the transport relationship target before SQLAlchemy configures all mappers.
+from app.geo.models import LocationObservation  # noqa: F401
 
 
 def test_host_dashboard_upcoming_query_is_bounded_and_property_timezone_aware():
