@@ -559,6 +559,17 @@ class MarketplaceService:
                 })
                 snapshot["refund_workflow"] = workflow
                 booking.policy_snapshot = snapshot
+                MarketplaceService._record_refund_history(
+                    booking,
+                    actor.id,
+                    "refund_review_queued",
+                    {
+                        "proposed_amount": str(amount),
+                        "currency": booking.currency,
+                        "risk_flags": flags,
+                        "request_source": workflow.get("request_source"),
+                    },
+                )
                 db.session.commit()
                 return True, "Refund submitted to the platform human-approval queue"
 
@@ -629,12 +640,20 @@ class MarketplaceService:
             ):
                 return False, "Only an authorised property manager can submit this request"
             reason = str(reason or "").strip()
-            if not reason:
-                return False, "A review reason is required"
+            if len(reason) < 5:
+                return False, "A review reason of at least five characters is required"
             amount = Decimal(str(refund_amount)).quantize(Decimal("0.01"))
             if amount < 0 or amount > Decimal(str(booking.amount_paid or 0)):
                 return False, "Requested refund must not exceed the confirmed amount paid"
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
+            if workflow.get("state") in {
+                "pending_human_review",
+                "approved_external_execution_pending",
+                "approved_recovery_required",
+                "refunded",
+                "partially_refunded",
+            }:
+                return False, "A refund review or settlement is already active for this booking"
             workflow.update({
                 "state": "pending_human_review",
                 "proposed_amount": str(amount),
@@ -649,6 +668,18 @@ class MarketplaceService:
             })
             snapshot["refund_workflow"] = workflow
             booking.policy_snapshot = snapshot
+            MarketplaceService._record_refund_history(
+                booking,
+                requested_by_user_id,
+                "refund_review_submitted",
+                {
+                    "proposed_amount": str(amount),
+                    "currency": booking.currency,
+                    "request_source": request_source,
+                    "reason": reason,
+                    "risk_flags": workflow["risk_flags"],
+                },
+            )
             db.session.commit()
             return True, None
         except Exception as exc:
