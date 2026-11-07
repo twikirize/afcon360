@@ -35,22 +35,33 @@
                                 <input type="text" name="city" class="form-control" value="{{ event.city }}" required>
                             </div>
                             <div class="col-md-6 mb-3">
+                                <label class="form-label">Country</label>
+                                <input type="text" name="country" class="form-control" value="{{ event.country or 'UG' }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
                                 <label class="form-label">Venue</label>
                                 <input type="text" name="venue" class="form-control" value="{{ event.venue }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Venue IANA Timezone</label>
+                                <input type="text" name="timezone_name" class="form-control"
+                                       value="{{ event.timezone_name or '' }}"
+                                       placeholder="e.g. Africa/Kampala or America/New_York">
+                                <small class="text-muted">Controls event calendar dates and venue-local deadlines. Multi-timezone countries require an exact IANA name.</small>
                             </div>
                         </div>
 
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label class="form-label">Registration Opens (UTC)</label>
+                                <label class="form-label">Registration Opens (Venue local time)</label>
                                 <input type="datetime-local" name="registration_opens_at" class="form-control"
-                                       value="{{ event.registration_opens_at[:16] if event.registration_opens_at else '' }}">
+                                       value="{{ event.registration_opens_at_local or '' }}">
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label class="form-label">Registration Deadline (UTC)</label>
+                                <label class="form-label">Registration Deadline (Venue local time)</label>
                                 <input type="datetime-local" name="registration_closes_at" class="form-control"
-                                       value="{{ event.registration_closes_at[:16] if event.registration_closes_at else '' }}">
-                                <small class="text-muted">Without a deadline, registration closes at the start of the event.</small>
+                                       value="{{ event.registration_closes_at_local or '' }}">
+                                <small class="text-muted">Deadlines are interpreted in the venue timezone. If changing timezone, save it first; existing deadline instants are preserved, then reopen to edit them in the new local zone.</small>
                             </div>
                         </div>
 

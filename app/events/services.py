@@ -892,7 +892,10 @@ class EventService:
             return False, "Unauthorized"
         try:
             from app.utils.location_timezone import resolve_location_timezone
-            old_timezone = event.business_timezone()
+            try:
+                old_timezone = event.business_timezone()
+            except ValueError:
+                old_timezone = None
             new_country = data.get("country") or event.country
             new_timezone = resolve_location_timezone(
                 explicit_timezone=data.get("timezone_name") or event.timezone_name,
