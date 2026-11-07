@@ -6047,28 +6047,39 @@ def host_refund_booking(booking_id):
 @require_role("admin", "super_admin", "owner", "accommodation_admin")
 def admin_refund_review_queue():
     """Platform-only queue for cancellation exceptions and machine-screened risks."""
-    candidates = (
+    review_states = (
+        "pending_human_review",
+        "approved_external_execution_pending",
+        "approved_recovery_required",
+    )
+    page = max(request.args.get("page", 1, type=int), 1)
+    per_page = 50
+    workflow_state = AccommodationBooking.policy_snapshot[
+        "refund_workflow"
+    ]["state"].as_string()
+    pagination = (
         AccommodationBooking.query
-        .filter(AccommodationBooking.is_deleted.is_(False))
+        .filter(
+            AccommodationBooking.is_deleted.is_(False),
+            workflow_state.in_(review_states),
+        )
         .order_by(
             AccommodationBooking.cancelled_at.desc().nullslast(),
             AccommodationBooking.created_at.desc(),
         )
-        .limit(1000)
-        .all()
+        .paginate(page=page, per_page=per_page, error_out=False)
     )
-    reviews = []
-    for booking in candidates:
-        workflow = (booking.policy_snapshot or {}).get("refund_workflow", {})
-        if workflow.get("state") in {
-            "pending_human_review",
-            "approved_external_execution_pending",
-            "approved_recovery_required",
-        }:
-            reviews.append({"booking": booking, "workflow": workflow})
+    reviews = [
+        {
+            "booking": booking,
+            "workflow": (booking.policy_snapshot or {}).get("refund_workflow", {}),
+        }
+        for booking in pagination.items
+    ]
     return render_template(
         "accommodation/admin/refund_review_queue.html",
         reviews=reviews,
+        pagination=pagination,
     )
 
 
