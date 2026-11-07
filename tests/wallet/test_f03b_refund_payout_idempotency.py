@@ -738,6 +738,50 @@ class TestEscrowHumanAuthorization:
         assert booking.policy_snapshot.get("refund_workflow", {}).get("state") != "pending_human_review"
         assert _count_transfers_for(held_booking, "refund") == 0
 
+    def test_wallet_refund_execution_failure_is_durably_queued_for_review(
+        self, app, guest, held_booking
+    ):
+        from app.wallet.services.wallet_service import WalletService
+
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            workflow_state="screening",
+            refund_amount=Decimal("230.00"),
+        )
+        with _login_as(app, guest["user_id"]):
+            with patch.object(
+                WalletService,
+                "transfer",
+                return_value={"status": "failed", "error": "wallet temporarily unavailable"},
+            ):
+                ok, message = MarketplaceService.refund_guest(
+                    held_booking,
+                    Decimal("230.00"),
+                )
+
+        assert ok is False
+        assert "platform review queue" in message.lower()
+        booking = db.session.get(AccommodationBooking, held_booking)
+        workflow = booking.policy_snapshot["refund_workflow"]
+        assert workflow["state"] == "pending_human_review"
+        assert "refund_execution_reconciliation_failed" in workflow["risk_flags"]
+        assert "wallet did not confirm" in workflow["last_error"].lower()
+        assert booking.refunded_at is None
+        assert booking.refund_amount in (None, Decimal("0.00"))
+        assert _count_transfers_for(held_booking, "refund") == 0
+
+        history = BookingStatusHistory.query.filter_by(
+            booking_id=held_booking,
+            trigger="refund_execution_reconciliation_queued",
+        ).one()
+        assert history.changed_by == guest["user_id"]
+        assert history.change_metadata["risk_flag"] == (
+            "refund_execution_reconciliation_failed"
+        )
+
+
     def test_tampered_policy_snapshot_queues_human_review_without_transfer(
         self, app, guest, held_booking
     ):
