@@ -13,9 +13,15 @@ on:
       - .codebuddy/docker-compose.prod.yml
       - tests/test_database_timezone_policy.py
       - tests/test_time_policy.py
+      - tests/test_aml_timezone_policy.py
+      - tests/test_event_timezone_update.py
+      - tests/test_host_dashboard_timezone_query.py
       - app/events/models.py
       - app/events/services.py
       - app/events/view_models.py
+      - app/accommodation/services/host_service.py
+      - app/accommodation/routes.py
+      - app/compliance/aml_regulatory_service.py
       - app/utils/time_policy.py
       - app/utils/location_timezone.py
       - .github/workflows/postgresql-utc-session-policy.yml
@@ -30,6 +36,13 @@ on:
       - docker-compose.yml
       - .codebuddy/docker-compose.prod.yml
       - tests/test_database_timezone_policy.py
+      - tests/test_aml_timezone_policy.py
+      - tests/test_event_timezone_update.py
+      - tests/test_host_dashboard_timezone_query.py
+      - app/accommodation/services/host_service.py
+      - app/accommodation/routes.py
+      - app/compliance/aml_regulatory_service.py
+      - app/events/services.py
       - .github/workflows/postgresql-utc-session-policy.yml
   workflow_dispatch:
 
@@ -107,4 +120,9 @@ jobs:
         run: python -m pytest --noconftest -q tests/test_database_timezone_policy.py
 
       - name: Run focused calendar and event timezone regressions
-        run: python -m pytest --noconftest -q tests/test_time_policy.py
+        run: >-
+          python -m pytest --noconftest -q
+          tests/test_time_policy.py
+          tests/test_aml_timezone_policy.py
+          tests/test_event_timezone_update.py
+          tests/test_host_dashboard_timezone_query.py
