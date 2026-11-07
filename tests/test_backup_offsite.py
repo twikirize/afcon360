@@ -15,7 +15,13 @@ class _FakeS3Client:
     def __init__(self, uploaded_bytes=None):
         self.uploaded_bytes = uploaded_bytes
         self.upload_args = None
+        self.put_args = None
         self.object_metadata = None
+
+    def put_object(self, Bucket, Key, Body, ContentLength, Metadata=None):
+        self.uploaded_bytes = Body.read()
+        self.put_args = (Bucket, Key, ContentLength)
+        self.object_metadata = dict(Metadata or {})
 
     def upload_file(self, filename, bucket, key, ExtraArgs=None):
         with open(filename, "rb") as source:
@@ -85,6 +91,9 @@ def test_offsite_backup_upload_verifies_remote_content_checksum(
     assert result["verified"] is True
     assert result["version_id"] == "test-version-1"
     assert fake_client.uploaded_bytes == payload
+    assert fake_client.put_args == (
+        "afcon360-backups-test", result["object_key"], len(payload)
+    )
 
     assert len(client_calls) == 1
     service_name, kwargs = client_calls[0]
