@@ -164,26 +164,51 @@ def _approved_working_calendar(jurisdiction: JurisdictionProfile) -> Dict[str, A
             f"The working-day calendar for {jurisdiction.country_code} must have "
             "an approval flag, source, approver, approval date and version"
         )
-    weekdays = calendar.get("working_weekdays", [0, 1, 2, 3, 4])
+    try:
+        date.fromisoformat(approved_at[:10])
+        valid_from = date.fromisoformat(str(calendar["valid_from"]))
+        valid_until = date.fromisoformat(str(calendar["valid_until"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"The approved AML calendar for {jurisdiction.country_code} needs "
+            "valid ISO approved_at, valid_from and valid_until dates"
+        ) from exc
+    if valid_until < valid_from:
+        raise ValueError(
+            f"Invalid calendar coverage for AML jurisdiction {jurisdiction.country_code}"
+        )
+
+    weekdays = calendar.get("working_weekdays")
     if (
         not isinstance(weekdays, list)
         or not weekdays
         or any(type(day) is not int or day < 0 or day > 6 for day in weekdays)
         or len(set(weekdays)) != len(weekdays)
     ):
-        raise ValueError(f"Invalid working_weekdays for AML jurisdiction {jurisdiction.country_code}")
-    holiday_values = calendar.get("public_holidays", [])
+        raise ValueError(
+            f"An explicit working_weekdays list (0=Monday..6=Sunday) is required "
+            f"for AML jurisdiction {jurisdiction.country_code}"
+        )
+    holiday_values = calendar.get("public_holidays")
     if not isinstance(holiday_values, list):
-        raise ValueError(f"public_holidays must be a list for AML jurisdiction {jurisdiction.country_code}")
+        raise ValueError(
+            f"An explicit public_holidays list is required for AML jurisdiction {jurisdiction.country_code}"
+        )
     try:
         holidays = {date.fromisoformat(str(value)) for value in holiday_values}
     except (TypeError, ValueError) as exc:
         raise ValueError(
             f"Invalid ISO public-holiday date for AML jurisdiction {jurisdiction.country_code}"
         ) from exc
+    if any(value < valid_from or value > valid_until for value in holidays):
+        raise ValueError(
+            f"A public holiday falls outside calendar coverage for {jurisdiction.country_code}"
+        )
     return {
         "working_weekdays": frozenset(weekdays),
         "public_holidays": frozenset(holidays),
+        "valid_from": valid_from,
+        "valid_until": valid_until,
         "source": source,
         "approved_by": approved_by,
         "approved_at": approved_at,
@@ -230,6 +255,12 @@ def compute_due_date(
     remaining = sla
     while remaining:
         due_day += timedelta(days=1)
+        if due_day < calendar["valid_from"] or due_day > calendar["valid_until"]:
+            raise ValueError(
+                "Approved AML calendar coverage "
+                f"{calendar['valid_from']}..{calendar['valid_until']} does not cover "
+                f"the SLA due date for {jurisdiction.country_code}"
+            )
         if (
             due_day.weekday() in calendar["working_weekdays"]
             and due_day not in calendar["public_holidays"]
@@ -314,6 +345,8 @@ def create_regulatory_report(
             'approved_by': calendar_policy['approved_by'],
             'approved_at': calendar_policy['approved_at'],
             'version': calendar_policy['version'],
+            'valid_from': calendar_policy['valid_from'].isoformat(),
+            'valid_until': calendar_policy['valid_until'].isoformat(),
         },
     }
 
