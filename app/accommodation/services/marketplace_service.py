@@ -261,6 +261,22 @@ class MarketplaceService:
         booking.policy_snapshot = snapshot
 
     @staticmethod
+    def _record_refund_history(booking, actor_user_id, trigger, metadata):
+        """Append an immutable decision/event record to the booking audit history."""
+        from app.accommodation.models.booking import BookingStatusHistory
+
+        db.session.add(
+            BookingStatusHistory(
+                booking_id=booking.id,
+                from_status=booking.status,
+                to_status=booking.status,
+                changed_by=actor_user_id,
+                trigger=trigger,
+                change_metadata=dict(metadata or {}),
+            )
+        )
+
+    @staticmethod
     def _refund_screening_flags(booking, refund_amount, commission):
         """Return machine-detected risks that prevent automatic settlement."""
         from app.wallet.models.transaction import TransactionModel
