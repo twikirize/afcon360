@@ -306,10 +306,12 @@ independent TMS audit.
 4. **Approved jurisdiction calendars** — configure `AML_APPROVED_WORKING_CALENDARS`
    as deployment JSON for each reporting jurisdiction. Each entry must include
    `approved`, `source`, `approved_by`, `approved_at`, `version`,
-   `working_weekdays` (0=Monday through 6=Sunday), and ISO `public_holidays`.
-   The source must be the competent regulator/government calendar. AML deadline
-   generation fails closed when a jurisdiction has no approved calendar; never
-   substitute an assumed weekends-only calendar for a regulatory deadline.
+   `valid_from`, `valid_until`, `working_weekdays` (0=Monday through 6=Sunday),
+   and an explicit ISO `public_holidays` list (empty only where the approved
+   source explicitly confirms no holidays apply). The source must be the competent
+   regulator/government calendar. Deadline calculation fails closed when
+   approval or date coverage is missing; it never substitutes an assumed
+   weekends-only calendar for a regulatory deadline.
 5. **Tipping-off controls** — enforce "do not disclose" post-filing in UI/workflow.
 
 ---
