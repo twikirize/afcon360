@@ -20,7 +20,11 @@ class _SuccessfulInAppHandler:
         return bool(recipient.get("user_id"))
 
     def deliver(self, notification, recipient):
-        return {"external_id": f"test-{notification.id}", "response_code": 200}
+        return {
+            "success": True,
+            "external_id": f"test-{notification.id}",
+            "response_code": 200,
+        }
 
 
 def test_scheduled_notification_delivery_reuses_original_row(
@@ -123,7 +127,7 @@ def test_scheduled_reminder_batches_advance_without_starving_later_rows(
         return None
 
     monkeypatch.setattr(
-        "app.notifications.tasks.create_app",
+        "app.notifications.tasks._get_task_flask_app",
         lambda: app,
     )
     monkeypatch.setattr(
@@ -154,3 +158,106 @@ def test_scheduled_reminder_batches_advance_without_starving_later_rows(
     third = schedule_reminders_task.run(batch_size=25)
     assert third["dispatched"] == 0
     assert len(dispatched_ids) == 30
+
+
+def test_oci_email_handler_defers_credentials_until_configured_delivery(monkeypatch):
+    from app.notifications.channel_handlers.oci_email import OCIEmailHandler
+
+    monkeypatch.setattr(
+        OCIEmailHandler,
+        "_get_config",
+        lambda self, key, default=None, value_type="str": default,
+    )
+    handler = OCIEmailHandler()
+    initialization_calls = []
+
+    def initialize():
+        initialization_calls.append("attempted")
+
+    monkeypatch.setattr(handler, "_init_client", initialize)
+    assert handler.email_client is None
+    assert initialization_calls == []
+
+    handler.compartment_id = "ocid1.compartment.test"
+    assert handler.email_client is None
+    assert initialization_calls == ["attempted"]
+
+
+
+def test_custom_oci_channel_fallback_uses_string_handler_keys(
+    app, db_session, monkeypatch
+):
+    """Custom delivery channels must not be converted to NotificationChannel enums."""
+    from app.notifications.models import NotificationLog
+    from app.notifications.preferences import PreferenceService
+
+    user = User(
+        username=f"oci-fallback-{uuid.uuid4().hex[:8]}",
+        email=f"oci-fallback-{uuid.uuid4().hex[:8]}@example.com",
+        password_hash="test-hash",
+        is_verified=True,
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    class _FailingOCIHandler:
+        def validate_recipient(self, recipient):
+            return bool(recipient.get("email"))
+
+        def deliver(self, notification, recipient):
+            return {
+                "success": False,
+                "error_code": "oci_unavailable",
+                "response_code": 503,
+                "response_body": "private-token=must-not-be-persisted",
+            }
+
+    class _SuccessfulSMTPHandler:
+        def validate_recipient(self, recipient):
+            return bool(recipient.get("email"))
+
+        def deliver(self, notification, recipient):
+            return {
+                "success": True,
+                "external_id": "smtp-fallback-accepted",
+                "response_code": 250,
+                "response_body": "accepted",
+            }
+
+    monkeypatch.setattr(
+        NotificationService,
+        "_resolve_delivery_zone",
+        lambda *args, **kwargs: ["oci_email"],
+    )
+    monkeypatch.setattr(
+        PreferenceService,
+        "is_allowed",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setitem(
+        NotificationService.HANDLERS, "oci_email", _FailingOCIHandler()
+    )
+    monkeypatch.setitem(
+        NotificationService.HANDLERS, "email", _SuccessfulSMTPHandler()
+    )
+
+    delivered = NotificationService.send(
+        user_id=user.id,
+        notification_type=NotificationType.BOOKING_CONFIRMED,
+        title="Notification fallback test",
+        message="Test the OCI to SMTP fallback.",
+        email=user.email,
+        channels=["oci_email"],
+        module=NotificationModule.ACCOMMODATION,
+        force_external=True,
+    )
+
+    assert delivered is not None
+    assert delivered.status == NotificationStatus.DELIVERED
+    logs = NotificationLog.query.filter_by(notification_id=delivered.id).all()
+    assert any(log.channel == "email" and log.status == "success" for log in logs)
+    assert all(
+        "private-token" not in (log.response_body or "")
+        for log in logs
+    )

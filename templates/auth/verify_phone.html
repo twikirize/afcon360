@@ -6,12 +6,19 @@
       <h2 class="card-title text-center mb-2">Verify your phone</h2>
       <p class="text-center text-secondary mb-4">
         {% if phone_number %}
-          We will send a 6-digit code by {{ 'SMS' if phone_verification_transport == 'sms' else 'email' }} to verify<br>
-          <strong id="verify-phone">{{ phone_number }}</strong>
+          {% if phone_verification_transport == 'sms' %}
+            We will send a 6-digit SMS code to verify access to this number.
+          {% else %}
+            We will email a 6-digit phone-verification code to your verified account email, <strong>{{ email }}</strong>. Entering it completes AFCON360's interim phone-verification step; it does not independently prove possession of the phone handset.
+          {% endif %}
+          <br><strong id="verify-phone">{{ phone_number }}</strong>
         {% else %}
-          Enter your phone number below. We will send a 6-digit code by
-          {{ 'SMS' if phone_verification_transport == 'sms' else 'email' }}
-          {% if phone_verification_transport != 'sms' %}(<strong>{{ email }}</strong>){% endif %} to verify it.
+          Enter your phone number below.
+          {% if phone_verification_transport == 'sms' %}
+            We will send a 6-digit SMS code to verify access to this number.
+          {% else %}
+            After your email is verified, we will send a 6-digit phone-verification code to <strong>{{ email }}</strong>. Entering it completes AFCON360's interim phone-verification step; it does not independently prove possession of the phone handset.
+          {% endif %}
         {% endif %}
       </p>
 
@@ -25,7 +32,12 @@
         {% endif %}
       {% endwith %}
 
-      {% if not phone_number %}
+      {% if not email_verified %}
+      <div class="alert alert-warning" role="alert">
+        Verify your account email before continuing with phone verification.
+        <a href="{{ url_for('auth.resend_verification') }}">Resend the email verification link</a>.
+      </div>
+      {% elif not phone_number %}
       <form method="POST" action="{{ url_for('auth.send_phone_verification') }}" id="send-form" class="d-grid mb-3">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="mb-3">
@@ -56,7 +68,14 @@
           <input type="text" class="form-control form-control-lg" id="full_name" name="full_name"
                  placeholder="John William Doe"
                  value="{{ profile.full_name if profile else '' }}">
-          <div class="form-text">Phone verification only confirms control of this number. You can update your legal name separately in your profile and KYC details.</div>
+          <div class="form-text">
+            {% if phone_verification_transport == 'sms' %}
+              This confirms control of the phone number.
+            {% else %}
+              The code is sent to your already-verified account email. Entering it marks this phone number verified in AFCON360; it does not independently prove handset possession. SMS verification can be enabled after a provider is configured.
+            {% endif %}
+            You can update your legal name separately in your profile and KYC details.
+          </div>
         </div>
 
         <div class="mb-3">

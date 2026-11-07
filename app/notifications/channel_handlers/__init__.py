@@ -18,6 +18,8 @@ from .sms import SmsHandler
 from .push import PushHandler
 from .in_app import InAppHandler
 from .webhook import WebhookHandler
+from .oci_email import OCIEmailHandler
+from .twilio_sms import TwilioSmsHandler, TwilioWhatsAppHandler
 
 __all__ = [
     'BaseChannelHandler',
@@ -26,4 +28,7 @@ __all__ = [
     'PushHandler',
     'InAppHandler',
     'WebhookHandler',
+    'OCIEmailHandler',
+    'TwilioSmsHandler',
+    'TwilioWhatsAppHandler',
 ]

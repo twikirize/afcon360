@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from sqlalchemy import (
     Column,
     Boolean,
@@ -11,6 +12,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from app.extensions import db
 from app.models.base import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class AuthConfiguration(BaseModel):
@@ -90,22 +93,38 @@ class AuthConfiguration(BaseModel):
     def __repr__(self):
         return f"<AuthConfiguration id={self.id} google_oauth={self.google_oauth_enabled}>"
 
-    def get_phone_verification_transport(self):
-        """Return the owner-selected phone OTP transport.
+    @staticmethod
+    def _sms_delivery_enabled():
+        """Return the provider-neutral outbound SMS master switch."""
+        try:
+            from flask import current_app, has_app_context
+            if not has_app_context():
+                return False
+            value = current_app.config.get('SMS_DELIVERY_ENABLED', False)
+            if isinstance(value, str):
+                return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+            return value is True
+        except Exception:
+            return False
 
-        The setting lives inside the existing JSON configuration so this
-        operational switch does not require a schema migration. Missing or
-        invalid values fail safe to the temporary email transport.
+    def get_phone_verification_transport(self):
+        """Return the active phone OTP transport, defaulting safely to email.
+
+        A stale saved SMS choice can never bypass the global SMS kill switch.
         """
         channels = self.otp_channels if isinstance(self.otp_channels, dict) else {}
         phone_settings = channels.get('phone_verification', {})
         transport = phone_settings.get('transport') if isinstance(phone_settings, dict) else None
-        return transport if transport in {'email', 'sms'} else 'email'
+        if transport == 'sms' and self._sms_delivery_enabled():
+            return 'sms'
+        return 'email'
 
     def set_phone_verification_transport(self, transport):
         """Persist a validated owner-selected phone OTP transport."""
         if transport not in {'email', 'sms'}:
             raise ValueError("Phone verification transport must be 'email' or 'sms'")
+        if transport == 'sms' and not self._sms_delivery_enabled():
+            raise ValueError("SMS delivery is globally disabled until a provider is configured and activated")
 
         channels = dict(self.otp_channels or {})
         phone_settings = dict(channels.get('phone_verification') or {})
@@ -137,29 +156,47 @@ class AuthConfiguration(BaseModel):
     def get_active_sms_provider(self, country_code):
         """
         Determine which SMS provider to use based on configuration and location.
-        
-        Args:
-            country_code: 2-letter ISO country code (e.g., 'UG', 'US')
-            
+
         Returns:
-            String: 'twilio' or 'africa_talking'
+            String: 'twilio', 'africa_talking', or None.
         """
+        if not self._sms_delivery_enabled():
+            return None
+
+        # The unified owner OTP settings page writes these operational toggles
+        # to SystemConfig. The AuthConfiguration flags remain a compatibility
+        # source for the older authentication settings page.
+        try:
+            from app.models.system_config import SystemConfig
+            twilio_enabled = bool(self.twilio_enabled) or bool(
+                SystemConfig.get('TWILIO_SMS_ENABLED', False)
+            )
+        except Exception:
+            twilio_enabled = bool(self.twilio_enabled)
+        try:
+            from app.models.system_config import SystemConfig
+            africa_enabled = bool(self.africa_talking_enabled) or bool(
+                SystemConfig.get('AFRICA_TALKING_SMS_ENABLED', False)
+            )
+        except Exception:
+            africa_enabled = bool(self.africa_talking_enabled)
+
         if self.sms_provider_preference == 'twilio':
-            return 'twilio' if self.twilio_enabled else None
+            return 'twilio' if twilio_enabled else None
         elif self.sms_provider_preference == 'africa_talking':
-            return 'africa_talking' if self.africa_talking_enabled else None
-        
+            return 'africa_talking' if africa_enabled else None
+
         # Auto routing based on location
         african_countries = self.african_countries or []
         if country_code in african_countries:
-            if self.africa_talking_enabled:
+            if africa_enabled:
                 return 'africa_talking'
-            elif self.twilio_enabled:
+            elif twilio_enabled:
                 return 'twilio'
         else:
-            if self.twilio_enabled:
+            if twilio_enabled:
                 return 'twilio'
-            elif self.africa_talking_enabled:
+            elif africa_enabled:
                 return 'africa_talking'
         
         return None
@@ -194,6 +231,69 @@ class AuthConfiguration(BaseModel):
             )
             db.session.add(config)
             db.session.commit()
+        return cls._hydrate_provider_secrets(config)
+
+    @classmethod
+    def _hydrate_provider_secrets(cls, config):
+        """Hydrate Google, SendGrid and Africa's Talking secrets from encrypted storage.
+
+        Twilio credentials remain in the encrypted SystemConfig store introduced
+        by the current SMS adapter work.
+        """
+        encrypted_fields = (
+            'google_client_secret',
+            'sendgrid_api_key',
+            'africa_talking_username',
+            'africa_talking_api_key',
+        )
+        try:
+            from sqlalchemy.orm.attributes import set_committed_value
+            from app.notifications.models import CommunicationSettings
+            from app.notifications.settings import CommunicationSettingsService
+            from app.utils.log_redaction import register_secret_mapping
+
+            setting = CommunicationSettings.query.filter_by(
+                key='auth_providers',
+                is_deleted=False,
+            ).first()
+            if setting is not None:
+                try:
+                    stored = CommunicationSettingsService._decrypt_config(setting.config or {})
+                except Exception as exc:
+                    for field in encrypted_fields:
+                        set_committed_value(config, field, None)
+                    logger.error(
+                        'Encrypted auth provider credentials unavailable (exception_type=%s)',
+                        type(exc).__name__,
+                    )
+                    return config
+                for field in encrypted_fields:
+                    set_committed_value(config, field, stored.get(field))
+
+            register_secret_mapping({
+                field: getattr(config, field, None)
+                for field in encrypted_fields
+            })
+        except Exception as exc:
+            # During early bootstrap the shared settings table may not yet be
+            # available. Keep existing legacy values readable until the owner
+            # performs the encrypted first save; never log their contents.
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            logger.warning(
+                'Encrypted auth provider settings unavailable (exception_type=%s)',
+                type(exc).__name__,
+            )
+            try:
+                from app.utils.log_redaction import register_secret_mapping
+                register_secret_mapping({
+                    field: getattr(config, field, None)
+                    for field in encrypted_fields
+                })
+            except Exception:
+                pass
         return config
     
     def to_dict(self, include_secrets=False):
@@ -230,17 +330,30 @@ class AuthConfiguration(BaseModel):
         }
         
         if include_secrets:
+            twilio_sid_configured = bool(self.twilio_account_sid)
+            twilio_token_configured = bool(self.twilio_auth_token)
+            try:
+                from app.models.system_config import SystemConfig
+                twilio_sid_configured = bool(
+                    SystemConfig.get('TWILIO_ACCOUNT_SID', '') or twilio_sid_configured
+                )
+                twilio_token_configured = bool(
+                    SystemConfig.get('TWILIO_AUTH_TOKEN', '') or twilio_token_configured
+                )
+            except Exception:
+                pass
+            # Compatibility callers may ask for secret status, never values.
             data.update({
                 'google_client_id': self.google_client_id,
-                'google_client_secret': self.google_client_secret,
-                'sendgrid_api_key': self.sendgrid_api_key,
+                'google_client_secret_configured': bool(self.google_client_secret),
+                'sendgrid_api_key_configured': bool(self.sendgrid_api_key),
+                'twilio_account_sid_configured': twilio_sid_configured,
+                'twilio_auth_token_configured': twilio_token_configured,
+                'africa_talking_username_configured': bool(self.africa_talking_username),
+                'africa_talking_api_key_configured': bool(self.africa_talking_api_key),
                 'sendgrid_from_email': self.sendgrid_from_email,
                 'sendgrid_from_name': self.sendgrid_from_name,
-                'twilio_account_sid': self.twilio_account_sid,
-                'twilio_auth_token': self.twilio_auth_token,
                 'twilio_phone_number': self.twilio_phone_number,
-                'africa_talking_username': self.africa_talking_username,
-                'africa_talking_api_key': self.africa_talking_api_key,
             })
-        
+
         return data

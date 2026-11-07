@@ -87,7 +87,7 @@
 {% endif %}
 
 {% if nav_org_ctxs %}
-<li><span class="drop-header">Organisation</span></li>
+<li><span class="drop-header">Switch to Organisation</span></li>
 {% for ctx in nav_org_ctxs %}
 <li>
   <form method="POST" action="{{ url_for('auth.switch_context') }}">

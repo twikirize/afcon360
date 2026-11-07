@@ -64,7 +64,13 @@ class RoomType(BaseModel):
         """Get number of booked/in-checked-in units for this room type (current date)."""
         from app.accommodation.models.booking import AccommodationBooking, AccommodationBookingStatus
 
-        today = date.today()
+        try:
+            today = self.listing.local_today()
+        except (AttributeError, ValueError):
+            # Never guess inventory occupancy from the server's timezone.
+            # Treat the entire inventory as unavailable until the property
+            # has an explicit or otherwise resolvable business timezone.
+            return self.total_units
 
         booked_sum = int(
             db.session.query(

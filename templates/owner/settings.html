@@ -107,7 +107,7 @@
             <strong>ℹ️ Info:</strong> "upgrade-insecure-requests" forces all HTTP requests to HTTPS.
             Only enable this when you have a valid SSL certificate configured!
         </div>
-        
+
         <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" id="cspToggle">
             <label class="form-check-label" for="cspToggle">
@@ -150,12 +150,12 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             document.getElementById('cspStrictToggle').checked = data.enabled;
         });
-    
+
     document.getElementById('cspToggle').addEventListener('change', function(e) {
         const enabled = e.target.checked;
         const msgDiv = document.getElementById('cspMessage');
         msgDiv.innerHTML = '<div class="alert alert-info">Updating setting...</div>';
-        
+
         fetch('/owner/csp/toggle', {
             method: 'POST',
             headers: {
@@ -280,7 +280,357 @@ document.addEventListener('DOMContentLoaded', function() {
     </a>
   </div>
 
-  <!-- Real-time Services Section -->
+  <!-- OTP Delivery Methods Section (Unified) -->
+  <h3 class="section-title">OTP Delivery Methods</h3>
+  <div class="settings-grid">
+    <div class="settings-card" style="border-left:4px solid #0ea5e9; grid-column: 1 / -1;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;flex-wrap:wrap;gap:1rem;">
+        <div>
+          <div class="card-icon">📨</div>
+          <div class="card-title">OTP Delivery Methods Configuration</div>
+          <div class="card-description" style="margin-top:0.5rem;">
+            Configure how OTP codes are delivered to users. Enable the channels you want active.
+            <strong>Fallback chain:</strong> Enabled channels are tried in order (WhatsApp → SMS → Email).
+            <br><small class="text-muted">Each channel requires valid credentials to work.</small>
+          </div>
+        </div>
+        <span class="card-badge" style="background:#e0f2fe;color:#0369a1;">OTP Delivery</span>
+      </div>
+
+      <form method="POST" action="{{ url_for('admin.owner.save_otp_delivery_config') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <!-- Channel Toggles -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:1.5rem;margin-bottom:1.5rem;">
+
+          <!-- Email (OCI) Toggle -->
+          <div class="settings-card" style="border-left:4px solid #10b981; background:linear-gradient(135deg,#f0fdf4 0%,#ffffff 100%);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+              <div style="display:flex;align-items:center;gap:1rem;">
+                <div class="card-icon" style="font-size:2.5rem;">📧</div>
+                <div>
+                  <div class="card-title" style="margin-bottom:0.25rem;">Email (OCI)</div>
+                  <div class="card-description" style="font-size:0.875rem;">OCI Email Delivery - 50,000 emails/month free on Always Free tier. REST API with Instance Principals.</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:1rem;">
+                <label class="form-label" style="font-weight:600;color:#1a1a1a;margin:0;">Status</label>
+                <select name="OCI_EMAIL_ENABLED" class="form-control" style="width:auto;min-width:140px;">
+                  <option value="true" {{ 'selected' if oci_email_enabled else '' }}>Enabled</option>
+                  <option value="false" {{ 'selected' if not oci_email_enabled else '' }}>Disabled</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid #e5e7eb;">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;">
+                <div>
+                  <label class="form-label" style="font-weight:600;color:#1a1a1a;">OCI Region</label>
+                  <input type="text" name="OCI_EMAIL_REGION" class="form-control"
+                         value="{{ oci_email_region or 'eu-frankfurt-1' }}" placeholder="eu-frankfurt-1">
+                  <small class="text-muted">OCI region for Email Delivery (e.g., eu-frankfurt-1, us-ashburn-1)</small>
+                </div>
+                <div>
+                  <label class="form-label" style="font-weight:600;color:#1a1a1a;">Compartment OCID <span class="text-danger">*</span></label>
+                  <input type="text" name="OCI_EMAIL_COMPARTMENT_ID" class="form-control"
+                         value="{{ oci_email_compartment_id or '' }}" placeholder="ocid1.compartment.oc1..xxxxx" required>
+                  <small class="text-muted">Required. Find in OCI Console → Identity → Compartments</small>
+                </div>
+                <div>
+                  <label class="form-label" style="font-weight:600;color:#1a1a1a;">Approved Sender Address</label>
+                  <input type="email" name="OCI_EMAIL_SENDER_ADDRESS" class="form-control"
+                         value="{{ oci_email_sender_address or 'noreply@pamoja.space' }}" placeholder="noreply@pamoja.space">
+                  <small class="text-muted">Must match approved sender in OCI Email Delivery</small>
+                </div>
+                <div>
+                  <label class="form-label" style="font-weight:600;color:#1a1a1a;">Use Suppression List</label>
+                  <select name="OCI_EMAIL_SUPPRESSION_LIST" class="form-control">
+                    <option value="true" {{ 'selected' if oci_email_suppression_list else '' }}>Enabled (recommended)</option>
+                    <option value="false" {{ 'selected' if not oci_email_suppression_list else '' }}>Disabled</option>
+                  </select>
+                  <small class="text-muted">Auto-handle bounces/complaints via OCI suppression list</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SMS (Twilio) Toggle -->
+          <div class="settings-card" style="border-left:4px solid #0ea5e9; background:linear-gradient(135deg,#f0f9ff 0%,#ffffff 100%);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+              <div style="display:flex;align-items:center;gap:1rem;">
+                <div class="card-icon" style="font-size:2.5rem;">📱</div>
+                <div>
+                  <div class="card-title" style="margin-bottom:0.25rem;">SMS (Twilio)</div>
+                  <div class="card-description" style="font-size:0.875rem;">Twilio SMS - Verified sender number required. Supports E.164 format numbers.</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:1rem;">
+                <label class="form-label" style="font-weight:600;color:#1a1a1a;margin:0;">Status</label>
+                <select name="TWILIO_SMS_ENABLED" class="form-control" style="width:auto;min-width:140px;" {% if not sms_delivery_enabled %}disabled{% endif %}>
+                  <option value="true" {{ 'selected' if twilio_sms_enabled else '' }}>Enabled</option>
+                  <option value="false" {{ 'selected' if not twilio_sms_enabled else '' }}>Disabled</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid #e5e7eb;">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;">
+                <div>
+                  <label class="form-label" style="font-weight:600;color:#1a1a1a;">Twilio Account SID</label>
+                  <input type="text" name="TWILIO_ACCOUNT_SID" class="form-control"
+                         value="{{ twilio_account_sid or '' }}" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+                  <small class="text-muted">Found in Twilio Console → Account Info</small>
+                </div>
+                <div>
+                  <label class="form-label" style="font-weight:600;color:#1a1a1a;">Twilio Auth Token</label>
+                  <input type="password" name="TWILIO_AUTH_TOKEN" class="form-control"
+                         value="" autocomplete="new-password" placeholder="Leave blank to keep the saved token">
+                  <small class="text-muted">
+                    {% if twilio_auth_token_configured %}
+                      An Auth Token is saved securely. Leave this field blank to keep it; enter a new token to rotate it.
+                    {% else %}
+                      No Auth Token is currently saved.
+                    {% endif %}
+                  </small>
+                </div>
+                <div>
+                  <label class="form-label" style="font-weight:600;color:#1a1a1a;">Twilio From Number</label>
+                  <input type="text" name="TWILIO_FROM_NUMBER" class="form-control"
+                         value="{{ twilio_from_number or '' }}" placeholder="+15551234567">
+                  <small class="text-muted">Verified sender number in E.164 format (e.g., +15551234567)</small>
+                </div>
+                <div>
+                  <label class="form-label" style="font-weight:600;color:#1a1a1a;">Messaging Service SID (Optional)</label>
+                  <input type="text" name="TWILIO_MESSAGING_SERVICE_SID" class="form-control"
+                         value="{{ twilio_messaging_service_sid or '' }}" placeholder="MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+                  <small class="text-muted">Alternative to From Number for advanced routing</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- WhatsApp (Twilio) Toggle -->
+          <div class="settings-card" style="border-left:4px solid #25d366; background:linear-gradient(135deg,#f0fdf4 0%,#ffffff 100%);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+              <div style="display:flex;align-items:center;gap:1rem;">
+                <div class="card-icon" style="font-size:2.5rem;">💬</div>
+                <div>
+                  <div class="card-title" style="margin-bottom:0.25rem;">WhatsApp (Twilio)</div>
+                  <div class="card-description" style="font-size:0.875rem;">Twilio WhatsApp Business API - Requires approved sender or sandbox.</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:1rem;">
+                <label class="form-label" style="font-weight:600;color:#1a1a1a;margin:0;">Status</label>
+                <select name="TWILIO_WHATSAPP_ENABLED" class="form-control" style="width:auto;min-width:140px;" {% if not sms_delivery_enabled %}disabled{% endif %}>
+                  <option value="true" {{ 'selected' if twilio_whatsapp_enabled else '' }}>Enabled</option>
+                  <option value="false" {{ 'selected' if not twilio_whatsapp_enabled else '' }}>Disabled</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid #e5e7eb;">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;">
+                <div>
+                  <label class="form-label" style="font-weight:600;color:#1a1a1a;">WhatsApp From Number</label>
+                  <input type="text" name="TWILIO_WHATSAPP_FROM" class="form-control"
+                         value="{{ twilio_whatsapp_from or '' }}" placeholder="whatsapp:+14155238886">
+                  <small class="text-muted">Twilio WhatsApp sandbox or approved sender (format: whatsapp:+14155238886)</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Common Twilio Credentials (shared by SMS & WhatsApp) — read-only summary.
+             The editable fields live in the SMS and WhatsApp cards above; duplicating
+             them here caused the form to submit the first DOM occurrence, silently
+             ignoring edits made in this card. -->
+        <div class="settings-card" style="border-left:4px solid #6366f1; background:linear-gradient(135deg,#eef2ff 0%,#ffffff 100%); margin-top:1rem;">
+          <div style="display:flex;gap:1rem;align-items:flex-start;">
+            <div class="card-icon" style="margin:0;">🔑</div>
+            <div>
+              <div class="card-title">Twilio Credentials (Shared by SMS &amp; WhatsApp)</div>
+              <div class="card-description" style="margin-top:0.5rem;">
+                The <strong>Account SID</strong>, <strong>Auth Token</strong>, <strong>From Number</strong>,
+                <strong>Messaging Service SID</strong>, and <strong>WhatsApp From Number</strong> are shared
+                by both the SMS and WhatsApp channels. Configure them once in the
+                <strong>“SMS (Twilio)”</strong> and <strong>“WhatsApp (Twilio)”</strong> cards above —
+                both channels read the same stored values.
+              </div>
+              <div style="margin-top:0.75rem;padding:0.75rem 1rem;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;font-size:0.8125rem;color:#6b7280;">
+                <i class="bi bi-info-circle"></i>
+                This card is display-only. Fields are edited in the SMS and WhatsApp cards above.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid #e5e7eb;">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Save All OTP Delivery Settings
+          </button>
+          <button type="button" class="btn btn-outline-secondary" onclick="testOtpChannel('email')">
+            <i class="bi bi-envelope"></i> Test Email
+          </button>
+          <button type="button" class="btn btn-outline-secondary" onclick="testOtpChannel('twilio_sms')" {% if not twilio_sms_enabled %}disabled{% endif %}>
+            <i class="bi bi-send"></i> Test SMS
+          </button>
+          <button type="button" class="btn btn-outline-secondary" onclick="testOtpChannel('twilio_whatsapp')" {% if not twilio_whatsapp_enabled %}disabled{% endif %}>
+            <i class="bi bi-whatsapp"></i> Test WhatsApp
+          </button>
+        </div>
+
+        <div id="otpTestResult" style="margin-top:1rem;display:none;padding:0.75rem;border-radius:8px;"></div>
+      </form>
+
+      <div style="margin-top:1.5rem;padding:1rem;background:#f8fafc;border-radius:8px;border:1px solid #e5e7eb;">
+        <h5 style="margin-top:0;margin-bottom:0.75rem;color:#374151;">Setup Instructions</h5>
+        <ol style="margin:0;padding-left:1.5rem;color:#6b7280;font-size:0.875rem;">
+          <li style="margin-bottom:0.5rem;">For Email: Configure OCI Email Delivery in <a href="https://console.eu-frankfurt-1.oraclecloud.com/email/approved-senders" target="_blank">OCI Console</a></li>
+          <li style="margin-bottom:0.5rem;">For SMS: Get Account SID and Auth Token from <a href="https://console.twilio.com/" target="_blank">Twilio Console</a></li>
+          <li style="margin-bottom:0.5rem;">Buy or verify a phone number in <a href="https://console.twilio.com/us1/develop/phone-numbers/manage/incoming" target="_blank">Phone Numbers</a></li>
+          <li style="margin-bottom:0.5rem;">For WhatsApp: Request access in <a href="https://console.twilio.com/us1/develop/sms/whatsapp/senders" target="_blank">WhatsApp Senders</a> or use sandbox (<code>whatsapp:+14155238886</code>)</li>
+          <li style="margin-bottom:0.5rem;">Fallback chain: Enabled channels tried in order (WhatsApp → SMS → Email)</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+
+<script nonce="{{ csp_nonce }}">
+async function testOtpChannel(channel) {
+  const resultDiv = document.getElementById('otpTestResult');
+  const btn = event.target.closest('button');
+
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Sending test...</div>';
+  btn.disabled = true;
+
+  try {
+    let url;
+    if (channel === 'email') {
+      url = '{{ url_for("admin.owner.test_oci_email") }}';
+    } else if (channel === 'twilio_sms') {
+      url = '{{ url_for("admin.owner.test_twilio_sms") }}';
+    } else if (channel === 'twilio_whatsapp') {
+      url = '{{ url_for("admin.owner.test_twilio_whatsapp") }}';
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+      }
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      resultDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> ${data.message}</div>`;
+    } else {
+      resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${data.error || 'Failed to send test'}</div>`;
+    }
+  } catch (e) {
+    resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function testOciEmail() {
+  const resultDiv = document.getElementById('ociTestResult');
+  const btn = event.target.closest('button');
+
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Sending test email...</div>';
+  btn.disabled = true;
+
+  try {
+    const response = await fetch('{{ url_for("admin.owner.test_oci_email") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+      }
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      resultDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> ${data.message}</div>`;
+    } else {
+      resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${data.error || "Failed to send test email"}</div>`;
+    }
+  } catch (e) {
+    resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function testTwilioSms() {
+  const resultDiv = document.getElementById('twilioTestResult');
+  const btn = event.target.closest('button');
+
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Sending test SMS...</div>';
+  btn.disabled = true;
+
+  try {
+    const response = await fetch('{{ url_for("admin.owner.test_twilio_sms") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+      }
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      resultDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> ${data.message}</div>`;
+    } else {
+      resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${data.error || "Failed to send test SMS"}</div>`;
+    }
+  } catch (e) {
+    resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function testTwilioWhatsApp() {
+  const resultDiv = document.getElementById('twilioTestResult');
+  const btn = event.target.closest('button');
+
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Sending test WhatsApp...</div>';
+  btn.disabled = true;
+
+  try {
+    const response = await fetch('{{ url_for("admin.owner.test_twilio_whatsapp") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+      }
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      resultDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> ${data.message}</div>`;
+    } else {
+      resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${data.error || "Failed to send test WhatsApp"}</div>`;
+    }
+  } catch (e) {
+    resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+</script><!-- Real-time Services Section -->
   <h3 class="section-title">Real-time Services</h3>
   <div class="settings-grid">
     <div class="settings-card" style="border-left:4px solid #0ea5e9;">
@@ -342,6 +692,15 @@ document.addEventListener('DOMContentLoaded', function() {
       <span class="card-badge badge-auth">Authentication</span>
     </a>
 
+    <a href="{{ url_for('owner.communication_settings') }}" class="settings-card">
+      <div class="card-icon">✉️</div>
+      <div class="card-title">System Communication Settings</div>
+      <div class="card-description">
+        Manage shared SMTP settings for website mail and background Celery delivery. Saved credentials stay hidden.
+      </div>
+      <span class="card-badge badge-auth">Owner / Super Admin</span>
+    </a>
+
     <a href="{{ url_for('admin.owner.settings') }}" class="settings-card">
       <div class="card-icon">🔒</div>
       <div class="card-title">Security Settings</div>
@@ -373,13 +732,13 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="card-description" style="margin-bottom:1rem;">
         Configure multi-layer approval for manual balance adjustments.
       </div>
-      
+
       <form method="POST" action="{{ url_for('admin.owner.update_wallet_adjustment_settings') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        
+
         <div style="margin-bottom:1rem;">
           <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
-            <input type="checkbox" name="workflow_enabled" 
+            <input type="checkbox" name="workflow_enabled"
                    {{ 'checked' if wallet_adjustment_workflow else '' }}
                    style="width:18px;height:18px;cursor:pointer;">
             <span style="font-weight:600;color:#1a1a1a;">Require Multi-Layer Approval</span>
@@ -393,7 +752,7 @@ document.addEventListener('DOMContentLoaded', function() {
           <label class="form-label" style="font-weight:600;color:#1a1a1a;">Auto-Approval Threshold (UGX)</label>
           <div class="input-group input-group-sm">
             <span class="input-group-text">UGX</span>
-            <input type="number" name="threshold" class="form-control" 
+            <input type="number" name="threshold" class="form-control"
                    value="{{ wallet_adjustment_threshold }}" min="0" step="100">
           </div>
           <small class="text-muted">
@@ -435,7 +794,7 @@ document.addEventListener('DOMContentLoaded', function() {
           <div class="card-icon">🚌</div>
           <div class="card-title">Transport Fare Settings</div>
           <div class="card-description" style="margin-top:0.5rem;">
-            Configure base fares, distance rates, class multipliers, peak hour surge pricing, and minimum fare. 
+            Configure base fares, distance rates, class multipliers, peak hour surge pricing, and minimum fare.
             Changes are versioned and audited. Only Owner and Super Admin can modify these settings.
           </div>
         </div>
@@ -508,7 +867,7 @@ document.addEventListener('DOMContentLoaded', function() {
           <div id="fareConfigEdit" style="display:none;">
             <form id="fareEditForm" novalidate>
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              
+
               <div style="margin-bottom:1.5rem;">
                 <label class="form-label" style="font-weight:600;color:#1a1a1a;">Effective From (ISO-8601, optional for immediate)</label>
                 <input type="datetime-local" name="effective_from" class="form-control" style="max-width:300px;">
@@ -682,14 +1041,14 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="card-description" style="margin-bottom:1rem;">
         Monitor media processing queue, stuck tasks, and system health
       </div>
-      
+
       <div id="mediaHealthContainer">
         <div style="text-align:center;padding:1rem;">
           <div class="spinner-border spinner-border-sm" role="status"></div>
           <span class="ms-2">Loading health status...</span>
         </div>
       </div>
-      
+
       <div id="mediaHealthDetails" style="margin-top:1rem;display:none;">
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.75rem;margin-bottom:1rem;">
           <div style="text-align:center;padding:0.75rem;background:#f8fafc;border-radius:8px;">
@@ -701,7 +1060,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <small style="color:#6b7280;">Workers Online</small>
           </div>
         </div>
-        
+
         <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.5rem;margin-bottom:1rem;">
           <div style="text-align:center;padding:0.5rem;background:#f0fdf4;border-radius:6px;">
             <div id="healthReady" style="font-size:1.25rem;font-weight:600;color:#16a34a;"></div>
@@ -724,7 +1083,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <small style="color:#6b7280;">Total</small>
           </div>
         </div>
-        
+
         <div style="margin-top:1rem;">
           <button onclick="retryFailedMedia()" class="btn btn-sm btn-outline-primary" style="margin-right:0.5rem;">
             <i class="bi bi-arrow-clockwise"></i> Retry Failed Media
@@ -734,7 +1093,7 @@ document.addEventListener('DOMContentLoaded', function() {
           </button>
         </div>
       </div>
-      
+
       <div id="healthAlert" style="margin-top:1rem;display:none;padding:0.75rem;border-radius:8px;">
         <div style="display:flex;align-items:center;">
           <i class="bi bi-exclamation-triangle" style="font-size:1.25rem;margin-right:0.5rem;"></i>
@@ -742,7 +1101,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
       </div>
     </div>
-    
+
     <a href="{{ url_for('media_admin.media_settings_page') }}" class="settings-card">
       <div class="card-icon">⚙️</div>
       <div class="card-title">Media Settings</div>
@@ -751,7 +1110,7 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
       <span class="card-badge badge-system">Media</span>
     </a>
-    
+
     <a href="{{ url_for('admin.owner.audit_logs') }}" class="settings-card">
       <div class="card-icon">🔄</div>
       <div class="card-title">Media Audit Logs</div>
@@ -761,7 +1120,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <span class="card-badge badge-audit">Audit</span>
     </div>
   </div>
-  
+
   <!-- Organization Registration Section -->
   <h3 class="section-title">Organization Registration</h3>
   <div class="settings-grid">
@@ -774,7 +1133,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="card-description" style="margin-bottom:1rem;">
         Control the requirements for new organization registrations. Toggle between <strong>Testing Mode</strong> (minimal requirements) and <strong>Standard Mode</strong> (full compliance).
       </div>
-      
+
       <div style="background:#f8fafc;border-radius:8px;padding:1rem;margin-bottom:1rem;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
           <span style="font-weight:600;color:#374151;">Current Mode:</span>
@@ -790,7 +1149,7 @@ document.addEventListener('DOMContentLoaded', function() {
           {% endif %}
         </div>
       </div>
-      
+
       <form method="POST" action="{{ url_for('admin.owner.toggle_org_registration_mode') }}" style="margin-top:1rem;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label style="display:flex;align-items:center;gap:0.75rem;cursor:pointer;">
@@ -802,14 +1161,14 @@ document.addEventListener('DOMContentLoaded', function() {
           </span>
         </label>
       </form>
-      
+
       <div style="margin-top:1rem;">
         <button onclick="showOrgRegistrationDetails()" class="btn-ghost" style="font-size:0.875rem;padding:0.5rem 1rem;">
           <i class="bi bi-info-circle"></i> View Requirements Details
         </button>
       </div>
     </div>
-    
+
     <a href="{{ url_for('admin.moderator.orgs_queue') }}" class="settings-card">
       <div class="card-icon">📊</div>
       <div class="card-title">Organization Management</div>
@@ -902,7 +1261,7 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
       <div class="card-title">Media Settings Access</div>
       <div class="card-description" style="margin-bottom:1rem;">
-        By default, <strong>only you (Owner)</strong> can manage media settings. Use the controls below to authorize 
+        By default, <strong>only you (Owner)</strong> can manage media settings. Use the controls below to authorize
         <strong>Super Admins</strong> and/or <strong>Admins</strong> to manage media settings on your behalf.
       </div>
       <form id="mediaAccessForm" style="margin-top:1rem;">
@@ -938,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </a>
   </div>
 
-    <a href="{{ url_for('admin.owner.dashboard_version') }}" class="settings-card" style="border-left:4px solid #10b981;">
+    <a href="{{ url_for('admin.owner.settings') }}" class="settings-card" style="border-left:4px solid #10b981;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
         <div class="card-icon">🚗</div>
         <span class="card-badge badge-system">Driver App</span>
@@ -967,14 +1326,14 @@ function showOrgRegistrationDetails() {
         justify-content: center;
         z-index: 10000;
     `;
-    
+
     modal.innerHTML = `
         <div style="background:white;border-radius:12px;padding:2rem;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
                 <h3 style="margin:0;color:#1a1a1a;">📋 Organization Registration Requirements</h3>
                 <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#6b7280;">×</button>
             </div>
-            
+
             <div style="margin-bottom:2rem;">
                 <h4 style="color:#16a34a;margin-bottom:1rem;">🧪 Testing Mode (Minimal Requirements)</h4>
                 <ul style="list-style:none;padding:0;margin:0;">
@@ -984,7 +1343,7 @@ function showOrgRegistrationDetails() {
                     <li style="padding:0.5rem 0;color:#6b7280;"><i class="bi bi-x-circle" style="color:#6b7280;margin-right:0.5rem;"></i> No KYC requirements</li>
                 </ul>
             </div>
-            
+
             <div style="margin-bottom:2rem;">
                 <h4 style="color:#ca8a04;margin-bottom:1rem;">🛡️ Standard Mode (Full Compliance)</h4>
                 <ul style="list-style:none;padding:0;margin:0;">
@@ -998,7 +1357,7 @@ function showOrgRegistrationDetails() {
                     <li style="padding:0.5rem 0;color:#6b7280;"><i class="bi bi-check-circle" style="color:#16a34a;margin-right:0.5rem;"></i> Full KYC verification enabled</li>
                 </ul>
             </div>
-            
+
             <div style="background:#f8fafc;border-radius:8px;padding:1rem;">
                 <p style="margin:0;color:#6b7280;font-size:0.875rem;">
                     <strong>💡 Tip:</strong> Use Testing Mode during development and testing. Switch to Standard Mode for production use when full compliance is required.
@@ -1006,7 +1365,7 @@ function showOrgRegistrationDetails() {
             </div>
         </div>
     `;
-    
+
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
@@ -1063,7 +1422,7 @@ function showOrgRegistrationDetails() {
 
     function updateMediaHealthDisplay(data) {
         if (!data) {
-            document.getElementById('mediaHealthContainer').innerHTML = 
+            document.getElementById('mediaHealthContainer').innerHTML =
                 '<div class="alert alert-danger"><i class="bi bi-x-circle"></i> Failed to load health data</div>';
             return;
         }
@@ -1096,13 +1455,13 @@ function showOrgRegistrationDetails() {
         // Alert for stuck items
         const alertEl = document.getElementById('healthAlert');
         const alertMsg = document.getElementById('alertMessage');
-        
+
         if (data.oldest_stuck) {
             const stuckMinutes = Math.floor((Date.now() - new Date(data.oldest_stuck.created_at).getTime()) / 60000);
             alertEl.style.display = 'block';
             alertEl.style.background = '#fff3cd';
             alertEl.style.border = '1px solid #ffc107';
-            alertMsg.innerHTML = 
+            alertMsg.innerHTML =
                 `<strong>Stuck task detected:</strong> ${data.oldest_stuck.public_id} ` +
                 `(status: ${data.oldest_stuck.status}, stuck for ${stuckMinutes} minutes, ` +
                 `attempts: ${data.oldest_stuck.attempts || 0})`;
@@ -1117,11 +1476,11 @@ function showOrgRegistrationDetails() {
     }
 
     async function refreshMediaHealth() {
-        document.getElementById('mediaHealthContainer').innerHTML = 
+        document.getElementById('mediaHealthContainer').innerHTML =
             '<div style="text-align:center;padding:1rem;"><div class="spinner-border spinner-border-sm" role="status"></div><span class="ms-2">Refreshing...</span></div>';
         document.getElementById('mediaHealthContainer').style.display = 'block';
         document.getElementById('mediaHealthDetails').style.display = 'none';
-        
+
         const data = await fetchMediaHealth();
         updateMediaHealthDisplay(data);
     }
@@ -1130,7 +1489,7 @@ function showOrgRegistrationDetails() {
         if (!confirm('Retry all failed media items? This will re-queue them for processing.')) {
             return;
         }
-        
+
         try {
             const response = await fetch('/api/media/admin/retry-failed', {
                 method: 'POST',
@@ -1198,12 +1557,12 @@ function showOrgRegistrationDetails() {
 
     async function saveFareConfig(tables) {
         const effectiveFrom = document.querySelector('input[name="effective_from"]')?.value || null;
-        
+
         const payload = {
             tables: tables,
             effective_from: effectiveFrom
         };
-        
+
         try {
             const response = await fetch('/api/transport/fare/config', {
                 method: 'PUT',
@@ -1231,9 +1590,9 @@ function showOrgRegistrationDetails() {
         if (form) {
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
-                
+
                 const formData = new FormData(form);
-                
+
                 // Parse JSON fields
                 let baseFares, classMultipliers;
                 try {
@@ -1243,14 +1602,14 @@ function showOrgRegistrationDetails() {
                     alert('Invalid JSON in base_fares or class_multipliers: ' + err.message);
                     return;
                 }
-                
+
                 // Parse peak hours
                 const peakHoursStr = formData.get('peak_hours') || '';
                 const peakHours = peakHoursStr.split(',').map(s => {
                     const [start, end] = s.trim().split('-').map(Number);
                     return [start, end];
                 }).filter(p => p.length === 2 && !isNaN(p[0]) && !isNaN(p[1]));
-                
+
                 const tables = {
                     base_fares: baseFares,
                     distance_rate_per_km: parseFloat(formData.get('distance_rate_per_km')),
@@ -1262,7 +1621,7 @@ function showOrgRegistrationDetails() {
                     },
                     currency: formData.get('currency').toUpperCase()
                 };
-                
+
                 await saveFareConfig(tables);
             });
         }

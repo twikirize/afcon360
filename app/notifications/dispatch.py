@@ -25,54 +25,12 @@ import logging
 import threading
 import time
 
+from app.utils.async_fallback import (
+    celery_worker_available,
+    _run_in_thread,
+)
+
 logger = logging.getLogger(__name__)
-
-# A broker ping is a broadcast round-trip (~0.5s when no worker answers). Cache
-# the verdict briefly so the cost is not paid on every notification.
-_WORKER_TTL_SECONDS = 15.0
-_worker_state = {"checked_at": 0.0, "available": False}
-
-
-def celery_worker_available(force=False):
-    """Return True when at least one Celery worker answers a broker ping.
-
-    Failures (broker unreachable, no workers registered) are treated as
-    "unavailable" so the caller falls back to the in-process thread path.
-    """
-    now = time.monotonic()
-    if not force and (now - _worker_state["checked_at"]) < _WORKER_TTL_SECONDS:
-        return _worker_state["available"]
-
-    available = False
-    try:
-        from app.celery_app import celery_app
-        replies = celery_app.control.ping(timeout=0.5) or []
-        available = bool(replies)
-    except Exception:
-        logger.debug("Celery worker ping failed", exc_info=True)
-
-    _worker_state["checked_at"] = now
-    _worker_state["available"] = available
-    return available
-
-
-def _run_in_thread(deliver, app, kwargs):
-    """Run ``deliver(**kwargs)`` in a daemon thread with its own app context."""
-
-    def _target():
-        with app.app_context():
-            try:
-                deliver(**kwargs)
-            except Exception:
-                logger.error("Async notification delivery failed", exc_info=True)
-            finally:
-                try:
-                    from app.extensions import db
-                    db.session.remove()
-                except Exception:
-                    pass
-
-    threading.Thread(target=_target, name="notify-dispatch", daemon=True).start()
 
 
 def dispatch_notification(deliver, celery_task=None, **kwargs):

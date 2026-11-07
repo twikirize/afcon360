@@ -184,20 +184,59 @@ def get_compliance_report(report_type):
                 'error_code': 'INSUFFICIENT_PERMISSIONS'
             }), 403
         
-        # Get date range from query parameters
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
-        if start_date:
-            start_date = datetime.fromisoformat(start_date)
-        else:
-            start_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        if end_date:
-            end_date = datetime.fromisoformat(end_date)
-        else:
+        # Report calendar dates are interpreted in the requested IANA
+        # timezone, then converted into half-open UTC instants.
+        from datetime import date as calendar_date
+        from app.utils.time_policy import (
+            local_day_utc_bounds,
+            require_iana_timezone,
+            resolve_local_datetime,
+        )
+        report_timezone = (
+            request.args.get("report_timezone")
+            or current_app.config.get("REGULATOR_REPORT_TIMEZONE", "UTC")
+        )
+        report_zone = require_iana_timezone(
+            report_timezone, field="report_timezone"
+        )
+
+        def _report_boundary(raw_value, *, end_boundary):
+            if not raw_value:
+                return None
+            value = str(raw_value).strip()
+            if len(value) == 10:
+                calendar_day = calendar_date.fromisoformat(value)
+                day_start, day_end = local_day_utc_bounds(
+                    calendar_day, report_zone.key
+                )
+                return day_end if end_boundary else day_start
+            parsed = datetime.fromisoformat(value)
+            if parsed.tzinfo is not None and parsed.utcoffset() is not None:
+                return parsed.astimezone(timezone.utc)
+            return resolve_local_datetime(
+                parsed, report_zone.key
+            )["utc_datetime"]
+
+        start_date = _report_boundary(
+            request.args.get("start_date"), end_boundary=False
+        )
+        end_date = _report_boundary(
+            request.args.get("end_date"), end_boundary=True
+        )
+        now_in_report_zone = datetime.now(report_zone)
+        if start_date is None:
+            start_date = local_day_utc_bounds(
+                now_in_report_zone.date(), report_zone.key
+            )[0]
+        if end_date is None:
             end_date = datetime.now(timezone.utc)
-        
+        if start_date >= end_date:
+            return jsonify({
+                "success": False,
+                "error": "start_date must be earlier than end_date",
+                "error_code": "INVALID_REPORT_PERIOD",
+            }), 400
+
         # Generate report
         regulator_service = RegulatorService()
         result = regulator_service.generate_compliance_report(
@@ -205,11 +244,18 @@ def get_compliance_report(report_type):
             start_date=start_date,
             end_date=end_date,
             regulator_id=request.headers.get('X-Regulator-ID', 'unknown'),
-            access_code=request.regulator_access_code
+            access_code=request.regulator_access_code,
+            report_timezone=report_zone.key,
         )
         
         return jsonify(result)
         
+    except ValueError as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "error_code": "INVALID_REPORT_TIMEZONE_OR_PERIOD",
+        }), 400
     except Exception as e:
         current_app.logger.error(f"Get compliance report error: {e}")
         return jsonify({

@@ -86,8 +86,12 @@ class BlockedDate(BaseModel):
         return f"<BlockedDate property={self.property_id} date={self.blocked_date} reason={self.reason}>"
 
     def is_active(self):
-        """Check if this blocked date is still in the future"""
-        return self.blocked_date >= date.today()
+        """Check whether this property-local blocked date is today or future."""
+        try:
+            return self.blocked_date >= self.property.local_today()
+        except (AttributeError, ValueError):
+            # Unknown business timezone is not a basis for treating a date as active.
+            return False
 
 
 class RoomHold(BaseModel):
@@ -190,8 +194,11 @@ class AvailabilityRule(BaseModel):
         return f"<AvailabilityRule property={self.property_id} dates={self.start_date}-{self.end_date} available={self.is_available}>"
 
     def is_active_today(self):
-        """Check if this rule applies to today's date"""
-        today = date.today()
+        """Check if this rule applies to today's calendar date at the property."""
+        try:
+            today = self.property.local_today()
+        except (AttributeError, ValueError):
+            return False
         if self.day_of_week is not None:
             return self.day_of_week == today.weekday()
         if self.start_date and self.end_date:

@@ -17,8 +17,16 @@ class PhoneVerificationService:
     """Coordinate phone verification independently of its delivery transport."""
 
     @staticmethod
+    def _email_is_verified(user) -> bool:
+        """Honor the canonical email flag and the legacy verified flag."""
+        return bool(
+            getattr(user, "email_verified", False)
+            or getattr(user, "is_verified", False)
+        )
+
+    @staticmethod
     def request_code(user, profile, phone_number: str) -> Dict[str, Any]:
-        """Generate and deliver a phone OTP through the configured transport."""
+        """Send a phone-verification code to the verified email or active SMS provider."""
         email = (getattr(user, "email", "") or "").strip()
         phone_number = (phone_number or "").strip()
 
@@ -33,6 +41,12 @@ class PhoneVerificationService:
                 "success": False,
                 "code": "missing_email",
                 "message": "No email address found on your account.",
+            }
+        if not PhoneVerificationService._email_is_verified(user):
+            return {
+                "success": False,
+                "code": "email_not_verified",
+                "message": "Verify your account email before verifying your phone number.",
             }
 
         profile_changed = profile is not None and phone_number != getattr(profile, "phone_number", None)
@@ -133,6 +147,8 @@ class PhoneVerificationService:
         code = (code or "").strip()
         if not email or not code:
             return False, "Missing required parameters"
+        if not PhoneVerificationService._email_is_verified(user):
+            return False, "Verify your account email before verifying your phone number."
 
         success, message = OTPService.verify_otp(
             identifier=email,

@@ -174,7 +174,12 @@ class BookingStateMachine:
         if booking.status != AccommodationBookingStatus.CONFIRMED.value:
             return False
 
-        if booking.check_in > date.today():
+        try:
+            property_today = booking.accommodation_property.local_today()
+        except (AttributeError, ValueError):
+            return False
+
+        if booking.check_in > property_today:
             return False
 
         # Registration check only - NO payment status check

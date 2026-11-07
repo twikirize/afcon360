@@ -221,12 +221,19 @@ class BookingPolicyEvaluator:
                 missing_requirements=["Booking not confirmed"],
             )
         
-        from datetime import date
-        if booking.check_in > date.today():
+        try:
+            property_today = booking.accommodation_property.local_today()
+        except (AttributeError, ValueError):
             return PolicyDecision(
                 allowed=False,
-                reason=f"Check-in date is {booking.check_in} - too early",
-                missing_requirements=["Check-in date not reached"],
+                reason="Property timezone is not configured; check-in cannot be authorized.",
+                missing_requirements=["Property IANA timezone not configured"],
+            )
+        if booking.check_in > property_today:
+            return PolicyDecision(
+                allowed=False,
+                reason=f"Check-in date is {booking.check_in} - too early at the property.",
+                missing_requirements=["Check-in date not reached at property"],
             )
         
         # Registration check

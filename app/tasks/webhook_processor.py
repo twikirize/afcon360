@@ -49,11 +49,14 @@ def process_webhook_events(self, batch_size: int = 10):
     the provider-reference idempotency check below.
     """
     batch_size = max(1, min(int(batch_size), 25))
+    import time
+    t_start = time.perf_counter()
     from app import create_app
     from app.extensions import db
     from app.wallet.models.webhook_event import WebhookEvent
 
     app = create_app()
+    t_app = time.perf_counter()
     with app.app_context():
         now = datetime.now(timezone.utc)
 
@@ -73,11 +76,13 @@ def process_webhook_events(self, batch_size: int = 10):
                 )
             )
         ).with_for_update(skip_locked=True).limit(batch_size).all()
+        t_query = time.perf_counter()
 
         if not events:
             return {"processed": 0}
 
         processed = failed = dead_lettered = 0
+        t_process_start = time.perf_counter()
 
         for event in events:
             # Mark as processing immediately to prevent another worker
@@ -137,6 +142,8 @@ def process_webhook_events(self, batch_size: int = 10):
                                 event.id
                             )
 
+        t_process = time.perf_counter()
+
         continuation_queued = False
         if len(events) >= batch_size:
             try:
@@ -151,12 +158,24 @@ def process_webhook_events(self, batch_size: int = 10):
                     "on its next polling interval"
                 )
 
+        t_end = time.perf_counter()
+        logger.info(
+            f"Webhook batch: processed={processed} failed={failed} dead_lettered={dead_lettered} "
+            f"[timing: total={t_end-t_start:.3f}s app_init={t_app-t_start:.3f}s "
+            f"query={t_query-t_app:.3f}s process={t_process-t_process_start:.3f}s]"
+        )
         return {
             "processed": processed,
             "failed": failed,
             "dead_lettered": dead_lettered,
             "batch_size": batch_size,
             "continuation_queued": continuation_queued,
+            "timing": {
+                "total": round(t_end - t_start, 3),
+                "app_init": round(t_app - t_start, 3),
+                "query": round(t_query - t_app, 3),
+                "process": round(t_process - t_process_start, 3),
+            }
         }
 
 

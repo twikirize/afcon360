@@ -724,6 +724,10 @@ def verify_phone():
             "auth/verify_phone.html",
             phone_number=phone_number,
             email=user_email,
+            email_verified=bool(
+                getattr(current_user, "email_verified", False)
+                or getattr(current_user, "is_verified", False)
+            ),
             phone_verification_transport=phone_verification_transport,
         )
 
@@ -734,9 +738,10 @@ def verify_phone():
         flash("Please enter a valid 6-digit code.", "danger")
         return redirect(request.referrer or url_for("index"))
 
-    # Phone verification proves control of the registered contact channel.
-    # Canonical name collection/verification is handled by the profile and KYC
-    # flows; it must not block a valid phone OTP.
+    # While SMS is disabled, this OTP is delivered to the already-verified
+    # account email. This records the platform's interim phone-verification
+    # status; it does not independently prove possession of the phone handset.
+    # Canonical name collection/verification remains in profile and KYC flows.
     success, message = PhoneVerificationService.verify_code(
         user=current_user,
         profile=profile,
@@ -748,7 +753,14 @@ def verify_phone():
         if full_name and profile:
             profile.full_name = full_name
             db.session.commit()
-        flash("Phone number verified successfully!", "success")
+        if AuthConfiguration._sms_delivery_enabled():
+            flash("Phone number verified successfully!", "success")
+        else:
+            flash(
+                "Phone verification completed using the code sent to your verified email. "
+                "This interim step does not independently confirm access to the phone handset.",
+                "success",
+            )
         session['phone_verified'] = True
         return redirect(url_for("profile.account_overview"))
     else:
@@ -2011,20 +2023,28 @@ def mfa(user_id: str):
 
 def get_active_channels(user) -> List[Dict[str, Any]]:
     """
-    Returns list of {"id", "label", "contact"} for channels enabled in AuthConfiguration.otp_channels
-    AND for which user has contact info (email/sms/whatsapp need user.email/user.phone).
+    Return available verification steps. When outbound SMS is disabled, the
+    phone step delivers its code to the user's already-verified email address.
     """
     from app.auth.config_model import AuthConfiguration
+
     cfg = AuthConfiguration.get_config()
     otp_channels = cfg.otp_channels or {}
-    
+    sms_delivery_enabled = AuthConfiguration._sms_delivery_enabled()
+    email_verified = bool(
+        getattr(user, "email_verified", False)
+        or getattr(user, "is_verified", False)
+    )
+
     channels = []
-    
+
     # Email
     email_cfg = otp_channels.get("email", {})
     if email_cfg.get("enabled", True) and getattr(user, "email", None):
         email_val = user.email
-        masked = email_val if len(email_val) <= 6 else (email_val[:3] + "..." + email_val[email_val.find("@")-1:])
+        masked = email_val if len(email_val) <= 6 else (
+            email_val[:3] + "..." + email_val[email_val.find("@") - 1:]
+        )
         channels.append({
             "id": "email",
             "label": "Email Verification",
@@ -2033,31 +2053,48 @@ def get_active_channels(user) -> List[Dict[str, Any]]:
             "verified_at": getattr(user, "email_verified_at", None),
         })
 
-    # SMS
-    sms_cfg = otp_channels.get("sms", {})
-    if sms_cfg.get("enabled", False) and getattr(user, "phone", None):
-        phone_val = user.phone
-        masked_phone = phone_val if len(phone_val) <= 4 else ("***" + phone_val[-4:])
-        channels.append({
-            "id": "sms",
-            "label": "SMS Verification",
-            "contact": masked_phone,
-            "verified": getattr(user, "phone_verified", False),
-            "verified_at": getattr(user, "phone_verified_at", None),
-        })
+    # Phone verification remains available by email while SMS/WhatsApp is off.
+    if not sms_delivery_enabled:
+        if (
+            getattr(user, "phone", None)
+            and getattr(user, "email", None)
+            and email_verified
+        ):
+            email_val = user.email
+            masked_email = email_val if len(email_val) <= 6 else (
+                email_val[:3] + "..." + email_val[email_val.find("@") - 1:]
+            )
+            channels.append({
+                "id": "sms",
+                "label": "Phone Verification (code by email)",
+                "contact": masked_email,
+                "verified": getattr(user, "phone_verified", False),
+                "verified_at": getattr(user, "phone_verified_at", None),
+            })
+    else:
+        sms_cfg = otp_channels.get("sms", {})
+        if sms_cfg.get("enabled", False) and getattr(user, "phone", None):
+            phone_val = user.phone
+            masked_phone = phone_val if len(phone_val) <= 4 else ("***" + phone_val[-4:])
+            channels.append({
+                "id": "sms",
+                "label": "SMS Verification",
+                "contact": masked_phone,
+                "verified": getattr(user, "phone_verified", False),
+                "verified_at": getattr(user, "phone_verified_at", None),
+            })
 
-    # WhatsApp
-    wa_cfg = otp_channels.get("whatsapp", {})
-    if wa_cfg.get("enabled", False) and getattr(user, "phone", None):
-        phone_val = user.phone
-        masked_phone = phone_val if len(phone_val) <= 4 else ("***" + phone_val[-4:])
-        channels.append({
-            "id": "whatsapp",
-            "label": "WhatsApp Verification",
-            "contact": masked_phone,
-            "verified": getattr(user, "phone_verified", False),
-            "verified_at": getattr(user, "phone_verified_at", None),
-        })
+        wa_cfg = otp_channels.get("whatsapp", {})
+        if wa_cfg.get("enabled", False) and getattr(user, "phone", None):
+            phone_val = user.phone
+            masked_phone = phone_val if len(phone_val) <= 4 else ("***" + phone_val[-4:])
+            channels.append({
+                "id": "whatsapp",
+                "label": "WhatsApp Verification",
+                "contact": masked_phone,
+                "verified": getattr(user, "phone_verified", False),
+                "verified_at": getattr(user, "phone_verified_at", None),
+            })
 
     return channels
 
@@ -2080,7 +2117,17 @@ def verify_options():
         otp_channels = cfg.otp_channels or {}
         ch_settings = otp_channels.get(channel, {})
 
-        if not ch_settings.get("enabled", False) and channel != "email":
+        phone_email_delivery = (
+            channel == "sms"
+            and not AuthConfiguration._sms_delivery_enabled()
+            and bool(getattr(current_user, "phone", None))
+            and bool(getattr(current_user, "email", None))
+            and (
+                getattr(current_user, "email_verified", False)
+                or getattr(current_user, "is_verified", False)
+            )
+        )
+        if not ch_settings.get("enabled", False) and channel != "email" and not phone_email_delivery:
             flash(f"Verification channel '{channel}' is not enabled.", "danger")
             return render_template("auth/verify_options.html", channels=channels)
 
@@ -2111,6 +2158,8 @@ def verify_options():
 @login_required
 def verify_otp():
     """GET shows OTP entry form; POST verifies via verify_channel_otp, on success flashes and redirects to dashboard; if failed attempts exceeded, allow re-choose."""
+    from app.auth.config_model import AuthConfiguration
+
     channel = request.args.get("channel") or request.form.get("channel") or "email"
     channels = get_active_channels(current_user)
 
@@ -2119,7 +2168,14 @@ def verify_otp():
         from app.auth.pending_registration import verify_channel_otp
         success, message = verify_channel_otp(current_user.id, channel, code)
         if success:
-            flash("Account successfully verified!", "success")
+            if channel in ("sms", "whatsapp") and not AuthConfiguration._sms_delivery_enabled():
+                flash(
+                    "Phone verification completed using the code sent to your verified email. "
+                    "This interim step does not independently confirm access to the phone handset.",
+                    "success",
+                )
+            else:
+                flash("Account successfully verified!", "success")
             # Redirect to appropriate dashboard
             if current_user.is_app_owner():
                 return redirect(url_for("admin.owner.dashboard"))
@@ -2130,7 +2186,14 @@ def verify_otp():
         else:
             flash(message, "danger")
 
-    return render_template("auth/verify_otp.html", channel=channel, channels=channels)
+    from app.auth.config_model import AuthConfiguration
+    return render_template(
+        "auth/verify_otp.html",
+        channel=channel,
+        channels=channels,
+        sms_delivery_enabled=AuthConfiguration._sms_delivery_enabled(),
+        delivery_email=getattr(current_user, "email", None),
+    )
 @auth_bp.route("/test-csrf")
 @login_required
 def test_csrf():

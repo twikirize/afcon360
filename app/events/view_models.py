@@ -39,6 +39,7 @@ class EventRegistrationViewModel:
         self.city = event.city
         self.country = event.country
         self.venue = event.venue or ''
+        self.timezone_name = event.timezone_name
         self.website = event.website
 
         # ── Dates ──────────────────────────────────────────────────────────
@@ -111,7 +112,14 @@ class EventRegistrationViewModel:
 
         # ── Derived registration state flags ──────────────────────────────
         self.is_published = self.status == EventStatus.PUBLISHED.value
-        self.is_registration_open = self.is_published and not self.is_expired
+        try:
+            event.business_timezone()
+            venue_calendar_ready = True
+        except (AttributeError, ValueError):
+            venue_calendar_ready = False
+        self.is_registration_open = (
+            self.is_published and venue_calendar_ready and not self.is_expired
+        )
 
     @property
     def is_expired(self) -> bool:
@@ -124,13 +132,15 @@ class EventRegistrationViewModel:
         if not self.event.end_date:
             return False
 
-        from datetime import date
-
         end_date = self.event.end_date
         if hasattr(end_date, "date"):
             end_date = end_date.date()
-
-        return end_date < date.today()
+        try:
+            return end_date < self.event.local_today()
+        except ValueError:
+            # Unconfigured venue calendar closes registrations in the service
+            # availability gate; it is not guessed from the server date.
+            return False
 
     @property
     def free_ticket_types(self) -> List[Dict[str, Any]]:

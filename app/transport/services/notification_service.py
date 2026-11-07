@@ -222,62 +222,87 @@ class NotificationService:
 
     @staticmethod
     def send_email(to: str, subject: str, body: str, link: str = None) -> Dict[str, Any]:
+        """Send a transactional email through the shared Owner-managed provider.
+
+        This best-effort compatibility entry point intentionally delegates to
+        the unified EmailHandler so web and Celery use identical credentials.
         """
-        Send a plain transactional email (no notification-inbox record).
-
-        Used by wallet event notifications and webhook dead-letter alerts.
-        Best-effort and fail-silent: a broken email transport must never roll
-        back the business operation that triggered it. Renders the branded
-        AFCON360 HTML template (falling back to plain text) via the same
-        flask_mail path as the unified EmailHandler.
-        """
-        try:
-            if not to or "@" not in to:
-                return {
-                    'success': False,
-                    'response_code': 400,
-                    'response_body': 'No recipient email address',
-                }
-
-            html = None
-            try:
-                from app.notifications.template_loader import template_loader
-                html = template_loader.env.get_template(
-                    "email/default.html"
-                ).render(title=subject, message=body, link=link)
-            except Exception as e:
-                current_app.logger.debug(
-                    f"Could not render branded HTML for email '{subject}' ({e}); using text body"
-                )
-
-            from flask_mail import Message
-            from app.extensions import mail
-
-            msg = Message(subject=subject, recipients=[to], body=body, html=html)
-            mail.send(msg)
-
-            current_app.logger.info(f"Email sent to {to}: {subject}")
-            return {
-                'success': True,
-                'response_code': 200,
-                'response_body': 'Email delivered via SMTP',
-            }
-        except Exception as e:
-            current_app.logger.error(f"Failed to send email to {to}: {e}")
+        if not to or "@" not in to:
             return {
                 'success': False,
-                'response_code': 500,
-                'response_body': str(e),
+                'response_code': 400,
+                'response_body': 'invalid_recipient',
+                'error_code': 'invalid_recipient',
+            }
+
+        from types import SimpleNamespace
+        from app.notifications.channel_handlers.email import EmailHandler
+
+        notification = SimpleNamespace(
+            id=None,
+            type="system_alert",
+            subject=subject or "AFCON360 notification",
+            body=body or "",
+            context={},
+            link=link,
+            user_id=None,
+            email=to,
+        )
+        try:
+            result = EmailHandler().deliver(
+                notification,
+                {'email': to, 'user_id': None},
+            )
+            return {
+                'success': bool(result.get('success')),
+                'response_code': result.get('response_code', 502),
+                'response_body': result.get('response_body', 'email_delivery_failed'),
+                'error_code': result.get('error_code'),
+            }
+        except Exception as exc:
+            current_app.logger.error(
+                "Transactional email failed (exception_type=%s)",
+                type(exc).__name__,
+            )
+            return {
+                'success': False,
+                'response_code': 502,
+                'response_body': 'email_delivery_failed',
+                'error_code': 'email_delivery_failed',
             }
 
     @staticmethod
     def _format_message(template: str, booking: Booking,
                         extra_data: Dict[str, Any]) -> str:
         """Format notification message"""
+        # The stored value is always a technical instant. For new bookings,
+        # notifications use the original pickup wall time and the location's
+        # IANA zone; legacy bookings without provenance are explicitly labelled UTC.
+        pickup_schedule = (booking.booking_metadata or {}).get("pickup_schedule") or {}
+        if pickup_schedule.get("local_datetime") and pickup_schedule.get("timezone_name"):
+            try:
+                from datetime import datetime
+                local_pickup = datetime.fromisoformat(pickup_schedule["local_datetime"])
+                pickup_time_display = (
+                    f"{local_pickup.strftime('%I:%M %p')} "
+                    f"{pickup_schedule.get('utc_offset') or ''} "
+                    f"({pickup_schedule['timezone_name']})"
+                ).strip()
+            except (TypeError, ValueError):
+                pickup_time_display = (
+                    booking.pickup_time.strftime('%I:%M %p UTC')
+                    if booking.pickup_time else ''
+                )
+        else:
+            pickup_time_display = (
+                booking.pickup_time.strftime('%I:%M %p UTC')
+                if booking.pickup_time else ''
+            )
+
         # Prepare template data
         template_data = {
             'booking_reference': booking.booking_reference,
-            'pickup_time': booking.pickup_time.strftime('%I:%M %p') if booking.pickup_time else '',
+            'pickup_time': pickup_time_display,
             'pickup_location': booking.pickup_location.get('address', '') if isinstance(booking.pickup_location,
                                                                                         dict) else str(
                 booking.pickup_location),

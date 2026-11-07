@@ -1,0 +1,276 @@
+
+name: OCI staging backup and restore drill
+
+on:
+  push:
+    branches:
+      - feat/oci-offsite-backup-current-main-20261106
+    paths:
+      - "app/backup/**"
+      - "scripts/ops/restore_oci_backup_to_test_db.py"
+      - "scripts/ops/run_oci_backup_recovery_drill.py"
+      - "tests/test_oci_restore_utils.py"
+      - ".github/workflows/oci-backup-recovery-drill.yml"
+  workflow_dispatch:
+    inputs:
+      confirm_real_oci_test:
+        description: "I confirm this run writes a synthetic backup to the private staging bucket and restores only to a disposable PostgreSQL container."
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: afcon360-oci-backup-staging-drill
+  cancel-in-progress: false
+
+jobs:
+  # This job deliberately receives no OCI credentials. It proves the workflow
+  # is parsed and the recovery scripts compile even while the protected
+  # environment gate is being configured.
+  code-preflight:
+    name: Credential-free backup and restore code preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the tested commit
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Compile backup and restore scripts
+        run: |
+          python -m py_compile app/backup/backup_service.py
+          python -m py_compile scripts/ops/restore_oci_backup_to_test_db.py
+          python -m py_compile scripts/ops/run_oci_backup_recovery_drill.py
+
+  real-oci-upload-download-restore:
+    name: Real OCI upload, download and PostgreSQL restore
+    if: ${{ github.event_name == 'push' || github.event.inputs.confirm_real_oci_test == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment:
+      name: oci-backup-staging
+
+    services:
+      postgres-source:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: AFCON360-OCI-Source-Only-2026
+          POSTGRES_DB: afcon360_oci_source_test
+          TZ: UTC
+          PGTZ: UTC
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d afcon360_oci_source_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      APP_ENV: testing
+      FLASK_ENV: testing
+      DISABLE_REDIS: "1"
+      SOCKETIO_ENABLED: "false"
+      DEBUG: "false"
+      TZ: UTC
+      PGTZ: UTC
+      SECRET_KEY: "oci-drill-only-not-a-production-secret"
+      SECURITY_SALT: "oci-drill-only-security-salt-2026"
+      ENCRYPTION_KEY: "oci-drill-only-encryption-key-not-production"
+      MFA_ENCRYPTION_KEY: "oci-drill-only-mfa-key-not-production"
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: afcon360_oci_source_test
+      DB_USER: postgres
+      DB_PASS: AFCON360-OCI-Source-Only-2026
+      DATABASE_URL: postgresql://postgres:AFCON360-OCI-Source-Only-2026@127.0.0.1:5432/afcon360_oci_source_test
+      TEST_DATABASE_URL: postgresql://postgres:AFCON360-OCI-Source-Only-2026@127.0.0.1:5432/afcon360_oci_source_test
+      BACKUP_DIR: /tmp/afcon360-oci-drill-backups
+      BACKUP_DUMP_TIMEOUT: "1800"
+
+    steps:
+      - name: Check out the exact tested commit
+        uses: actions/checkout@v4
+
+      - name: Validate protected OCI staging configuration
+        env:
+          BACKUP_OFFSITE_BUCKET: ${{ vars.BACKUP_OFFSITE_BUCKET }}
+          BACKUP_OFFSITE_ACCESS_KEY: ${{ secrets.BACKUP_OFFSITE_ACCESS_KEY }}
+          BACKUP_OFFSITE_SECRET_KEY: ${{ secrets.BACKUP_OFFSITE_SECRET_KEY }}
+          OCI_REGION: ${{ vars.OCI_REGION }}
+          OCI_ENDPOINT_URL: ${{ vars.OCI_ENDPOINT_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in BACKUP_OFFSITE_BUCKET BACKUP_OFFSITE_ACCESS_KEY BACKUP_OFFSITE_SECRET_KEY OCI_REGION OCI_ENDPOINT_URL; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing protected oci-backup-staging settings: %s\n' "${missing[*]}" >&2
+            echo "Create the environment variables/secrets documented in docs/operations/OCI_OFFSITE_BACKUP_SETUP.md, then rerun this job." >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          endpoint = urlparse(os.environ["OCI_ENDPOINT_URL"])
+          if endpoint.scheme != "https" or not endpoint.hostname or endpoint.path not in ("", "/") or endpoint.query or endpoint.fragment:
+              raise SystemExit("OCI_ENDPOINT_URL must be an HTTPS OCI S3-compatibility endpoint without a path, query or fragment")
+          bucket = os.environ["BACKUP_OFFSITE_BUCKET"]
+          if not bucket or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for ch in bucket):
+              raise SystemExit("BACKUP_OFFSITE_BUCKET contains unsupported characters")
+          print("Protected OCI staging configuration is present; secret values were not displayed.")
+          PY
+
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+          pg_dump --version
+          psql --version
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install AFCON360 and OCI client dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install boto3
+
+      - name: Verify disposable source PostgreSQL credentials and test target
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from sqlalchemy.engine import make_url
+          from psycopg2 import connect
+
+          url = make_url(os.environ["TEST_DATABASE_URL"])
+          expected = {
+              "host": "127.0.0.1",
+              "port": 5432,
+              "database": "afcon360_oci_source_test",
+              "username": "postgres",
+          }
+          actual = {
+              "host": url.host,
+              "port": url.port,
+              "database": url.database,
+              "username": url.username,
+          }
+          if actual != expected:
+              raise SystemExit(f"Disposable PostgreSQL target mismatch: {actual!r}")
+          if url.password != os.environ.get("DB_PASS"):
+              raise SystemExit("TEST_DATABASE_URL password does not match DB_PASS; values were not printed.")
+          with connect(os.environ["TEST_DATABASE_URL"], connect_timeout=10) as conn:
+              with conn.cursor() as cursor:
+                  cursor.execute("SELECT current_user, current_database(), current_setting('TimeZone')")
+                  user, database, timezone = cursor.fetchone()
+          if user != "postgres" or database != "afcon360_oci_source_test":
+              raise SystemExit("Disposable PostgreSQL identity/database verification failed.")
+          print(f"Disposable PostgreSQL connection verified: user={user}, database={database}, timezone={timezone}.")
+          PY
+
+      - name: Build source database from reviewed migrations
+        run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Run binary-safe restore utility regression tests
+        run: python -m pytest -q tests/test_oci_restore_utils.py
+
+      - name: Create synthetic source data and upload a real database backup to OCI
+        env:
+          BACKUP_OFFSITE_ENABLED: "true"
+          BACKUP_OFFSITE_BUCKET: ${{ vars.BACKUP_OFFSITE_BUCKET }}
+          BACKUP_OFFSITE_ACCESS_KEY: ${{ secrets.BACKUP_OFFSITE_ACCESS_KEY }}
+          BACKUP_OFFSITE_SECRET_KEY: ${{ secrets.BACKUP_OFFSITE_SECRET_KEY }}
+          BACKUP_OFFSITE_PREFIX: afcon360/oci-backup-drills
+          BACKUP_OFFSITE_ENVIRONMENT: staging
+          OCI_REGION: ${{ vars.OCI_REGION }}
+          OCI_ENDPOINT_URL: ${{ vars.OCI_ENDPOINT_URL }}
+        id: backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker="AFCON360_OCI_DRILL_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          run_token="run${GITHUB_RUN_ID}_attempt${GITHUB_RUN_ATTEMPT}"
+          python scripts/ops/run_oci_backup_recovery_drill.py --marker "$marker" --run-token "$run_token"
+
+      - name: Start an isolated PostgreSQL restore server
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name afcon360-oci-restore-drill --env POSTGRES_USER=postgres --env POSTGRES_PASSWORD=AFCON360-Disposable-Restore-Only --env POSTGRES_DB=postgres --env TZ=UTC --env PGTZ=UTC --publish 127.0.0.1:5433:5432 postgres:15
+          ready=false
+          for attempt in $(seq 1 40); do
+            if docker exec afcon360-oci-restore-drill pg_isready -U postgres -d postgres; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$ready" != "true" ]]; then
+            docker logs afcon360-oci-restore-drill
+            exit 1
+          fi
+          restore_db="afcon360_restore_test_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          docker exec afcon360-oci-restore-drill psql -U postgres --no-psqlrc --set=ON_ERROR_STOP=on --command="CREATE ROLE afcon_restore_login LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'AFCON360-Disposable-Restore-Only';"
+          docker exec afcon360-oci-restore-drill createdb -U postgres --owner=afcon_restore_login "$restore_db"
+          {
+            echo "BACKUP_RESTORE_TEST_DATABASE=$restore_db"
+            echo "BACKUP_RESTORE_TEST_PGHOST=127.0.0.1"
+            echo "BACKUP_RESTORE_TEST_PGPORT=5433"
+            echo "BACKUP_RESTORE_TEST_PGUSER=afcon_restore_login"
+            echo "BACKUP_RESTORE_TEST_PGPASSWORD=AFCON360-Disposable-Restore-Only"
+            echo "BACKUP_RESTORE_CONFIRMATION=RESTORE_ONLY_TO_DISPOSABLE_TEST_DATABASE"
+          } >> "$GITHUB_ENV"
+
+      - name: Download the real OCI object and restore into the disposable database
+        shell: bash
+        env:
+          BACKUP_OFFSITE_BUCKET: ${{ vars.BACKUP_OFFSITE_BUCKET }}
+          BACKUP_OFFSITE_ACCESS_KEY: ${{ secrets.BACKUP_OFFSITE_ACCESS_KEY }}
+          BACKUP_OFFSITE_SECRET_KEY: ${{ secrets.BACKUP_OFFSITE_SECRET_KEY }}
+          BACKUP_OFFSITE_ENVIRONMENT: staging
+          OCI_REGION: ${{ vars.OCI_REGION }}
+          OCI_ENDPOINT_URL: ${{ vars.OCI_ENDPOINT_URL }}
+          OBJECT_KEY: ${{ steps.backup.outputs.object_key }}
+          EXPECTED_SHA256: ${{ steps.backup.outputs.sha256 }}
+          EXPECTED_SIZE: ${{ steps.backup.outputs.size }}
+          EXPECTED_REVISION: ${{ steps.backup.outputs.expected_revision }}
+          EXPECTED_TABLE_COUNT: ${{ steps.backup.outputs.expected_table_count }}
+          EXPECTED_USERS_COUNT: ${{ steps.backup.outputs.expected_users_count }}
+          EXPECTED_MARKER: ${{ steps.backup.outputs.expected_marker }}
+        run: |
+          set -euo pipefail
+          python scripts/ops/restore_oci_backup_to_test_db.py --object-key "$OBJECT_KEY" --sha256 "$EXPECTED_SHA256" --expected-size "$EXPECTED_SIZE" --expected-alembic-revision "$EXPECTED_REVISION" --expected-table-count "$EXPECTED_TABLE_COUNT" --expected-users-count "$EXPECTED_USERS_COUNT" --expected-marker "$EXPECTED_MARKER"
+
+      - name: Report recovery drill proof
+        if: success()
+        run: |
+          echo "OCI_UPLOAD_VERIFIED=true"
+          echo "OCI_REMOTE_READBACK_VERIFIED=true"
+          echo "OCI_DOWNLOAD_VERIFIED=true"
+          echo "POSTGRES_RESTORE_VERIFIED=true"
+          echo "RESTORED_DATA_MARKER_VERIFIED=true"
+          echo "RESTORE_TARGET=${BACKUP_RESTORE_TEST_DATABASE}"
+          echo "PRODUCTION_DATABASE_TOUCHED=false"
+
+      - name: Remove only the disposable restore container
+        if: always()
+        run: docker rm -f afcon360-oci-restore-drill || true

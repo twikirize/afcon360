@@ -132,7 +132,19 @@
                                         </div>
                                         <div class="alert alert-warning">
                                             <i class="fas fa-info-circle"></i>
-                                            Refund amount will be calculated based on the cancellation policy.
+                                            Eligible cancellations are refunded automatically. The host is notified but does not approve routine policy refunds.
+                                        </div>
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" value="1"
+                                                   id="requestHumanReview{{ booking.id }}" name="request_human_review">
+                                            <label class="form-check-label" for="requestHumanReview{{ booking.id }}">
+                                                Request platform administrator review (dispute, service failure or policy exception)
+                                            </label>
+                                        </div>
+                                        <div class="mb-2">
+                                            <label class="form-label" for="refundReviewReason{{ booking.id }}">Why is human review needed? (optional)</label>
+                                            <textarea class="form-control" id="refundReviewReason{{ booking.id }}"
+                                                      name="refund_review_reason" rows="2"></textarea>
                                         </div>
                                     </div>
                                     <div class="modal-footer">

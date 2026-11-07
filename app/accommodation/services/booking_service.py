@@ -760,19 +760,26 @@ class BookingService:
         if target_check_in == old_check_in and target_check_out == old_check_out:
             return False, "No date changes provided — new dates match the current booking", None
 
-        today = date.today()
+        # Check-in/check-out are calendar dates governed by the property,
+        # never by the app host or the guest's browser timezone.
+        prop = db.session.get(Property, booking.property_id)
+        if not prop:
+            return False, "Property not found", None
+        try:
+            today = prop.local_today()
+        except ValueError:
+            return False, (
+                "This property needs a valid IANA timezone before booking dates can be changed."
+            ), None
+
         if target_check_in < today:
-            return False, "New check-in date cannot be in the past", None
+            return False, "New check-in date cannot be in the past at the property", None
         if target_check_out <= today:
-            return False, "New check-out date must be in the future", None
+            return False, "New check-out date must be in the future at the property", None
         if target_check_out <= target_check_in:
             return False, "Check-out must be after check-in", None
 
         # Min / max stay validation
-        prop = db.session.get(Property, booking.property_id)
-        if not prop:
-            return False, "Property not found", None
-
         new_nights = (target_check_out - target_check_in).days
         if prop.min_stay_nights and new_nights < prop.min_stay_nights:
             return False, (
@@ -971,8 +978,13 @@ class BookingService:
         if booking.status != AccommodationBookingStatus.CONFIRMED.value:
             return f"Booking must be confirmed to check in (currently {booking.status})."
 
-        if booking.check_in > date.today():
-            return f"Check-in date is {booking.check_in.strftime('%b %d, %Y')} - too early to check in."
+        try:
+            property_today = booking.accommodation_property.local_today()
+        except (AttributeError, ValueError):
+            return "Property IANA timezone is not configured; check-in cannot be authorized."
+
+        if booking.check_in > property_today:
+            return f"Check-in date is {booking.check_in.strftime('%b %d, %Y')} - too early at the property."
 
         # Use policy evaluator for comprehensive check-in validation
         checkin_decision = BookingPolicyEvaluator.can_check_in(booking)
@@ -1007,8 +1019,13 @@ class BookingService:
         adjust_info: Optional[dict] = None
 
         try:
-            # Early-arrival adjustment: bring check-in forward to today
-            today = date.today()
+            # Early-arrival adjustment uses the property's current calendar day.
+            try:
+                today = booking.accommodation_property.local_today()
+            except (AttributeError, ValueError):
+                return False, (
+                    "Property IANA timezone is not configured; early check-in cannot be adjusted."
+                ), None
             if adjust_checkin_to_today and booking.check_in > today:
                 # Re-check availability for the shortened stay
                 ok, err, result = BookingService.modify_booking_dates(
@@ -1160,7 +1177,12 @@ class BookingService:
         adjust_info: Optional[dict] = None
 
         try:
-            today = date.today()
+            try:
+                today = booking.accommodation_property.local_today()
+            except (AttributeError, ValueError):
+                return False, (
+                    "Property IANA timezone is not configured; early check-out cannot be adjusted."
+                ), None
 
             # Early departure adjustment: move check-out forward to today
             if adjust_checkout_to_today and booking.check_out > today:
@@ -1568,6 +1590,8 @@ class BookingService:
     def record_policy_violation(
         property_id: int,
         reason: str = "Policy violation",
+        *,
+        commit: bool = True,
     ) -> Tuple[bool, Optional[str]]:
         """
         Record a policy violation for a property and auto-suspend if threshold exceeded.
@@ -1588,11 +1612,15 @@ class BookingService:
                     f"Property {property_id} auto-suspended after {prop.policy_violations} violations"
                 )
 
-            db.session.commit()
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
             return True, None
 
         except Exception as e:
-            db.session.rollback()
+            if commit:
+                db.session.rollback()
             logger.error(f"Failed to record policy violation for property {property_id}: {e}", exc_info=True)
             return False, str(e)
 
@@ -1606,18 +1634,27 @@ class BookingService:
         reason: str = None,
         ip_address: str = None,
         user_agent: str = None,
-        idempotency_key: str = None
+        idempotency_key: str = None,
+        request_human_review: bool = False,
+        review_reason: str = None,
     ) -> Tuple[bool, Optional[str], Optional[Decimal]]:
         """
-        Cancel a booking and process refund/debt based on payment method and policy.
-        
+        Cancel a booking and persist the policy-calculated refund entitlement.
+
         Payment method handling:
-        - pay_now: Process refund via wallet (idempotent)
-        - pay_on_arrival: Create CancellationPenalty debt if fine > 0
-        - deposit: Refund deposit if eligible per policy
-        
-        Idempotency: Uses booking.id + idempotency_key to prevent duplicate processing.
-        Concurrency: Row locking via select_for_update() on booking.
+        - pay_now/deposit: persist the booking-time policy amount. After this
+          cancellation commits, MarketplaceService executes a reconciled wallet
+          refund automatically or queues an exception for platform review.
+        - external payment: persist the policy entitlement; an approved refund
+          remains pending until the original provider/property executes it and
+          a separate reviewer verifies the provider reference.
+        - pay_on_arrival: create CancellationPenalty debt if fine > 0.
+
+        Cancellation and refund completion are separate lifecycle events.
+        This method never marks a booking REFUNDED before funds move.
+        Penalty idempotency uses booking.id + idempotency_key; MarketplaceService
+        owns the stable wallet refund key.
+        Concurrency: row locking via select_for_update() on booking.
         """
         booking = db.session.execute(
             select(AccommodationBooking).where(AccommodationBooking.id == booking_id).with_for_update()
@@ -1626,9 +1663,18 @@ class BookingService:
         if not booking:
             return False, "Booking not found", None
 
-        # Authority check (D-004): only the Booking Owner, the booker, or the host may cancel.
-        owner_id = booking.booking_owner_id or booking.booked_by_user_id
-        if cancelled_by_user_id not in (owner_id, booking.host_user_id):
+        # Match the guest cancellation route's authorization contract:
+        # booking owner, booker, named guest, primary guest or property host.
+        # The later refund boundary records this exact actor and will not allow
+        # a different guest/host to start the policy refund.
+        authorized_cancel_actor_ids = {
+            booking.booking_owner_id,
+            booking.booked_by_user_id,
+            booking.guest_user_id,
+            booking.primary_guest_id,
+            booking.host_user_id,
+        }
+        if cancelled_by_user_id not in authorized_cancel_actor_ids:
             return False, "You are not authorised to cancel this booking.", None
 
         # Get cancellation quote with user type for permission enforcement
@@ -1674,8 +1720,10 @@ class BookingService:
             booking.cancelled_by_user_id = cancelled_by_user_id
             booking.cancellation_reason = reason
 
-            # Persist the cancellation quote (explicit fine line item) so the
-            # penalty is auditable and independent of the withheld refund.
+            # Persist the machine calculation and its inputs before any money
+            # moves. Cancellation and refund are separate lifecycle events:
+            # a booking must never display REFUNDED before the ledger transfer
+            # has actually completed.
             snapshot = dict(booking.policy_snapshot or {})
             snapshot["cancellation_outcome"] = {
                 "policy": quote["policy"],
@@ -1688,54 +1736,90 @@ class BookingService:
                 "cancelled_by": cancelled_by_user_id,
                 "cancelled_at": booking.cancelled_at.isoformat(),
                 "from_status": old_status,
+                "policy_snapshot_version": (
+                    (snapshot.get("cancellation_policy_rules") or {}).get("snapshot_version")
+                ),
             }
-            booking.policy_snapshot = snapshot
+            from app.accommodation.services.marketplace_service import MarketplaceService
+            snapshot["cancellation_outcome_hmac"] = (
+                MarketplaceService.sign_cancellation_outcome(
+                    booking, snapshot["cancellation_outcome"]
+                )
+            )
 
-            # Record host policy violation if host cancels a confirmed/active booking
-            if (cancelled_by_user_id == booking.host_user_id and
-                old_status in [
-                    AccommodationBookingStatus.CONFIRMED.value,
-                    AccommodationBookingStatus.CHECKED_IN.value,
-                ]):
-                BookingService.record_policy_violation(
+            # Record host policy violation if host cancels a confirmed/active booking.
+            is_host_cancellation = cancelled_by_user_id == booking.host_user_id
+            if is_host_cancellation and old_status in [
+                AccommodationBookingStatus.CONFIRMED.value,
+                AccommodationBookingStatus.CHECKED_IN.value,
+            ]:
+                violation_recorded, violation_error = BookingService.record_policy_violation(
                     property_id=booking.property_id,
                     reason=f"Host cancelled booking {booking.booking_reference}: {reason}",
+                    commit=False,
                 )
+                if not violation_recorded:
+                    raise RuntimeError(
+                        f"Could not record host cancellation liability: {violation_error}"
+                    )
 
-            # 3. PROCESS PAYMENT METHOD SPECIFIC OUTCOMES
             payment_timing = booking.payment_timing or "pay_now"
-            
-            if payment_timing == "pay_now" and refund and refund > 0:
-                # Pay Now: Process refund via wallet (idempotent)
-                booking.refund_amount = refund
-                booking.payment_status = AccommodationPaymentStatus.REFUNDED.value
-                booking.refunded_at = datetime.now(timezone.utc)
-                
-                # Check if already refunded (idempotency)
-                if not booking.wallet_txn_id:
-                    # Will be processed by caller (route) after commit
-                    # The wallet transaction ID will be stored after refund succeeds
-                    pass
-                
-                BookingStateMachine.transition(
-                    booking,
-                    AccommodationBookingStatus.REFUNDED,
-                    changed_by_user_id=cancelled_by_user_id,
-                    reason="Refund processed",
-                    ip_address=ip_address,
-                    user_agent=user_agent,
-                    trigger="refund_processed"
+            refundable_cash_amount = (
+                refund if payment_timing in ("pay_now", "deposit") else Decimal("0.00")
+            )
+            review_flags = []
+            if request_human_review:
+                review_flags.append("human_review_requested")
+            if is_host_cancellation:
+                # Provider-cancellation liability rules are not yet represented
+                # by the guest cancellation policy; platform review decides it.
+                review_flags.append("provider_cancellation_liability_review")
+            if not (snapshot.get("cancellation_policy_rules") or {}).get("snapshot_version") == 2:
+                review_flags.append("booking_time_policy_snapshot_incomplete")
+
+            if refundable_cash_amount > 0 or review_flags:
+                workflow_state = (
+                    "pending_human_review" if review_flags else "screening"
                 )
-                logger.info(f"Refund of ${refund} queued for booking {booking.booking_reference}")
-                
-            elif payment_timing == "deposit" and refund and refund > 0:
-                # Deposit Only: Refund deposit portion
-                booking.refund_amount = refund
-                booking.payment_status = AccommodationPaymentStatus.REFUNDED.value
-                booking.refunded_at = datetime.now(timezone.utc)
-                logger.info(f"Deposit refund of ${refund} queued for booking {booking.booking_reference}")
-                
-            elif payment_timing == "pay_on_arrival" and fine and fine > 0:
+                snapshot["refund_workflow"] = {
+                    "state": workflow_state,
+                    "proposed_amount": str(refundable_cash_amount),
+                    "currency": booking.currency or "USD",
+                    "payment_method": booking.payment_method,
+                    "request_source": (
+                        "host_cancellation" if is_host_cancellation else "guest_cancellation"
+                    ),
+                    "requested_by_user_id": cancelled_by_user_id,
+                    "request_reason": (review_reason or reason or "").strip(),
+                    "submitted_at": datetime.now(timezone.utc).isoformat(),
+                    "risk_flags": review_flags,
+                    "policy_amount": str(quote["refund"]),
+                    "payment_timing": payment_timing,
+                }
+            else:
+                snapshot["refund_workflow"] = {
+                    "state": "no_refund_due",
+                    "proposed_amount": "0.00",
+                    "currency": booking.currency or "USD",
+                    "request_source": "booking_cancellation",
+                    "requested_by_user_id": cancelled_by_user_id,
+                    "submitted_at": datetime.now(timezone.utc).isoformat(),
+                    "risk_flags": [],
+                    "policy_amount": str(quote["refund"]),
+                    "payment_timing": payment_timing,
+                }
+            booking.policy_snapshot = snapshot
+            snapshot["refund_workflow"]["hmac_sha256"] = (
+                MarketplaceService.sign_refund_workflow(
+                    booking, snapshot["refund_workflow"]
+                )
+            )
+            booking.policy_snapshot = snapshot
+
+            # Do not set booking.refund_amount, refunded_at, payment_status=REFUNDED,
+            # or booking.status=REFUNDED here. Those are written only after a
+            # completed wallet ledger movement or a verified external-provider refund.
+            if payment_timing == "pay_on_arrival" and fine and fine > 0:
                 # Pay on Arrival: Create CancellationPenalty debt record (idempotent)
                 from time import time_ns
                 penalty_key = idempotency_key or f"cancel-{booking.id}-{time_ns()}"
@@ -1765,6 +1849,26 @@ class BookingService:
                     logger.info(f"Cancellation penalty already exists for booking {booking.booking_reference} (idempotent)")
 
             db.session.commit()
+
+            # Emit the established accommodation lifecycle signal only after
+            # the cancellation and its refund-review metadata have committed.
+            # The existing notification listener handles guest, host and
+            # module-admin notifications; this service does not call the
+            # notification subsystem directly.
+            try:
+                from app.notifications.signals import booking_cancelled
+                booking_cancelled.send(
+                    booking,
+                    booking=booking,
+                    cancelled_by=cancelled_by_user_id,
+                )
+            except Exception as notification_error:
+                logger.warning(
+                    "Booking cancellation notification signal failed for %s: %s",
+                    booking.booking_reference,
+                    notification_error,
+                )
+
             logger.info(
                 f"Booking cancelled: {booking.booking_reference} | "
                 f"Cancelled by: {cancelled_by_user_id} | "
@@ -1772,7 +1876,7 @@ class BookingService:
                 f"Payment: {payment_timing} | Reason: {reason}"
             )
 
-            return True, msg, refund
+            return True, msg, refundable_cash_amount
 
         except InvalidStateTransition as e:
             db.session.rollback()

@@ -17,6 +17,7 @@
 # ============================================================================
 
 import os
+import json
 import logging
 from decimal import Decimal
 from datetime import timedelta
@@ -106,6 +107,10 @@ class Config:
 
     # ---- Auth secrets -------------------------------------------------------
     SECRET_KEY    = os.getenv("SECRET_KEY")
+    # A dedicated key is mandatory in production; the SECRET_KEY fallback is
+    # retained only for local/test compatibility. validate_for_production()
+    # refuses production startup unless this key is independently configured.
+    REFUND_POLICY_SIGNING_KEY = os.getenv("REFUND_POLICY_SIGNING_KEY") or SECRET_KEY
     SECURITY_SALT = os.getenv("SECURITY_SALT")
 
     # Owner MFA can be bootstrapped after every active owner has enrolled.
@@ -142,7 +147,12 @@ class Config:
         "pool_recycle":     int(os.getenv("DB_POOL_RECYCLE",  "1800")),
         "pool_pre_ping":    True,
         "connect_args": {
-            "options": "-c lock_timeout=5000 -c statement_timeout=60000 -c idle_in_transaction_session_timeout=60000"
+            "options": (
+                "-c timezone=UTC "
+                "-c lock_timeout=5000 "
+                "-c statement_timeout=60000 "
+                "-c idle_in_transaction_session_timeout=60000"
+            )
         }
     }
 
@@ -245,10 +255,20 @@ class Config:
     TRANSPORT_BOOKING_SCHEMA_ENFORCE = (
         os.environ.get("TRANSPORT_BOOKING_SCHEMA_ENFORCE", "false").lower() == "true"
     )
-    # App wall-clock zone used when a naive datetime (e.g. the booking
-    # form's pickup_time) arrives without an offset. Interpretation
-    # contract for transport booking_service.create_booking.
-    APP_TZ = os.getenv("APP_TZ", "Africa/Nairobi")
+    # Explicit business/reporting calendar policies. No global APP_TZ is used.
+    KYC_DEFAULT_JURISDICTION_CODE = os.getenv("KYC_DEFAULT_JURISDICTION_CODE", "UG").strip().upper()
+    REGULATOR_REPORT_TIMEZONE = os.getenv("REGULATOR_REPORT_TIMEZONE", "UTC").strip()
+    # AML deadlines fail closed until a regulator-sourced calendar is approved.
+    try:
+        AML_APPROVED_WORKING_CALENDARS = json.loads(
+            os.getenv("AML_APPROVED_WORKING_CALENDARS", "{}")
+        )
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("AML_APPROVED_WORKING_CALENDARS must be valid JSON") from exc
+    if not isinstance(AML_APPROVED_WORKING_CALENDARS, dict):
+        raise RuntimeError("AML_APPROVED_WORKING_CALENDARS must be a JSON object")
+    EVENT_REPORT_TIMEZONE = os.getenv("EVENT_REPORT_TIMEZONE", "UTC").strip()
+    ACCOMMODATION_REPORT_TIMEZONE = os.getenv("ACCOMMODATION_REPORT_TIMEZONE", "UTC").strip()
 
     # ---- Email --------------------------------------------------------------
     MAIL_SERVER         = os.getenv("MAIL_SERVER",    "smtp.gmail.com")
@@ -296,6 +316,11 @@ class Config:
     SIGNUP_RATE_WINDOW         = int(os.getenv("SIGNUP_RATE_WINDOW",         "900"))   # 15 min
     # Log the OTP instead of failing when mail is unconfigured. Never enable in
     # production - it is auto-detected for local development.
+    # Global outbound SMS/WhatsApp kill switch. Leave off until a provider has
+    # credentials, a verified sender, and a successful owner-run delivery test.
+    SMS_DELIVERY_ENABLED      = os.getenv("SMS_DELIVERY_ENABLED", "false").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
     OTP_DEV_LOG_FALLBACK       = os.getenv("OTP_DEV_LOG_FALLBACK",       "false").lower() == "true"
     OTP_FAILURE_ALERT_THRESHOLD = int(os.getenv("OTP_FAILURE_ALERT_THRESHOLD", "10"))
     OTP_PEPPER                 = os.getenv("OTP_PEPPER")  # falls back to SECRET_KEY
@@ -348,6 +373,23 @@ class Config:
         f"{os.getenv('OCI_REGION', 'eu-frankfurt-1')}.oraclecloud.com"
     )
     CDN_BASE_URL = os.getenv('CDN_BASE_URL', '')         # Empty = serve from storage directly
+
+    # Optional private off-site backup target. Uses a dedicated OCI IAM
+    # Customer Secret Key, separate from the media-storage credentials.
+    # Disabled by default; enabling it requires a private bucket and all
+    # dedicated credentials before production startup.
+    BACKUP_OFFSITE_ENABLED = os.getenv(
+        "BACKUP_OFFSITE_ENABLED", "false"
+    ).strip().lower() == "true"
+    BACKUP_OFFSITE_BUCKET = os.getenv("BACKUP_OFFSITE_BUCKET")
+    BACKUP_OFFSITE_ACCESS_KEY = os.getenv("BACKUP_OFFSITE_ACCESS_KEY")
+    BACKUP_OFFSITE_SECRET_KEY = os.getenv("BACKUP_OFFSITE_SECRET_KEY")
+    BACKUP_OFFSITE_PREFIX = os.getenv(
+        "BACKUP_OFFSITE_PREFIX", "afcon360/backups"
+    )
+    BACKUP_OFFSITE_ENVIRONMENT = os.getenv(
+        "BACKUP_OFFSITE_ENVIRONMENT", os.getenv("FLASK_ENV", "production")
+    )
 
     # Upload limits
     MEDIA_MAX_PHOTO_SIZE = int(os.getenv('MEDIA_MAX_PHOTO_SIZE', str(20 * 1024 * 1024)))  # 20MB
@@ -441,7 +483,38 @@ class Config:
         if not cls.ENCRYPTION_KEY_VALUE or cls.ENCRYPTION_KEY_VALUE.startswith("REPLACE_"):
             missing.append("ENCRYPTION_KEY")
 
-        # Warn (not fail) for service credentials — they may not be needed at boot
+        # Refund policy HMAC evidence must verify identically on every web and
+        # worker node. A SECRET_KEY fallback is not an acceptable production
+        # configuration because it can mask a missing dedicated key or couple
+        # refund evidence to unrelated application-secret rotation.
+        refund_policy_signing_key = (
+            os.getenv("REFUND_POLICY_SIGNING_KEY") or ""
+        ).strip()
+        if (
+            len(refund_policy_signing_key) < 32
+            or refund_policy_signing_key.startswith("REPLACE_")
+            or not cls.SECRET_KEY
+            or refund_policy_signing_key == cls.SECRET_KEY
+        ):
+            missing.append(
+                "REFUND_POLICY_SIGNING_KEY (independent key, at least 32 characters)"
+            )
+
+        if cls.BACKUP_OFFSITE_ENABLED:
+            for name in (
+                "BACKUP_OFFSITE_BUCKET",
+                "BACKUP_OFFSITE_ACCESS_KEY",
+                "BACKUP_OFFSITE_SECRET_KEY",
+                "OCI_ENDPOINT_URL",
+                "OCI_REGION",
+            ):
+                if not getattr(cls, name, None):
+                    missing.append(f"{name} (required when BACKUP_OFFSITE_ENABLED=true)")
+
+        # SMTP environment values are now a migration fallback only. The
+        # canonical provider may be configured in the encrypted
+        # communication_settings row by the Owner, so missing process-level
+        # username/password is not itself evidence that mail is unconfigured.
         warnings = []
         if not cls.MAIL_USERNAME:
             warnings.append("MAIL_USERNAME")
@@ -450,7 +523,10 @@ class Config:
 
         if warnings:
             logger.warning(
-                f"[CONFIG] Production service credentials not set: {', '.join(warnings)}"
+                "[CONFIG] SMTP environment fallback credentials not set: "
+                f"{', '.join(warnings)}. The Owner-managed encrypted email "
+                "provider may still be configured; verify it through the "
+                "communication settings page and asynchronous delivery test."
             )
 
         if missing:

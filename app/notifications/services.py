@@ -24,6 +24,8 @@ from app.notifications.models import (
 )
 from app.notifications.channel_handlers import (
     EmailHandler, SmsHandler, PushHandler, InAppHandler, WebhookHandler,
+    OCIEmailHandler,
+    TwilioSmsHandler, TwilioWhatsAppHandler,
 )
 from app.notifications.template_loader import template_loader
 from app.notifications.utils import generate_idempotency_key, calculate_backoff
@@ -64,7 +66,10 @@ class NotificationService:
     """
 
     HANDLERS = {
-        NotificationChannel.EMAIL: EmailHandler(),
+        NotificationChannel.EMAIL: EmailHandler(),          # Transactional (Gmail SMTP)
+        'oci_email': OCIEmailHandler(),                      # Bulk/Marketing (OCI Email Delivery)
+        'twilio_sms': TwilioSmsHandler(),                    # SMS via Twilio
+        'twilio_whatsapp': TwilioWhatsAppHandler(),          # WhatsApp via Twilio
         NotificationChannel.SMS: SmsHandler(),
         NotificationChannel.PUSH: PushHandler(),
         NotificationChannel.IN_APP: InAppHandler(),
@@ -231,16 +236,24 @@ class NotificationService:
 
         Returns the final list of channels to deliver on.
         """
-        internal_channels = [c for c in channels if NotificationChannel(c) == NotificationChannel.IN_APP]
-        external_channels = [c for c in channels if NotificationChannel(c) != NotificationChannel.IN_APP]
+        # Helper: safely check if channel is a valid enum value
+        def _is_valid_enum_channel(c) -> bool:
+            try:
+                NotificationChannel(c)
+                return True
+            except ValueError:
+                return False
+
+        internal_channels = [c for c in channels if _is_valid_enum_channel(c) and NotificationChannel(c) == NotificationChannel.IN_APP]
+        external_channels = [c for c in channels if not _is_valid_enum_channel(c) or NotificationChannel(c) != NotificationChannel.IN_APP]
 
         # No external intent -> keep as-is (in_app only or already resolved).
         if not external_channels:
             return list(channels)
 
         # Webhook is always external (subscriber integration) — keep as-is.
-        webhook_channels = [c for c in external_channels if NotificationChannel(c) == NotificationChannel.WEBHOOK]
-        non_webhook_external = [c for c in external_channels if NotificationChannel(c) != NotificationChannel.WEBHOOK]
+        webhook_channels = [c for c in external_channels if _is_valid_enum_channel(c) and NotificationChannel(c) == NotificationChannel.WEBHOOK]
+        non_webhook_external = [c for c in external_channels if not _is_valid_enum_channel(c) or NotificationChannel(c) != NotificationChannel.WEBHOOK]
 
         # External recipient (no user) -> external channels are legitimate.
         if not user_id:
@@ -369,13 +382,23 @@ class NotificationService:
                 notification.scheduled_for = None
                 notification.link = link
             else:
+                # Gracefully handle channel strings (enum or future custom channels).
+                # Store enum value for DB; delivery loop uses original string via HANDLERS[channel_str].
+                _primary = NotificationChannel.IN_APP
+                if len(channels) == 1:
+                    try:
+                        _primary = NotificationChannel(channels[0])
+                    except ValueError:
+                        # Future custom channel (e.g. 'mailgun_email') - fallback to EMAIL for DB
+                        _primary = NotificationChannel.EMAIL
+
                 notification = Notification(
                     user_id=user_id,
                     email=recipient_email,
                     phone=recipient_phone,
                     type=notification_type,
                     module=cls._resolve_module(module, notification_type),
-                    channel=NotificationChannel(channels[0]) if len(channels) == 1 else NotificationChannel.IN_APP,
+                    channel=_primary,
                     context=data or context or {},
                     subject=title,
                     body=message,
@@ -396,8 +419,14 @@ class NotificationService:
             all_success = True
 
             for channel_str in channels:
-                channel = NotificationChannel(channel_str)
-                handler = cls.HANDLERS.get(NotificationChannel(channel_str))
+                # Convert to enum for DB constraints (OCI_EMAIL is now valid)
+                try:
+                    channel = NotificationChannel(channel_str)
+                except ValueError:
+                    # Future custom channels (e.g. 'mailgun_email')
+                    channel = NotificationChannel.IN_APP
+                
+                handler = cls.HANDLERS.get(channel_str)  # Use string key for custom channels
 
                 if not handler:
                     logger.warning(f"Unknown channel '{channel_str}' for notification {notification.id}")
@@ -418,27 +447,72 @@ class NotificationService:
                     all_success = False
                     continue
 
-                # Deliver
-                try:
-                    result = handler.deliver(notification, recipient)
-                    results.append({
-                        'channel': channel_str,
-                        'success': True,
-                        'external_id': result.get('external_id'),
-                        'response_code': result.get('response_code'),
-                    })
-                    cls._log_delivery(notification.id, channel_str, 'success', result)
-                except Exception as e:
-                    logger.error(
-                        f"Delivery failed for notification {notification.id} "
-                        f"via {channel_str}: {e}", exc_info=True
-                    )
+                # Deliver with fallback: if oci_email fails, try Gmail SMTP
+                delivered = False
+                fallback_channels = []
+                
+                # If oci_email fails, fall back to Gmail SMTP (EMAIL channel)
+                if channel_str == 'oci_email':
+                    fallback_channels = ['email']
+                
+                channels_to_try = [channel_str] + fallback_channels
+                
+                for try_channel in channels_to_try:
+                    # Registry keys are strings; custom channels need not be enum values.
+                    try_handler = cls.HANDLERS.get(try_channel)
+                    if not try_handler:
+                        continue
+                    
+                    # Validate recipient for this channel
+                    if not try_handler.validate_recipient(recipient):
+                        continue
+                    
+                    try:
+                        result = try_handler.deliver(notification, recipient)
+                        if result.get('success'):
+                            results.append({
+                                'channel': try_channel,
+                                'success': True,
+                                'external_id': result.get('external_id'),
+                                'response_code': result.get('response_code'),
+                            })
+                            cls._log_delivery(notification.id, try_channel, 'success', result)
+                            
+                            if try_channel != channel_str:
+                                logger.warning(
+                                    f"Fallback used: {channel_str} failed, delivered via {try_channel} "
+                                    f"for notification {notification.id}"
+                                )
+                            delivered = True
+                            break
+                        else:
+                            safe_error_code = result.get('error_code') or result.get('status_code') or 'delivery_failed'
+                            safe_error_code = ''.join(
+                                ch for ch in str(safe_error_code) if ch.isalnum() or ch in '._-'
+                            )[:80]
+                            logger.warning(
+                                "Channel delivery returned failure "
+                                "(notification_id=%s, channel=%s, error_code=%s, response_code=%s)",
+                                notification.id, try_channel, safe_error_code, result.get('response_code'),
+                            )
+                            cls._log_delivery(notification.id, try_channel, 'failure', result)
+                    except Exception as exc:
+                        logger.error(
+                            "Notification delivery raised an exception "
+                            "(notification_id=%s, channel=%s, exception_type=%s)",
+                            notification.id, try_channel, type(exc).__name__,
+                        )
+                        cls._log_delivery(
+                            notification.id, try_channel, 'failure',
+                            {'error_code': type(exc).__name__},
+                        )
+                
+                if not delivered:
                     results.append({
                         'channel': channel_str,
                         'success': False,
-                        'error': str(e),
+                        'error': 'All delivery channels (including fallback) failed',
                     })
-                    cls._log_delivery(notification.id, channel_str, 'failure', {'error': str(e)})
                     all_success = False
 
             # Update notification status
@@ -966,18 +1040,28 @@ class NotificationService:
         status: str,
         response: dict,
     ) -> None:
-        """Log a delivery attempt."""
+        """Persist a safe, allowlisted delivery diagnostic."""
         try:
+            safe_code = response.get('error_code') or response.get('status_code') or ''
+            safe_code = ''.join(
+                ch for ch in str(safe_code) if ch.isalnum() or ch in '._-'
+            )[:80]
+            safe_body = f"error_code={safe_code}" if safe_code else (
+                'provider_accepted' if status == 'success' else 'delivery_failed'
+            )
             log = NotificationLog(
                 notification_id=notification_id,
                 channel=channel,
                 status=status,
                 response_code=response.get('response_code'),
-                response_body=str(response.get('response_body', ''))[:500],
+                response_body=safe_body,
             )
             db.session.add(log)
-        except Exception as e:
-            logger.error(f"Failed to log notification delivery: {e}")
+        except Exception as exc:
+            logger.error(
+                "Failed to persist notification delivery log (exception_type=%s)",
+                type(exc).__name__,
+            )
 
     @staticmethod
     def _render_email_template(notification: Notification) -> str:
