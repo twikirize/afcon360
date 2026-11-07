@@ -793,6 +793,11 @@ class TestEscrowHumanAuthorization:
             guest["user_id"],
             requester_user_id=host["user_id"],
         )
+        # Both business actors also hold an admin role in this test. They must
+        # still be blocked by the separation-of-duties rule, not merely by RBAC.
+        with app.app_context():
+            _grant_global_role(db.session.get(User, guest["user_id"]), "admin")
+            _grant_global_role(db.session.get(User, host["user_id"]), "admin")
 
         with _login_as(app, guest["user_id"]):
             guest_ok, guest_error = MarketplaceService.refund_guest_approved(
@@ -809,8 +814,8 @@ class TestEscrowHumanAuthorization:
 
         assert guest_ok is False
         assert host_ok is False
-        assert "administrator" in guest_error.lower()
-        assert "administrator" in host_error.lower()
+        assert "cancellation actor" in guest_error.lower()
+        assert "host" in host_error.lower()
         assert _count_transfers_for(held_booking, "refund") == 0
 
     def test_only_independent_platform_admin_can_approve(
