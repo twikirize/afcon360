@@ -71,7 +71,7 @@ def test_offsite_backup_upload_verifies_remote_content_checksum(
 
     with app.app_context():
         result = BackupService.__new__(BackupService)._upload_offsite_artifact(
-            str(backup_path), "database", checksum
+            str(backup_path), "database", checksum, backup_public_id="backup-test-123"
         )
 
     assert result["provider"] == "oci"
@@ -79,6 +79,7 @@ def test_offsite_backup_upload_verifies_remote_content_checksum(
     assert result["object_key"].startswith(
         "afcon360/backups/test/database/"
     )
+    assert "/backup-test-123/" in result["object_key"]
     assert result["sha256"] == checksum
     assert result["size"] == len(payload)
     assert result["verified"] is True
