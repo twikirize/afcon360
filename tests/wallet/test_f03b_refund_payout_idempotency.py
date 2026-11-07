@@ -1154,7 +1154,6 @@ class TestEscrowHumanAuthorization:
         assert booking.payment_status == AccommodationPaymentStatus.REFUNDED.value
         assert booking.refund_amount == Decimal("230.00")
         assert _count_transfers_for(held_booking, "refund") == 0
-        from app.audit.models import AuditLog
         audit = AuditLog.query.filter_by(
             action="accommodation_refund.external_refund_verified",
             resource_id=booking.booking_reference,
