@@ -22,7 +22,8 @@ Before enabling the feature:
 - Create a dedicated **private** Object Storage bucket for backups. Do not make it public and do not reuse the public media bucket.
 - Create a dedicated OCI identity/customer secret key for the backup integration. Grant only the minimum Object Storage permissions needed to create and read objects in this bucket. Do not reuse the media-storage key.
 - Decide the bucket's retention/lifecycle policy and any recovery-point requirements. Do not apply automatic deletion until retention and restore requirements are agreed.
-- Record the OCI S3-compatible endpoint and region for the chosen bucket's tenancy/region.
+- Record the OCI S3-compatible endpoint and region for the chosen bucket's tenancy/region. The usual endpoint format is `https://<namespace>.compat.objectstorage.<region>.oraclecloud.com`; use your tenancy's actual namespace and region.
+- OCI's S3 compatibility API requires Signature Version 4 and path-style requests. AFCON360 configures boto3 accordingly.
 
 ## Protected runtime settings
 
@@ -48,10 +49,42 @@ Do not print the values when checking configuration. Report only `SET`, `EMPTY`,
 Objects are written under:
 
 ```text
-<BACKUP_OFFSITE_PREFIX>/<environment>/<backup-type>/<year>/<month>/<filename>
+<BACKUP_OFFSITE_PREFIX>/<environment>/<backup-type>/<year>/<month>/<backup-public-id>/<filename>
 ```
 
-For example, database and files backups go to separate type prefixes. The database backup record stores the exact object key and checksum. Remote objects are not automatically deleted by the local retention cleanup; configure and review OCI lifecycle retention separately.
+For example, database and files backups go to separate type prefixes. Each object key includes the unique backup record public ID, preventing same-second backup-name collisions. The database backup record stores the exact object key and checksum. Remote objects are not automatically deleted by local retention cleanup; configure and review OCI lifecycle retention separately.
+
+## GitHub real-OCI recovery drill
+
+PR #35 adds `.github/workflows/oci-backup-recovery-drill.yml`. It uses a GitHub-hosted Ubuntu runner and two disposable PostgreSQL 15 instances; it does not connect to either production server or production database.
+
+Before running it, create the protected GitHub environment named `oci-backup-staging` and configure:
+
+**Environment variables**
+- `BACKUP_OFFSITE_BUCKET`: the private staging bucket name.
+- `OCI_REGION`: the OCI region identifier.
+- `OCI_ENDPOINT_URL`: the namespace-specific S3-compatible HTTPS endpoint.
+
+**Environment secrets**
+- `BACKUP_OFFSITE_ACCESS_KEY`: the dedicated OCI Customer Secret Key access key.
+- `BACKUP_OFFSITE_SECRET_KEY`: its secret key.
+
+Set environment protection to allow only the trusted backup feature branch while PR #35 is being tested (and `main` after it is merged). Require an authorized reviewer to approve access before the job receives the secrets. Never add these values as repository-wide secrets or commit them to Git.
+
+The workflow:
+1. Applies the reviewed Alembic migrations to an empty PostgreSQL 15 source database.
+2. Creates one synthetic user and a unique recovery-marker row.
+3. Calls the application's actual `BackupService.create_database_backup()` with OCI upload enabled.
+4. Confirms that OCI accepted the object and that AFCON360 streamed the object back and validated the full SHA-256 checksum.
+5. Starts a separate disposable PostgreSQL 15 container and pre-creates a database named `afcon360_restore_test_...`.
+6. Runs `restore_oci_backup_to_test_db.py` to download the object from OCI and restore it into that database.
+7. Requires the restored Alembic revision, non-system table count, user count and synthetic marker to match the source.
+
+The test object remains under `afcon360/oci-backup-drills/staging` in the staging bucket. Set a reviewed staging-bucket lifecycle rule to expire drill objects after the agreed retention period; the backup identity does not need permission to delete objects.
+
+The workflow runs on pushes to the PR #35 feature branch. The initial run will stop safely and name any missing environment settings. After creating the environment and adding the settings, rerun the failed job from GitHub Actions. Once merged, the workflow can also be run manually with its explicit confirmation checkbox.
+
+A successful result must show all of `OCI_UPLOAD_VERIFIED=true`, `OCI_REMOTE_READBACK_VERIFIED=true`, `OCI_DOWNLOAD_VERIFIED=true`, `POSTGRES_RESTORE_VERIFIED=true`, and `RESTORED_DATA_MARKER_VERIFIED=true`. A missing-secret/preflight failure is not a recovery result.
 
 ## Safe rollout and proof
 
