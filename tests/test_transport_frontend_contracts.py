@@ -101,11 +101,17 @@ def test_driver_dashboard_map_uses_shared_geo_renderer_without_duplicate_publish
     assert "maplibre" not in template.lower()
     assert "window.GeoMap.init" in adapter
     assert "navigator.geolocation.getCurrentPosition" in adapter
-    # This adapter may centre a local map, but never publishes location or
-    # performs a second GPS watch. driver-dashboard.js owns server publishing.
-    assert "fetch(" not in adapter
+    # This adapter may fetch only the read-only, driver-scoped demand
+    # snapshot. It never publishes location or starts a second GPS watch.
+    # driver-dashboard.js remains the sole owner of server publishing.
+    assert "container.dataset.demandUrl" in adapter
+    assert "method: 'GET'" in adapter
+    assert "credentials: 'same-origin'" in adapter
     assert "XMLHttpRequest" not in adapter
     assert "navigator.geolocation.watchPosition" not in adapter
+    assert "driver_demand_cells" in template
+    assert 'id="driverDemandRefreshBtn"' in template
+    assert "last 24 hours" in adapter
 
 
 def test_csrf_refresh_does_not_rotate_session_seed():
