@@ -18,9 +18,10 @@ Design rules honoured here (F-03b prompt):
 - Every transfer is a REAL wallet transfer against the PostgreSQL ledger
   (no mocked WalletService). KYC/fraud checks are mocked only because they are
   orthogonal to idempotency (deterministic pass-through).
-- Payout/refund tests act as the property's authenticated host. MarketplaceService
-  verifies human approval before WalletService executes system-owned escrow
-  transfers; the guest/platform wallet owner does not need to enter a PIN.
+- Payout tests act as the check-in-confirming host; exceptional refund approval
+  tests use an independent platform administrator. Routine policy refunds use
+  the authenticated cancellation actor plus frozen policy and reconciliation.
+  The escrow transfer is system-executed and never asks the guest to enter a PIN.
 - Concurrency tests use REAL threads, each with its own Flask app context,
   test request context and DB session (the pattern the existing skipped tests
   lacked).
@@ -43,6 +44,7 @@ from app.accommodation.models.booking import (
     AccommodationBooking,
     AccommodationBookingStatus,
     AccommodationPaymentStatus,
+    BookingStatusHistory,
 )
 from app.accommodation.models.commission import BookingCommission
 from app.accommodation.models.property import Property
@@ -213,7 +215,8 @@ def _grant_global_role(user, role_name):
     from app.identity.models.roles_permission import get_or_create_role
     from app.identity.models.user import UserRole
 
-    role = get_or_create_role(role_name, level=3)
+    # Do not rewrite seeded role hierarchy levels as a side effect of a test.
+    role = get_or_create_role(role_name)
     if not any(getattr(user_role, "role_id", None) == role.id for user_role in user.roles):
         db.session.add(UserRole(user_id=user.id, role_id=role.id))
         db.session.commit()
@@ -232,6 +235,14 @@ def platform_admin_two(app, test_db):
     with app.app_context():
         user = _make_user("platform-admin-two")
         _grant_global_role(user, "super_admin")
+        yield {"user_id": user.id}
+
+
+@pytest.fixture
+def accommodation_admin(app, test_db):
+    with app.app_context():
+        user = _make_user("accommodation-admin")
+        _grant_global_role(user, "accommodation_admin")
         yield {"user_id": user.id}
 
 
@@ -595,6 +606,72 @@ class TestEscrowHumanAuthorization:
         assert commission.status == "refunded"
         assert commission.refund_amount == Decimal("230.00")
 
+    def test_accommodation_admin_can_approve_exception_refund(
+        self, app, guest, host, accommodation_admin, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+        )
+        with _login_as(app, accommodation_admin["user_id"]):
+            ok, error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Accommodation administrator reviewed the exception evidence",
+            )
+
+        assert ok, error
+        refund_tx = (
+            db.session.query(TransactionModel)
+            .filter_by(client_request_id=REFUND_KEY_TEMPLATE.format(booking_id=held_booking))
+            .first()
+        )
+        assert refund_tx is not None
+        assert refund_tx.tx_metadata["approved_by_user_id"] == accommodation_admin["user_id"]
+        assert refund_tx.tx_metadata["authorization_source"] == "platform_human_review"
+        history = BookingStatusHistory.query.filter_by(
+            booking_id=held_booking,
+            trigger="refund_ledger_settled",
+        ).one()
+        assert history.changed_by == accommodation_admin["user_id"]
+        assert history.change_metadata["authorization"]["approval_reason"].startswith(
+            "Accommodation administrator"
+        )
+
+
+    def test_policy_partial_refund_is_automatic_and_not_marked_full(
+        self, app, guest, platform, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            workflow_state="screening",
+            refund_amount=Decimal("100.00"),
+        )
+        with _login_as(app, guest["user_id"]):
+            ok, error = _guarded_call(
+                lambda: MarketplaceService.refund_guest(
+                    held_booking,
+                    Decimal("100.00"),
+                )
+            )
+
+        assert ok, error
+        booking = db.session.get(AccommodationBooking, held_booking)
+        commission = _commission(app, held_booking)
+        assert booking.refund_amount == Decimal("100.00")
+        assert booking.payment_status == AccommodationPaymentStatus.PARTIAL_REFUND.value
+        assert booking.status == AccommodationBookingStatus.CANCELLED.value
+        assert commission.status == "partially_refunded"
+        assert commission.refund_amount == Decimal("100.00")
+        assert booking.policy_snapshot["refund_workflow"]["state"] == "partially_refunded"
+        assert booking.policy_snapshot["refund_workflow"]["remaining_escrow_amount"] == "130.00"
+        assert _count_transfers_for(held_booking, "refund") == 1
+
+
     def test_tampered_policy_snapshot_queues_human_review_without_transfer(
         self, app, guest, held_booking
     ):
@@ -737,6 +814,14 @@ class TestEscrowHumanAuthorization:
         assert workflow["rejection_reason"] == "Evidence does not support the requested exception"
         assert _count_transfers_for(held_booking, "refund") == 0
         assert booking.refunded_at is None
+        history = BookingStatusHistory.query.filter_by(
+            booking_id=held_booking,
+            trigger="refund_review_rejected",
+        ).one()
+        assert history.changed_by == platform_admin["user_id"]
+        assert history.change_metadata["rejection_reason"] == (
+            "Evidence does not support the requested exception"
+        )
 
     def test_external_refund_requires_second_admin_to_verify_execution(
         self, app, guest, host, platform_admin, platform_admin_two,
