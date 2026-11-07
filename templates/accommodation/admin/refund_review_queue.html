@@ -114,23 +114,38 @@
                     </div>
                     {% elif workflow.state == 'approved_external_execution_pending' %}
                     <div class="alert alert-info">
-                        The platform has approved this refund. Do not mark it paid until the original payment provider or property has actually returned the money.
+                        The platform has approved this refund, but it is not marked refunded. A different platform administrator must first inspect the original payment provider's merchant portal or settlement statement and confirm that the money actually returned.
+                        This is a manual dual-control check; it is not an automatic provider API confirmation.
                     </div>
-                    <form method="POST" action="{{ url_for('accommodation.admin_record_external_refund_execution', booking_id=booking.id) }}" class="row g-2">
+                    <form method="POST" action="{{ url_for('accommodation.admin_record_external_refund_execution', booking_id=booking.id) }}" class="row g-3">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="col-md-4">
                             <label class="form-label">Executed amount ({{ booking.currency }})</label>
                             <input class="form-control" type="number" name="executed_amount" step="0.01"
-                                   min="0.01" value="{{ workflow.get('approved_amount', '0.00') }}" required>
+                                   min="0.01" max="{{ booking.amount_paid or 0 }}"
+                                   value="{{ workflow.get('approved_amount', '0.00') }}" required>
                         </div>
                         <div class="col-md-5">
                             <label class="form-label">Original provider refund reference</label>
                             <input class="form-control" type="text" name="provider_reference" maxlength="255" required>
                         </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button type="submit" class="btn btn-primary w-100">Verify execution</button>
+                        <div class="col-12">
+                            <label class="form-label">Independent verification notes</label>
+                            <textarea class="form-control" name="verification_note" rows="3" minlength="10"
+                                      placeholder="State which provider record you checked, the transaction date, amount and currency shown there." required></textarea>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="submit" class="btn btn-primary w-100">Record verified execution</button>
                         </div>
                     </form>
+                {% elif workflow.state == 'partially_refunded' %}
+                    <div class="alert alert-warning mb-0">
+                        A partial refund has been sent, not a full refund. The remaining paid amount is
+                        {{ booking.currency }} {{ workflow.get('remaining_paid_amount', '0.00') }},
+                        and the remaining escrow amount is
+                        {{ booking.currency }} {{ workflow.get('remaining_escrow_amount', '0.00') }}.
+                        No further transfer or host payout is permitted by this workflow. Finance must reconcile and allocate the remaining escrow under the applicable cancellation settlement rules.
+                    </div>
                     {% elif workflow.state == 'approved_recovery_required' %}
                     <div class="alert alert-warning mb-0">
                         Human entitlement approval is recorded, but escrow recovery is required before any transfer can be made.
