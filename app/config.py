@@ -354,6 +354,23 @@ class Config:
     )
     CDN_BASE_URL = os.getenv('CDN_BASE_URL', '')         # Empty = serve from storage directly
 
+    # Optional private off-site backup target. Uses a dedicated OCI IAM
+    # Customer Secret Key, separate from the media-storage credentials.
+    # Disabled by default; enabling it requires a private bucket and all
+    # dedicated credentials before production startup.
+    BACKUP_OFFSITE_ENABLED = os.getenv(
+        "BACKUP_OFFSITE_ENABLED", "false"
+    ).strip().lower() == "true"
+    BACKUP_OFFSITE_BUCKET = os.getenv("BACKUP_OFFSITE_BUCKET")
+    BACKUP_OFFSITE_ACCESS_KEY = os.getenv("BACKUP_OFFSITE_ACCESS_KEY")
+    BACKUP_OFFSITE_SECRET_KEY = os.getenv("BACKUP_OFFSITE_SECRET_KEY")
+    BACKUP_OFFSITE_PREFIX = os.getenv(
+        "BACKUP_OFFSITE_PREFIX", "afcon360/backups"
+    )
+    BACKUP_OFFSITE_ENVIRONMENT = os.getenv(
+        "BACKUP_OFFSITE_ENVIRONMENT", os.getenv("FLASK_ENV", "production")
+    )
+
     # Upload limits
     MEDIA_MAX_PHOTO_SIZE = int(os.getenv('MEDIA_MAX_PHOTO_SIZE', str(20 * 1024 * 1024)))  # 20MB
     MEDIA_MAX_DOCUMENT_SIZE = int(os.getenv('MEDIA_MAX_DOCUMENT_SIZE', str(10 * 1024 * 1024)))  # 10MB
@@ -445,6 +462,17 @@ class Config:
             missing.append("SECURITY_SALT")
         if not cls.ENCRYPTION_KEY_VALUE or cls.ENCRYPTION_KEY_VALUE.startswith("REPLACE_"):
             missing.append("ENCRYPTION_KEY")
+
+        if cls.BACKUP_OFFSITE_ENABLED:
+            for name in (
+                "BACKUP_OFFSITE_BUCKET",
+                "BACKUP_OFFSITE_ACCESS_KEY",
+                "BACKUP_OFFSITE_SECRET_KEY",
+                "OCI_ENDPOINT_URL",
+                "OCI_REGION",
+            ):
+                if not getattr(cls, name, None):
+                    missing.append(f"{name} (required when BACKUP_OFFSITE_ENABLED=true)")
 
         # SMTP environment values are now a migration fallback only. The
         # canonical provider may be configured in the encrypted
