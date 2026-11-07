@@ -189,7 +189,7 @@ class RegulatorService:
 
     def generate_compliance_report(self, report_type: str, start_date: datetime, 
                                end_date: datetime, regulator_id: str,
-                               access_code: str) -> Dict[str, Any]:
+                               access_code: str, report_timezone: str = "UTC") -> Dict[str, Any]:
         """
         Generate compliance report for regulator.
         
@@ -220,11 +220,16 @@ class RegulatorService:
                     'error': f'Insufficient permissions for {report_type} report'
                 }
             
+            from app.utils.time_policy import require_iana_timezone
+            report_zone = require_iana_timezone(
+                report_timezone, field="regulator report timezone"
+            )
+
             # Generate report based on type
             if report_type == 'daily':
                 report_data = self._generate_daily_report(start_date, end_date)
             elif report_type == 'weekly':
-                report_data = self._generate_weekly_report(start_date, end_date)
+                report_data = self._generate_weekly_report(start_date, end_date, report_zone)
             elif report_type == 'monthly':
                 report_data = self._generate_monthly_report(start_date, end_date)
             elif report_type == 'aml':
@@ -241,6 +246,9 @@ class RegulatorService:
                     'error': f'Unsupported report type: {report_type}'
                 }
             
+            report_data["report_timezone"] = report_zone.key
+            report_data["period_basis"] = "[start, end) UTC instants; calendar grouping in report_timezone"
+
             # Encrypt sensitive data
             if self.fernet:
                 encrypted_data = self.fernet.encrypt(json.dumps(report_data).encode()).decode()
@@ -434,14 +442,17 @@ class RegulatorService:
             'transactions': [self._serialize_transaction(t) for t in transactions]
         }
 
-    def _generate_weekly_report(self, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+    def _generate_weekly_report(self, start_date: datetime, end_date: datetime, report_zone=None) -> Dict[str, Any]:
         """Generate weekly transaction report"""
+        from app.utils.time_policy import require_iana_timezone
+        if report_zone is None:
+            report_zone = require_iana_timezone("UTC")
         transactions = self._get_transactions_by_date_range(start_date, end_date)
         
-        # Group by day
+        # Group by day in the explicitly selected reporting calendar.
         daily_breakdown = {}
         for transaction in transactions:
-            date_key = transaction.created_at.date().isoformat()
+            date_key = transaction.created_at.astimezone(report_zone).date().isoformat()
             if date_key not in daily_breakdown:
                 daily_breakdown[date_key] = []
             daily_breakdown[date_key].append(transaction)
@@ -587,9 +598,11 @@ class RegulatorService:
 
     def _get_transactions_by_date_range(self, start_date: datetime, end_date: datetime) -> List:
         """Get transactions within date range"""
+        # Report periods are half-open UTC intervals [start, end); this avoids
+        # double-counting a boundary transaction in adjacent reports.
         return TransactionModel.query.filter(
             TransactionModel.created_at >= start_date,
-            TransactionModel.created_at <= end_date
+            TransactionModel.created_at < end_date
         ).all()
 
     def _serialize_transaction(self, transaction) -> Dict[str, Any]:
