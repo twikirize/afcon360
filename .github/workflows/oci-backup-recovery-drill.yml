@@ -28,7 +28,7 @@ concurrency:
 jobs:
   real-oci-upload-download-restore:
     name: Real OCI upload, download and PostgreSQL restore
-    if: github.event_name == 'push' || inputs.confirm_real_oci_test == true
+    if: ${{ github.event_name == 'push' || github.event.inputs.confirm_real_oci_test == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment:
