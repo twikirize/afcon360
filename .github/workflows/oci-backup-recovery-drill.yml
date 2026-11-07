@@ -26,6 +26,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # This job deliberately receives no OCI credentials. It proves the workflow
+  # is parsed and the recovery scripts compile even while the protected
+  # environment gate is being configured.
+  code-preflight:
+    name: Credential-free backup and restore code preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the tested commit
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Compile backup and restore scripts
+        run: |
+          python -m py_compile app/backup/backup_service.py
+          python -m py_compile scripts/ops/restore_oci_backup_to_test_db.py
+          python -m py_compile scripts/ops/run_oci_backup_recovery_drill.py
+
   real-oci-upload-download-restore:
     name: Real OCI upload, download and PostgreSQL restore
     if: ${{ github.event_name == 'push' || github.event.inputs.confirm_real_oci_test == 'true' }}
