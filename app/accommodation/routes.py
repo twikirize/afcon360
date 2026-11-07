@@ -2386,7 +2386,7 @@ def guest_checkout():
         }
         if cancellation_policy is not None:
             rules = {
-                "snapshot_version": 1,
+                "snapshot_version": 2,
                 "name": cancellation_policy.name,
                 "pre_checkin_days": int(cancellation_policy.pre_checkin_days),
                 "pre_checkin_refund_pct": str(cancellation_policy.pre_checkin_refund_pct),
@@ -2400,8 +2400,9 @@ def guest_checkout():
                 "source_property_id": cancellation_policy.property_id,
                 "captured_at": datetime.now(timezone.utc).isoformat(),
             }
-            rules_payload = json.dumps(rules, sort_keys=True, separators=(",", ":"))
-            rules["sha256"] = hashlib.sha256(rules_payload.encode("utf-8")).hexdigest()
+            rules["hmac_sha256"] = MarketplaceService.sign_cancellation_policy_rules(
+                booking, rules
+            )
             policy_snapshot["cancellation_policy_rules"] = rules
         else:
             policy_snapshot["cancellation_policy_rules"] = None
