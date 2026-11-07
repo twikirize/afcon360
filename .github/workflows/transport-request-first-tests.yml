@@ -19,6 +19,8 @@ on:
       - "app/utils/validators.py"
       - "app/utils/module_toggle_service.py"
       - "app/config.py"
+      - "app/backup/**"
+      - "tests/test_backup_offsite.py"
       - "app/notifications/**"
       - "app/utils/crypto.py"
       - "app/utils/log_redaction.py"
@@ -207,6 +209,7 @@ jobs:
         run: |
           bash -n scripts/ops/pre_release_readonly_audit.sh
           python -m py_compile scripts/ops/send_smtp_test_email.py
+          python -m py_compile scripts/ops/restore_oci_backup_to_test_db.py
 
       - name: Compile Python modules changed by the transport feature
         run: >-
@@ -214,6 +217,7 @@ jobs:
           app/transport
           app/wallet
           app/geo
+          app/backup
           scripts/seed_payment_methods.py
           app/tasks/transport_recovery.py
           app/tasks/transport_permission_purge.py
@@ -371,6 +375,7 @@ jobs:
             TARGETS+=(
               tests/test_celery_small_batch_contracts.py
               tests/test_phone_verification.py
+              tests/test_backup_offsite.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
               tests/notifications/test_scheduled_notification_delivery.py
               tests/notifications/test_models.py
