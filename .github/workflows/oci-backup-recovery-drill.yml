@@ -9,6 +9,7 @@ on:
       - "app/backup/**"
       - "scripts/ops/restore_oci_backup_to_test_db.py"
       - "scripts/ops/run_oci_backup_recovery_drill.py"
+      - "tests/test_oci_restore_utils.py"
       - ".github/workflows/oci-backup-recovery-drill.yml"
   workflow_dispatch:
     inputs:
@@ -45,6 +46,10 @@ jobs:
           python -m py_compile app/backup/backup_service.py
           python -m py_compile scripts/ops/restore_oci_backup_to_test_db.py
           python -m py_compile scripts/ops/run_oci_backup_recovery_drill.py
+      - name: Run binary-safe restore utility regression tests
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_oci_restore_utils.py
 
   real-oci-upload-download-restore:
     name: Real OCI upload, download and PostgreSQL restore
