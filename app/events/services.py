@@ -189,6 +189,46 @@ class EventService:
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Invalid venue-local registration time: {exc}") from exc
 
+    @classmethod
+    def _resolve_event_timezone_for_update(cls, event, data: Dict) -> str:
+        """Re-resolve the venue calendar when its physical location changes."""
+        from app.utils.location_timezone import resolve_location_timezone
+
+        new_country = data.get("country") or event.country
+        location_changed = (
+            str(data.get("city", event.city) or "").strip().casefold()
+            != str(event.city or "").strip().casefold()
+            or str(data.get("venue", event.venue) or "").strip().casefold()
+            != str(event.venue or "").strip().casefold()
+            or str(new_country or "").strip().upper()
+            != str(event.country or "").strip().upper()
+        )
+        requested_timezone = str(data.get("timezone_name") or "").strip() or None
+        if not location_changed and not requested_timezone:
+            requested_timezone = event.timezone_name
+        # A changed venue with no selected zone may use only a safe single-zone
+        # country default. Multi-zone countries must submit the new IANA zone.
+        return resolve_location_timezone(
+            explicit_timezone=requested_timezone,
+            country=new_country,
+        )
+
+    @classmethod
+    def _apply_registration_deadline_updates(
+        cls, event, data: Dict, timezone_name: str
+    ) -> None:
+        """Apply submitted venue-local wall times even when the venue zone changed."""
+        for input_name, model_attribute in (
+            ("registration_opens_at", "registration_opens_at"),
+            ("registration_closes_at", "registration_closes_at"),
+        ):
+            if input_name in data:
+                setattr(
+                    event,
+                    model_attribute,
+                    cls._parse_datetime(data.get(input_name), timezone_name),
+                )
+
     @staticmethod
     def _parse_bool(value, default: bool = False) -> bool:
         if value is None:
@@ -899,21 +939,8 @@ class EventService:
         if not user or not _is_event_owner(user, event):
             return False, "Unauthorized"
         try:
-            from app.utils.location_timezone import resolve_location_timezone
-            try:
-                old_timezone = event.business_timezone()
-            except ValueError:
-                old_timezone = None
             new_country = data.get("country") or event.country
-            country_changed = str(new_country).strip().upper() != str(event.country or "").strip().upper()
-            explicit_timezone = data.get("timezone_name") or (
-                None if country_changed else event.timezone_name
-            )
-            new_timezone = resolve_location_timezone(
-                explicit_timezone=explicit_timezone,
-                country=new_country,
-            )
-            timezone_changed = new_timezone != old_timezone
+            new_timezone = cls._resolve_event_timezone_for_update(event, data)
             event.country = new_country
             event.timezone_name = new_timezone
 
@@ -932,16 +959,9 @@ class EventService:
                     event.start_date = datetime.strptime(value, "%Y-%m-%d").date()
                 elif key == "end_date" and value:
                     event.end_date = datetime.strptime(value, "%Y-%m-%d").date()
-                elif key == "registration_opens_at":
-                    if not timezone_changed:
-                        event.registration_opens_at = cls._parse_datetime(
-                            value, new_timezone
-                        )
-                elif key == "registration_closes_at":
-                    if not timezone_changed:
-                        event.registration_closes_at = cls._parse_datetime(
-                            value, new_timezone
-                        )
+                elif key in {"registration_opens_at", "registration_closes_at"}:
+                    # Applied below in one operation using the newly selected venue zone.
+                    pass
                 elif key == "registration_required":
                     event.registration_required = cls._parse_bool(value)
                 elif key == "website":
@@ -950,6 +970,7 @@ class EventService:
                     event.contact_email = value
                 elif key == "contact_phone":
                     event.contact_phone = value
+            cls._apply_registration_deadline_updates(event, data, new_timezone)
             event.updated_at = datetime.now(timezone.utc)
             db.session.commit()
             cls.invalidate_registration_availability(event)
