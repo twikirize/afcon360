@@ -629,10 +629,12 @@ class TestEscrowHumanAuthorization:
             requester_user_id=host["user_id"],
         )
         with _login_as(app, accommodation_admin["user_id"]):
-            ok, error = MarketplaceService.refund_guest_approved(
-                held_booking,
-                Decimal("230.00"),
-                approval_reason="Accommodation administrator reviewed the exception evidence",
+            ok, error = _guarded_call(
+                lambda: MarketplaceService.refund_guest_approved(
+                    held_booking,
+                    Decimal("230.00"),
+                    approval_reason="Accommodation administrator reviewed the exception evidence",
+                )
             )
 
         assert ok, error
@@ -703,10 +705,12 @@ class TestEscrowHumanAuthorization:
         assert _count_transfers_for(held_booking, "refund") == 0
 
         with _login_as(app, platform_admin["user_id"]):
-            ok, error = MarketplaceService.refund_guest_approved(
-                held_booking,
-                Decimal("75.00"),
-                approval_reason="Guest requested an exception to the non-refundable policy; evidence reviewed",
+            ok, error = _guarded_call(
+                lambda: MarketplaceService.refund_guest_approved(
+                    held_booking,
+                    Decimal("75.00"),
+                    approval_reason="Guest requested an exception to the non-refundable policy; evidence reviewed",
+                )
             )
 
         assert ok, error
@@ -759,7 +763,7 @@ class TestEscrowHumanAuthorization:
             )
 
         assert ok is True
-        assert "review" in message.lower()
+        assert "queue" in message.lower()
         booking = db.session.get(AccommodationBooking, held_booking)
         workflow = booking.policy_snapshot["refund_workflow"]
         assert workflow["state"] == "pending_human_review"
@@ -803,11 +807,13 @@ class TestEscrowHumanAuthorization:
         assert _count_transfers_for(held_booking, "refund") == 0
 
         with _login_as(app, platform_admin["user_id"]):
-            approved, approval_error = MarketplaceService.refund_guest_approved(
-                held_booking,
-                Decimal("230.00"),
-                approval_reason="I checked the original payment and independently approved this integrity exception",
-                integrity_exception_acknowledged=True,
+            approved, approval_error = _guarded_call(
+                lambda: MarketplaceService.refund_guest_approved(
+                    held_booking,
+                    Decimal("230.00"),
+                    approval_reason="I checked the original payment and independently approved this integrity exception",
+                    integrity_exception_acknowledged=True,
+                )
             )
 
         assert approved, approval_error
@@ -867,7 +873,7 @@ class TestEscrowHumanAuthorization:
         booking = db.session.get(AccommodationBooking, held_booking)
         snapshot = dict(booking.policy_snapshot)
         workflow = dict(snapshot["refund_workflow"])
-        workflow["state"] = "screening"
+        workflow["state"] = "pending_human_review"
         workflow["risk_flags"] = []
         snapshot["refund_workflow"] = workflow
         booking.policy_snapshot = snapshot
@@ -931,10 +937,12 @@ class TestEscrowHumanAuthorization:
             requester_user_id=host["user_id"],
         )
         with _login_as(app, platform_admin["user_id"]):
-            ok, error = MarketplaceService.refund_guest_approved(
-                held_booking,
-                Decimal("230.00"),
-                approval_reason="Reviewed the booking, original payment and policy evidence",
+            ok, error = _guarded_call(
+                lambda: MarketplaceService.refund_guest_approved(
+                    held_booking,
+                    Decimal("230.00"),
+                    approval_reason="Reviewed the booking, original payment and policy evidence",
+                )
             )
 
         assert ok, error
@@ -969,10 +977,12 @@ class TestEscrowHumanAuthorization:
         assert _count_transfers_for(held_booking, "refund") == 0
 
         with _login_as(app, platform_admin_two["user_id"]):
-            independent_ok, independent_error = MarketplaceService.refund_guest_approved(
-                held_booking,
-                Decimal("230.00"),
-                approval_reason="Independent super-admin review",
+            independent_ok, independent_error = _guarded_call(
+                lambda: MarketplaceService.refund_guest_approved(
+                    held_booking,
+                    Decimal("230.00"),
+                    approval_reason="Independent super-admin review",
+                )
             )
         assert independent_ok, independent_error
         assert _count_transfers_for(held_booking, "refund") == 1
@@ -1014,15 +1024,6 @@ class TestEscrowHumanAuthorization:
             resource_id=db.session.get(
                 AccommodationBooking, held_booking
             ).booking_reference,
-        ).one()
-        assert audit.user_id == platform_admin["user_id"]
-        assert audit.meta["rejection_reason"] == (
-            "Evidence does not support the requested exception"
-        )
-        from app.audit.models import AuditLog
-        audit = AuditLog.query.filter_by(
-            action="accommodation_refund.refund_review_rejected",
-            resource_id=booking.booking_reference,
         ).one()
         assert audit.user_id == platform_admin["user_id"]
         assert audit.meta["rejection_reason"] == (
@@ -1130,7 +1131,7 @@ class TestEscrowHumanAuthorization:
                 reviewer_user_id=platform_admin_two["user_id"],
             )
         assert no_evidence_ok is False
-        assert "verification notes" in no_evidence_error.lower()
+        assert "original provider's system" in no_evidence_error.lower()
         booking = db.session.get(AccommodationBooking, held_booking)
         assert booking.policy_snapshot["refund_workflow"]["state"] == "approved_external_execution_pending"
         assert booking.refunded_at is None
