@@ -987,6 +987,13 @@ class MarketplaceService:
                 return False, "Approved refund cannot exceed the booking total"
 
             payment_method = str(booking.payment_method or "").lower()
+            payment_status = str(booking.payment_status or "").lower()
+            if payment_status not in {"paid", "partially_paid"}:
+                return False, "The original payment has not been confirmed as collected"
+            if Decimal(str(booking.amount_paid or 0)) <= 0:
+                return False, "There is no collected payment available to refund"
+            if payment_method not in {"wallet", "mock_gateway"} and not booking.wallet_txn_id:
+                return False, "The original external payment reference is missing; provider settlement cannot be verified"
             commission = (
                 BookingCommission.query.filter_by(booking_id=booking_id)
                 .with_for_update()
@@ -1075,6 +1082,7 @@ class MarketplaceService:
                     "approval_reason": reason,
                     "approved_at": datetime.now(timezone.utc).isoformat(),
                     "execution_owner": "original_payment_provider_or_property",
+                    "original_payment_reference": str(booking.wallet_txn_id),
                     "execution_note": "Do not mark refunded until the original payment channel supplies an execution reference.",
                 })
                 MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
