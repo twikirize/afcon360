@@ -295,6 +295,7 @@ def admin_edit_property(property_id):
                 "city": prop.city,
                 "state": prop.state,
                 "country": prop.country,
+                "timezone_name": prop.timezone_name or "",
                 "postal_code": prop.postal_code,
                 "base_price_per_night": prop.base_price_per_night,
                 "currency": prop.currency,
@@ -335,6 +336,18 @@ def admin_edit_property(property_id):
             prop.city = form.city.data
             prop.state = form.state.data
             prop.country = form.country.data
+            prop.timezone_name = (
+                form.timezone_name.data.strip()
+                if form.timezone_name.data and form.timezone_name.data.strip()
+                else prop.timezone_name
+            )
+            if not prop.timezone_name:
+                from app.utils.location_timezone import resolve_location_timezone
+                prop.timezone_name = resolve_location_timezone(
+                    latitude=prop.latitude,
+                    longitude=prop.longitude,
+                    country=prop.country,
+                )
             prop.postal_code = form.postal_code.data
             prop.base_price_per_night = form.base_price_per_night.data
             prop.currency = form.currency.data

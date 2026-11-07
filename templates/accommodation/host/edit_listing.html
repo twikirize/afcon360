@@ -203,6 +203,18 @@
             </div>
 
             <div class="col-md-6">
+              <label for="timezone_name" class="form-label">Property IANA Timezone</label>
+              {{ form.timezone_name(class="form-control", placeholder="e.g. Africa/Kampala or America/New_York", id="timezone_name", autocomplete="off") }}
+              {% if form.timezone_name.errors %}
+                <div class="invalid-feedback d-block">{{ form.timezone_name.errors[0] }}</div>
+              {% endif %}
+              <div class="form-text">
+                Controls check-in, check-out and property operating dates. Countries with multiple timezones require an exact IANA name.
+                Single-timezone countries can use their country default.
+              </div>
+            </div>
+
+            <div class="col-md-6">
               <label for="postal_code" class="form-label">Postal Code</label>
               {{ form.postal_code(class="form-control", placeholder="e.g., 256", id="postal_code") }}
               {% if form.postal_code.errors %}

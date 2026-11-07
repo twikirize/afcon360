@@ -527,12 +527,17 @@ class Property(BaseModel):
             str(value).strip(), field="property timezone"
         ).key
 
+    def business_timezone(self):
+        """Resolve the authoritative property calendar zone or fail explicitly."""
+        from app.utils.location_timezone import timezone_for_property
+        return timezone_for_property(self)
+
     def local_today(self):
         """Return the current calendar date at this property's location."""
         from datetime import datetime
         from app.utils.time_policy import require_iana_timezone
         zone = require_iana_timezone(
-            self.timezone_name, field="property timezone"
+            self.business_timezone(), field="property timezone"
         )
         return datetime.now(zone).date()
 

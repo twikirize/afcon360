@@ -133,3 +133,18 @@ def resolve_location_timezone(
         "A venue/property timezone is required for this location. "
         "Enter an IANA timezone such as Africa/Kampala or provide precise coordinates."
     )
+
+
+
+def timezone_for_property(property_obj, *, explicit_timezone=None, country=None):
+    """Resolve a property's business timezone without using ambient machine state."""
+    return resolve_location_timezone(
+        explicit_timezone=(
+            explicit_timezone
+            if explicit_timezone is not None
+            else getattr(property_obj, "timezone_name", None)
+        ),
+        latitude=getattr(property_obj, "latitude", None),
+        longitude=getattr(property_obj, "longitude", None),
+        country=country if country is not None else getattr(property_obj, "country", None),
+    )

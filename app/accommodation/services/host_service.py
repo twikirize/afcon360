@@ -124,6 +124,16 @@ class HostService:
                     "activated."
                 )
 
+        from app.utils.location_timezone import resolve_location_timezone
+
+        property_country = (data.get("country") or "").strip().upper()
+        property_timezone = resolve_location_timezone(
+            explicit_timezone=data.get("timezone_name"),
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+            country=property_country,
+        )
+
         title = data["title"].strip()
         slug = ensure_unique_slug(slugify(title), db.session, Property)
 
@@ -140,10 +150,11 @@ class HostService:
             address_line2=data.get("address_line2") or None,
             city=data["city"].strip(),
             state=data.get("state") or None,
-            country=data["country"].upper(),
+            country=property_country,
             postal_code=data.get("postal_code") or None,
-            latitude=None,
-            longitude=None,
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+            timezone_name=property_timezone,
             max_guests=data.get("max_guests", 2),
             bedrooms=data.get("bedrooms") or 0,
             beds=data.get("beds") or 0,
@@ -224,8 +235,41 @@ class HostService:
         prop.address_line2 = data.get("address_line2") or None
         prop.city = data["city"].strip()
         prop.state = data.get("state") or None
-        prop.country = data["country"].upper()
+        old_country = (prop.country or "").strip().upper()
+        new_country = (data.get("country") or old_country).strip().upper()
+        prop.country = new_country
         prop.postal_code = data.get("postal_code") or None
+        from app.utils.location_timezone import resolve_location_timezone
+        supplied_timezone = data.get("timezone_name")
+        if supplied_timezone:
+            prop.timezone_name = resolve_location_timezone(
+                explicit_timezone=supplied_timezone,
+                latitude=prop.latitude,
+                longitude=prop.longitude,
+                country=new_country,
+            )
+        elif new_country != old_country:
+            # A move across countries invalidates the old business calendar.
+            # Coordinates or an unambiguous country default must resolve the new one.
+            prop.timezone_name = resolve_location_timezone(
+                latitude=prop.latitude,
+                longitude=prop.longitude,
+                country=new_country,
+            )
+        elif prop.timezone_name:
+            # Validate retained timezone; never accept a malformed stored value.
+            prop.timezone_name = resolve_location_timezone(
+                explicit_timezone=prop.timezone_name,
+                latitude=prop.latitude,
+                longitude=prop.longitude,
+                country=new_country,
+            )
+        else:
+            prop.timezone_name = resolve_location_timezone(
+                latitude=prop.latitude,
+                longitude=prop.longitude,
+                country=new_country,
+            )
         prop.max_guests = data.get("max_guests", prop.max_guests)
         prop.bedrooms = data.get("bedrooms") or 0
         prop.beds = data.get("beds") or 0
