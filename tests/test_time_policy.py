@@ -65,7 +65,7 @@ def test_country_timezone_default_is_only_used_for_single_zone_countries():
     assert timezone_for_country("UG") == "Africa/Kampala"
     assert resolve_location_timezone(country="Uganda") == "Africa/Kampala"
     assert timezone_for_country("US") is None
-    with pytest.raises(ValueError, match="IANA timezone is required"):
+    with pytest.raises(ValueError, match="timezone is required for this location"):
         resolve_location_timezone(country="US")
     assert resolve_location_timezone(
         explicit_timezone="America/New_York", country="US"
