@@ -728,11 +728,60 @@ def start_channel_verification(user_id: int, channel: str) -> Tuple[bool, str, O
     elif channel in ("sms", "whatsapp"):
         if not user.phone:
             return False, "No phone number on file. Please update your profile with a phone number.", None
-        otp = OTPService.generate_sms_otp(length=6)
-        success, _ = OTPService.send_sms_otp(phone=user.phone, otp=otp, internal_user_id=user.id)
-        if not success:
-            return False, f"Failed to send {channel} OTP. Please check your phone number.", None
-        return True, f"Verification code sent via {channel} to {user.phone}.", otp
+        if not user.email:
+            return False, "No verified email address is available for phone verification.", None
+        if not (
+            getattr(user, "email_verified", False)
+            or getattr(user, "is_verified", False)
+        ):
+            return False, "Verify your email address before verifying your phone number.", None
+
+        # Keep the original SMS sender ready for the day a provider is
+        # deliberately activated. Until then, send the same phone OTP to the
+        # account's already-verified email address.
+        from flask import current_app, has_app_context
+
+        sms_delivery_enabled = bool(
+            has_app_context()
+            and current_app.config.get("SMS_DELIVERY_ENABLED", False)
+        )
+        if sms_delivery_enabled:
+            otp = OTPService.generate_sms_otp(length=6)
+            success, _ = OTPService.send_sms_otp(
+                phone=user.phone,
+                otp=otp,
+                internal_user_id=user.id,
+            )
+            if not success:
+                return False, "Failed to send SMS verification code. Please check the provider settings.", None
+            return True, f"Verification code sent by SMS to {user.phone}.", otp
+
+        otp = OTPService.generate_otp(length=6)
+        stored = OTPService.store_otp(
+            identifier=str(user.id),
+            otp=otp,
+            purpose="sms_verification",
+            ttl=300,
+        )
+        if not stored:
+            return False, "Failed to store phone verification code.", None
+
+        delivery = OTPService.send_email_otp_checked(
+            email=user.email,
+            otp=otp,
+            purpose="sms_verification",
+            user_id=user.id,
+            expires_in_minutes=5,
+        )
+        if not delivery.get("success"):
+            OTPService.invalidate_otp(str(user.id), "sms_verification")
+            return False, delivery.get("message", "Failed to email the phone verification code."), None
+
+        return (
+            True,
+            f"Phone verification code sent to your verified email address ({user.email}).",
+            otp if delivery.get("dev_fallback") else None,
+        )
 
     return False, "Invalid verification channel.", None
 
@@ -752,6 +801,11 @@ def verify_channel_otp(user_id: int, channel: str, otp: str) -> Tuple[bool, str]
     otp = (otp or "").strip()
     if not otp.isdigit() or len(otp) != 6:
         return False, "Please enter a valid 6-digit code."
+    if channel in ("sms", "whatsapp") and not (
+        getattr(user, "email_verified", False)
+        or getattr(user, "is_verified", False)
+    ):
+        return False, "Verify your email address before verifying your phone number."
 
     purpose = "channel_verify_email" if channel == "email" else "sms_verification"
     identifier = str(user.id) if channel == "email" else (str(user.id) if channel in ("sms", "whatsapp") else user.phone)

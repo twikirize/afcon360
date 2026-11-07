@@ -265,6 +265,8 @@ jobs:
           app/transport/routes.py
           app/auth/security_policy.py
           app/auth/otp_service.py
+          app/auth/phone_verification.py
+          app/auth/pending_registration.py
           app/auth/services.py
           app/identity/models/user.py
           app/profile/routes.py
@@ -303,6 +305,9 @@ jobs:
               "owner/communication_settings.html",
               "auth/mfa_setup.html",
               "auth/mfa_status.html",
+              "auth/verify_phone.html",
+              "auth/verify_options.html",
+              "auth/verify_otp.html",
               "transport/admin/dashboard.html",
               "base.html",
               "transport/driver/base.html",
@@ -365,13 +370,13 @@ jobs:
             mapfile -t TARGETS < tests/ci/failed_test_targets.txt
             TARGETS+=(
               tests/test_celery_small_batch_contracts.py
+              tests/test_phone_verification.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
               tests/notifications/test_scheduled_notification_delivery.py
               tests/notifications/test_models.py
               tests/notifications/test_sms_service_adapter.py
               tests/notifications/test_shared_email_configuration.py
               tests/notifications/test_custom_channel_fallback.py
-              tests/test_phone_verification.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
             )
             if [[ ${#TARGETS[@]} -eq 0 ]]; then
