@@ -923,6 +923,8 @@ class MarketplaceService:
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
             if not MarketplaceService.verify_refund_workflow(booking, workflow):
                 return False, "Refund workflow signature failed; do not approve until the case is safely resubmitted and reviewed"
+            if booking.refunded_at or Decimal(str(booking.refund_amount or 0)) > 0:
+                return False, "A refund has already been executed for this booking"
             if workflow.get("state") in {"refunded", "partially_refunded"}:
                 return False, "Already refunded"
             if workflow.get("state") != "pending_human_review":
@@ -954,6 +956,43 @@ class MarketplaceService:
             if amount > Decimal(str(booking.amount_paid or 0)):
                 return False, "Approved refund cannot exceed the amount actually collected"
             if payment_method in {"wallet", "mock_gateway"}:
+                screening_flags = MarketplaceService._refund_screening_flags(
+                    booking, amount, commission
+                )
+                integrity_flags = {
+                    "booking_time_policy_snapshot_incomplete",
+                    "booking_time_policy_snapshot_integrity_failed",
+                    "cancellation_outcome_integrity_failed",
+                }
+                discovered_integrity_flags = integrity_flags.intersection(screening_flags)
+                if discovered_integrity_flags:
+                    workflow.update({
+                        "risk_flags": list(dict.fromkeys(
+                            list(workflow.get("risk_flags") or [])
+                            + sorted(discovered_integrity_flags)
+                        )),
+                        "integrity_review_required": True,
+                        "integrity_reviewed_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    MarketplaceService._store_refund_workflow(
+                        booking, snapshot, workflow
+                    )
+                    booking.policy_snapshot = snapshot
+                    MarketplaceService._record_refund_history(
+                        booking,
+                        actor.id,
+                        "refund_policy_integrity_rechecked",
+                        {
+                            "integrity_flags": sorted(discovered_integrity_flags),
+                            "approval_blocked": True,
+                        },
+                    )
+                    db.session.commit()
+                    return False, (
+                        "The booking policy evidence failed its integrity check. "
+                        "The review queue has been updated; inspect the warning before approving."
+                    )
+
                 hard_flags = {
                     "original_platform_transaction_missing",
                     "original_payment_cannot_be_reconciled",
