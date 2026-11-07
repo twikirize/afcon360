@@ -896,6 +896,8 @@ class MarketplaceService:
         booking_id: int,
         refund_amount: Decimal,
         approval_reason: Optional[str] = None,
+        *,
+        integrity_exception_acknowledged: bool = False,
     ) -> Tuple[bool, Optional[str]]:
         """Execute a queued refund only after an independent platform admin approves it."""
         from flask_login import current_user
@@ -965,7 +967,7 @@ class MarketplaceService:
                     "cancellation_outcome_integrity_failed",
                 }
                 discovered_integrity_flags = integrity_flags.intersection(screening_flags)
-                if discovered_integrity_flags:
+                if discovered_integrity_flags and not integrity_exception_acknowledged:
                     workflow.update({
                         "risk_flags": list(dict.fromkeys(
                             list(workflow.get("risk_flags") or [])
@@ -990,7 +992,30 @@ class MarketplaceService:
                     db.session.commit()
                     return False, (
                         "The booking policy evidence failed its integrity check. "
-                        "The review queue has been updated; inspect the warning before approving."
+                        "Review the warning and explicitly acknowledge the exception before approval."
+                    )
+                if discovered_integrity_flags:
+                    workflow.update({
+                        "integrity_exception_acknowledged_by_user_id": actor.id,
+                        "integrity_exception_acknowledged_at": datetime.now(timezone.utc).isoformat(),
+                        "integrity_exception_reason": reason,
+                        "risk_flags": list(dict.fromkeys(
+                            list(workflow.get("risk_flags") or [])
+                            + sorted(discovered_integrity_flags)
+                        )),
+                    })
+                    MarketplaceService._store_refund_workflow(
+                        booking, snapshot, workflow
+                    )
+                    booking.policy_snapshot = snapshot
+                    MarketplaceService._record_refund_history(
+                        booking,
+                        actor.id,
+                        "refund_policy_integrity_exception_acknowledged",
+                        {
+                            "integrity_flags": sorted(discovered_integrity_flags),
+                            "approval_reason": reason,
+                        },
                     )
 
                 hard_flags = {
