@@ -119,9 +119,17 @@ def _download_and_verify(
     digest = hashlib.sha256()
     total = 0
     destination.parent.mkdir(parents=True, exist_ok=True)
+    destination_created = False
     try:
-        with destination.open("xb") as output:
-            os.chmod(destination, 0o600)
+        # Create recovery data as owner-readable only, and never remove a
+        # pre-existing file if exclusive creation fails.
+        fd = os.open(
+            destination,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+            0o600,
+        )
+        destination_created = True
+        with os.fdopen(fd, "wb") as output:
             for chunk in iter(lambda: body.read(1024 * 1024), b""):
                 output.write(chunk)
                 digest.update(chunk)
@@ -129,7 +137,8 @@ def _download_and_verify(
             output.flush()
             os.fsync(output.fileno())
     except Exception:
-        destination.unlink(missing_ok=True)
+        if destination_created:
+            destination.unlink(missing_ok=True)
         raise
     finally:
         body.close()
@@ -171,15 +180,22 @@ def _prepare_restore_input(backup_path: Path) -> Path:
         return backup_path
 
     sql_path = backup_path.with_suffix("")
+    sql_created = False
     try:
         with gzip.open(backup_path, "rb") as compressed:
-            with sql_path.open("xb") as output:
-                os.chmod(sql_path, 0o600)
+            fd = os.open(
+                sql_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o600,
+            )
+            sql_created = True
+            with os.fdopen(fd, "wb") as output:
                 shutil.copyfileobj(compressed, output, length=1024 * 1024)
                 output.flush()
                 os.fsync(output.fileno())
     except Exception:
-        sql_path.unlink(missing_ok=True)
+        if sql_created:
+            sql_path.unlink(missing_ok=True)
         raise
     return sql_path
 
@@ -192,6 +208,9 @@ def _restore_to_test_database(
     expected_users_count: Optional[int] = None,
     expected_marker: Optional[str] = None,
 ) -> dict[str, Any]:
+    if expected_marker is not None and not re.fullmatch(r"[A-Z0-9_]{1,100}", expected_marker):
+        raise ValueError("expected_marker must contain only uppercase letters, digits and underscores")
+
     psql = shutil.which(os.getenv("PSQL_PATH") or "psql")
     if not psql:
         raise RuntimeError("psql was not found on PATH")
@@ -208,6 +227,7 @@ def _restore_to_test_database(
         "--port", config["pg_port"],
         "--username", config["pg_user"],
         "--dbname", config["database"],
+        "--set", "ON_ERROR_STOP=on",
         "--no-align",
         "--tuples-only",
         "--command",
@@ -271,9 +291,6 @@ def _restore_to_test_database(
         detail = _decode_subprocess_output(result.stderr).strip()[-2000:]
         raise RuntimeError(f"psql restore failed (exit {result.returncode}): {detail}")
 
-    if expected_marker is not None and not re.fullmatch(r"[A-Z0-9_]{1,100}", expected_marker):
-        raise ValueError("expected_marker must contain only uppercase letters, digits and underscores")
-
     verification_sql = (
         "SELECT current_database() || '|' || "
         "COALESCE((SELECT string_agg(version_num, ',') FROM alembic_version), '') || '|' || "
@@ -295,6 +312,7 @@ def _restore_to_test_database(
         "--port", config["pg_port"],
         "--username", config["pg_user"],
         "--dbname", config["database"],
+        "--set", "ON_ERROR_STOP=on",
         "--no-align",
         "--tuples-only",
         "--command",
