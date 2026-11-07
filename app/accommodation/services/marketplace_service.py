@@ -428,7 +428,9 @@ class MarketplaceService:
             }
 
         now = datetime.now(timezone.utc)
-        commission.status = "refunded"
+        commission_is_fully_refunded = amount >= Decimal(str(commission.total_amount or 0))
+        booking_is_fully_refunded = amount >= Decimal(str(booking.amount_paid or 0))
+        commission.status = "refunded" if commission_is_fully_refunded else "partially_refunded"
         commission.refund_amount = amount
         commission.refunded_at = now
         extra_data = dict(commission.extra_data or {})
@@ -439,10 +441,10 @@ class MarketplaceService:
         booking.refunded_at = now
         booking.payment_status = (
             AccommodationPaymentStatus.REFUNDED.value
-            if amount >= Decimal(str(booking.amount_paid or 0))
+            if booking_is_fully_refunded
             else AccommodationPaymentStatus.PARTIAL_REFUND.value
         )
-        if booking.status == AccommodationBookingStatus.CANCELLED.value:
+        if booking.status == AccommodationBookingStatus.CANCELLED.value and booking_is_fully_refunded:
             BookingStateMachine.transition(
                 booking,
                 AccommodationBookingStatus.REFUNDED,
@@ -453,14 +455,32 @@ class MarketplaceService:
 
         snapshot, workflow = MarketplaceService._refund_workflow(booking)
         workflow.update({
-            "state": "refunded",
+            "state": "refunded" if booking_is_fully_refunded else "partially_refunded",
             "actual_amount": str(amount),
+            "remaining_paid_amount": str(
+                max(Decimal("0.00"), Decimal(str(booking.amount_paid or 0)) - amount)
+            ),
+            "remaining_escrow_amount": str(
+                max(Decimal("0.00"), Decimal(str(commission.total_amount or 0)) - amount)
+            ),
             "transaction_id": str(existing.id),
             "completed_at": now.isoformat(),
             "authorization": refund_authorization,
         })
         snapshot["refund_workflow"] = workflow
         booking.policy_snapshot = snapshot
+        MarketplaceService._record_refund_history(
+            booking,
+            approved_by_user_id or authorized_by_user_id,
+            "refund_ledger_settled",
+            {
+                "amount": str(amount),
+                "currency": booking.currency,
+                "transaction_id": str(existing.id),
+                "authorization": refund_authorization,
+                "full_refund": booking_is_fully_refunded,
+            },
+        )
         db.session.commit()
         return True, None
 
@@ -507,7 +527,7 @@ class MarketplaceService:
                 return False, "Refund amount does not match the recorded booking-time cancellation calculation"
 
             snapshot, workflow = MarketplaceService._refund_workflow(booking)
-            if workflow.get("state") == "refunded":
+            if workflow.get("state") in {"refunded", "partially_refunded"}:
                 return False, "Already refunded"
             if workflow.get("state") in {
                 "pending_human_review",
