@@ -558,43 +558,119 @@ class TestEscrowHumanAuthorization:
         assert "authorised" in error.lower()
         assert _count_transfers_for(held_booking, "payout") == 0
 
-    def test_refund_requires_human_approval(
-        self, app, platform, held_booking
+    def test_guest_policy_refund_is_automatic_without_wallet_pin(
+        self, app, guest, platform, held_booking
     ):
-        with _login_as(app, platform["user_id"]):
-            ok, error = MarketplaceService.refund_guest_approved(
-                held_booking,
-                Decimal("100.00"),
-                approval_reason="Attempted without property authority",
-            )
-
-        assert ok is False
-        assert "authorised" in error.lower()
-        assert _count_transfers_for(held_booking, "refund") == 0
-
-    def test_booking_owner_approves_policy_calculated_refund_without_wallet_pin(
-        self, app, guest, held_booking
-    ):
-        with app.app_context():
-            booking = db.session.get(AccommodationBooking, held_booking)
-            booking.status = AccommodationBookingStatus.REFUNDED.value
-            booking.cancelled_by_user_id = guest["user_id"]
-            booking.policy_snapshot = {
-                "cancellation_outcome": {"refund": "100.00"}
-            }
-            db.session.commit()
-            assert booking.cancelled_by_user_id == guest["user_id"]
-            assert booking.booked_by_user_id == guest["user_id"]
-            assert booking.status == AccommodationBookingStatus.REFUNDED.value
-            assert booking.policy_snapshot["cancellation_outcome"]["refund"] == "100.00"
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            workflow_state="screening",
+            refund_amount=Decimal("230.00"),
+        )
+        guest_before = _balance(guest["account_id"])
+        platform_before = _balance(platform["account_id"])
 
         with _login_as(app, guest["user_id"]):
             ok, error = _guarded_call(
-                lambda: MarketplaceService.refund_guest_approved(
-                    held_booking,
-                    Decimal("100.00"),
-                    approval_reason="Booking owner requested cancellation",
+                lambda: MarketplaceService.refund_guest(
+                    held_booking, Decimal("230.00")
                 )
+            )
+
+        assert ok, error
+        assert _count_transfers_for(held_booking, "refund") == 1
+        assert _balance(guest["account_id"]) == guest_before + Decimal("230.00")
+        assert _balance(platform["account_id"]) == platform_before - Decimal("230.00")
+        refund_tx = (
+            db.session.query(TransactionModel)
+            .filter_by(client_request_id=REFUND_KEY_TEMPLATE.format(booking_id=held_booking))
+            .first()
+        )
+        assert refund_tx is not None
+        assert refund_tx.tx_metadata["authorization_source"] == "booking_time_policy"
+        assert refund_tx.tx_metadata["authorized_by_user_id"] == guest["user_id"]
+        assert refund_tx.tx_metadata["approved_by_user_id"] is None
+        commission = _commission(app, held_booking)
+        assert commission.status == "refunded"
+        assert commission.refund_amount == Decimal("230.00")
+
+    def test_tampered_policy_snapshot_queues_human_review_without_transfer(
+        self, app, guest, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            workflow_state="screening",
+            refund_amount=Decimal("230.00"),
+        )
+        booking = db.session.get(AccommodationBooking, held_booking)
+        snapshot = dict(booking.policy_snapshot)
+        rules = dict(snapshot["cancellation_policy_rules"])
+        rules["pre_checkin_refund_pct"] = "1.00"
+        # Deliberately keep the original hash to prove the integrity gate.
+        snapshot["cancellation_policy_rules"] = rules
+        booking.policy_snapshot = snapshot
+        db.session.commit()
+
+        with _login_as(app, guest["user_id"]):
+            ok, message = MarketplaceService.refund_guest(
+                held_booking, Decimal("230.00")
+            )
+
+        assert ok is True
+        assert "review" in message.lower()
+        booking = db.session.get(AccommodationBooking, held_booking)
+        workflow = booking.policy_snapshot["refund_workflow"]
+        assert workflow["state"] == "pending_human_review"
+        assert "booking_time_policy_snapshot_integrity_failed" in workflow["risk_flags"]
+        assert _count_transfers_for(held_booking, "refund") == 0
+        assert booking.refunded_at is None
+
+    def test_guest_and_host_cannot_approve_platform_review(
+        self, app, guest, host, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+        )
+
+        with _login_as(app, guest["user_id"]):
+            guest_ok, guest_error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Guest attempts self approval",
+            )
+        with _login_as(app, host["user_id"]):
+            host_ok, host_error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Host attempts provider self approval",
+            )
+
+        assert guest_ok is False
+        assert host_ok is False
+        assert "administrator" in guest_error.lower()
+        assert "administrator" in host_error.lower()
+        assert _count_transfers_for(held_booking, "refund") == 0
+
+    def test_only_independent_platform_admin_can_approve(
+        self, app, guest, host, platform_admin, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+        )
+        with _login_as(app, platform_admin["user_id"]):
+            ok, error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Reviewed the booking, original payment and policy evidence",
             )
 
         assert ok, error
@@ -604,10 +680,115 @@ class TestEscrowHumanAuthorization:
             .filter_by(client_request_id=REFUND_KEY_TEMPLATE.format(booking_id=held_booking))
             .first()
         )
-        assert refund_tx.tx_metadata["approved_by_user_id"] == guest["user_id"]
-        assert refund_tx.tx_metadata["approval_source"] == "booking_cancellation"
-        commission = _commission(app, held_booking)
-        assert commission.extra_data["refund_approval"]["approved_by_user_id"] == guest["user_id"]
+        assert refund_tx.tx_metadata["authorization_source"] == "platform_human_review"
+        assert refund_tx.tx_metadata["authorized_by_user_id"] == platform_admin["user_id"]
+        assert refund_tx.tx_metadata["approved_by_user_id"] == platform_admin["user_id"]
+
+    def test_requesting_admin_cannot_approve_own_review(
+        self, app, guest, platform_admin, platform_admin_two, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=platform_admin["user_id"],
+        )
+
+        with _login_as(app, platform_admin["user_id"]):
+            same_actor_ok, same_actor_error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Attempted maker-checker bypass",
+            )
+        assert same_actor_ok is False
+        assert "requester" in same_actor_error.lower()
+        assert _count_transfers_for(held_booking, "refund") == 0
+
+        with _login_as(app, platform_admin_two["user_id"]):
+            independent_ok, independent_error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Independent super-admin review",
+            )
+        assert independent_ok, independent_error
+        assert _count_transfers_for(held_booking, "refund") == 1
+
+    def test_admin_rejection_is_audited_and_does_not_move_money(
+        self, app, guest, host, platform_admin, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+        )
+        with _login_as(app, platform_admin["user_id"]):
+            ok, error = MarketplaceService.reject_refund_review(
+                held_booking,
+                "Evidence does not support the requested exception",
+                reviewer_user_id=platform_admin["user_id"],
+            )
+
+        assert ok, error
+        booking = db.session.get(AccommodationBooking, held_booking)
+        workflow = booking.policy_snapshot["refund_workflow"]
+        assert workflow["state"] == "rejected"
+        assert workflow["rejected_by_user_id"] == platform_admin["user_id"]
+        assert workflow["rejection_reason"] == "Evidence does not support the requested exception"
+        assert _count_transfers_for(held_booking, "refund") == 0
+        assert booking.refunded_at is None
+
+    def test_external_refund_requires_second_admin_to_verify_execution(
+        self, app, guest, host, platform_admin, platform_admin_two,
+        platform, held_booking
+    ):
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            requester_user_id=host["user_id"],
+            payment_method="card",
+            refund_amount=Decimal("230.00"),
+        )
+        with _login_as(app, platform_admin["user_id"]):
+            approved, error = MarketplaceService.refund_guest_approved(
+                held_booking,
+                Decimal("230.00"),
+                approval_reason="Verified card payment and cancellation entitlement",
+            )
+        assert approved, error
+        booking = db.session.get(AccommodationBooking, held_booking)
+        assert booking.policy_snapshot["refund_workflow"]["state"] == "approved_external_execution_pending"
+        assert booking.refund_amount in (None, Decimal("0.00"))
+        assert _count_transfers_for(held_booking, "refund") == 0
+
+        with _login_as(app, platform_admin["user_id"]):
+            same_admin_ok, same_admin_error = MarketplaceService.record_external_refund_execution(
+                held_booking,
+                Decimal("230.00"),
+                "CARD-REFUND-001",
+                reviewer_user_id=platform_admin["user_id"],
+            )
+        assert same_admin_ok is False
+        assert "different platform administrator" in same_admin_error.lower()
+
+        with _login_as(app, platform_admin_two["user_id"]):
+            verified, verify_error = MarketplaceService.record_external_refund_execution(
+                held_booking,
+                Decimal("230.00"),
+                "CARD-REFUND-001",
+                reviewer_user_id=platform_admin_two["user_id"],
+            )
+        assert verified, verify_error
+        booking = db.session.get(AccommodationBooking, held_booking)
+        workflow = booking.policy_snapshot["refund_workflow"]
+        assert workflow["state"] == "refunded"
+        assert workflow["external_provider_reference"] == "CARD-REFUND-001"
+        assert workflow["approved_by_user_id"] == platform_admin["user_id"]
+        assert workflow["execution_verified_by_user_id"] == platform_admin_two["user_id"]
+        assert booking.payment_status == AccommodationPaymentStatus.REFUNDED.value
+        assert booking.refund_amount == Decimal("230.00")
+        assert _count_transfers_for(held_booking, "refund") == 0
 
 
 class TestPayoutIdempotency:
