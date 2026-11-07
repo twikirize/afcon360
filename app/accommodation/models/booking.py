@@ -535,7 +535,7 @@ class AccommodationBooking(BaseModel):
         # was confirmed. Never reload a mutable policy row for a new booking.
         snapshot = self.policy_snapshot if isinstance(self.policy_snapshot, dict) else {}
         rules = snapshot.get("cancellation_policy_rules")
-        if isinstance(rules, dict) and rules.get("snapshot_version") == 1:
+        if isinstance(rules, dict) and rules.get("snapshot_version") == 2:
             from app.accommodation.models.cancellation_policy import CancellationPolicy
             try:
                 return CancellationPolicy(
