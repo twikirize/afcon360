@@ -149,6 +149,40 @@ def _download_and_verify(
     }
 
 
+
+def _decode_subprocess_output(value: Any) -> str:
+    """Decode expected textual psql output without failing on arbitrary bytes."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _prepare_restore_input(backup_path: Path) -> Path:
+    """Return a plain SQL file suitable for psql's binary stdin.
+
+    Passing gzip.open(..., "rt") directly as Popen stdin does not stream
+    decompressed text: subprocess inherits the underlying file descriptor.
+    Decompress into a private workspace file first, then give psql a real
+    uncompressed binary file descriptor. No SQL bytes are decoded by Python.
+    """
+    if backup_path.suffix.lower() != ".gz":
+        return backup_path
+
+    sql_path = backup_path.with_suffix("")
+    try:
+        with gzip.open(backup_path, "rb") as compressed:
+            with sql_path.open("xb") as output:
+                os.chmod(sql_path, 0o600)
+                shutil.copyfileobj(compressed, output, length=1024 * 1024)
+                output.flush()
+                os.fsync(output.fileno())
+    except Exception:
+        sql_path.unlink(missing_ok=True)
+        raise
+    return sql_path
+
 def _restore_to_test_database(
     config: dict,
     backup_path: Path,
@@ -187,12 +221,14 @@ def _restore_to_test_database(
         ),
     ]
     preflight_result = subprocess.run(
-        preflight, capture_output=True, text=True, env=env, timeout=60, check=False
+        preflight, capture_output=True, text=False, env=env, timeout=60, check=False
     )
     if preflight_result.returncode:
-        raise RuntimeError("Restore-target preflight query failed")
+        detail = _decode_subprocess_output(preflight_result.stderr).strip()[-1000:]
+        raise RuntimeError(f"Restore-target preflight query failed: {detail}")
     try:
-        target_database, target_objects = (preflight_result.stdout or "").strip().split("|", 1)
+        preflight_output = _decode_subprocess_output(preflight_result.stdout)
+        target_database, target_objects = preflight_output.strip().split("|", 1)
         object_count = int(target_objects)
     except (ValueError, TypeError):
         raise RuntimeError("Restore-target preflight returned an invalid result") from None
@@ -214,33 +250,25 @@ def _restore_to_test_database(
         "--quiet",
     ]
     try:
-        if backup_path.suffix.lower() == ".gz":
-            with gzip.open(backup_path, "rt", encoding="utf-8") as source:
-                result = subprocess.run(
-                    command,
-                    stdin=source,
-                    capture_output=True,
-                    text=True,
-                    env=env,
-                    timeout=timeout,
-                    check=False,
-                )
-        else:
-            with backup_path.open("r", encoding="utf-8") as source:
-                result = subprocess.run(
-                    command,
-                    stdin=source,
-                    capture_output=True,
-                    text=True,
-                    env=env,
-                    timeout=timeout,
-                    check=False,
-                )
+        restore_input_path = _prepare_restore_input(backup_path)
+        # psql consumes the SQL dump as bytes in the database/client encoding.
+        # Keep Python out of the data path so arbitrary SQL byte sequences do
+        # not trigger a UnicodeDecodeError before PostgreSQL can process them.
+        with restore_input_path.open("rb") as source:
+            result = subprocess.run(
+                command,
+                stdin=source,
+                capture_output=True,
+                text=False,
+                env=env,
+                timeout=timeout,
+                check=False,
+            )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"psql restore exceeded the {timeout}-second timeout") from exc
 
     if result.returncode:
-        detail = (result.stderr or "").strip()[-2000:]
+        detail = _decode_subprocess_output(result.stderr).strip()[-2000:]
         raise RuntimeError(f"psql restore failed (exit {result.returncode}): {detail}")
 
     if expected_marker is not None and not re.fullmatch(r"[A-Z0-9_]{1,100}", expected_marker):
@@ -275,14 +303,15 @@ def _restore_to_test_database(
     check = subprocess.run(
         verify_command,
         capture_output=True,
-        text=True,
+        text=False,
         env=env,
         timeout=60,
         check=False,
     )
     if check.returncode:
-        raise RuntimeError("Post-restore schema verification query failed")
-    value = (check.stdout or "").strip()
+        detail = _decode_subprocess_output(check.stderr).strip()[-1000:]
+        raise RuntimeError(f"Post-restore schema verification query failed: {detail}")
+    value = _decode_subprocess_output(check.stdout).strip()
     try:
         parts = value.split("|")
         if len(parts) != (5 if expected_marker else 4):
