@@ -6113,6 +6113,9 @@ def admin_approve_refund_review(booking_id):
         booking_id,
         approved_amount,
         approval_reason=reason,
+        integrity_exception_acknowledged=(
+            request.form.get("integrity_exception_acknowledged") == "1"
+        ),
     )
     if not success:
         flash(error or "Refund approval could not be completed.", "danger")
