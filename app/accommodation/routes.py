@@ -335,19 +335,36 @@ def admin_edit_property(property_id):
             prop.address_line2 = form.address_line2.data
             prop.city = form.city.data
             prop.state = form.state.data
-            prop.country = form.country.data
-            prop.timezone_name = (
+            old_country = (prop.country or "").strip().upper()
+            new_country = (form.country.data or old_country).strip().upper()
+            from app.utils.location_timezone import resolve_location_timezone
+            requested_timezone = (
                 form.timezone_name.data.strip()
                 if form.timezone_name.data and form.timezone_name.data.strip()
-                else prop.timezone_name
+                else None
             )
-            if not prop.timezone_name:
-                from app.utils.location_timezone import resolve_location_timezone
+            if requested_timezone:
+                prop.timezone_name = resolve_location_timezone(
+                    explicit_timezone=requested_timezone,
+                    latitude=prop.latitude,
+                    longitude=prop.longitude,
+                    country=new_country,
+                )
+            elif new_country != old_country or not prop.timezone_name:
                 prop.timezone_name = resolve_location_timezone(
                     latitude=prop.latitude,
                     longitude=prop.longitude,
-                    country=prop.country,
+                    country=new_country,
                 )
+            else:
+                # Validate the retained zone even when the location is unchanged.
+                prop.timezone_name = resolve_location_timezone(
+                    explicit_timezone=prop.timezone_name,
+                    latitude=prop.latitude,
+                    longitude=prop.longitude,
+                    country=new_country,
+                )
+            prop.country = new_country
             prop.postal_code = form.postal_code.data
             prop.base_price_per_night = form.base_price_per_night.data
             prop.currency = form.currency.data

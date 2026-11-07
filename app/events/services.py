@@ -897,8 +897,12 @@ class EventService:
             except ValueError:
                 old_timezone = None
             new_country = data.get("country") or event.country
+            country_changed = str(new_country).strip().upper() != str(event.country or "").strip().upper()
+            explicit_timezone = data.get("timezone_name") or (
+                None if country_changed else event.timezone_name
+            )
             new_timezone = resolve_location_timezone(
-                explicit_timezone=data.get("timezone_name") or event.timezone_name,
+                explicit_timezone=explicit_timezone,
                 country=new_country,
             )
             timezone_changed = new_timezone != old_timezone

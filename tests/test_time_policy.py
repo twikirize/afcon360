@@ -56,3 +56,38 @@ def test_display_precedence_business_then_preference_then_browser():
         browser_timezone="Europe/London",
     ) == "America/New_York"
     assert choose_display_timezone(browser_timezone="Europe/London") == "Europe/London"
+
+
+
+def test_country_timezone_default_is_only_used_for_single_zone_countries():
+    from app.utils.location_timezone import resolve_location_timezone, timezone_for_country
+
+    assert timezone_for_country("UG") == "Africa/Kampala"
+    assert resolve_location_timezone(country="Uganda") == "Africa/Kampala"
+    assert timezone_for_country("US") is None
+    with pytest.raises(ValueError, match="IANA timezone is required"):
+        resolve_location_timezone(country="US")
+    assert resolve_location_timezone(
+        explicit_timezone="America/New_York", country="US"
+    ) == "America/New_York"
+
+
+def test_event_default_registration_close_is_venue_local_midnight():
+    from types import SimpleNamespace
+    from app.events.services import EventService
+
+    event = SimpleNamespace(
+        start_date=date(2026, 11, 7),
+        business_timezone=lambda: "Africa/Kampala",
+    )
+    close_at = EventService._registration_close_at(event)
+    assert close_at == datetime(2026, 11, 6, 21, tzinfo=timezone.utc)
+
+
+def test_event_registration_deadline_is_interpreted_in_venue_timezone():
+    from app.events.services import EventService
+
+    close_at = EventService._parse_datetime(
+        "2026-11-07T12:00", "Africa/Kampala"
+    )
+    assert close_at == datetime(2026, 11, 7, 9, tzinfo=timezone.utc)

@@ -250,9 +250,15 @@ class EventMetricsService:
             return {"error": str(e)}
 
     @staticmethod
-    def get_system_wide_metrics(days: int = 30) -> Dict:
-        """Get system-wide metrics across all events"""
+    def get_system_wide_metrics(days: int = 30, report_timezone: str = None) -> Dict:
+        """Get system-wide event metrics in an explicit reporting calendar."""
         try:
+            from app.utils.time_policy import require_iana_timezone
+            from flask import current_app
+            zone = require_iana_timezone(
+                report_timezone or current_app.config.get("EVENT_REPORT_TIMEZONE", "UTC"),
+                field="event reporting timezone",
+            )
             end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=days)
 
@@ -266,7 +272,7 @@ class EventMetricsService:
                 EventRegistration, Event.id == EventRegistration.event_id
             ).filter(
                 Event.created_at >= start_date,
-                Event.created_at <= end_date
+                Event.created_at < end_date
             ).first()
 
             # Event status breakdown
@@ -275,7 +281,7 @@ class EventMetricsService:
                 func.count(Event.id).label('count')
             ).filter(
                 Event.created_at >= start_date,
-                Event.created_at <= end_date
+                Event.created_at < end_date
             ).group_by(
                 Event.status
             ).all()
@@ -286,22 +292,25 @@ class EventMetricsService:
                 func.count(Event.id).label('count')
             ).filter(
                 Event.created_at >= start_date,
-                Event.created_at <= end_date
+                Event.created_at < end_date
             ).group_by(
                 Event.category
             ).order_by(
                 func.count(Event.id).desc()
             ).limit(10).all()
 
-            # Daily event creation trend
+            # Event creation instants are grouped in the selected reporting zone.
+            local_event_created_date = func.date(
+                func.timezone(zone.key, Event.created_at)
+            )
             daily_events = db.session.query(
-                func.date(Event.created_at).label('date'),
+                local_event_created_date.label('date'),
                 func.count(Event.id).label('count')
             ).filter(
                 Event.created_at >= start_date,
-                Event.created_at <= end_date
+                Event.created_at < end_date
             ).group_by(
-                func.date(Event.created_at)
+                local_event_created_date
             ).order_by('date').all()
 
             # Convert to dictionaries
@@ -318,6 +327,8 @@ class EventMetricsService:
                 "status_breakdown": status_data,
                 "category_breakdown": category_data,
                 "daily_event_creation": daily_trend,
+                "report_timezone": zone.key,
+                "period_basis": "UTC instants grouped by report_timezone",
                 "calculated_at": datetime.now(timezone.utc).isoformat()
             }
 
@@ -364,7 +375,7 @@ class EventMetricsService:
             ).filter(
                 EventRegistration.payment_status == 'paid',
                 EventRegistration.created_at >= start_date,
-                EventRegistration.created_at <= end_date
+                EventRegistration.created_at < end_date
             ).group_by(
                 Event.category
             ).order_by(
