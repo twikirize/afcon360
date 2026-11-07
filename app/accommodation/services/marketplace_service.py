@@ -593,6 +593,14 @@ class MarketplaceService:
             return False, "Already refunded"
 
         refund_key = "booking_" + str(booking.id) + "_refund"
+        # Preserve the exact pre-transfer review/authorization context locally.
+        # WalletService commits the ledger movement; its commit must not cause
+        # the approval acknowledgement to be lost from the booking audit record.
+        _, pre_transfer_workflow = MarketplaceService._refund_workflow(booking)
+        pre_transfer_workflow = {
+            key: value for key, value in pre_transfer_workflow.items()
+            if key != "hmac_sha256"
+        }
         wallet = WalletService()
         result = wallet.transfer(
             from_account_id=MarketplaceService._get_platform_account_id(booking.currency),
@@ -697,6 +705,9 @@ class MarketplaceService:
             )
 
         snapshot, workflow = MarketplaceService._refund_workflow(booking)
+        # Merge the authorization decision that existed before the wallet
+        # commit, including any explicitly acknowledged integrity exception.
+        workflow.update(pre_transfer_workflow)
         workflow.update({
             "state": "refunded" if booking_is_fully_refunded else "partially_refunded",
             "actual_amount": str(amount),
