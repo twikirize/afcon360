@@ -1827,6 +1827,26 @@ class BookingService:
                     logger.info(f"Cancellation penalty already exists for booking {booking.booking_reference} (idempotent)")
 
             db.session.commit()
+
+            # Emit the established accommodation lifecycle signal only after
+            # the cancellation and its refund-review metadata have committed.
+            # The existing notification listener handles guest, host and
+            # module-admin notifications; this service does not call the
+            # notification subsystem directly.
+            try:
+                from app.notifications.signals import booking_cancelled
+                booking_cancelled.send(
+                    booking,
+                    booking=booking,
+                    cancelled_by=cancelled_by_user_id,
+                )
+            except Exception as notification_error:
+                logger.warning(
+                    "Booking cancellation notification signal failed for %s: %s",
+                    booking.booking_reference,
+                    notification_error,
+                )
+
             logger.info(
                 f"Booking cancelled: {booking.booking_reference} | "
                 f"Cancelled by: {cancelled_by_user_id} | "
