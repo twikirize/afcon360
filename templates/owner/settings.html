@@ -365,7 +365,7 @@ document.addEventListener('DOMContentLoaded', function() {
               </div>
               <div style="display:flex;align-items:center;gap:1rem;">
                 <label class="form-label" style="font-weight:600;color:#1a1a1a;margin:0;">Status</label>
-                <select name="TWILIO_SMS_ENABLED" class="form-control" style="width:auto;min-width:140px;">
+                <select name="TWILIO_SMS_ENABLED" class="form-control" style="width:auto;min-width:140px;" {% if not sms_delivery_enabled %}disabled{% endif %}>
                   <option value="true" {{ 'selected' if twilio_sms_enabled else '' }}>Enabled</option>
                   <option value="false" {{ 'selected' if not twilio_sms_enabled else '' }}>Disabled</option>
                 </select>
@@ -419,7 +419,7 @@ document.addEventListener('DOMContentLoaded', function() {
               </div>
               <div style="display:flex;align-items:center;gap:1rem;">
                 <label class="form-label" style="font-weight:600;color:#1a1a1a;margin:0;">Status</label>
-                <select name="TWILIO_WHATSAPP_ENABLED" class="form-control" style="width:auto;min-width:140px;">
+                <select name="TWILIO_WHATSAPP_ENABLED" class="form-control" style="width:auto;min-width:140px;" {% if not sms_delivery_enabled %}disabled{% endif %}>
                   <option value="true" {{ 'selected' if twilio_whatsapp_enabled else '' }}>Enabled</option>
                   <option value="false" {{ 'selected' if not twilio_whatsapp_enabled else '' }}>Disabled</option>
                 </select>
@@ -690,6 +690,15 @@ async function testTwilioWhatsApp() {
         Configure Google OAuth, SendGrid, Twilio, and Africa's Talking for email/SMS verification
       </div>
       <span class="card-badge badge-auth">Authentication</span>
+    </a>
+
+    <a href="{{ url_for('owner.communication_settings') }}" class="settings-card">
+      <div class="card-icon">✉️</div>
+      <div class="card-title">System Communication Settings</div>
+      <div class="card-description">
+        Manage shared SMTP settings for website mail and background Celery delivery. Saved credentials stay hidden.
+      </div>
+      <span class="card-badge badge-auth">Owner / Super Admin</span>
     </a>
 
     <a href="{{ url_for('admin.owner.settings') }}" class="settings-card">

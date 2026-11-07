@@ -458,7 +458,8 @@ class NotificationService:
                 channels_to_try = [channel_str] + fallback_channels
                 
                 for try_channel in channels_to_try:
-                    try_handler = cls.HANDLERS.get(NotificationChannel(try_channel))
+                    # Registry keys are strings; custom channels need not be enum values.
+                    try_handler = cls.HANDLERS.get(try_channel)
                     if not try_handler:
                         continue
                     
@@ -485,17 +486,26 @@ class NotificationService:
                             delivered = True
                             break
                         else:
+                            safe_error_code = result.get('error_code') or result.get('status_code') or 'delivery_failed'
+                            safe_error_code = ''.join(
+                                ch for ch in str(safe_error_code) if ch.isalnum() or ch in '._-'
+                            )[:80]
                             logger.warning(
-                                f"Channel {try_channel} returned failure for notification {notification.id}: "
-                                f"{result.get('response_body')}"
+                                "Channel delivery returned failure "
+                                "(notification_id=%s, channel=%s, error_code=%s, response_code=%s)",
+                                notification.id, try_channel, safe_error_code, result.get('response_code'),
                             )
                             cls._log_delivery(notification.id, try_channel, 'failure', result)
-                    except Exception as e:
+                    except Exception as exc:
                         logger.error(
-                            f"Delivery failed for notification {notification.id} "
-                            f"via {try_channel}: {e}", exc_info=True
+                            "Notification delivery raised an exception "
+                            "(notification_id=%s, channel=%s, exception_type=%s)",
+                            notification.id, try_channel, type(exc).__name__,
                         )
-                        cls._log_delivery(notification.id, try_channel, 'failure', {'error': str(e)})
+                        cls._log_delivery(
+                            notification.id, try_channel, 'failure',
+                            {'error_code': type(exc).__name__},
+                        )
                 
                 if not delivered:
                     results.append({
@@ -1030,18 +1040,28 @@ class NotificationService:
         status: str,
         response: dict,
     ) -> None:
-        """Log a delivery attempt."""
+        """Persist a safe, allowlisted delivery diagnostic."""
         try:
+            safe_code = response.get('error_code') or response.get('status_code') or ''
+            safe_code = ''.join(
+                ch for ch in str(safe_code) if ch.isalnum() or ch in '._-'
+            )[:80]
+            safe_body = f"error_code={safe_code}" if safe_code else (
+                'provider_accepted' if status == 'success' else 'delivery_failed'
+            )
             log = NotificationLog(
                 notification_id=notification_id,
                 channel=channel,
                 status=status,
                 response_code=response.get('response_code'),
-                response_body=str(response.get('response_body', ''))[:500],
+                response_body=safe_body,
             )
             db.session.add(log)
-        except Exception as e:
-            logger.error(f"Failed to log notification delivery: {e}")
+        except Exception as exc:
+            logger.error(
+                "Failed to persist notification delivery log (exception_type=%s)",
+                type(exc).__name__,
+            )
 
     @staticmethod
     def _render_email_template(notification: Notification) -> str:

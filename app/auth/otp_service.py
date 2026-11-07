@@ -519,6 +519,9 @@ class OTPService:
         """
         if not phone:
             return False, None
+        from app.notifications.sms_service import sms_delivery_enabled
+        if not sms_delivery_enabled():
+            return False, None
         # Storage and verification must use the same identity key. The phone
         # number is the delivery destination; internal_user_id is the verifier
         # identity when the caller supplies it.
@@ -595,6 +598,13 @@ class OTPService:
             if sms_enabled:
                 channels.append("twilio_sms")
             channels.append("email")
+
+        from app.notifications.sms_service import sms_delivery_enabled
+        if not sms_delivery_enabled():
+            sms_channels = {"sms", "whatsapp", "twilio_sms", "twilio_whatsapp"}
+            channels = [channel for channel in channels if channel not in sms_channels]
+            if email and "email" not in channels:
+                channels.append("email")
 
         # Store only a keyed hash; never send an OTP unless the same identifier
         # that the verifier will use has a successful, expiring record.
@@ -734,6 +744,9 @@ class OTPService:
         Returns (success_bool, otp). If send_sms raises/returns non-success, return (False, None).
         """
         if not phone:
+            return False, None
+        from app.notifications.sms_service import sms_delivery_enabled
+        if not sms_delivery_enabled():
             return False, None
         # Storage and verification must use the same identity key. The phone
         # number is the delivery destination; internal_user_id is the verifier

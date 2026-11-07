@@ -154,7 +154,7 @@ def test_phone_verification_transport_defaults_to_email():
     assert config.get_phone_verification_transport() == "email"
 
 
-def test_owner_selected_sms_transport_delivers_using_configured_provider(monkeypatch):
+def test_owner_selected_sms_transport_delivers_using_configured_provider(app, monkeypatch):
     user = _user()
     profile = _profile()
     delivered = {}
@@ -179,7 +179,9 @@ def test_owner_selected_sms_transport_delivers_using_configured_provider(monkeyp
         ),
     )
 
-    result = PhoneVerificationService.request_code(user, profile, "+256701111111")
+    app.config["SMS_DELIVERY_ENABLED"] = True
+    with app.app_context():
+        result = PhoneVerificationService.request_code(user, profile, "+256701111111")
 
     assert result["success"] is True
     assert result["transport"] == "sms"
@@ -188,7 +190,7 @@ def test_owner_selected_sms_transport_delivers_using_configured_provider(monkeyp
     assert user.phone_verified is False
 
 
-def test_sms_transport_fails_closed_when_no_provider_is_configured(monkeypatch):
+def test_sms_transport_fails_closed_when_no_provider_is_configured(app, monkeypatch):
     user = _user()
     profile = _profile()
     invalidated = []
@@ -207,8 +209,45 @@ def test_sms_transport_fails_closed_when_no_provider_is_configured(monkeypatch):
         staticmethod(lambda identifier, purpose: invalidated.append((identifier, purpose)) or True),
     )
 
-    result = PhoneVerificationService.request_code(user, profile, "+256701111111")
+    app.config["SMS_DELIVERY_ENABLED"] = True
+    with app.app_context():
+        result = PhoneVerificationService.request_code(user, profile, "+256701111111")
 
     assert result["success"] is False
     assert result["code"] == "sms_unavailable"
     assert invalidated == [(user.email, "phone_verification")]
+
+
+
+def test_saved_sms_choice_routes_to_email_while_global_sms_switch_is_off(app, monkeypatch):
+    user = _user()
+    profile = _profile()
+    config = AuthConfiguration(
+        otp_channels={"phone_verification": {"transport": "sms"}},
+        twilio_enabled=True,
+        africa_talking_enabled=True,
+    )
+    delivered = {}
+
+    monkeypatch.setattr(AuthConfiguration, "get_config", classmethod(lambda cls: config))
+    monkeypatch.setattr(OTPService, "generate_otp", staticmethod(lambda length=6: "654321"))
+    monkeypatch.setattr(OTPService, "store_otp", staticmethod(lambda **_: True))
+    monkeypatch.setattr(
+        OTPService,
+        "send_email_otp_checked",
+        staticmethod(lambda **kwargs: delivered.update(kwargs) or {"success": True}),
+    )
+    monkeypatch.setattr(
+        PhoneVerificationService,
+        "_send_sms_code",
+        staticmethod(lambda **kwargs: (_ for _ in ()).throw(AssertionError("SMS must not be attempted"))),
+    )
+
+    app.config["SMS_DELIVERY_ENABLED"] = False
+    with app.app_context():
+        result = PhoneVerificationService.request_code(user, profile, profile.phone_number)
+
+    assert result["success"] is True
+    assert result["transport"] == "email"
+    assert delivered["email"] == user.email
+    assert delivered["purpose"] == "phone_verification"

@@ -19,6 +19,11 @@ on:
       - "app/utils/validators.py"
       - "app/utils/module_toggle_service.py"
       - "app/config.py"
+      - "app/notifications/**"
+      - "app/utils/crypto.py"
+      - "app/utils/log_redaction.py"
+      - "templates/owner/communication_settings.html"
+      - "tests/notifications/test_shared_email_configuration.py"
       - "tests/test_geo_integration.py"
       - "tests/test_module_integration.py"
       - "tests/test_*.py"
@@ -295,6 +300,7 @@ jobs:
               "admin/transport_admin_dashboard.html",
               "admin/transport_admin_operations.html",
               "owner/settings.html",
+              "owner/communication_settings.html",
               "auth/mfa_setup.html",
               "auth/mfa_status.html",
               "transport/admin/dashboard.html",
@@ -363,6 +369,9 @@ jobs:
               tests/notifications/test_scheduled_notification_delivery.py
               tests/notifications/test_models.py
               tests/notifications/test_sms_service_adapter.py
+              tests/notifications/test_shared_email_configuration.py
+              tests/notifications/test_custom_channel_fallback.py
+              tests/test_phone_verification.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
             )
             if [[ ${#TARGETS[@]} -eq 0 ]]; then

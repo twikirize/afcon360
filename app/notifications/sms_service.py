@@ -15,6 +15,20 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def sms_delivery_enabled() -> bool:
+    """Return the application-wide SMS/WhatsApp outbound delivery switch."""
+    try:
+        from flask import current_app, has_app_context
+        if not has_app_context():
+            return False
+        value = current_app.config.get("SMS_DELIVERY_ENABLED", False)
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return value is True
+    except Exception:
+        return False
+
+
 class _SMSNotification:
     subject = "AFCON360 verification code"
 
@@ -31,6 +45,12 @@ class SMSService:
 
     def send_message(self, phone_number: str, message: str) -> Dict[str, Any]:
         """Deliver a message but deliberately leave OTP storage to OTPService."""
+        if not sms_delivery_enabled():
+            return {
+                "success": False,
+                "provider": self.provider,
+                "error": "sms_delivery_disabled",
+            }
         if not phone_number or not isinstance(phone_number, str):
             return {"success": False, "provider": self.provider, "error": "recipient_required"}
         if not message or not isinstance(message, str):

@@ -6,12 +6,19 @@
       <h2 class="card-title text-center mb-2">Verify your phone</h2>
       <p class="text-center text-secondary mb-4">
         {% if phone_number %}
-          We will send a 6-digit code by {{ 'SMS' if phone_verification_transport == 'sms' else 'email' }} to verify<br>
-          <strong id="verify-phone">{{ phone_number }}</strong>
+          {% if phone_verification_transport == 'sms' %}
+            We will send a 6-digit SMS code to verify access to this number.
+          {% else %}
+            We will email a 6-digit code to <strong>{{ email }}</strong> as the temporary account verification step. This confirms your email address, not access to the phone handset.
+          {% endif %}
+          <br><strong id="verify-phone">{{ phone_number }}</strong>
         {% else %}
-          Enter your phone number below. We will send a 6-digit code by
-          {{ 'SMS' if phone_verification_transport == 'sms' else 'email' }}
-          {% if phone_verification_transport != 'sms' %}(<strong>{{ email }}</strong>){% endif %} to verify it.
+          Enter your phone number below.
+          {% if phone_verification_transport == 'sms' %}
+            We will send a 6-digit SMS code to verify access to this number.
+          {% else %}
+            We will email a 6-digit code to <strong>{{ email }}</strong> as the temporary account verification step. This does not independently prove access to the phone handset.
+          {% endif %}
         {% endif %}
       </p>
 
@@ -56,7 +63,14 @@
           <input type="text" class="form-control form-control-lg" id="full_name" name="full_name"
                  placeholder="John William Doe"
                  value="{{ profile.full_name if profile else '' }}">
-          <div class="form-text">Phone verification only confirms control of this number. You can update your legal name separately in your profile and KYC details.</div>
+          <div class="form-text">
+            {% if phone_verification_transport == 'sms' %}
+              This confirms control of the phone number.
+            {% else %}
+              The code confirms your account email. The number is saved to your profile; SMS-based proof of phone possession will be available when a provider is activated.
+            {% endif %}
+            You can update your legal name separately in your profile and KYC details.
+          </div>
         </div>
 
         <div class="mb-3">

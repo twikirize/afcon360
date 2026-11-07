@@ -222,52 +222,53 @@ class NotificationService:
 
     @staticmethod
     def send_email(to: str, subject: str, body: str, link: str = None) -> Dict[str, Any]:
+        """Send a transactional email through the shared Owner-managed provider.
+
+        This best-effort compatibility entry point intentionally delegates to
+        the unified EmailHandler so web and Celery use identical credentials.
         """
-        Send a plain transactional email (no notification-inbox record).
-
-        Used by wallet event notifications and webhook dead-letter alerts.
-        Best-effort and fail-silent: a broken email transport must never roll
-        back the business operation that triggered it. Renders the branded
-        AFCON360 HTML template (falling back to plain text) via the same
-        flask_mail path as the unified EmailHandler.
-        """
-        try:
-            if not to or "@" not in to:
-                return {
-                    'success': False,
-                    'response_code': 400,
-                    'response_body': 'No recipient email address',
-                }
-
-            html = None
-            try:
-                from app.notifications.template_loader import template_loader
-                html = template_loader.env.get_template(
-                    "email/default.html"
-                ).render(title=subject, message=body, link=link)
-            except Exception as e:
-                current_app.logger.debug(
-                    f"Could not render branded HTML for email '{subject}' ({e}); using text body"
-                )
-
-            from flask_mail import Message
-            from app.extensions import mail
-
-            msg = Message(subject=subject, recipients=[to], body=body, html=html)
-            mail.send(msg)
-
-            current_app.logger.info(f"Email sent to {to}: {subject}")
-            return {
-                'success': True,
-                'response_code': 200,
-                'response_body': 'Email delivered via SMTP',
-            }
-        except Exception as e:
-            current_app.logger.error(f"Failed to send email to {to}: {e}")
+        if not to or "@" not in to:
             return {
                 'success': False,
-                'response_code': 500,
-                'response_body': str(e),
+                'response_code': 400,
+                'response_body': 'invalid_recipient',
+                'error_code': 'invalid_recipient',
+            }
+
+        from types import SimpleNamespace
+        from app.notifications.channel_handlers.email import EmailHandler
+
+        notification = SimpleNamespace(
+            id=None,
+            type="system_alert",
+            subject=subject or "AFCON360 notification",
+            body=body or "",
+            context={},
+            link=link,
+            user_id=None,
+            email=to,
+        )
+        try:
+            result = EmailHandler().deliver(
+                notification,
+                {'email': to, 'user_id': None},
+            )
+            return {
+                'success': bool(result.get('success')),
+                'response_code': result.get('response_code', 502),
+                'response_body': result.get('response_body', 'email_delivery_failed'),
+                'error_code': result.get('error_code'),
+            }
+        except Exception as exc:
+            current_app.logger.error(
+                "Transactional email failed (exception_type=%s)",
+                type(exc).__name__,
+            )
+            return {
+                'success': False,
+                'response_code': 502,
+                'response_body': 'email_delivery_failed',
+                'error_code': 'email_delivery_failed',
             }
 
     @staticmethod
