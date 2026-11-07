@@ -1011,7 +1011,9 @@ class TestEscrowHumanAuthorization:
         )
         audit = AuditLog.query.filter_by(
             action="accommodation_refund.refund_review_rejected",
-            resource_id=_booking_reference(app, held_booking),
+            resource_id=db.session.get(
+                AccommodationBooking, held_booking
+            ).booking_reference,
         ).one()
         assert audit.user_id == platform_admin["user_id"]
         assert audit.meta["rejection_reason"] == (
