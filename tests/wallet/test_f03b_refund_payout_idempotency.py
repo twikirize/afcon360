@@ -752,7 +752,7 @@ class TestEscrowHumanAuthorization:
         snapshot = dict(booking.policy_snapshot)
         rules = dict(snapshot["cancellation_policy_rules"])
         rules["pre_checkin_refund_pct"] = "1.00"
-        # Deliberately keep the original hash to prove the integrity gate.
+        # Deliberately keep the original HMAC to prove the integrity gate.
         snapshot["cancellation_policy_rules"] = rules
         booking.policy_snapshot = snapshot
         db.session.commit()
@@ -794,7 +794,7 @@ class TestEscrowHumanAuthorization:
                 held_booking, Decimal("230.00")
             )
         assert queued is True
-        assert "review" in message.lower()
+        assert "queue" in message.lower()
 
         with _login_as(app, platform_admin["user_id"]):
             first_ok, first_error = MarketplaceService.refund_guest_approved(
@@ -849,7 +849,7 @@ class TestEscrowHumanAuthorization:
             )
 
         assert ok is True
-        assert "review" in message.lower()
+        assert "queue" in message.lower()
         booking = db.session.get(AccommodationBooking, held_booking)
         workflow = booking.policy_snapshot["refund_workflow"]
         assert workflow["state"] == "pending_human_review"
