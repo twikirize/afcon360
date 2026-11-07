@@ -2286,17 +2286,127 @@ def guest_checkout():
         booking.amount_due = amount_due
         booking.balance_due_date = balance_due_date
 
-        # Store policy snapshot
+        # Freeze the exact cancellation rule set used for this booking.
+        # Existing bookings without this v1 snapshot are sent to human review
+        # rather than being recalculated under a later-edited host policy.
         policy_obj = PropertyBookingPolicy.query.filter_by(property_id=property_obj.id).first()
-        if policy_obj:
-            booking.policy_snapshot = {
-                'cancellation_policy': policy_obj.cancellation_policy,
-                'free_cancel_hours': policy_obj.free_cancel_hours,
-                'no_show_charge_type': policy_obj.no_show_charge_type,
-                'no_show_charge_amount': str(policy_obj.no_show_charge_amount) if policy_obj.no_show_charge_amount else None,
-                'deposit_percentage': str(policy_obj.deposit_percentage) if policy_obj.deposit_percentage else None,
-                'balance_due_days_before_checkin': policy_obj.balance_due_days_before_checkin,
+        from app.accommodation.models.cancellation_policy import CancellationPolicy
+        raw_policy_name = (
+            str(policy_obj.cancellation_policy).strip().lower()
+            if policy_obj else str(getattr(property_obj, "cancellation_policy", "flexible") or "flexible").strip().lower()
+        )
+        policy_aliases = {
+            "flexible": "FLEX",
+            "moderate": "MOD",
+            "strict": "STRICT",
+            "super_strict": "SUPER",
+            "no_show": "NOSHOW",
+            "no_show_penalty": "NOSHOW",
+        }
+        policy_name = policy_aliases.get(raw_policy_name, raw_policy_name.upper())
+        cancellation_policy = None
+        if raw_policy_name == "non_refundable":
+            cancellation_policy = CancellationPolicy(
+                property_id=property_obj.id,
+                name="NON_REFUNDABLE",
+                pre_checkin_days=0,
+                pre_checkin_refund_pct=Decimal("0.00"),
+                mid_stay_refund_pct=Decimal("0.00"),
+                no_show_penalty=Decimal("0.00"),
+                deposit_refundable=False,
+                refundable_cleaning_fee=False,
+                refundable_service_fee=False,
+                refundable_taxes=False,
+            )
+        else:
+            cancellation_policy = CancellationPolicy.get_effective_policy(
+                property_obj.id,
+                policy_name=policy_name or None,
+            )
+
+        # Catalog-backed fallback: the host-facing policy tiers are seeded
+        # independently from CancellationPolicy ORM rows. Freeze the canonical
+        # catalog rules when no persisted advanced-policy row exists, instead
+        # of silently sending every routine cancellation to manual review.
+        if cancellation_policy is None and policy_name != "NON_REFUNDABLE":
+            from app.accommodation.catalog_data import CANCELLATION_POLICY_TYPES
+            catalog_rule = next(
+                (
+                    rule for rule in CANCELLATION_POLICY_TYPES
+                    if str(rule.get("code", "")).upper() == str(policy_name).upper()
+                ),
+                None,
+            )
+            if catalog_rule:
+                cancellation_policy = CancellationPolicy(
+                    property_id=property_obj.id,
+                    name=catalog_rule["code"],
+                    pre_checkin_days=int(catalog_rule["pre_checkin_days"]),
+                    pre_checkin_refund_pct=Decimal(str(catalog_rule["pre_checkin_refund_pct"])),
+                    mid_stay_refund_pct=Decimal(str(catalog_rule["mid_stay_refund_pct"])),
+                    no_show_penalty=Decimal(str(catalog_rule["no_show_penalty"])),
+                    pay_on_arrival_penalty_type=(
+                        policy_obj.pay_on_arrival_penalty_type
+                        if policy_obj else "debt"
+                    ),
+                    deposit_refundable=(
+                        bool(policy_obj.deposit_refundable)
+                        if policy_obj else True
+                    ),
+                    refundable_cleaning_fee=(
+                        bool(policy_obj.refundable_cleaning_fee)
+                        if policy_obj else False
+                    ),
+                    refundable_service_fee=(
+                        bool(policy_obj.refundable_service_fee)
+                        if policy_obj else False
+                    ),
+                    refundable_taxes=(
+                        bool(policy_obj.refundable_taxes)
+                        if policy_obj else False
+                    ),
+                )
+        policy_snapshot = {
+            'cancellation_policy': (
+                cancellation_policy.name if cancellation_policy else raw_policy_name or None
+            ),
+            'free_cancel_hours': policy_obj.free_cancel_hours if policy_obj else None,
+            'no_show_charge_type': policy_obj.no_show_charge_type if policy_obj else None,
+            'no_show_charge_amount': (
+                str(policy_obj.no_show_charge_amount)
+                if policy_obj and policy_obj.no_show_charge_amount is not None else None
+            ),
+            'deposit_percentage': (
+                str(policy_obj.deposit_percentage)
+                if policy_obj and policy_obj.deposit_percentage is not None else None
+            ),
+            'balance_due_days_before_checkin': (
+                policy_obj.balance_due_days_before_checkin if policy_obj else None
+            ),
+        }
+        if cancellation_policy is not None:
+            rules = {
+                "snapshot_version": 2,
+                "name": cancellation_policy.name,
+                "pre_checkin_days": int(cancellation_policy.pre_checkin_days),
+                "pre_checkin_refund_pct": str(cancellation_policy.pre_checkin_refund_pct),
+                "mid_stay_refund_pct": str(cancellation_policy.mid_stay_refund_pct),
+                "no_show_penalty": str(cancellation_policy.no_show_penalty),
+                "pay_on_arrival_penalty_type": cancellation_policy.pay_on_arrival_penalty_type,
+                "deposit_refundable": bool(cancellation_policy.deposit_refundable),
+                "refundable_cleaning_fee": bool(cancellation_policy.refundable_cleaning_fee),
+                "refundable_service_fee": bool(cancellation_policy.refundable_service_fee),
+                "refundable_taxes": bool(cancellation_policy.refundable_taxes),
+                "source_property_id": cancellation_policy.property_id,
+                "captured_at": datetime.now(timezone.utc).isoformat(),
             }
+            rules["hmac_sha256"] = MarketplaceService.sign_cancellation_policy_rules(
+                booking, rules
+            )
+            policy_snapshot["cancellation_policy_rules"] = rules
+        else:
+            policy_snapshot["cancellation_policy_rules"] = None
+        booking.policy_snapshot = policy_snapshot
 
         # 6.5 UPDATE PAYMENT LEDGER via PaymentStateMachine
         from app.accommodation.state_machine import PaymentStateMachine, PaymentState
@@ -3925,15 +4035,25 @@ def guest_cancel_booking(reference):
         return redirect(url_for('accommodation.guest_my_bookings'))
 
     reason = request.form.get('reason', 'User requested cancellation')
+    request_human_review = request.form.get("request_human_review") == "1"
+    review_reason = request.form.get("refund_review_reason", "").strip()
+    if request_human_review and len(review_reason) < 5:
+        flash("Please explain why an independent platform review is needed.", "warning")
+        return redirect(
+            url_for("accommodation.guest_confirmation", reference=booking.booking_reference)
+        )
 
-    # Cancel the booking – this updates the booking status, releases dates,
-    # and returns the refund amount (if any)
+    # Cancellation is confirmed first. A verified, routine wallet refund is
+    # then automatic; an exception or machine-screening concern is queued for
+    # independent platform approval.
     success, message, refund = BookingService.cancel_booking(
         booking.id,
         cancelled_by_user_id=current_user.id,
         reason=reason,
         ip_address=request.remote_addr,
-        user_agent=request.headers.get('User-Agent')
+        user_agent=request.headers.get('User-Agent'),
+        request_human_review=request_human_review,
+        review_reason=review_reason,
     )
 
     return_to_confirmation = request.form.get("return_to_confirmation") == "1"
@@ -3944,17 +4064,34 @@ def guest_cancel_booking(reference):
 
     if success:
         if refund and refund > 0:
-            # Use the canonical MarketplaceService to process the refund
             refund_success, refund_error = MarketplaceService.refund_guest(
                 booking.id,
-                refund
+                refund,
             )
-            if refund_success:
-                flash(f'{message} Refund of ${refund} processed.', 'success')
+            booking = db.session.get(AccommodationBooking, booking.id)
+            workflow = (booking.policy_snapshot or {}).get("refund_workflow", {})
+            if workflow.get("state") == "refunded":
+                flash(f'{message} Refund of ${refund} {booking.currency} processed.', 'success')
+            elif workflow.get("state") == "pending_human_review":
+                flash(
+                    f'{message} Your refund request has been submitted for independent platform review. '
+                    'The host does not need to approve a policy-entitled guest cancellation.',
+                    'info',
+                )
+            elif refund_success:
+                flash(f'{message} {refund_error or "Refund processing has been recorded."}', 'info')
             else:
-                flash(f'Refund failed: {refund_error}', 'warning')
+                flash(f'Refund was not sent: {refund_error}', 'warning')
         else:
-            flash(message, 'info')
+            booking = db.session.get(AccommodationBooking, booking.id)
+            workflow = (booking.policy_snapshot or {}).get("refund_workflow", {})
+            if workflow.get("state") == "pending_human_review":
+                flash(
+                    "Your cancellation is recorded. The requested exception has been sent to the platform review queue.",
+                    "info",
+                )
+            else:
+                flash(message, 'info')
     else:
         flash(message, 'danger')
 
@@ -5513,6 +5650,8 @@ def host_cancel_booking(property_id, booking_id):
         reason=reason,
         ip_address=request.remote_addr,
         user_agent=request.headers.get('User-Agent'),
+        request_human_review=True,
+        review_reason=reason,
     )
 
     next_url = request.form.get("next") or url_for(
@@ -5524,7 +5663,23 @@ def host_cancel_booking(property_id, booking_id):
         return redirect(next_url)
 
     outcome = (booking.policy_snapshot or {}).get("cancellation_outcome", {})
-    refund_msg = f" Refund due: {refund}." if refund else " No refund due."
+    refund_msg = " No refund due."
+    if refund and refund > 0:
+        refund_success, refund_error = MarketplaceService.refund_guest(
+            booking.id,
+            refund,
+        )
+        booking = db.session.get(AccommodationBooking, booking.id)
+        workflow = (booking.policy_snapshot or {}).get("refund_workflow", {})
+        if workflow.get("state") == "refunded":
+            refund_msg = f" Wallet refund of {refund} {booking.currency} processed."
+        elif workflow.get("state") == "pending_human_review":
+            refund_msg = (
+                f" Refund of {refund} {booking.currency} is awaiting independent platform review. "
+                "No money has been moved yet."
+            )
+        elif not refund_success:
+            refund_msg = f" Refund due: {refund}, but wallet execution failed: {refund_error}."
     fine = outcome.get("fine")
     if fine and Decimal(fine) > 0:
         refund_msg += f" Cancellation fine withheld: {fine}."
@@ -5854,8 +6009,12 @@ def host_refund_booking(booking_id):
         flash("You do not have permission to refund this booking.", "danger")
         return redirect(url_for("accommodation.host_bookings"))
 
-    refund_amount = Decimal(request.form.get('refund_amount', '0'))
-    reason = request.form.get('reason', 'Host issued refund')
+    try:
+        refund_amount = Decimal(request.form.get('refund_amount', '0'))
+    except Exception:
+        flash("Enter a valid refund amount.", "warning")
+        return redirect(url_for("accommodation.host_booking_detail", booking_id=booking_id))
+    reason = request.form.get('reason', '').strip()
 
     if refund_amount <= 0:
         flash("Refund amount must be greater than zero.", "warning")
@@ -5865,13 +6024,179 @@ def host_refund_booking(booking_id):
         flash("Refund amount cannot exceed booking total.", "warning")
         return redirect(url_for("accommodation.host_booking_detail", booking_id=booking_id))
 
-    success, error = MarketplaceService.refund_guest(booking_id, refund_amount)
+    success, error = MarketplaceService.submit_refund_review(
+        booking_id,
+        refund_amount,
+        reason,
+        requested_by_user_id=current_user.id,
+        request_source="host_manual_refund",
+    )
     if success:
-        flash(f"Refund of ${refund_amount} processed successfully.", "success")
+        flash(
+            "Refund request submitted to the platform admin approval queue. "
+            "No money was moved yet.",
+            "info",
+        )
     else:
-        flash(f"Refund failed: {error}", "danger")
+        flash(f"Refund request could not be submitted: {error}", "danger")
 
     return redirect(url_for("accommodation.host_booking_detail", booking_id=booking_id))
+
+
+@accommodation_bp.route(
+    "/admin/refunds/review",
+    methods=["GET"],
+    endpoint="admin_refund_review_queue",
+)
+@login_required
+@require_role("admin", "super_admin", "owner", "accommodation_admin")
+def admin_refund_review_queue():
+    """Platform-only queue for cancellation exceptions and machine-screened risks."""
+    review_states = (
+        "pending_human_review",
+        "approved_external_execution_pending",
+        "approved_recovery_required",
+        "partially_refunded",
+    )
+    page = max(request.args.get("page", 1, type=int), 1)
+    per_page = 50
+    workflow_state = AccommodationBooking.policy_snapshot[
+        "refund_workflow"
+    ]["state"].as_string()
+    pagination = (
+        AccommodationBooking.query
+        .filter(
+            AccommodationBooking.is_deleted.is_(False),
+            workflow_state.in_(review_states),
+        )
+        .order_by(
+            AccommodationBooking.cancelled_at.desc().nullslast(),
+            AccommodationBooking.created_at.desc(),
+        )
+        .paginate(page=page, per_page=per_page, error_out=False)
+    )
+    reviews = [
+        {
+            "booking": booking,
+            "workflow": (booking.policy_snapshot or {}).get("refund_workflow", {}),
+        }
+        for booking in pagination.items
+    ]
+    return render_template(
+        "accommodation/admin/refund_review_queue.html",
+        reviews=reviews,
+        pagination=pagination,
+    )
+
+
+@accommodation_bp.route(
+    "/admin/refunds/review/<int:booking_id>/approve",
+    methods=["POST"],
+    endpoint="admin_approve_refund_review",
+)
+@login_required
+@require_role("admin", "super_admin", "owner", "accommodation_admin")
+@limiter.limit("20 per minute")
+def admin_approve_refund_review(booking_id):
+    """Approve the machine's proposed amount or an evidenced exception amount."""
+    try:
+        approved_amount = Decimal(request.form.get("approved_amount", "0"))
+    except Exception:
+        flash("Enter a valid approved refund amount.", "danger")
+        return redirect(url_for("accommodation.admin_refund_review_queue"))
+    reason = request.form.get("approval_reason", "").strip()
+    if not reason:
+        flash("An approval reason is required.", "danger")
+        return redirect(url_for("accommodation.admin_refund_review_queue"))
+
+    success, error = MarketplaceService.refund_guest_approved(
+        booking_id,
+        approved_amount,
+        approval_reason=reason,
+        integrity_exception_acknowledged=(
+            request.form.get("integrity_exception_acknowledged") == "1"
+        ),
+    )
+    if not success:
+        flash(error or "Refund approval could not be completed.", "danger")
+    else:
+        booking = db.session.get(AccommodationBooking, booking_id)
+        workflow = (booking.policy_snapshot or {}).get("refund_workflow", {}) if booking else {}
+        state = workflow.get("state")
+        if state == "refunded":
+            flash("Refund approved and executed. The approver and decision are recorded.", "success")
+        elif state == "partially_refunded":
+            flash("Partial refund approved and executed. The remaining balance is not marked refunded.", "success")
+        elif state == "approved_external_execution_pending":
+            flash(
+                "Refund entitlement approved. The original payment provider or property must execute it; "
+                "it is not marked refunded yet.",
+                "warning",
+            )
+        elif state == "approved_recovery_required":
+            flash(
+                "Refund entitlement approved, but escrow recovery is required before money can be sent.",
+                "warning",
+            )
+        else:
+            flash("Human approval recorded.", "success")
+    return redirect(url_for("accommodation.admin_refund_review_queue"))
+
+
+@accommodation_bp.route(
+    "/admin/refunds/review/<int:booking_id>/reject",
+    methods=["POST"],
+    endpoint="admin_reject_refund_review",
+)
+@login_required
+@require_role("admin", "super_admin", "owner", "accommodation_admin")
+@limiter.limit("20 per minute")
+def admin_reject_refund_review(booking_id):
+    reason = request.form.get("rejection_reason", "").strip()
+    if not reason:
+        flash("A reason is required to reject a refund request.", "danger")
+        return redirect(url_for("accommodation.admin_refund_review_queue"))
+    success, error = MarketplaceService.reject_refund_review(
+        booking_id,
+        reason,
+        reviewer_user_id=current_user.id,
+    )
+    if success:
+        flash("Refund request rejected. No refund was sent.", "success")
+    else:
+        flash(error or "Refund review could not be rejected.", "danger")
+    return redirect(url_for("accommodation.admin_refund_review_queue"))
+
+
+@accommodation_bp.route(
+    "/admin/refunds/review/<int:booking_id>/record-external-execution",
+    methods=["POST"],
+    endpoint="admin_record_external_refund_execution",
+)
+@login_required
+@require_role("admin", "super_admin", "owner", "accommodation_admin")
+@limiter.limit("20 per minute")
+def admin_record_external_refund_execution(booking_id):
+    """Record an already-completed refund from the original provider/property."""
+    try:
+        amount = Decimal(request.form.get("executed_amount", "0"))
+    except Exception:
+        flash("Enter a valid external refund amount.", "danger")
+        return redirect(url_for("accommodation.admin_refund_review_queue"))
+    reference = request.form.get("provider_reference", "").strip()
+    verification_note = request.form.get("verification_note", "").strip()
+    success, error = MarketplaceService.record_external_refund_execution(
+        booking_id,
+        amount,
+        reference,
+        verification_note=verification_note,
+        reviewer_user_id=current_user.id,
+    )
+    if success:
+        flash("External refund execution verified and recorded.", "success")
+    else:
+        flash(error or "External refund evidence could not be recorded.", "danger")
+    return redirect(url_for("accommodation.admin_refund_review_queue"))
 
 
 @accommodation_bp.route('/host/booking/<int:booking_id>/approve', methods=['POST'], endpoint='host_approve_booking')

@@ -242,6 +242,7 @@
 
             {% if booking_cancelled %}
             {% set cancellation_outcome = (booking.policy_snapshot or {}).get('cancellation_outcome', {}) %}
+            {% set refund_workflow = (booking.policy_snapshot or {}).get('refund_workflow', {}) %}
             <div class="card shadow-sm border-danger mb-4">
                 <div class="card-header bg-white">
                     <h5 class="mb-0"><i class="fas fa-info-circle me-2 text-danger"></i>Cancellation Details</h5>
@@ -253,8 +254,30 @@
                     {% if booking.cancellation_reason %}
                     <p class="mb-2"><strong>Reason:</strong> {{ booking.cancellation_reason }}</p>
                     {% endif %}
-                    {% if booking.refund_amount and booking.refund_amount > 0 %}
-                    <p class="mb-0 text-success"><strong>Refund:</strong> {{ booking.currency }} {{ "%.2f"|format(booking.refund_amount) }} will be returned to the original payment method.</p>
+                    {% if refund_workflow.get('state') == 'refunded' and booking.refund_amount and booking.refund_amount > 0 %}
+                    <p class="mb-0 text-success"><strong>Refund completed:</strong> {{ booking.currency }} {{ "%.2f"|format(booking.refund_amount) }}. Reference: {{ refund_workflow.get('transaction_id') or refund_workflow.get('external_provider_reference') or 'Recorded' }}.</p>
+                    {% elif refund_workflow.get('state') == 'partially_refunded' and booking.refund_amount and booking.refund_amount > 0 %}
+                    <p class="mb-0 text-success"><strong>Partial refund completed:</strong> {{ booking.currency }} {{ "%.2f"|format(booking.refund_amount) }}. Reference: {{ refund_workflow.get('transaction_id') or refund_workflow.get('external_provider_reference') or 'Recorded' }}.</p>
+                    {% elif refund_workflow.get('state') == 'pending_human_review' %}
+                    <div class="alert alert-info mb-0">
+                        <strong>Refund awaiting platform review.</strong>
+                        The cancellation and policy calculation are recorded. An authorised platform administrator is reviewing the exception or reconciliation issue. No refund is marked complete yet. The host cannot block a routine guest policy entitlement.
+                        {% if refund_workflow.get('proposed_amount') %}
+                        <div class="mt-1">Proposed amount: {{ booking.currency }} {{ refund_workflow.get('proposed_amount') }}</div>
+                        {% endif %}
+                    </div>
+                    {% elif refund_workflow.get('state') == 'approved_external_execution_pending' %}
+                    <div class="alert alert-warning mb-0">
+                        The platform approved the refund. The original payment provider or property must execute it. It will show as refunded only after execution is verified.
+                    </div>
+                    {% elif refund_workflow.get('state') == 'approved_recovery_required' %}
+                    <div class="alert alert-warning mb-0">
+                        The refund entitlement was approved, but escrow recovery is required before payment can be made.
+                    </div>
+                    {% elif booking.refund_amount and booking.refund_amount > 0 %}
+                    <p class="mb-0 text-success"><strong>Refund completed:</strong> {{ booking.currency }} {{ "%.2f"|format(booking.refund_amount) }}.</p>
+                    {% elif refund_workflow.get('state') == 'screening' %}
+                    <p class="mb-0 text-info">Refund calculation recorded and payment reconciliation is in progress. It is not yet marked as refunded.</p>
                     {% elif cancellation_outcome.get('fine') and cancellation_outcome.get('fine') != '0.00' %}
                     <p class="mb-1 text-muted"><strong>Cancellation fee:</strong> {{ booking.currency }} {{ cancellation_outcome.get('fine') }}</p>
                     <p class="mb-0 text-muted"><strong>Refund:</strong> No refund due under the cancellation policy.</p>
@@ -328,6 +351,16 @@
                 <form method="POST" action="{{ safe_url('accommodation.guest_cancel_booking', reference=booking.booking_reference) }}" class="d-inline" data-confirm="Cancel this booking?">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="return_to_confirmation" value="1">
+                    <div class="w-100 text-start mt-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="request_human_review" value="1" id="confirmationRefundReview">
+                            <label class="form-check-label small" for="confirmationRefundReview">
+                                Request platform admin review for a dispute, service failure or policy exception
+                            </label>
+                        </div>
+                        <textarea class="form-control form-control-sm mt-2" name="refund_review_reason" rows="2"
+                                  placeholder="Explain why human review is needed (optional)"></textarea>
+                    </div>
                     <button type="submit" class="btn btn-outline-danger">
                         <i class="fas fa-times me-1"></i> Cancel booking
                     </button>

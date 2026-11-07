@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/workspace-deep-links-test-baseline-20261102
+      - test/wallet-transaction-integrity-pg15-pg18-20261106
   pull_request:
     branches: [main]
     paths:
@@ -153,6 +154,7 @@ jobs:
       SOCKETIO_ENABLED: "false"
       LOG_LEVEL: WARNING
       SECRET_KEY: "ci-only-not-a-production-secret"
+      REFUND_POLICY_SIGNING_KEY: "ci-only-refund-policy-signing-key-for-tests-2026"
       SECURITY_SALT: "ci-only-security-salt-value-long-enough-for-tests-2026"
       ENCRYPTION_KEY: "ci-only-not-a-production-key"
       TEST_DATABASE_URL: postgresql://postgres@localhost:5432/afcon360_test
@@ -402,6 +404,7 @@ jobs:
         if: >-
           success() &&
           (
+            github.event_name == 'pull_request' ||
             (github.event_name == 'workflow_dispatch' && inputs.test_scope == 'full_suite') ||
             (github.event_name == 'push' && hashFiles('tests/ci/FULL_REGRESSION_GATE') != '')
           )
