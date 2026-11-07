@@ -62,7 +62,7 @@
                                 <label class="form-label">Registration Deadline (Venue local time)</label>
                                 <input type="datetime-local" name="registration_closes_at" class="form-control"
                                        value="{{ event.registration_closes_at_local or '' }}">
-                                <small class="text-muted">Deadlines are interpreted in the venue timezone. If changing timezone, save it first; existing deadline instants are preserved, then reopen to edit them in the new local zone.</small>
+                                <small class="text-muted">Deadlines are interpreted in the selected venue timezone. When changing the venue location or timezone, review both deadline values before saving; submitted values are interpreted in the newly selected venue-local time.</small>
                             </div>
                         </div>
 
