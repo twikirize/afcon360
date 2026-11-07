@@ -8,6 +8,12 @@ on:
     paths:
       - "app/__init__.py"
       - "app/auth/mobile_api.py"
+      - "app/accommodation/services/native_booking_service.py"
+      - "app/accommodation/services/marketplace_service.py"
+      - "app/accommodation/services/booking_service.py"
+      - "tests/test_accommodation_booking.py"
+      - "app/wallet/services/wallet_service.py"
+      - "tests/auth/test_mobile_accommodation_api.py"
       - "app/auth/account_deletion_service.py"
       - "app/auth/mobile_tokens.py"
       - "app/auth/otp_service.py"
@@ -41,6 +47,12 @@ on:
     paths:
       - "app/__init__.py"
       - "app/auth/mobile_api.py"
+      - "app/accommodation/services/native_booking_service.py"
+      - "app/accommodation/services/marketplace_service.py"
+      - "app/accommodation/services/booking_service.py"
+      - "tests/test_accommodation_booking.py"
+      - "app/wallet/services/wallet_service.py"
+      - "tests/auth/test_mobile_accommodation_api.py"
       - "app/auth/account_deletion_service.py"
       - "app/auth/mobile_tokens.py"
       - "app/auth/otp_service.py"
@@ -133,6 +145,10 @@ jobs:
           python -m py_compile \
             app/__init__.py \
             app/auth/mobile_api.py \
+            app/accommodation/services/native_booking_service.py \
+            app/accommodation/services/marketplace_service.py \
+            app/accommodation/services/booking_service.py \
+            app/wallet/services/wallet_service.py \
             app/wallet/services/wallet_service.py \
             app/auth/account_deletion_service.py \
             app/auth/mobile_tokens.py \
@@ -181,6 +197,8 @@ jobs:
           python -m pytest -q --timeout=120
           tests/auth/test_mobile_registration_api.py
           tests/auth/test_mobile_wallet_api.py
+          tests/auth/test_mobile_accommodation_api.py
+          tests/test_accommodation_booking.py -k test_create_booking_total_amount_accounts_for_all_requested_rooms
           tests/auth/test_pending_registration_expiry.py
           tests/notifications/test_sms_service_adapter.py
           tests/test_public_app_download.py

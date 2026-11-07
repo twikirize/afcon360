@@ -227,6 +227,15 @@
                                     <small class="text-muted">Optional — you can also add this after your booking is confirmed.</small>
                                 </div>
 
+                                <div class="mb-4">
+                                    <label class="form-label fw-semibold" for="transactionPin">Wallet transaction PIN</label>
+                                    <input type="password" name="transaction_pin" id="transactionPin"
+                                           class="form-control form-control-lg" inputmode="numeric"
+                                           autocomplete="current-password" minlength="4" maxlength="6"
+                                           pattern="[0-9]{4,6}" placeholder="Enter your Wallet PIN">
+                                    <small class="text-muted">Required only when you choose Wallet and pay now or make a deposit. Your PIN is never saved with the booking.</small>
+                                </div>
+
                                 <div class="form-check mb-4">
                                     <input type="checkbox" class="form-check-input" id="terms" required>
                                     <label class="form-check-label" for="terms">
