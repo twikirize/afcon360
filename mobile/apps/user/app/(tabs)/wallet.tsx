@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import {
   ActivityIndicator,
+  AppState,
   Alert,
   Linking,
   Pressable,
@@ -18,6 +19,7 @@ import {
   StatusPill,
   palette,
 } from "@afcon360/mobile-ui";
+import { useFocusEffect } from "expo-router";
 import { walletClient } from "../../src/services/api";
 import type {
   ResolvedWalletRecipient,
@@ -195,9 +197,15 @@ export default function Wallet() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadWallet();
-  }, [loadWallet]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadWallet();
+      const subscription = AppState.addEventListener("change", state => {
+        if (state === "active") void loadWallet();
+      });
+      return () => subscription.remove();
+    }, [loadWallet])
+  );
 
   useEffect(() => {
     let active = true;

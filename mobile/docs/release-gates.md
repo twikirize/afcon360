@@ -9,19 +9,22 @@ A release advances only when evidence for its gate is recorded. CI and source in
 - [ ] User and Driver Metro bundles export for Android and iOS.
 - [ ] Flask mobile API modules compile and native-app website templates parse in CI.
 - [ ] Expo Doctor and full native project diagnostics reviewed.
-- [ ] Android development builds install and launch on physical Android devices.
+- [ ] Android development builds install, launch and render the expected native app identity and sign-in action on physical Android devices.
 - [ ] iOS development builds install and launch on a real iPhone.
 - [ ] Final icons, splash screens, privacy strings and brand artwork approved.
 
 ## Gate 1 — backend implementation
 
 - [x] Native password sign-in reuses canonical Auth credential and lockout logic.
-- [x] TOTP and backup-code MFA verification uses existing Auth routines. SMS MFA remains unsupported until the canonical Auth verifier supports it.
+- [x] TOTP and backup-code MFA verification uses existing Auth routines. Native SMS challenge UI is wired to the canonical server response, but the server only sends SMS to a verified E.164 phone when a real provider is configured; real provider delivery must be tested before release.
 - [x] Short-lived bearer access tokens, one-time refresh rotation, replay detection, device revocation, logout and /me are implemented.
 - [x] Bearer requests pin Flask-Login identity to the token owner; protected operations resolve the user/driver from server-side records.
 - [x] User place search, signed fare discovery, Wallet-certified payment options and request-first ride creation use GEO/Transport/Wallet services.
 - [x] Ride tracking reveals driver/vehicle details only after server-side assignment.
 - [x] Driver readiness, offer handling, trip transitions, foreground location, cash receipt and captured earnings use existing Transport/Wallet services.
+- [x] Native Wallet balance/history, PIN, recipient resolution, same-currency transfer and verified-deposit contracts are merged into main.
+- [ ] Native withdrawals remain disabled pending the separate clearing/journal decision and provider acceptance; cross-currency transfers and generic refunds are not available.
+- [ ] Native accommodation API PR #45 and event/free-ticket API PR #46 remain draft server work; paid tickets are deliberately unavailable.
 - [x] Account closure is shared by web and mobile; it reauthenticates, checks open Transport obligations, revokes sessions/API keys, invalidates MFA/recovery/PIN material and anonymizes direct identifiers.
 - [x] Domain response/authorization inventory is documented in `docs/backend-contracts.md` and `docs/api-inventory.md`.
 - [ ] Selected request-first PostgreSQL regression workflow passed on the final native branch head.
@@ -45,11 +48,13 @@ A release advances only when evidence for its gate is recorded. CI and source in
 
 - [ ] Both User and Driver APKs build from the same native branch head.
 - [ ] Each APK passes package identity, signature, target API, minimum SDK, backup-policy and payload checks.
-- [ ] Both APKs install and launch on Android API 24, 29, 33 and 36 emulators.
+- [ ] Both APKs install, stay running and render the expected app identity and primary sign-in action on Android API 24, 29, 33 and 36 emulators.
 - [ ] Both APK manifest audits confirm no legacy broad-storage or overlay permissions and no debuggable/cleartext configuration.
 - [ ] Latest-run APK and manifest audit artifacts are available with build provenance and SHA-256 checksums.
 - [ ] Physical Android installation and driver-location permission tests pass.
 - [ ] Preview APKs remain labelled as internal test builds, not Play Store releases.
+
+The emulator smoke test checks the Android UI hierarchy for the correct User/Driver identity and primary sign-in action after launch. It does not submit credentials, create accounts or write to the production backend. The navigation contract requires approved external website handoffs to be explicitly labelled; password recovery and account deletion stay in native screens.
 
 The PR-capable validation workflow uses disposable CI signing keys and read-only GitHub permissions. It does not publish a GitHub Release or use permanent signing secrets. Every run uses a different temporary signature; a new test APK may require uninstalling the previous preview before installation. A stable tester-distribution release needs a separate trusted workflow and protected signing environment.
 
