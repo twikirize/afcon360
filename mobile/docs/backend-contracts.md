@@ -1,6 +1,6 @@
 # AFCON360 native backend contract
 
-Audit baseline: `37f5d2c3b6ad606a6fa269693f6416aacce6c8f2` (main, 4 November 2026). Native implementation is isolated on `feat/native-mobile-apps-20261104` and PR #21; it is not merged or deployed.
+Audit baseline: `70816040885e3d52a7158719dc163afe99180b38` (main, 8 November 2026). Native User and Driver sources remain isolated on `feat/native-mobile-apps-20261104`; they are not website/backend code and are not production-deployed.
 
 ## Authority boundaries
 
@@ -14,7 +14,7 @@ Audit baseline: `37f5d2c3b6ad606a6fa269693f6416aacce6c8f2` (main, 4 November 202
 | Method | Endpoint | Purpose |
 |---|---|---|
 | POST | `/api/mobile/v1/auth/login` | Uses the canonical `authenticate_user()` password/lockout logic and creates existing server/device session records. |
-| POST | `/api/mobile/v1/auth/mfa/verify` | Completes TOTP or backup-code verification through existing Auth verification logic. |
+| POST | `/api/mobile/v1/auth/mfa/verify` | Completes the one-time challenge issued by canonical Auth: TOTP/backup code, or provider-gated SMS for eligible verified-phone accounts. |
 | POST | `/api/mobile/v1/auth/refresh` | Rotates one-time opaque refresh tokens; detects replay and revokes the device/server session. |
 | POST | `/api/mobile/v1/auth/logout` | Revokes the current device and server sessions. |
 | GET | `/api/mobile/v1/auth/me` | Returns minimal account identity and eligible contexts. |
@@ -26,7 +26,25 @@ Access tokens are random opaque values, with only SHA-256 digests as Redis keys;
 
 Native password recovery uses a six-digit code delivered to the account's registered email address. The code expires after 10 minutes, is stored as a keyed hash, is rate-limited, and is atomically consumed once; incorrect attempts do not consume the code. The request endpoint deliberately gives the same response when no matching active account exists. A successful password reset revokes previous server and native device sessions. The User and Driver apps keep this flow inside their native screens.
 
-**MFA limitation:** native sign-in and account deletion currently support enrolled TOTP and TOTP backup codes only. Existing SMS MFA is not a completed verifier in the Auth implementation; native sign-in rejects it rather than treating an SMS code as valid. This needs a canonical Auth decision before supporting SMS.
+**MFA contract:** TOTP and backup codes use the canonical Auth verifier. Native SMS sign-in is only offered when the account has a verified E.164 phone number and a real owner-configured SMS provider (Twilio or Africa's Talking) is available. The server sends a one-time, short-lived code and returns the masked destination; it does not fall back to console logging. The native UI may display the SMS challenge, but live provider delivery and end-to-end acceptance remain release tests.
+
+## Implemented User / Wallet contract
+
+The native Wallet screen calls the canonical Wallet API and does not calculate balances or maintain a separate ledger. The following endpoints are present on `main`:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/mobile/v1/wallet` | Ledger-derived wallet accounts and balances. |
+| GET | `/api/mobile/v1/wallet/transactions` | Owner-scoped transaction history. |
+| GET | `/api/mobile/v1/wallet/pin` | Transaction PIN status. |
+| POST | `/api/mobile/v1/wallet/pin` | Secure PIN setup/change with the server's password/current-PIN checks. |
+| POST | `/api/mobile/v1/wallet/recipients/resolve` | Resolves a verified payment identity without exposing internal IDs. |
+| POST | `/api/mobile/v1/wallet/transfers` | Same-currency Wallet transfer through WalletService, protected by PIN and idempotency. |
+| POST | `/api/mobile/v1/wallet/deposits` | Creates a provider-backed pending deposit intent; this does not credit the ledger. |
+| GET | `/api/mobile/v1/wallet/deposits/<reference>` | Owner-scoped provider deposit status. |
+| POST | `/api/mobile/v1/wallet/deposits/<reference>/refresh` | Rechecks provider status; only exact verified amount/currency success may credit the ledger. |
+
+**Wallet boundaries:** customer withdrawals have no merged `main` endpoint. The native withdrawal code remains disabled (`NATIVE_WITHDRAWALS_ENABLED=false`) while draft PR #44 still needs the financial clearing/revenue-account journal decision and verified provider acceptance. Cross-currency Wallet transfers and generic user refunds are not exposed. Flutterwave sandbox/webhook acceptance remains a release gate.
 
 ## Implemented User / Transport contract
 
@@ -61,8 +79,8 @@ The driver app polls offers and active trip state. Push delivery, continuous/bac
 
 ## Remaining domain and release gaps
 
-- Native Wallet mutation flows (deposit, withdraw, transfer, PIN, transaction list and refunds) remain disabled; only the existing Wallet read and Transport settlement retry are connected.
-- Accommodation, event/ticket and tourism booking flows remain linked to their existing web experiences, not duplicated natively.
+- Native Wallet has merged API support for balances, history, PIN, recipient resolution, same-currency transfers and provider-verified deposits. Withdrawals remain disabled; cross-currency transfers and generic refunds are not available.
+- Native accommodation APIs remain in draft PR #45 and native event/free-ticket APIs remain in draft PR #46; until those server PRs merge and app integration passes, these screens must not be represented as release-ready live functionality. PR #46 deliberately rejects paid tickets. Tourism remains an explicit website handoff.
 - Push/FCM/APNs device registration and live socket delivery are not implemented.
 - Live-like end-to-end tests and physical Android/iOS device acceptance are still required.
 - Production API deployment, signing credentials, EAS project linking, store developer accounts, privacy/legal approvals and store submissions remain external release gates.
