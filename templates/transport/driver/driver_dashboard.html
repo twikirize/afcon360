@@ -149,6 +149,89 @@
       align-items: stretch;
     }
   }
+  #driverDashboard .driver-map-search,
+  #driverDashboard .driver-map-demand {
+    display: flex;
+    flex: 1 1 300px;
+    min-width: 0;
+    flex-direction: column;
+    gap: 7px;
+  }
+  #driverDashboard .driver-map-tools__label {
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+  #driverDashboard .driver-map-search__controls,
+  #driverDashboard .driver-map-demand__actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #driverDashboard .driver-map-search__controls input,
+  #driverDashboard .driver-map-demand select {
+    min-width: 0;
+    min-height: 38px;
+    flex: 1 1 180px;
+    padding: 7px 10px;
+    border: 1px solid var(--border, #cbd5e1);
+    border-radius: 8px;
+    background: var(--bg-surface, #fff);
+    color: var(--text, #0f172a);
+    font: inherit;
+    font-size: 0.8rem;
+  }
+  #driverDashboard .driver-map-search__results {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 190px;
+    overflow-y: auto;
+    padding: 6px;
+    border: 1px solid var(--border, #cbd5e1);
+    border-radius: 8px;
+    background: var(--bg-surface, #fff);
+  }
+  #driverDashboard .driver-map-search__results[hidden],
+  #driverDashboard .driver-map-search__attribution[hidden] {
+    display: none;
+  }
+  #driverDashboard .driver-map-search__result {
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text, #0f172a);
+    text-align: left;
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  #driverDashboard .driver-map-search__result:hover,
+  #driverDashboard .driver-map-search__result:focus-visible {
+    background: var(--bg-surface-alt, #f1f5f9);
+    outline: 2px solid var(--brand-primary, #2563eb);
+    outline-offset: -2px;
+  }
+  #driverDashboard .driver-map-search__feedback {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    line-height: 1.4;
+  }
+  #driverDashboard .driver-map-search__attribution {
+    color: var(--text-muted);
+  }
+  #driverDashboard .driver-map-demand__actions {
+    align-items: stretch;
+  }
+  #driverDashboard .driver-map-demand__actions button {
+    flex: 0 1 auto;
+  }
 </style>
 {% endblock %}
 
@@ -519,19 +602,48 @@
            data-last-lng="{{ driver_profile.last_location.get('longitude') if driver_profile.last_location and driver_profile.last_location.get('longitude') is not none else '' }}"
            data-last-ts="{{ driver_profile.location_updated_at.isoformat() if driver_profile.location_updated_at else '' }}"
            data-demand-url="{{ url_for('transport.driver_demand_cells') }}"
+           data-geocode-url="{{ url_for('geo.geocode_search') }}"
            aria-label="Map showing the driver's last published position when available"></div>
     </div>
     <div class="driver-location-map__tools">
+      <div class="driver-map-search">
+        <label for="driverMapSearch" class="driver-map-tools__label">Find a place</label>
+        <div class="driver-map-search__controls">
+          <input type="search" id="driverMapSearch" maxlength="120"
+                 placeholder="Search a town, area or landmark"
+                 aria-label="Search a place on the driver map">
+          <button type="button" class="btn btn-secondary btn-sm" id="driverMapSearchBtn">
+            <i class="fa-solid fa-magnifying-glass"></i> Search
+          </button>
+        </div>
+        <div id="driverMapSearchResults" class="driver-map-search__results"
+             role="listbox" aria-label="Place search results" hidden></div>
+        <div class="driver-map-search__feedback">
+          <span id="driverMapSearchState" role="status" aria-live="polite"></span>
+          <span id="driverMapAttribution" class="driver-map-search__attribution" hidden></span>
+        </div>
+      </div>
+      <div class="driver-map-demand">
+        <label for="driverDemandFilter" class="driver-map-tools__label">Demand level</label>
+        <select id="driverDemandFilter" aria-label="Filter recent demand by intensity">
+          <option value="all">All demand zones</option>
+          <option value="high">High · 10+ requests</option>
+          <option value="medium">Medium · 6–9 requests</option>
+          <option value="low">Low · 3–5 requests</option>
+        </select>
+        <span id="driverDemandState" class="badge badge-gray" role="status" aria-live="polite">Recent demand: loading…</span>
+        <div class="driver-map-demand__actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="driverDemandRefreshBtn">
+            <i class="fa-solid fa-rotate"></i> Refresh demand
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="driverMapLocateBtn">
+            <i class="fa-solid fa-location-crosshairs"></i> Center on this device
+          </button>
+        </div>
+      </div>
       <span id="driverMapNote" class="driver-location-map__note">
         The map uses the shared GEO renderer. A default map centre is not a tracked driver location.
       </span>
-      <span id="driverDemandState" class="badge badge-gray" role="status" aria-live="polite">Recent demand: loading…</span>
-      <button type="button" class="btn btn-secondary btn-sm" id="driverDemandRefreshBtn">
-        <i class="fa-solid fa-rotate"></i> Refresh demand
-      </button>
-      <button type="button" class="btn btn-secondary btn-sm" id="driverMapLocateBtn">
-        <i class="fa-solid fa-location-crosshairs"></i> Center on this device
-      </button>
     </div>
   </div>
 

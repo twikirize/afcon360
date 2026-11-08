@@ -114,6 +114,37 @@ def test_driver_dashboard_map_uses_shared_geo_renderer_without_duplicate_publish
     assert "last 24 hours" in adapter
 
 
+
+def test_driver_map_search_uses_geo_geocoder_and_displays_attribution():
+    template = _read("templates/transport/driver/driver_dashboard.html")
+    adapter = _read("static/js/modules/transport/driver-dashboard-map.js")
+    assert "url_for('geo.geocode_search')" in template
+    assert 'id="driverMapSearch"' in template
+    assert 'id="driverMapSearchBtn"' in template
+    assert 'id="driverMapSearchResults"' in template
+    assert 'id="driverMapAttribution"' in template
+    assert "container.dataset.geocodeUrl" in adapter
+    assert "payload.attribution" in adapter
+    assert "credentials: 'same-origin'" in adapter
+    assert "encodeURIComponent(query)" in adapter
+    assert "button.textContent = String(item.label" in adapter
+    assert "popupContent.textContent = label" in adapter
+
+
+def test_driver_map_demand_filter_uses_only_real_aggregated_request_counts():
+    template = _read("templates/transport/driver/driver_dashboard.html")
+    adapter = _read("static/js/modules/transport/driver-dashboard-map.js")
+    assert 'id="driverDemandFilter"' in template
+    assert 'value="high"' in template
+    assert 'value="medium"' in template
+    assert 'value="low"' in template
+    assert "function bandForCount(count)" in adapter
+    assert "if (count >= 10) return 'high';" in adapter
+    assert "if (count >= 6) return 'medium';" in adapter
+    assert "return 'low';" in adapter
+    assert "cell.request_count" in adapter
+    assert "container.dataset.demandUrl" in adapter
+
 def test_csrf_refresh_does_not_rotate_session_seed():
     app_init = _read("app/__init__.py")
     start = app_init.index("def issue_csrf_token():")
