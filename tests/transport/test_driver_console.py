@@ -366,3 +366,93 @@ def test_cli_ping_publishes_location(app, db_session):
     db_session.expire_all()
     profile = db_session.get(DriverProfile, driver.driver_profile_id)
     assert profile.location_updated_at is not None
+
+
+
+def test_driver_demand_cells_returns_only_local_aggregated_recent_requests(
+        app, client, db_session):
+    from app.transport.models import DriverProfile
+
+    driver = _seed_driver(app)
+    _enter_driver_context(client, driver)
+    now = datetime.now(timezone.utc)
+
+    with app.app_context():
+        profile = db.session.get(DriverProfile, driver.driver_profile_id)
+        profile.last_location = {"latitude": 0.3136, "longitude": 32.5811}
+        profile.location_updated_at = now
+        db.session.commit()
+
+    # Three requests are the minimum visible aggregate for one grid cell.
+    for index in range(3):
+        _make_booking(
+            app, driver.id, status="confirmed",
+            ref=f"DH-{uuid.uuid4().hex[:10].upper()}",
+        )
+
+    response = client.get("/transport/api/driver/demand/cells")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert payload["state"] == "available"
+    cell = next(
+        item for item in payload["cells"]
+        if item["center"] == {"latitude": 0.31, "longitude": 32.58}
+    )
+    assert cell["request_count"] == 3
+    assert set(cell) == {"center", "request_count"}
+    assert "booking_reference" not in response.get_data(as_text=True)
+    assert "driver_id" not in response.get_data(as_text=True)
+    assert "fare" not in response.get_data(as_text=True)
+    assert payload["window"]["since"] < payload["window"]["until"]
+    assert response.headers["Cache-Control"] == "private, no-store, max-age=0"
+    assert "cookie" in {value.strip().lower() for value in response.headers["Vary"].split(",")}
+
+
+def test_driver_demand_cells_hides_results_without_fresh_driver_location(
+        app, client, db_session):
+    from app.transport.models import DriverProfile
+
+    driver = _seed_driver(app)
+    _enter_driver_context(client, driver)
+    with app.app_context():
+        profile = db.session.get(DriverProfile, driver.driver_profile_id)
+        profile.last_location = {"latitude": 0.3136, "longitude": 32.5811}
+        profile.location_updated_at = datetime.now(timezone.utc) - timedelta(minutes=6)
+        db.session.commit()
+
+    response = client.get("/transport/api/driver/demand/cells")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    payload = response.get_json()
+    assert payload == {
+        "success": True,
+        "state": "location_unavailable",
+        "cells": [],
+        "computed_at": payload["computed_at"],
+    }
+
+
+def test_driver_demand_cells_requires_explicit_driver_context(
+        app, client, db_session):
+    driver = _seed_driver(app)
+    _login(client, driver)
+
+    response = client.get("/transport/api/driver/demand/cells")
+    assert response.status_code == 403, response.get_data(as_text=True)
+
+
+def test_driver_dashboard_exposes_place_search_and_demand_filter_controls(
+        app, client, db_session):
+    driver = _seed_driver(app)
+    _enter_driver_context(client, driver)
+
+    response = client.get("/transport/driver-dashboard", follow_redirects=False)
+    assert response.status_code == 200, response.get_data(as_text=True)
+    body = response.get_data(as_text=True)
+    assert 'id="driverMapSearch"' in body
+    assert 'id="driverMapSearchBtn"' in body
+    assert 'id="driverMapSearchResults"' in body
+    assert 'id="driverMapAttribution"' in body
+    assert 'id="driverDemandFilter"' in body
+    assert "/geo/api/geocode" in body
+

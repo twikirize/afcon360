@@ -101,12 +101,49 @@ def test_driver_dashboard_map_uses_shared_geo_renderer_without_duplicate_publish
     assert "maplibre" not in template.lower()
     assert "window.GeoMap.init" in adapter
     assert "navigator.geolocation.getCurrentPosition" in adapter
-    # This adapter may centre a local map, but never publishes location or
-    # performs a second GPS watch. driver-dashboard.js owns server publishing.
-    assert "fetch(" not in adapter
+    # This adapter may fetch only the read-only, driver-scoped demand
+    # snapshot. It never publishes location or starts a second GPS watch.
+    # driver-dashboard.js remains the sole owner of server publishing.
+    assert "container.dataset.demandUrl" in adapter
+    assert "method: 'GET'" in adapter
+    assert "credentials: 'same-origin'" in adapter
     assert "XMLHttpRequest" not in adapter
     assert "navigator.geolocation.watchPosition" not in adapter
+    assert "driver_demand_cells" in template
+    assert 'id="driverDemandRefreshBtn"' in template
+    assert "last 24 hours" in adapter
 
+
+
+def test_driver_map_search_uses_geo_geocoder_and_displays_attribution():
+    template = _read("templates/transport/driver/driver_dashboard.html")
+    adapter = _read("static/js/modules/transport/driver-dashboard-map.js")
+    assert "url_for('geo.geocode_search')" in template
+    assert 'id="driverMapSearch"' in template
+    assert 'id="driverMapSearchBtn"' in template
+    assert 'id="driverMapSearchResults"' in template
+    assert 'id="driverMapAttribution"' in template
+    assert "container.dataset.geocodeUrl" in adapter
+    assert "payload.attribution" in adapter
+    assert "credentials: 'same-origin'" in adapter
+    assert "encodeURIComponent(query)" in adapter
+    assert "button.textContent = String(item.label" in adapter
+    assert "popupContent.textContent = label" in adapter
+
+
+def test_driver_map_demand_filter_uses_only_real_aggregated_request_counts():
+    template = _read("templates/transport/driver/driver_dashboard.html")
+    adapter = _read("static/js/modules/transport/driver-dashboard-map.js")
+    assert 'id="driverDemandFilter"' in template
+    assert 'value="high"' in template
+    assert 'value="medium"' in template
+    assert 'value="low"' in template
+    assert "function bandForCount(count)" in adapter
+    assert "if (count >= 10) return 'high';" in adapter
+    assert "if (count >= 6) return 'medium';" in adapter
+    assert "return 'low';" in adapter
+    assert "cell.request_count" in adapter
+    assert "container.dataset.demandUrl" in adapter
 
 def test_csrf_refresh_does_not_rotate_session_seed():
     app_init = _read("app/__init__.py")

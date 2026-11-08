@@ -385,6 +385,8 @@ jobs:
               tests/notifications/test_shared_email_configuration.py
               tests/notifications/test_custom_channel_fallback.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
+              tests/transport/test_driver_console.py
+              tests/test_transport_frontend_contracts.py
             )
             if [[ ${#TARGETS[@]} -eq 0 ]]; then
               echo "No failed-test targets are recorded."
