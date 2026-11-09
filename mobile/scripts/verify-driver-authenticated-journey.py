@@ -232,8 +232,8 @@ def main() -> None:
     tap_text("Sign in to Driver")
 
     wait_for_text(
-        "Your driving workspace.", DRIVER_CODE, "Complete your go-live checks",
-        timeout=60, label="authenticated Driver home and server readiness",
+        "Your driving workspace.", DRIVER_CODE,
+        timeout=60, label="authenticated Driver home",
     )
     save_screen("02-driver-home")
     # The readiness action sits below the profile details on smaller screens.
