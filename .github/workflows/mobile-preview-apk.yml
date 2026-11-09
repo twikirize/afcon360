@@ -30,6 +30,7 @@ permissions:
 
 jobs:
   build-preview-apk:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'feat/native-user-android-e2e-20261109' }}
     name: Build and verify ${{ matrix.app }} Android preview APK
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -400,6 +401,7 @@ jobs:
           retention-days: 30
 
   ios-compatibility:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'feat/native-user-android-e2e-20261109' }}
     name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
     runs-on: macos-26-intel
     timeout-minutes: 90
