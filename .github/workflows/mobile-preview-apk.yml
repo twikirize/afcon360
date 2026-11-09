@@ -701,15 +701,30 @@ jobs:
           sha256sum driver-e2e-evidence/driver-e2e.apk | tee driver-e2e-evidence/driver-e2e-apk.sha256
           echo "The test-only APK points to the disposable loopback API and is not a release artifact."
 
+      - name: Enable and verify KVM hardware acceleration for authenticated Driver journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::/dev/kvm is unavailable; refusing a slow software-emulation fallback."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+
       - name: Install, sign in, read Driver screens, restore session and sign out on Android
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
-          disable-linux-hw-accel: true
           api-level: 36
           target: google_apis
           arch: x86_64
           profile: pixel_7
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel off
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
           disable-animations: true
           emulator-boot-timeout: 600
           script: python mobile/scripts/verify-driver-authenticated-journey.py
