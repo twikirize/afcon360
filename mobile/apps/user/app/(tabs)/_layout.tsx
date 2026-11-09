@@ -19,7 +19,7 @@ export default function UserTabs() {
   })}>
     <Tabs.Screen name="index" options={{ title: "Home" }} />
     <Tabs.Screen name="explore" options={{ title: "Explore" }} />
-            <Tabs.Screen name="activity" options={{ title: "Activity" }} />
+    <Tabs.Screen name="activity" options={{ title: "Activity" }} />
     <Tabs.Screen name="wallet" options={{ title: "Wallet" }} />
     <Tabs.Screen name="account" options={{ title: "Account" }} />
   </Tabs>;
