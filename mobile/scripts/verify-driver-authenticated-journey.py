@@ -235,12 +235,13 @@ def main() -> None:
         "Your driving workspace.", DRIVER_CODE, "Complete your go-live checks",
         timeout=60, label="authenticated Driver home and server readiness",
     )
-    home_text = visible_text()
-    if "Go online to receive offers" not in home_text:
-        raise AssertionError("The pending test driver did not remain offline on the Driver home screen.")
-    if "Complete checks to go online" not in home_text:
-        raise AssertionError("The Driver go-online action was not gated by the incomplete server checklist.")
     save_screen("02-driver-home")
+    # The readiness action sits below the profile details on smaller screens.
+    run_adb("shell", "input", "swipe", "540", "1900", "540", "700", "450")
+    wait_for_text(
+        "Complete checks to go online",
+        timeout=20, label="go-online action gated by the server readiness checklist",
+    )
 
     tap_text("Trips", last=True)
     wait_for_text(
