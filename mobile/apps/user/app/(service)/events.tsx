@@ -52,6 +52,8 @@ export default function Events() {
   const [city, setCity] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [registrationsLoading, setRegistrationsLoading] = useState(true);
+  const [registrationsError, setRegistrationsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -73,13 +75,21 @@ export default function Events() {
   }, [query, city]);
 
   const loadRegistrations = useCallback(async () => {
-    const result = await eventClient.listRegistrations(30, 0);
-    setRegistrations(result.items ?? []);
+    setRegistrationsLoading(true);
+    setRegistrationsError(null);
+    try {
+      const result = await eventClient.listRegistrations(30, 0);
+      setRegistrations(result.items ?? []);
+    } catch (e) {
+      setRegistrationsError(e instanceof Error ? e.message : "Your event tickets could not be loaded.");
+    } finally {
+      setRegistrationsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     void loadEvents("", "");
-    void loadRegistrations().catch(() => undefined);
+    void loadRegistrations();
   }, []);
 
   const openEvent = async (event: NativeEventSummary) => {
@@ -172,7 +182,7 @@ export default function Events() {
               <Text style={{ color: palette.ink, fontWeight: "700" }}>{event.category}</Text>
             </Pressable>
           ))
-        ) : (
+        ) : error ? null : (
           <Text style={{ color: palette.muted }}>No published events matched that search.</Text>
         )}
       </Panel>
@@ -217,7 +227,9 @@ export default function Events() {
 
       <Panel>
         <SectionTitle>Your tickets</SectionTitle>
-        {registrations.length ? registrations.map((ticket) => (
+        {registrationsError ? <Text style={{ color: "#9A342D", lineHeight: 20 }}>Ticket history is unavailable: {registrationsError}</Text> : null}
+        {registrationsLoading ? <ActivityIndicator color={palette.green} /> : null}
+        {!registrationsLoading && registrations.length ? registrations.map((ticket) => (
           <View key={ticket.registration_reference} style={{ borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10, gap: 6 }}>
             <Text style={{ color: palette.ink, fontWeight: "900" }}>{ticket.event.name || "Event ticket"}</Text>
             <Text style={{ color: palette.muted }}>{ticket.ticket_type} · {ticket.registration_reference}</Text>
@@ -239,10 +251,10 @@ export default function Events() {
               </View>
             ) : null}
           </View>
-        )) : (
+        )) : registrationsError || registrationsLoading ? null : (
           <Text style={{ color: palette.muted }}>Your confirmed event tickets will appear here.</Text>
         )}
-        <ActionButton label="Refresh tickets" onPress={() => void loadRegistrations()} />
+        <ActionButton label={registrationsLoading ? "Refreshing tickets…" : "Refresh tickets"} disabled={registrationsLoading} onPress={() => void loadRegistrations()} />
       </Panel>
     </AppScreen>
   );
