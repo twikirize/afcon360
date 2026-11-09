@@ -9,12 +9,14 @@ import {
   StatusPill,
   palette,
 } from "@afcon360/mobile-ui";
+import { MobileAuthError } from "@afcon360/mobile-core";
 import {
   AccommodationBooking,
   AccommodationBookingQuote,
   AccommodationProperty,
 } from "@afcon360/mobile-core";
 import { accommodationClient } from "../../src/services/api";
+import { serviceErrorMessage } from "../../src/services/service-errors";
 
 function dateOffset(days: number): string {
   const value = new Date();
@@ -112,7 +114,7 @@ export default function Stays() {
       const result = await accommodationClient.listBookings(20, 0);
       setBookings(result.items ?? []);
     } catch (e) {
-      setBookingsError(e instanceof Error ? e.message : "Your accommodation bookings could not be loaded.");
+      setBookingsError(serviceErrorMessage(e, "Accommodation"));
     } finally {
       setBookingsLoading(false);
     }
@@ -128,7 +130,7 @@ export default function Stays() {
       });
       setProperties(result.items ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Accommodation search is unavailable.");
+      setError(serviceErrorMessage(e, "Accommodation"));
     } finally {
       setLoading(false);
     }
@@ -184,7 +186,7 @@ export default function Stays() {
       setQuote(result);
       setNotice("This price was calculated by AFCON360. Review the amount and available Wallet balance before confirming.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AFCON360 could not prepare the booking quote.");
+      setError(serviceErrorMessage(e, "Accommodation"));
     } finally {
       setBusy(false);
     }
@@ -207,7 +209,7 @@ export default function Stays() {
       setNotice(`Booking ${booking.booking_reference} was created. Status: ${booking.status}.`);
       await loadBookings();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AFCON360 could not confirm the booking.");
+      setError(serviceErrorMessage(e, "Accommodation"));
     } finally {
       setBusy(false);
     }
@@ -258,7 +260,7 @@ export default function Stays() {
                 }
                 await loadBookings();
               } catch (e) {
-                setError(e instanceof Error ? e.message : "AFCON360 could not cancel this booking.");
+                setError(serviceErrorMessage(e, "Accommodation"));
               } finally {
                 setBusy(false);
               }
