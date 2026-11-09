@@ -1,12 +1,8 @@
 {% extends "base.html" %}
 
-{% block head %}
-  {{ super() }}
-  <meta name="description" content="Explore Pamoja’s connected User and Driver experiences for transport, accommodation, events and services across East Africa.">
-  <meta property="og:title" content="Pamoja Apps | One platform, every journey">
-  <meta property="og:description" content="Explore Pamoja’s User and Driver experiences, connecting mobility, stays, events and services in one platform.">
-  <meta property="og:type" content="website">
-{% endblock %}
+{% block meta_description %}Explore Pamoja’s connected User and Driver experiences for transport, accommodation, events and services across East Africa.{% endblock %}
+{% block og_title %}Pamoja Apps | One platform, every journey{% endblock %}
+{% block og_description %}Explore Pamoja’s User and Driver experiences, connecting mobility, stays, events and services in one platform.{% endblock %}
 
 {% block styles %}
   {{ super() }}
