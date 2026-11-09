@@ -9,7 +9,6 @@ import {
   StatusPill,
   palette,
 } from "@afcon360/mobile-ui";
-import { MobileAuthError } from "@afcon360/mobile-core";
 import {
   NativeEventDetail,
   NativeEventRegistration,
@@ -70,6 +69,7 @@ export default function Events() {
       });
       setEvents(result.items ?? []);
     } catch (e) {
+      setEvents([]);
       setError(serviceErrorMessage(e, "Events"));
     } finally {
       setLoading(false);
@@ -83,6 +83,7 @@ export default function Events() {
       const result = await eventClient.listRegistrations(30, 0);
       setRegistrations(result.items ?? []);
     } catch (e) {
+      setRegistrations([]);
       setRegistrationsError(serviceErrorMessage(e, "Events"));
     } finally {
       setRegistrationsLoading(false);
@@ -168,7 +169,7 @@ export default function Events() {
             style={{ backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink }}
           />
         </View>
-        <ActionButton label="Search events" onPress={() => void loadEvents()} />
+        <ActionButton label={loading ? "Searching events…" : "Search events"} disabled={loading || busy} onPress={() => void loadEvents()} />
         {loading ? (
           <ActivityIndicator color={palette.green} />
         ) : events.length ? (
@@ -176,6 +177,7 @@ export default function Events() {
             <Pressable
               key={event.public_id}
               onPress={() => void openEvent(event)}
+              disabled={busy}
               style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 12, padding: 12, gap: 5, backgroundColor: palette.surface }}
             >
               <Text style={{ color: palette.ink, fontSize: 16, fontWeight: "900" }}>{event.name}</Text>
@@ -213,7 +215,7 @@ export default function Events() {
                   {ticket.is_available_now ? "Available now" : "Not currently available"}
                 </StatusPill>
                 {canRegister ? (
-                  <ActionButton label={busy ? "Registering…" : "Register for free"} onPress={() => void register(ticket)} />
+                  <ActionButton label={busy ? "Registering…" : "Register for free"} disabled={busy} onPress={() => void register(ticket)} />
                 ) : !isFree ? (
                   <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
                     Paid checkout is not enabled in the native app yet. You will not be charged here.
