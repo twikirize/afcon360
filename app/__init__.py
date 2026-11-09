@@ -2070,7 +2070,7 @@ def create_app(config_object=None) -> Flask:
         # ── end nav state ───────────────────────────────────────────
 
         return {
-            "app_name": current_app.config.get("APP_NAME", "AFCON 360"),
+            "app_name": current_app.config.get("APP_NAME", "Pamoja"),
             "tournament_name": current_app.config.get("TOURNAMENT_NAME", "AFCON Tournament"),
             "year": current_app.config.get("YEAR", 2025),
             "require_email_verification": current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False),
@@ -2115,7 +2115,7 @@ def create_app(config_object=None) -> Flask:
         return {
             "modules": modules,
             "config": {
-                "app_name": current_app.config.get("APP_NAME", "AFCON 360"),
+                "app_name": current_app.config.get("APP_NAME", "Pamoja"),
                 "tournament_name": current_app.config.get("TOURNAMENT_NAME", "AFCON Tournament"),
                 "year": current_app.config.get("YEAR", 2025),
                 "require_email_verification": current_app.config.get("REQUIRE_EMAIL_VERIFICATION", False),

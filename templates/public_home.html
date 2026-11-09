@@ -10,6 +10,10 @@
 <script src="{{ url_for('static', filename='js/feed/feed.js') }}" defer></script>
 {% endblock %}
 
+{% block meta_description %}Discover transport, accommodation, experiences and events on Pamoja. One connected platform for customers, providers and organizations.{% endblock %}
+{% block og_title %}Pamoja — Move, stay, explore and connect{% endblock %}
+{% block og_description %}Discover stays, transport, experiences and events through Pamoja, the connected multi-domain platform.{% endblock %}
+
 {% block content %}
 
 <!-- ── SEARCH BAR ─────────────────────────────────────── -->
@@ -303,7 +307,7 @@
     <!-- Host Your Event Banner -->
     <section>
       <div class="host-banner">
-        <div class="host-banner-title">Host Your Event on <span>AFCON360</span></div>
+        <div class="host-banner-title">Host Your Event on <span>Pamoja</span></div>
         <div class="host-banner-sub">Reach Millions &amp; Make Your Event a Success!</div>
         {% if session.get('user_id') %}
         <a href="{{ safe_url('events.create_event') }}" class="host-banner-btn">Get Started ›</a>
