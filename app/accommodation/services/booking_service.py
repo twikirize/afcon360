@@ -422,7 +422,12 @@ class BookingService:
             # 5. PRICE CALCULATION
             try:
                 pricing = PricingService.calculate_total(
-                    property, check_in, check_out, num_guests, room_type_id=room_type_id
+                    property,
+                    check_in,
+                    check_out,
+                    num_guests,
+                    room_type_id=room_type_id,
+                    num_rooms=rooms_requested,
                 )
             except ValueError as e:
                 return None, str(e)
