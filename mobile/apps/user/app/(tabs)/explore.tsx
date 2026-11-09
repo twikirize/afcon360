@@ -12,7 +12,7 @@ export default function Explore() {
     <Panel>
       <SectionTitle>Transport</SectionTitle>
       <ServiceTile title="Rides" description="On-demand transport with resolved locations, signed fares and server-certified payment options." symbol="🚘" />
-      <ActionButton label="Book a ride" onPress={() => router.push("/ride")} />
+      <ActionButton label="Book a ride" onPress={() => router.push("/(service)/ride" as never)} />
     </Panel>
     <Panel>
       <SectionTitle>Accommodation</SectionTitle>
