@@ -311,6 +311,70 @@ def test_driver_vehicle_switch_uses_public_reference_and_redacts_internal_id(
     assert '"id"' not in response.get_data(as_text=True).lower()
 
 
+def test_driver_vehicle_switch_resolves_public_id_through_canonical_resource(
+    client, monkeypatch
+):
+    from app.auth import helpers
+    from app.extensions import db
+    from app.transport.api.driver_routes import DriverVehicleSwitchResource
+    from app.transport.models import Vehicle
+    from app.transport.services import go_live_service
+
+    previous = SimpleNamespace(id=41, license_plate="UAA 100A")
+    target = SimpleNamespace(
+        id=999,
+        public_id="vehicle-public-target",
+        owner_type="driver",
+        owner_id=902,
+        status="active",
+        license_plate="UAB 999Z",
+        make="Toyota",
+        model="Vitz",
+        year=2022,
+        vehicle_class="economy",
+        is_available=True,
+        passenger_capacity=4,
+        safety_features=["seatbelts"],
+    )
+    _user, profile, _calls = _driver_mobile_context(monkeypatch, current_vehicle=previous)
+    monkeypatch.setattr(
+        DriverVehicleSwitchResource,
+        "_profile_or_error",
+        lambda self, driver_id: (profile, None, None),
+    )
+    monkeypatch.setattr(helpers, "has_global_role", lambda *args: False)
+    monkeypatch.setattr(
+        go_live_service,
+        "can_go_live",
+        lambda driver: SimpleNamespace(checks=[SimpleNamespace(key="blocked", ok=True)]),
+    )
+    monkeypatch.setattr(Vehicle, "query", FakeQuery([target]))
+    from app.transport import models as transport_models
+    captured = {}
+
+    def assign(driver, vehicle, **kwargs):
+        captured.update(driver=driver, vehicle=vehicle, kwargs=kwargs)
+        driver.current_vehicle = vehicle
+
+    monkeypatch.setattr(transport_models, "assign_driver_to_vehicle", assign)
+    monkeypatch.setattr(db.session, "expire", lambda *args, **kwargs: None)
+    monkeypatch.setattr(db.session, "refresh", lambda *args, **kwargs: None)
+
+    response = client.post(
+        "/api/mobile/v1/driver/vehicles/switch",
+        json={"vehicle_public_id": "vehicle-public-target", "reason": "shift_start"},
+        headers=_driver_headers(),
+    )
+    assert response.status_code == 200, response.get_data(as_text=True)
+    assert captured["driver"] is profile
+    assert captured["vehicle"] is target
+    assert captured["kwargs"]["reason"] == "shift_start"
+    data = response.get_json()["data"]
+    assert data["assigned_vehicle"]["public_id"] == "vehicle-public-target"
+    assert '"id"' not in response.get_data(as_text=True).lower()
+    assert "vehicle_id" not in response.get_data(as_text=True).lower()
+
+
 def test_driver_vehicle_switch_rejects_missing_public_reference(client, monkeypatch):
     _driver_mobile_context(monkeypatch)
     response = client.post("/api/mobile/v1/driver/vehicles/switch", json={}, headers=_driver_headers())
