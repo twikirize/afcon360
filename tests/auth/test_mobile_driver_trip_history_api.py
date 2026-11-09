@@ -36,6 +36,7 @@ def _trip_row():
         "pickup_schedule": {
             "utc_datetime": "2026-11-10T08:30:00+00:00",
             "timezone_name": "Africa/Kampala",
+            "internal_remark": "must not be exposed",
         },
         "pickup_location_text": "Kampala Road, Kampala",
         "dropoff_location_text": "Entebbe Airport",
@@ -141,6 +142,8 @@ def test_mobile_driver_recent_trip_history_is_self_scoped_and_redacted(
         "assigned_driver_id",
         "vehicle_id",
         "booking_metadata",
+        "internal_remark",
+        "must not be exposed",
         "private_note",
         "completed_by_driver_profile_id",
         '"id"',
