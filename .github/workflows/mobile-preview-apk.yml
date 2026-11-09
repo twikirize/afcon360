@@ -554,6 +554,7 @@ jobs:
       DISABLE_REDIS: "0"
       SOCKETIO_ENABLED: "false"
       ANALYTICS_ENABLED: "false"
+      EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
       MAIL_SUPPRESS_SEND: "true"
       AFCON360_E2E_USERNAME: native_e2e_user
       AFCON360_E2E_EMAIL: native-e2e@afcon360.test
