@@ -50,6 +50,7 @@ on:
   pull_request:
     branches:
       - main
+      - feat/driver-native-trip-history-api-20261109
     paths:
       - "app/__init__.py"
       - "app/auth/mobile_api.py"
