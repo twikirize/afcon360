@@ -518,7 +518,8 @@ jobs:
 
   driver-authenticated-journey:
     name: Driver APK — real login, Driver workspace reads, session restore and logout
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'feat/native-driver-apk-isolated-20261109' }}
+    # Authentication E2E is a deliberate final gate after Driver workspace parity; PR updates must not run it automatically.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     services:
