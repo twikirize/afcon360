@@ -718,11 +718,11 @@ jobs:
           }
           if (end < 0) throw new Error("Could not find end of Android release build type");
           let block = source.slice(release, end);
-          const signing = /signingConfig\\s+signingConfigs\\.[A-Za-z0-9_]+/;
+          const signing = /signingConfig\s+signingConfigs\.[A-Za-z0-9_]+/;
           if (signing.test(block)) {
             block = block.replace(signing, "signingConfig signingConfigs.debug");
           } else {
-            block = block.replace("release {", "release {\\n            signingConfig signingConfigs.debug");
+            block = block.replace("release {", "release {\n            signingConfig signingConfigs.debug");
           }
           source = source.slice(0, release) + block + source.slice(end);
           fs.writeFileSync(path, source);
