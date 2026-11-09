@@ -18,6 +18,17 @@ type ActiveTrip = {
   status: string;
   pickup?: { address?: string };
   dropoff?: { address?: string };
+  pickup_time?: string | null;
+  pickup_schedule?: {
+    local_datetime?: string;
+    utc_datetime?: string;
+    timezone_name?: string;
+    utc_offset?: string;
+    display_timezone_derived?: boolean;
+  } | null;
+  booking_mode?: string;
+  can_cancel?: boolean;
+  can_mark_no_show?: boolean;
   payment_method?: string;
   payment_status?: string;
   fare_amount?: string;
@@ -262,6 +273,12 @@ export default function Trips() {
   }
 
   const action = trip ? nextAction[trip.status.toLowerCase()] : undefined;
+  const canCancel = trip?.can_cancel === true;
+  const canMarkNoShow = trip?.can_mark_no_show === true;
+  const pickupTimeLabel = trip?.pickup_schedule?.local_datetime
+    ? trip.pickup_schedule.local_datetime +
+      (trip.pickup_schedule.timezone_name ? " · " + trip.pickup_schedule.timezone_name : "")
+    : trip?.pickup_time ?? null;
   const canConfirmCash =
     trip?.status.toLowerCase() === "completed" &&
     trip.payment_method === "cash" &&
@@ -303,6 +320,9 @@ export default function Trips() {
               <View style={{ height: 1, backgroundColor: palette.border }} />
               <TripDetail label="Destination" value={trip.dropoff?.address ?? "Not provided"} />
             </View>
+            {pickupTimeLabel ? (
+              <TripDetail label="Pickup time" value={pickupTimeLabel} />
+            ) : null}
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
               <TripDetail
                 label="Fare"
@@ -326,6 +346,34 @@ export default function Trips() {
                 There is no further trip action available for this server-reported status.
               </Text>
             )}
+            {canCancel ? (
+              <ActionButton
+                label="Cancel trip"
+                disabled={busy}
+                onPress={() => Alert.alert(
+                  "Cancel this trip?",
+                  "AFCON360 will validate the cancellation and handle the dispatch/rider update.",
+                  [
+                    { text: "Keep trip", style: "cancel" },
+                    { text: "Cancel trip", style: "destructive", onPress: () => { void advance("cancel"); } }
+                  ]
+                )}
+              />
+            ) : null}
+            {canMarkNoShow ? (
+              <ActionButton
+                label="Report passenger no-show"
+                disabled={busy}
+                onPress={() => Alert.alert(
+                  "Report a passenger no-show?",
+                  "Only proceed if you are at the pickup point and the passenger has not arrived. AFCON360 has confirmed the waiting period has elapsed.",
+                  [
+                    { text: "Not now", style: "cancel" },
+                    { text: "Confirm no-show", style: "destructive", onPress: () => { void advance("no_show"); } }
+                  ]
+                )}
+              />
+            ) : null}
             {canConfirmCash ? (
               <View style={{ gap: 8 }}>
                 <View style={{ padding: 12, borderRadius: 13, backgroundColor: palette.warningSoft }}>
