@@ -471,6 +471,21 @@ body.page-home main#main { background: transparent; margin: 0; padding: 0; max-w
 .footer-inner { max-width: 1280px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; }
 .footer-inner .links a { color: #999; text-decoration: none; margin-left: 0.75rem; transition: color 0.2s; }
 .footer-inner .links a:hover { color: var(--gold); }
+.footer-inner--expanded { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(0, 2fr); align-items: start; gap: 2.5rem; padding-top: 2.25rem; padding-bottom: 2.25rem; }
+.footer-brand-name { display: inline-block; margin-bottom: .55rem; color: #fff; font-size: 1.25rem; font-weight: 800; letter-spacing: .04em; text-decoration: none; }
+.footer-brand p { max-width: 290px; margin: 0 0 1rem; color: #aaa; line-height: 1.65; }
+.footer-brand small { color: #888; }
+.footer-link-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; }
+.footer-link-group h2 { margin: 0 0 .7rem; border: 0; padding: 0; color: #fff; font-size: .88rem; font-weight: 800; letter-spacing: .04em; }
+.footer-link-group a { display: block; width: fit-content; margin: 0; padding: .22rem 0; color: #aaa; text-decoration: none; line-height: 1.55; transition: color .2s; }
+.footer-link-group a:hover { color: var(--gold); }
+@media (max-width: 760px) {
+  .footer-inner--expanded { grid-template-columns: 1fr; gap: 1.5rem; }
+  .footer-link-groups { gap: 1rem; }
+}
+@media (max-width: 480px) {
+  .footer-link-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* ── TYPOGRAPHY ─────────────────────────────────────────────── */
 h1,h2,h3,h4,h5,h6 { font-family: var(--font-head); color: var(--green-mid); margin-top: 0; line-height: 1.25; }

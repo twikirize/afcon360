@@ -2633,6 +2633,10 @@ def create_app(config_object=None) -> Flask:
         except Exception:
             pass
 
+    # Public-facing company, help and legal pages
+    from app.public_pages import public_pages_bp
+    app.register_blueprint(public_pages_bp)
+
     @app.route('/')
     def index():
         try:

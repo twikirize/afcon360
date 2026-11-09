@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Frequently Asked Questions | AFCON360{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/public-info-pages.css') }}">
+{% endblock %}
+{% block content %}
+<article class="public-page-wrap">
+  <header class="public-page-hero">
+    <p class="public-page-kicker">Help centre</p>
+    <h1>Frequently Asked Questions</h1>
+    <p class="public-page-intro">A few quick answers about using AFCON360 as a fan, traveller or service provider.</p>
+  </header>
+
+  <div class="public-page-content">
+    <section>
+      <div class="public-faq-item">
+        <h3>What is AFCON360?</h3>
+        <p>AFCON360 is a digital fan-support and services marketplace designed to bring event discovery and travel-related services together. Depending on availability, people can explore transport, accommodation, tours, experiences, event-related services and wallet or payment features.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>Is AFCON360 only for AFCON 2027?</h3>
+        <p>AFCON 2027 in East Africa is an important use case, but the platform is designed to support fans and travellers around other events and experiences too.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>Is AFCON360 the official AFCON organiser or ticket issuer?</h3>
+        <p>No. AFCON360 is a fan-support platform. Unless a formal authorisation or partnership is expressly announced, it should not be treated as the tournament organiser, a football governing body or an official ticket issuer. Check official channels for tournament announcements, tickets and entry requirements.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>Do I have to download an app?</h3>
+        <p>You can use supported website features without installing a mobile app. Some features may also be available in the AFCON360 User or Driver applications. Availability can vary by device, country and release stage.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>Which countries are supported?</h3>
+        <p>AFCON360 is focused on East Africa, particularly Uganda, Kenya and Tanzania. Specific services and providers may be available only in selected cities or countries at a given time.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>When is my transport booking confirmed?</h3>
+        <p>A quote or ride request is not necessarily a confirmed booking. Follow the status in the Platform. A transport booking is confirmed when the required driver and vehicle assignment is completed and the Platform issues the booking confirmation or reference.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>How do I know whether an accommodation or tour is confirmed?</h3>
+        <p>Check the booking status and confirmation details shown in your account. Some services require the independent host or provider to accept the request before the booking is confirmed.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>How do payments and currencies work?</h3>
+        <p>Supported payment methods and currencies can differ by location and provider. Where wallet or currency presentation features are available, the Platform may show an amount in your preferred wallet currency. Review the transaction currency, conversion information and any applicable fees shown before authorising payment.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>How do I cancel or request a refund?</h3>
+        <p>Open the booking or payment details and follow the cancellation option where available. Refund eligibility depends on the service, provider, organiser and terms shown before confirmation. Read the <a href="{{ url_for('public_pages.refunds_and_cancellations') }}">Refunds and Cancellations Policy</a>.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>How can I become an AFCON360 provider or partner?</h3>
+        <p>Transport operators, accommodation providers, tour businesses and organisations can contact us through the <a href="{{ url_for('public_pages.contact') }}">Contact Us</a> page. Provider onboarding and verification requirements may apply.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>How does AFCON360 use my personal information?</h3>
+        <p>Information may be used to operate accounts, coordinate services, process transactions, protect the Platform and provide support. See the <a href="{{ url_for('public_pages.privacy_policy') }}">Privacy Policy</a> and <a href="{{ url_for('public_pages.data_protection') }}">Data Protection</a> page.</p>
+      </div>
+      <div class="public-faq-item">
+        <h3>How do I contact support?</h3>
+        <p>Visit <a href="{{ url_for('public_pages.contact') }}">Contact Us</a> for the support channels. Never send your password, one-time passcode or wallet PIN to support.</p>
+      </div>
+    </section>
+    <p class="public-page-meta">FAQs draft · Service availability and features may change as the Platform is rolled out.</p>
+  </div>
+</article>
+{% endblock %}
