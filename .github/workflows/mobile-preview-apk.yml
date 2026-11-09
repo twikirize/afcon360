@@ -655,17 +655,31 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          import re
           import xml.etree.ElementTree as ET
           from pathlib import Path
           manifest = Path("mobile/apps/user/android/app/src/main/AndroidManifest.xml")
-          tree = ET.parse(manifest)
-          application = tree.getroot().find("application")
-          if application is None:
+          source = manifest.read_text(encoding="utf-8")
+          if not re.search(r"\bxmlns:android\s*=", source[:2000]):
+              raise SystemExit("Generated Android manifest is missing its android namespace declaration.")
+          app_tag = re.search(r"<application\b[^>]*>", source, flags=re.DOTALL)
+          if app_tag is None:
               raise SystemExit("Generated Android manifest has no application element.")
-          android = "{http://schemas.android.com/apk/res/android}"
-          application.set(android + "usesCleartextTraffic", "true")
-          tree.write(manifest, encoding="utf-8", xml_declaration=True)
-          print("Loopback-only test transport enabled in ephemeral CI APK; source manifest is unchanged.")
+          opening = app_tag.group(0)
+          if re.search(r"\bandroid:usesCleartextTraffic\s*=", opening):
+              opening = re.sub(
+                  r'\bandroid:usesCleartextTraffic\s*=\s*["'][^"']*["']',
+                  'android:usesCleartextTraffic="true"',
+                  opening,
+              )
+          else:
+              opening = opening[:-1] + ' android:usesCleartextTraffic="true">'
+          source = source[:app_tag.start()] + opening + source[app_tag.end():]
+          # Validate well-formedness without reserializing the manifest: ElementTree
+          # may rewrite namespace prefixes in ways the Android manifest merger rejects.
+          ET.fromstring(source)
+          manifest.write_text(source, encoding="utf-8")
+          print("Loopback-only test transport enabled in ephemeral CI APK; original manifest namespaces preserved; tracked source unchanged.")
           PY
 
       - name: Configure ephemeral release build signing
