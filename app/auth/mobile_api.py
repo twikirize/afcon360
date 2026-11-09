@@ -1074,21 +1074,58 @@ def mobile_driver_me():
     if error:
         return jsonify(error), status
     from app.transport.services.go_live_service import can_go_live
+
+    def _enum_value(value):
+        return getattr(value, "value", value)
+
+    def _numeric_text(value):
+        return str(value) if value is not None else None
+
     try:
-        checklist = can_go_live(profile)
-        readiness = checklist.to_dict()
+        readiness = can_go_live(profile).to_dict()
     except Exception:
         logger.exception("Driver readiness check unavailable")
-        readiness = {"ready": False, "items": []}
+        readiness = {"ready": False, "checks": []}
+
+    # Assignment and ownership are different facts. This is only the
+    # currently assigned vehicle's safe display projection; it does not
+    # expose registration/licence documents or vehicle ownership controls.
+    assigned_vehicle = None
+    try:
+        vehicle = profile.current_vehicle
+        if vehicle is not None and not bool(getattr(vehicle, "is_deleted", False)):
+            assigned_vehicle = {
+                "make": getattr(vehicle, "make", None),
+                "model": getattr(vehicle, "model", None),
+                "year": getattr(vehicle, "year", None),
+                "license_plate": getattr(vehicle, "license_plate", None),
+                "vehicle_class": _enum_value(getattr(vehicle, "vehicle_class", None)),
+                "passenger_capacity": getattr(vehicle, "passenger_capacity", None),
+            }
+    except Exception:
+        logger.exception("Assigned Driver vehicle summary unavailable")
+
     return jsonify({
         "success": True,
         "data": {
             "driver_code": profile.driver_code,
-            "verification_tier": str(getattr(profile.verification_tier, "value", profile.verification_tier)),
-            "compliance_status": str(getattr(profile.compliance_status, "value", profile.compliance_status)),
+            "verification_tier": str(_enum_value(profile.verification_tier)),
+            "compliance_status": str(_enum_value(profile.compliance_status)),
             "is_online": bool(profile.is_online),
             "is_available": bool(profile.is_available),
             "go_live": readiness,
+            "performance": {
+                "reliability_score": getattr(profile, "reliability_score", None),
+                "safety_score": getattr(profile, "safety_score", None),
+                "acceptance_rate": _numeric_text(getattr(profile, "acceptance_rate", None)),
+                "cancellation_rate": _numeric_text(getattr(profile, "cancellation_rate", None)),
+                "total_trips": getattr(profile, "total_trips", None),
+                "completed_trips": getattr(profile, "completed_trips", None),
+                "total_distance_km": _numeric_text(getattr(profile, "total_distance_km", None)),
+                "average_rating": _numeric_text(getattr(profile, "average_rating", None)),
+                "total_ratings": getattr(profile, "total_ratings", None),
+            },
+            "assigned_vehicle": assigned_vehicle,
         },
     }), 200
 
@@ -1172,27 +1209,65 @@ def mobile_driver_active_trip():
     if booking is None:
         return jsonify({"success": True, "data": None}), 200
 
-    def _point(value):
+    def _point(value, fallback_text=None):
         if not isinstance(value, dict):
-            return None
+            return {"address": fallback_text} if fallback_text else None
         return {
             "latitude": value.get("latitude"),
             "longitude": value.get("longitude"),
-            "address": value.get("address") or value.get("display_name"),
+            "address": value.get("address") or value.get("display_name") or fallback_text,
         }
+
+    # Reuse BookingService's canonical trip projection for booking mode,
+    # pickup timezone display and no-show grace eligibility. The mobile API
+    # then selects only the fields needed by the Driver client.
+    from app.transport.services.booking_service import get_booking_service
+    trip_facts = get_booking_service()._driver_trip_row(booking)
+    status_value = str(getattr(booking.status, "value", booking.status))
+    can_cancel = status_value in {
+        BookingStatus.ASSIGNED.value,
+        BookingStatus.DRIVER_EN_ROUTE.value,
+        BookingStatus.PICKUP_ARRIVED.value,
+    }
+
+    raw_schedule = trip_facts.get("pickup_schedule")
+    pickup_schedule = None
+    if isinstance(raw_schedule, dict):
+        pickup_schedule = {
+            key: raw_schedule[key]
+            for key in (
+                "utc_datetime",
+                "local_datetime",
+                "timezone_name",
+                "utc_offset",
+                "display_timezone_derived",
+            )
+            if key in raw_schedule
+        }
+
     return jsonify({
         "success": True,
         "data": {
             "booking_reference": booking.booking_reference,
-            "status": str(getattr(booking.status, "value", booking.status)),
-            "pickup": _point(booking.pickup_location),
-            "dropoff": _point(booking.dropoff_location),
+            "status": status_value,
+            "booking_mode": trip_facts.get("booking_mode"),
+            "pickup": _point(
+                booking.pickup_location,
+                getattr(booking, "pickup_location_text", None),
+            ),
+            "dropoff": _point(
+                booking.dropoff_location,
+                getattr(booking, "dropoff_location_text", None),
+            ),
             "pickup_time": booking.pickup_time.isoformat() if booking.pickup_time else None,
+            "pickup_schedule": pickup_schedule,
             "passenger_count": booking.passenger_count,
             "payment_method": booking.payment_method,
             "payment_status": str(getattr(booking.payment_status, "value", booking.payment_status)),
             "fare_amount": str(booking.final_price or booking.total_amount or 0),
             "currency": str(getattr(booking.currency, "value", booking.currency)),
+            "can_cancel": can_cancel,
+            "can_mark_no_show": bool(trip_facts.get("can_mark_no_show", False)),
         },
     }), 200
 
@@ -1867,7 +1942,7 @@ def mobile_driver_earnings():
     from app.transport.models import Booking
     from app.utils.enums import BookingStatus, PaymentStatus
     from decimal import Decimal
-    from sqlalchemy import func
+    from sqlalchemy import and_, func, or_
     profile, error, status = _current_driver()
     if error:
         return jsonify(error), status
@@ -1877,10 +1952,22 @@ def mobile_driver_earnings():
     except (TypeError, ValueError):
         rate_pct = 15.0
     rate_pct = min(100.0, max(0.0, rate_pct))
+
+    # AssignmentService.release clears assigned_driver_id on completion.
+    # The canonical website earnings service therefore attributes completed
+    # work through either the live FK or the immutable completion profile
+    # recorded in booking_metadata. Keep native totals on that same contract.
+    driver_attribution = or_(
+        Booking.assigned_driver_id == profile.id,
+        and_(
+            Booking.booking_metadata.has_key("completed_by_driver_profile_id"),
+            Booking.booking_metadata["completed_by_driver_profile_id"].astext == str(profile.id),
+        ),
+    )
     rows = (
         db.session.query(Booking.currency, func.sum(Booking.final_price))
         .filter(
-            Booking.assigned_driver_id == profile.id,
+            driver_attribution,
             Booking.status == BookingStatus.COMPLETED,
             Booking.payment_status == PaymentStatus.CAPTURED,
             Booking.is_deleted.is_(False),
