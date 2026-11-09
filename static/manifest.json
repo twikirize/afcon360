@@ -29,30 +29,15 @@
       "short_name": "Wallet",
       "description": "Open your wallet",
       "url": "/wallet/dashboard",
-      "icons": [
-        {
-          "src": "/static/icons/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Events",
       "short_name": "Events",
       "description": "Browse events",
       "url": "/events",
-      "icons": [
-        {
-          "src": "/static/icons/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
     }
   ],
-  "categories": [
-    "travel",
-    "finance",
-    "entertainment",
-    "social"
-  ]
+  "categories": ["travel", "finance", "entertainment", "social"]
 }
