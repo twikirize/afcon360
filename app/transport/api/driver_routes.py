@@ -1654,8 +1654,23 @@ class DriverVehicleSwitchResource(Resource):
 
         data = request.get_json(silent=True) or {}
         vehicle_id = data.get("vehicle_id")
+
+        # Native clients use the opaque public reference; the website's
+        # established form/API may continue using the legacy internal id.
+        # Resolve the public reference here so no internal row id needs to
+        # cross the mobile boundary.
+        vehicle_public_id = data.get("vehicle_public_id")
+        if not vehicle_id and isinstance(vehicle_public_id, str) and vehicle_public_id.strip():
+            public_vehicle = Vehicle.query.filter_by(
+                public_id=vehicle_public_id.strip(),
+                is_deleted=False,
+            ).first()
+            if public_vehicle is None:
+                return {"success": False, "error": "vehicle not found"}, 404
+            vehicle_id = public_vehicle.id
+
         if not vehicle_id:
-            return {"success": False, "error": "vehicle_id is required"}, 400
+            return {"success": False, "error": "vehicle_public_id is required"}, 400
         reason = data.get("reason") or "shift_start"
 
         vehicle = Vehicle.query.filter_by(
