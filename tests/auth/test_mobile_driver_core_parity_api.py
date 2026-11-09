@@ -106,7 +106,7 @@ def test_mobile_driver_profile_exposes_safe_performance_and_assigned_vehicle(cli
 
 
 def test_mobile_driver_active_trip_returns_server_capabilities_and_safe_pickup_schedule(
-    client, monkeypatch
+    app, client, monkeypatch
 ):
     from app.auth import mobile_api
     from app.transport.models import Booking
@@ -144,7 +144,8 @@ def test_mobile_driver_active_trip_returns_server_capabilities_and_safe_pickup_s
         def first(self):
             return booking
 
-    monkeypatch.setattr(Booking, "query", Query())
+    with app.app_context():
+        monkeypatch.setattr(Booking, "query", Query())
     monkeypatch.setattr(
         BookingService,
         "_driver_trip_row",
@@ -188,7 +189,7 @@ def test_mobile_driver_active_trip_returns_server_capabilities_and_safe_pickup_s
 
 
 def test_mobile_driver_active_trip_cancel_capability_is_false_after_trip_start(
-    client, monkeypatch
+    app, client, monkeypatch
 ):
     from app.transport.models import Booking
     from app.utils.enums import BookingStatus, PaymentStatus
@@ -223,7 +224,8 @@ def test_mobile_driver_active_trip_cancel_capability_is_false_after_trip_start(
         def first(self):
             return booking
 
-    monkeypatch.setattr(Booking, "query", Query())
+    with app.app_context():
+        monkeypatch.setattr(Booking, "query", Query())
     monkeypatch.setattr(
         "app.transport.services.booking_service.BookingService._driver_trip_row",
         staticmethod(lambda _booking: {
@@ -285,9 +287,13 @@ def test_mobile_driver_earnings_include_completed_driver_metadata_attribution(
         "platform_commission_rate": "15.0",
     }]
     criteria_text = " ".join(str(item) for item in captured["criteria"])
+    criteria_params = {}
+    for expression in captured["criteria"]:
+        criteria_params.update(expression.compile().params)
     assert "assigned_driver_id" in criteria_text
-    assert "completed_by_driver_profile_id" in criteria_text
-    assert str(profile.id) in criteria_text
+    assert "booking_metadata ?" in criteria_text
+    assert "completed_by_driver_profile_id" in criteria_params.values()
+    assert str(profile.id) in criteria_params.values()
 
 
 def test_new_driver_core_parity_routes_still_require_driver_bearer(client):
