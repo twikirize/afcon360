@@ -1080,15 +1080,65 @@ def mobile_driver_me():
     except Exception:
         logger.exception("Driver readiness check unavailable")
         readiness = {"ready": False, "items": []}
+    def _enum_value(value):
+        return str(getattr(value, "value", value)) if value is not None else None
+
+    def _iso_value(value):
+        return value.isoformat() if hasattr(value, "isoformat") else value
+
+    # These are read-only facts and settings already owned by DriverProfile.
+    # Do not return the encrypted licence number, document blobs or metadata.
+    performance = {
+        "total_trips": int(profile.total_trips or 0),
+        "completed_trips": int(profile.completed_trips or 0),
+        "reliability_score": int(profile.reliability_score or 0),
+        "safety_score": int(profile.safety_score or 0),
+        "acceptance_rate": str(profile.acceptance_rate if profile.acceptance_rate is not None else 0),
+        "cancellation_rate": str(profile.cancellation_rate if profile.cancellation_rate is not None else 0),
+        "total_distance_km": str(profile.total_distance_km if profile.total_distance_km is not None else 0),
+        "total_duration_minutes": int(profile.total_duration_minutes or 0),
+        "average_rating": str(profile.average_rating if profile.average_rating is not None else 0),
+        "total_ratings": int(profile.total_ratings or 0),
+    }
+    operational_preferences = {
+        "service_types": list(profile.service_types or []),
+        "vehicle_classes": list(profile.vehicle_classes or []),
+        "operational_zones": list(profile.operational_zones or []),
+        "max_passenger_capacity": int(profile.max_passenger_capacity or 4),
+        "max_luggage_capacity": int(profile.max_luggage_capacity or 0),
+        "auto_accept_bookings": bool(profile.auto_accept_bookings),
+        "max_concurrent_bookings": int(profile.max_concurrent_bookings or 1),
+    }
+    compliance = {
+        "license_verified": bool(profile.license_verified),
+        "license_expiry": _iso_value(profile.license_expiry),
+        "background_check_status": str(profile.background_check_status or "pending"),
+        "police_clearance_verified": bool(profile.police_clearance_verified),
+        "police_clearance_date": _iso_value(profile.police_clearance_date),
+        "next_training_due": _iso_value(profile.next_training_due),
+        "requires_retraining": bool(profile.requires_retraining),
+    }
+    emergency_contact = None
+    if profile.emergency_contact_name:
+        emergency_contact = {
+            "name": str(profile.emergency_contact_name),
+            "phone": str(profile.emergency_contact_phone or ""),
+            "relationship": str(profile.emergency_contact_relationship or ""),
+        }
+
     return jsonify({
         "success": True,
         "data": {
             "driver_code": profile.driver_code,
-            "verification_tier": str(getattr(profile.verification_tier, "value", profile.verification_tier)),
-            "compliance_status": str(getattr(profile.compliance_status, "value", profile.compliance_status)),
+            "verification_tier": _enum_value(profile.verification_tier),
+            "compliance_status": _enum_value(profile.compliance_status),
             "is_online": bool(profile.is_online),
             "is_available": bool(profile.is_available),
             "go_live": readiness,
+            "performance": performance,
+            "operational_preferences": operational_preferences,
+            "compliance": compliance,
+            "emergency_contact": emergency_contact,
         },
     }), 200
 
@@ -1139,20 +1189,21 @@ def mobile_driver_location():
 def mobile_driver_active_trip():
     from app.transport.models import Booking
     from app.utils.enums import BookingStatus, PaymentStatus
+    from app.transport.services.booking_service import BookingService
+
     profile, error, status = _current_driver()
     if error:
         return jsonify(error), status
     from sqlalchemy import and_, or_
+
     active_statuses = [
         BookingStatus.ASSIGNED,
         BookingStatus.DRIVER_EN_ROUTE,
         BookingStatus.PICKUP_ARRIVED,
         BookingStatus.IN_PROGRESS,
     ]
-    # Completing a trip releases the vehicle/dispatch assignment. Keep a
-    # cash-paid trip visible only to the driver who actually completed it
-    # until Wallet records the explicit cash receipt; completion alone is not
-    # proof that the rider handed over cash.
+    # Completion releases the live assignment. A cash trip remains visible to
+    # the completing driver only until Wallet records explicit cash receipt.
     completed_cash_receipt = and_(
         Booking.status == BookingStatus.COMPLETED,
         Booking.payment_method == "cash",
@@ -1172,6 +1223,18 @@ def mobile_driver_active_trip():
     if booking is None:
         return jsonify({"success": True, "data": None}), 200
 
+    # Reuse the canonical dashboard projection so schedule display and
+    # no-show eligibility are derived by BookingService, not guessed by app.
+    row = BookingService._driver_trip_row(booking)
+    trip_status = str(getattr(booking.status, "value", booking.status))
+    next_action = {
+        "assigned": "en_route",
+        "driver_en_route": "arrive",
+        "pickup_arrived": "start",
+        "in_progress": "complete",
+    }.get(trip_status)
+    can_cancel = trip_status in {"assigned", "driver_en_route", "pickup_arrived"}
+
     def _point(value):
         if not isinstance(value, dict):
             return None
@@ -1180,14 +1243,38 @@ def mobile_driver_active_trip():
             "longitude": value.get("longitude"),
             "address": value.get("address") or value.get("display_name"),
         }
+
+    schedule = row.get("pickup_schedule")
+    if isinstance(schedule, dict):
+        schedule = {
+            key: schedule[key]
+            for key in (
+                "utc_datetime",
+                "local_datetime",
+                "timezone_name",
+                "utc_offset",
+                "display_timezone_derived",
+            )
+            if key in schedule
+        }
+    else:
+        schedule = None
+
     return jsonify({
         "success": True,
         "data": {
             "booking_reference": booking.booking_reference,
-            "status": str(getattr(booking.status, "value", booking.status)),
+            "status": trip_status,
+            "booking_mode": row.get("booking_mode"),
+            "next_action": next_action,
+            "can_cancel": can_cancel,
+            "can_mark_no_show": bool(row.get("can_mark_no_show", False)),
+            "pickup_schedule": schedule,
             "pickup": _point(booking.pickup_location),
             "dropoff": _point(booking.dropoff_location),
             "pickup_time": booking.pickup_time.isoformat() if booking.pickup_time else None,
+            "pickup_address": row.get("pickup_location_text"),
+            "dropoff_address": row.get("dropoff_location_text"),
             "passenger_count": booking.passenger_count,
             "payment_method": booking.payment_method,
             "payment_status": str(getattr(booking.payment_status, "value", booking.payment_status)),
@@ -1211,10 +1298,10 @@ def mobile_driver_trips():
         return jsonify(error), status
 
     scope = str(request.args.get("scope") or "recent").strip().lower()
-    if scope not in {"upcoming", "recent"}:
+    if scope not in {"upcoming", "recent", "all"}:
         return _error(
             "driver_trip_scope_invalid",
-            "Choose upcoming or recent trips.",
+            "Choose upcoming, recent or all trips.",
             400,
         )
 
@@ -1231,6 +1318,8 @@ def mobile_driver_trips():
     service = BookingService()
     if scope == "upcoming":
         rows = service.get_driver_upcoming_bookings(profile.user_id, limit=limit)
+    elif scope == "all":
+        rows = service.get_driver_bookings(profile.user_id)[:limit]
     else:
         rows = service.get_driver_recent_bookings(profile.user_id, limit=limit)
 
