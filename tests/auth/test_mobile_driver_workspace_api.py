@@ -226,8 +226,7 @@ def test_driver_trip_history_all_scope_uses_booking_service_and_redacts_rows(
 def test_driver_assignments_are_self_scoped_and_return_90_day_vehicle_history(
     app, client, monkeypatch
 ):
-    from app.transport.models import DriverVehicleHistory, ScheduledRoute
-    from app.transport.services import get_provider_service
+    from app.transport.models import DriverVehicleHistory, ScheduledRoute, Vehicle
 
     assigned = SimpleNamespace(
         id=51, public_id="vehicle-assigned-public", make="Toyota", model="Prius",
@@ -251,11 +250,8 @@ def test_driver_assignments_are_self_scoped_and_return_90_day_vehicle_history(
         is_free=False,
     )
     _user, profile, _calls = _driver_mobile_context(monkeypatch, current_vehicle=assigned)
-    monkeypatch.setattr(
-        "app.transport.services.get_provider_service",
-        lambda: SimpleNamespace(get_user_vehicles=lambda user_id: [assigned, owned]),
-    )
     with app.app_context():
+        monkeypatch.setattr(Vehicle, "query", FakeQuery([assigned, owned]))
         monkeypatch.setattr(DriverVehicleHistory, "query", FakeQuery([history_row]))
         monkeypatch.setattr(ScheduledRoute, "query", FakeQuery([route_row]))
 
@@ -387,8 +383,7 @@ def test_driver_vehicle_switch_rejects_missing_public_reference(client, monkeypa
 def test_driver_marketplace_lists_only_public_eligible_vehicles_and_no_internal_ids(
     app, client, monkeypatch
 ):
-    from app.transport.models import VehicleMarketplaceListing
-    from app.transport.services import get_provider_service
+    from app.transport.models import Vehicle, VehicleMarketplaceListing
     from app.transport.services.marketplace_service import get_marketplace_service
 
     vehicle = SimpleNamespace(
@@ -404,11 +399,8 @@ def test_driver_marketplace_lists_only_public_eligible_vehicles_and_no_internal_
         listing_status="active", visibility="public", owner_id=777,
     )
     _user, profile, _calls = _driver_mobile_context(monkeypatch)
-    monkeypatch.setattr(
-        "app.transport.services.get_provider_service",
-        lambda: SimpleNamespace(get_user_vehicles=lambda user_id: []),
-    )
     with app.app_context():
+        monkeypatch.setattr(Vehicle, "query", FakeQuery([]))
         monkeypatch.setattr(VehicleMarketplaceListing, "query", FakeQuery([listing]))
     monkeypatch.setattr(
         "app.transport.services.marketplace_service.get_marketplace_service",
