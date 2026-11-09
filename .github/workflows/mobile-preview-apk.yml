@@ -524,11 +524,11 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: afcon360_mobile_e2e
+          POSTGRES_DB: afcon360_mobile_e2e_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d afcon360_mobile_e2e"
+          --health-cmd "pg_isready -U postgres -d afcon360_mobile_e2e_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 12
@@ -548,8 +548,8 @@ jobs:
       SECURITY_SALT: "ci-only-security-salt-value-long-enough-for-tests-2026"
       ENCRYPTION_KEY: "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
       REFUND_POLICY_SIGNING_KEY: "ci-only-refund-policy-signing-key-not-production"
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_mobile_e2e
-      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_mobile_e2e
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_mobile_e2e_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_mobile_e2e_test
       REDIS_URL: redis://localhost:6379/15
       DISABLE_REDIS: "0"
       SOCKETIO_ENABLED: "false"
