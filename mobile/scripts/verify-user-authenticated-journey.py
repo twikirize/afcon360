@@ -6,6 +6,7 @@ services. No production account, payment, booking, or financial write is used.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -18,6 +19,25 @@ USERNAME = os.environ.get("AFCON360_E2E_USERNAME", "native_e2e_user")
 PASSWORD = os.environ.get("AFCON360_E2E_PASSWORD", "NativeE2ePassword2026")
 EVIDENCE = Path(os.environ.get("AFCON360_E2E_EVIDENCE_DIR", "mobile-e2e-evidence"))
 UI_XML = "/sdcard/afcon360-user-e2e-ui.xml"
+
+PROGRESS = EVIDENCE / "journey-progress.json"
+
+
+def mark_stage(stage: str) -> None:
+    """Persist the last completed stage of the Android journey."""
+    completed = []
+    if PROGRESS.is_file():
+        try:
+            completed = list(json.loads(PROGRESS.read_text(encoding="utf-8")).get("completed_stages", []))
+        except (OSError, ValueError, TypeError):
+            completed = []
+    if stage not in completed:
+        completed.append(stage)
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    PROGRESS.write_text(
+        json.dumps({"completed_stages": completed, "last_completed_stage": stage}, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def run_adb(*args: str, check: bool = True, capture: bool = True) -> str:
@@ -202,6 +222,7 @@ def save_failure_diagnostics() -> None:
 
 def main() -> None:
     EVIDENCE.mkdir(parents=True, exist_ok=True)
+    PROGRESS.write_text(json.dumps({"completed_stages": []}, indent=2) + "\n", encoding="utf-8")
     run_adb("wait-for-device")
     run_adb("reverse", "tcp:5000", "tcp:5000")
     run_adb("install", "-r", "mobile-e2e-evidence/user-e2e.apk")
@@ -219,6 +240,7 @@ def main() -> None:
 
     wait_for_text("Your journey, together.", "Signed in securely", timeout=45, label="authenticated User home")
     save_screen("02-home")
+    mark_stage("authenticated_home")
 
     tap_text("Activity", last=True)
     wait_for_text("Your rides and bookings.", "No rides yet", timeout=35, label="authenticated ride activity")
@@ -250,28 +272,34 @@ def main() -> None:
     tap_text("Find and book a stay")
     wait_for_text("Find your place to stay.", timeout=30, label="native accommodation screen")
     save_screen("08-stays")
+    mark_stage("stays_screen")
     return_to_explore()
 
     tap_text("Discover events and tickets")
     wait_for_text("Be there for the moments.", timeout=30, label="native events screen")
     save_screen("09-events")
+    mark_stage("events_screen")
     return_to_explore()
 
     # Force-stop the Android process and prove that SecureStore credentials
     # restore the authenticated session after an actual app restart.
+    mark_stage("session_restore_started")
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
     wait_for_text("Your journey, together.", "Signed in securely", timeout=45, label="restored authenticated session")
     save_screen("10-session-restored")
+    mark_stage("session_restored")
 
     tap_text("Account", last=True)
     wait_for_text("Your AFCON360 identity.", "Sign out", label="account before logout")
     tap_text("Sign out")
     wait_for_text("Sign out of AFCON360 on this device?", timeout=12, label="logout confirmation")
+    mark_stage("logout_started")
     tap_text("Sign out", last=True)
     wait_for_text("Sign in securely", "Username or email", "Password", timeout=35, label="signed-out login screen")
     save_screen("11-logged-out")
+    mark_stage("logout_completed")
 
     print(
         "USER_ANDROID_E2E_UI_PASS: login, authenticated home, Activity, Wallet reads, "
