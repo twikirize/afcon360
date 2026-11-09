@@ -62,6 +62,15 @@ def _trip_row():
     }
 
 
+
+def test_mobile_driver_trip_history_route_is_registered_for_get(app):
+    routes = [
+        rule for rule in app.url_map.iter_rules()
+        if rule.rule == "/api/mobile/v1/driver/trips"
+    ]
+    assert len(routes) == 1
+    assert "GET" in routes[0].methods
+
 def test_mobile_driver_trip_history_requires_driver_bearer(client):
     response = client.get("/api/mobile/v1/driver/trips?scope=recent")
 
