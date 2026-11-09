@@ -16,10 +16,12 @@ const approved = [
 ];
 
 const nativeInternalRoutes = [
-  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(tabs)/events" as never)'],
-  ["apps/user/app/(tabs)/_layout.tsx", 'name="events" options={{ href: null }}'],
-  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(tabs)/stays" as never)'],
-  ["apps/user/app/(tabs)/_layout.tsx", 'name="stays" options={{ href: null }}'],
+  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/events" as never)'],
+  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/stays" as never)'],
+  ["apps/user/app/(service)/_layout.tsx", 'if (!user) return <Redirect href="/login" />;'],
+  ["apps/user/app/(service)/_layout.tsx", 'return <Stack screenOptions={{ headerShown: false }} />;'],
+  ["apps/user/app/(service)/events.tsx", "export default function Events()"],
+  ["apps/user/app/(service)/stays.tsx", "export default function Stays()"],
 ];
 
 const nativeResetRoutes = [
