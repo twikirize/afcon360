@@ -327,8 +327,6 @@ def main() -> None:
         verify_driver_only_login_guard(app)
     elif command == "serve":
         EVIDENCE.mkdir(parents=True, exist_ok=True)
-        if REQUEST_LOG.exists():
-            REQUEST_LOG.unlink()
         print("DRIVER_E2E_BACKEND_STARTING on 0.0.0.0:5000", flush=True)
         app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False, threaded=True)
     elif command == "assert":
