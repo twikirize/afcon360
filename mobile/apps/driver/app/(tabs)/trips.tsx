@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, AppState, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Pressable, Text, View } from "react-native";
 import {
   ActionButton,
   AppScreen,
@@ -24,6 +24,41 @@ type ActiveTrip = {
   currency?: string;
 };
 
+type TripHistoryScope = "upcoming" | "recent";
+
+type TripHistoryItem = {
+  booking_reference: string;
+  status: string;
+  booking_mode?: string;
+  pickup_time?: string | null;
+  pickup_schedule?: {
+    local_datetime?: string;
+    utc_datetime?: string;
+    timezone_name?: string;
+    utc_offset?: string;
+    display_timezone_derived?: boolean;
+  } | null;
+  pickup?: { address?: string };
+  dropoff?: { address?: string };
+  passenger_count?: number;
+  fare_amount?: string | null;
+  currency?: string | null;
+  payment_method?: string | null;
+  payment_status?: string | null;
+  can_mark_no_show?: boolean;
+  created_at?: string | null;
+  completed_at?: string | null;
+};
+
+type TripHistoryResponse = {
+  data: {
+    scope: TripHistoryScope;
+    items: TripHistoryItem[];
+    count: number;
+    limit: number;
+  };
+};
+
 const nextAction: Record<string, { action: string; label: string }> = {
   assigned: { action: "en_route", label: "Start driving to pickup" },
   driver_en_route: { action: "arrive", label: "I have arrived" },
@@ -40,11 +75,75 @@ function TripDetail({ label, value }: { label: string; value: string }) {
   );
 }
 
+function historyTime(item: TripHistoryItem) {
+  const local = item.pickup_schedule?.local_datetime;
+  if (local) {
+    const timezone = item.pickup_schedule?.timezone_name;
+    return timezone ? local + " · " + timezone : local;
+  }
+  return item.pickup_time ?? "Time not provided";
+}
+
+function HistoryTripCard({ item }: { item: TripHistoryItem }) {
+  return (
+    <View
+      style={{
+        gap: 10,
+        padding: 13,
+        borderRadius: 15,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: "#F8FBF9"
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <Text style={{ color: palette.ink, fontSize: 12, fontWeight: "900", flexShrink: 1 }}>
+          {item.booking_reference}
+        </Text>
+        <StatusPill>{item.status}</StatusPill>
+      </View>
+      <Text style={{ color: palette.ink, fontSize: 14, lineHeight: 20, fontWeight: "800" }}>
+        {item.pickup?.address ?? "Pickup details unavailable"} →{" "}
+        {item.dropoff?.address ?? "Destination details unavailable"}
+      </Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
+        <TripDetail label="Pickup time" value={historyTime(item)} />
+        <TripDetail
+          label="Fare"
+          value={
+            item.fare_amount !== undefined && item.fare_amount !== null
+              ? item.fare_amount + " " + (item.currency ?? "")
+              : "Not provided"
+          }
+        />
+        <TripDetail
+          label="Passengers"
+          value={item.passenger_count === undefined ? "Not provided" : String(item.passenger_count)}
+        />
+      </View>
+      <Text style={{ color: palette.muted, fontSize: 12 }}>
+        {(item.booking_mode ?? "Trip") + " · " + (item.payment_method ?? "Payment not provided")} ·{" "}
+        {item.payment_status ?? "Payment status not provided"}
+      </Text>
+      {item.completed_at ? (
+        <Text style={{ color: palette.muted, fontSize: 11 }}>
+          Completed: {item.completed_at}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export default function Trips() {
   const [trip, setTrip] = useState<ActiveTrip | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyScope, setHistoryScope] = useState<TripHistoryScope>("upcoming");
+  const [historyItems, setHistoryItems] = useState<TripHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -57,6 +156,26 @@ export default function Trips() {
       setError(e instanceof Error ? e.message : "Could not load your active trip.");
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const loadHistory = useCallback(async (scope: TripHistoryScope) => {
+    setHistoryLoading(true);
+    try {
+      const response = await authClient.request<TripHistoryResponse>(
+        "/api/mobile/v1/driver/trips?scope=" + scope + "&limit=20"
+      );
+      setHistoryItems(response.data.items ?? []);
+      setHistoryError(null);
+    } catch (e) {
+      setHistoryError(
+        e instanceof Error
+          ? e.message
+          : "Trip history is temporarily unavailable. Please try again."
+      );
+    } finally {
+      setHistoryLoaded(true);
+      setHistoryLoading(false);
     }
   }, []);
 
@@ -78,6 +197,12 @@ export default function Trips() {
         subscription.remove();
       };
     }, [load])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadHistory(historyScope);
+    }, [historyScope, loadHistory])
   );
 
   async function advance(action: string) {
@@ -144,7 +269,7 @@ export default function Trips() {
       <PageHeader
         eyebrow="Trips"
         title="Your assigned work."
-        description="Follow each server-confirmed trip step. Trip completion and payment settlement are separate."
+        description="Follow each server-confirmed trip step, review upcoming work and revisit completed trips."
       />
       <Panel>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -219,6 +344,69 @@ export default function Trips() {
           label={loading ? "Refreshing…" : "Refresh trip"}
           disabled={loading || busy}
           onPress={() => { setLoading(true); void load(); }}
+        />
+      </Panel>
+
+      <Panel>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <SectionTitle>Trip history</SectionTitle>
+          <StatusPill>{historyItems.length} trips</StatusPill>
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {(["upcoming", "recent"] as const).map(scope => {
+            const selected = historyScope === scope;
+            return (
+              <Pressable
+                key={scope}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => setHistoryScope(scope)}
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  paddingVertical: 11,
+                  borderRadius: 12,
+                  backgroundColor: selected ? palette.green : "#F1F5F2"
+                }}
+              >
+                <Text style={{ color: selected ? "#FFFFFF" : palette.ink, fontSize: 13, fontWeight: "800" }}>
+                  {scope === "upcoming" ? "Upcoming" : "Recent"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {historyLoading ? <ActivityIndicator color={palette.green} /> : null}
+        {historyError ? (
+          <View style={{ gap: 8 }}>
+            <Text accessibilityRole="alert" style={{ color: "#9A3A2F", fontSize: 13, lineHeight: 19 }}>
+              {historyError}
+            </Text>
+            <ActionButton
+              label="Retry trip history"
+              disabled={historyLoading}
+              onPress={() => { void loadHistory(historyScope); }}
+            />
+          </View>
+        ) : null}
+        {historyLoaded && !historyLoading && !historyError && historyItems.length === 0 ? (
+          <EmptyState
+            title={historyScope === "upcoming" ? "No upcoming trips" : "No recent trips"}
+            description={
+              historyScope === "upcoming"
+                ? "Assigned scheduled trips will appear here when AFCON360 confirms them."
+                : "Completed and past assigned trips will appear here."
+            }
+          />
+        ) : null}
+        {!historyError ? historyItems.map(item => (
+          <HistoryTripCard key={item.booking_reference} item={item} />
+        )) : null}
+        <ActionButton
+          label={historyLoading ? "Refreshing history…" : "Refresh history"}
+          disabled={historyLoading}
+          onPress={() => { void loadHistory(historyScope); }}
         />
       </Panel>
     </AppScreen>
