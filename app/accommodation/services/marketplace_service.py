@@ -1010,7 +1010,7 @@ class MarketplaceService:
                 actor = current_user
                 if not actor or not actor.is_authenticated:
                     return False, "An authenticated booking cancellation is required"
-                actor_id = int(actor_id)
+                actor_id = int(actor.id)
             if (
                 int(booking.cancelled_by_user_id or 0) != actor_id
                 or booking.status not in {
