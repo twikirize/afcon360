@@ -64,6 +64,14 @@ function Field({
   );
 }
 
+function isValidDateOnly(value: string): boolean {
+  if (value.length !== 10 || value[4] !== "-" || value[7] !== "-") return false;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return false;
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+}
+
 function money(value: string, currency: string): string {
   const number = Number(value);
   return Number.isFinite(number)
@@ -92,12 +100,22 @@ export default function Stays() {
   const [specialRequests, setSpecialRequests] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const loadBookings = useCallback(async () => {
-    const result = await accommodationClient.listBookings(20, 0);
-    setBookings(result.items ?? []);
+    setBookingsLoading(true);
+    setBookingsError(null);
+    try {
+      const result = await accommodationClient.listBookings(20, 0);
+      setBookings(result.items ?? []);
+    } catch (e) {
+      setBookingsError(e instanceof Error ? e.message : "Your accommodation bookings could not be loaded.");
+    } finally {
+      setBookingsLoading(false);
+    }
   }, []);
 
   const loadProperties = useCallback(async (term = "") => {
@@ -118,7 +136,7 @@ export default function Stays() {
 
   useEffect(() => {
     void loadProperties();
-    void loadBookings().catch(() => undefined);
+    void loadBookings();
   }, [loadProperties, loadBookings]);
 
   const chooseProperty = (property: AccommodationProperty) => {
@@ -132,8 +150,18 @@ export default function Stays() {
 
   const requestQuote = async () => {
     if (!selectedProperty) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) {
-      setError("Use YYYY-MM-DD for check-in and check-out.");
+    if (!isValidDateOnly(checkIn) || !isValidDateOnly(checkOut)) {
+      setError("Enter real calendar dates using YYYY-MM-DD.");
+      return;
+    }
+    if (checkOut <= checkIn) {
+      setError("Check-out must be after check-in.");
+      return;
+    }
+    const guestCount = Number(guests);
+    const roomCount = Number(rooms);
+    if (!Number.isInteger(guestCount) || guestCount < 1 || !Number.isInteger(roomCount) || roomCount < 1) {
+      setError("Guests and rooms must both be whole numbers greater than zero.");
       return;
     }
     if (selectedProperty.room_types.length > 0 && roomTypeToken === null) {
@@ -149,8 +177,8 @@ export default function Stays() {
         propertyPublicId: selectedProperty.public_id,
         checkIn,
         checkOut,
-        numGuests: Number(guests),
-        roomsRequested: Number(rooms),
+        numGuests: guestCount,
+        roomsRequested: roomCount,
         roomTypeToken,
       });
       setQuote(result);
@@ -255,7 +283,7 @@ export default function Stays() {
       <Panel>
         <SectionTitle>Find accommodation</SectionTitle>
         <Field label="Property, city or destination" value={query} onChangeText={setQuery} placeholder="Search Kampala, Nairobi, hotel…" />
-        <ActionButton label={busy ? "Please wait…" : "Search stays"} onPress={() => void loadProperties(query)} />
+        <ActionButton label={loading ? "Searching stays…" : "Search stays"} disabled={loading || busy} onPress={() => void loadProperties(query)} />
         {loading ? (
           <ActivityIndicator color={palette.green} />
         ) : properties.length ? (
@@ -279,7 +307,7 @@ export default function Stays() {
               {property.room_types.length ? <Text style={{ color: palette.muted }}>{property.room_types.length} room type(s)</Text> : null}
             </Pressable>
           ))
-        ) : (
+        ) : error ? null : (
           <Text style={{ color: palette.muted }}>No bookable properties were found. Try another city or search term.</Text>
         )}
       </Panel>
@@ -353,7 +381,9 @@ export default function Stays() {
 
       <Panel>
         <SectionTitle>Your accommodation bookings</SectionTitle>
-        {bookings.length ? bookings.map((booking) => (
+        {bookingsError ? <Text style={{ color: "#9A342D", lineHeight: 20 }}>Booking history is unavailable: {bookingsError}</Text> : null}
+        {bookingsLoading ? <ActivityIndicator color={palette.green} /> : null}
+        {!bookingsLoading && bookings.length ? bookings.map((booking) => (
           <View key={booking.booking_reference} style={{ borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10, gap: 6 }}>
             <Text style={{ color: palette.ink, fontWeight: "900" }}>{booking.property.title || "Accommodation booking"}</Text>
             <Text style={{ color: palette.muted }}>{booking.booking_reference}</Text>
@@ -365,10 +395,10 @@ export default function Stays() {
             </View>
             {bookingCanCancel(booking) ? <ActionButton label="Request cancellation" onPress={() => cancelBooking(booking)} /> : null}
           </View>
-        )) : (
+        )) : bookingsError || bookingsLoading ? null : (
           <Text style={{ color: palette.muted }}>Your accommodation bookings will appear here.</Text>
         )}
-        <ActionButton label="Refresh bookings" onPress={() => void loadBookings()} />
+        <ActionButton label={bookingsLoading ? "Refreshing bookings…" : "Refresh bookings"} disabled={bookingsLoading} onPress={() => void loadBookings()} />
       </Panel>
     </AppScreen>
   );
