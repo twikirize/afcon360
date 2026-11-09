@@ -1093,6 +1093,22 @@ def mobile_driver_me():
     }), 200
 
 
+@mobile_api_bp.get("/driver/demand/cells")
+@_bearer_required("driver")
+def mobile_driver_demand_cells():
+    """Native bearer adapter for the shared, aggregate-only demand service."""
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+
+    from app.transport.services.driver_demand_service import get_driver_demand_cells
+
+    response = jsonify(get_driver_demand_cells(profile))
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["Vary"] = "Authorization"
+    return response, 200
+
+
 @mobile_api_bp.get("/driver/offers")
 @_bearer_required("driver")
 def mobile_driver_offers():
