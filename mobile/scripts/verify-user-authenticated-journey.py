@@ -33,11 +33,15 @@ def run_adb(*args: str, check: bool = True, capture: bool = True) -> str:
 
 
 def dump_tree() -> ET.Element:
-    run_adb("shell", "uiautomator", "dump", UI_XML, check=False)
+    # Never reuse an old UI tree when Android fails to produce a fresh snapshot.
+    run_adb("shell", "rm", "-f", UI_XML, check=False)
+    result = run_adb("shell", "uiautomator", "dump", UI_XML, check=False)
+    if "dumped to:" not in result.lower():
+        raise RuntimeError(f"Android did not create a fresh UI hierarchy: {result[-1000:]}")
     raw = run_adb("shell", "cat", UI_XML, check=False)
     start = raw.find("<?xml")
     if start < 0:
-        raise RuntimeError(f"Android UI hierarchy was not readable: {raw[-1000:]}")
+        raise RuntimeError(f"Fresh Android UI hierarchy was not readable: {raw[-1000:]}")
     return ET.fromstring(raw[start:])
 
 
@@ -142,9 +146,17 @@ def save_screen(name: str) -> None:
     (EVIDENCE / f"{name}.txt").write_text(visible_text(), encoding="utf-8")
 
 
-def back_to_previous(expected: str) -> None:
+def return_to_explore() -> None:
+    """Return to Explore after a service route; handle Back landing on Home."""
     run_adb("shell", "input", "keyevent", "4")
-    wait_for_text(expected, label=f"returned to {expected}")
+    time.sleep(1)
+    try:
+        wait_for_text("Make more of the journey.", timeout=8, label="Explore after Android Back")
+    except AssertionError:
+        # The Ride route may return to the Home tab. Select Explore explicitly.
+        tap_text("Explore", last=True)
+        wait_for_text("Make more of the journey.", timeout=20, label="Explore tab")
+    wait_for_text("Find and book a stay", label="Explore accommodation action")
 
 
 def save_failure_diagnostics() -> None:
@@ -233,17 +245,17 @@ def main() -> None:
     tap_text("Book a ride")
     wait_for_text("Where are you going?", "Pickup", timeout=25, label="native ride request screen")
     save_screen("07-ride")
-    back_to_previous("Make more of the journey.")
+    return_to_explore()
 
     tap_text("Find and book a stay")
     wait_for_text("Find your place to stay.", timeout=30, label="native accommodation screen")
     save_screen("08-stays")
-    back_to_previous("Make more of the journey.")
+    return_to_explore()
 
     tap_text("Discover events and tickets")
     wait_for_text("Be there for the moments.", timeout=30, label="native events screen")
     save_screen("09-events")
-    back_to_previous("Make more of the journey.")
+    return_to_explore()
 
     # Force-stop the Android process and prove that SecureStore credentials
     # restore the authenticated session after an actual app restart.
