@@ -181,7 +181,7 @@ def test_mobile_driver_trip_history_uses_upcoming_service_and_validates_scope_an
     assert calls["expected_client"] == "driver"
 
     unsupported = client.get(
-        "/api/mobile/v1/driver/trips?scope=all",
+        "/api/mobile/v1/driver/trips?scope=unknown",
         headers={"Authorization": "Bearer synthetic-driver-access-token"},
     )
     assert unsupported.status_code == 400
