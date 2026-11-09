@@ -2082,6 +2082,7 @@ def _mobile_driver_vehicle_card(vehicle):
 
 def _mobile_driver_vehicle_management_gate(*, require_profile_complete):
     """Match the website's KYC-3 and optional profile-completion gates."""
+    from flask_login import current_user
     from app.auth.kyc_compliance import calculate_kyc_tier
 
     try:
