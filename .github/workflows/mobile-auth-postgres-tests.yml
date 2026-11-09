@@ -4,7 +4,9 @@ on:
   push:
     branches:
       - feat/native-mobile-apps-20261104
+      - feat/driver-native-workspace-api-20261109
       - main
+      - feat/driver-native-trip-history-api-20261109
     paths:
       - "app/__init__.py"
       - "app/auth/mobile_api.py"
@@ -26,6 +28,15 @@ on:
       - "mobile/packages/ui/src/auth.tsx"
       - "tests/auth/test_mobile_registration_api.py"
       - "tests/auth/test_mobile_driver_trip_history_api.py"
+      - "tests/auth/test_mobile_driver_workspace_api.py"
+      - "app/transport/api/driver_routes.py"
+      - "app/transport/services/marketplace_service.py"
+      - "app/transport/services/provider_service.py"
+      - "app/transport/services/booking_service.py"
+      - "app/transport/models.py"
+      - "app/notifications/models.py"
+      - "app/geo/config.py"
+      - "app/geo/map_renderer.py"
       - "tests/auth/test_mobile_wallet_api.py"
       - "app/wallet/services/wallet_service.py"
       - "tests/auth/test_mobile_token_redis.py"
@@ -56,6 +67,15 @@ on:
       - "app/auth/services.py"
       - "tests/auth/test_mobile_registration_api.py"
       - "tests/auth/test_mobile_driver_trip_history_api.py"
+      - "tests/auth/test_mobile_driver_workspace_api.py"
+      - "app/transport/api/driver_routes.py"
+      - "app/transport/services/marketplace_service.py"
+      - "app/transport/services/provider_service.py"
+      - "app/transport/services/booking_service.py"
+      - "app/transport/models.py"
+      - "app/notifications/models.py"
+      - "app/geo/config.py"
+      - "app/geo/map_renderer.py"
       - "tests/auth/test_mobile_token_redis.py"
       - "tests/auth/test_mobile_password_reset_redis.py"
       - "tests/auth/test_pending_registration_expiry.py"
@@ -183,6 +203,7 @@ jobs:
           python -m pytest -q --timeout=120
           tests/auth/test_mobile_registration_api.py
           tests/auth/test_mobile_driver_trip_history_api.py
+          tests/auth/test_mobile_driver_workspace_api.py
           tests/auth/test_mobile_wallet_api.py
           tests/auth/test_pending_registration_expiry.py
           tests/notifications/test_sms_service_adapter.py
