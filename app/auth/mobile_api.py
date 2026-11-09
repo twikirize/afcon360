@@ -1255,12 +1255,28 @@ def mobile_driver_trips():
         if fare_value is None:
             fare_value = row.get("total_amount")
 
+        schedule = row.get("pickup_schedule")
+        if isinstance(schedule, dict):
+            schedule = {
+                key: schedule[key]
+                for key in (
+                    "utc_datetime",
+                    "local_datetime",
+                    "timezone_name",
+                    "utc_offset",
+                    "display_timezone_derived",
+                )
+                if key in schedule
+            }
+        else:
+            schedule = None
+
         items.append({
             "booking_reference": row.get("booking_reference"),
             "status": str(status_value) if status_value is not None else "unknown",
             "booking_mode": row.get("booking_mode"),
             "pickup_time": _iso(row.get("pickup_time")),
-            "pickup_schedule": row.get("pickup_schedule"),
+            "pickup_schedule": schedule,
             "pickup": {
                 "address": row.get("pickup_location_text") or "Pickup details unavailable",
             },
