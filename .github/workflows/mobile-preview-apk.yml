@@ -672,11 +672,11 @@ jobs:
           const fs = require("fs");
           const path = "apps/driver/android/app/src/main/AndroidManifest.xml";
           let manifest = fs.readFileSync(path, "utf8");
-          if (!/<application\\b/.test(manifest)) {
+          if (!/<application\b/.test(manifest)) {
             throw new Error("Generated Driver Android manifest has no application element.");
           }
-          manifest = manifest.replace(/<application\\b([^>]*)>/, (_match, attrs) => {
-            const cleaned = attrs.replace(/\\s+android:usesCleartextTraffic="[^"]*"/, "");
+          manifest = manifest.replace(/<application\b([^>]*)>/, (_match, attrs) => {
+            const cleaned = attrs.replace(/\s+android:usesCleartextTraffic="[^"]*"/, "");
             return '<application' + cleaned + ' android:usesCleartextTraffic="true">';
           });
           fs.writeFileSync(path, manifest);
