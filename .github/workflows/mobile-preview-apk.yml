@@ -731,9 +731,25 @@ jobs:
           sha256sum mobile-e2e-evidence/user-e2e.apk | tee mobile-e2e-evidence/user-e2e-apk.sha256
           aapt dump badging mobile-e2e-evidence/user-e2e.apk | grep -F "space.pamoja.afcon360.user.preview"
 
+      - name: Enable KVM hardware acceleration for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::This runner does not expose /dev/kvm; Android hardware acceleration is unavailable."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+
       - name: Install, sign in, exercise User areas, restore session and sign out on Android
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
+          disable-linux-hw-accel: false
           api-level: 36
           target: google_apis
           arch: x86_64
