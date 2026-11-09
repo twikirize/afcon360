@@ -9,6 +9,7 @@ import {
   StatusPill,
   palette,
 } from "@afcon360/mobile-ui";
+import { MobileAuthError } from "@afcon360/mobile-core";
 import {
   NativeEventDetail,
   NativeEventRegistration,
@@ -16,6 +17,7 @@ import {
   NativeEventTicketType,
 } from "@afcon360/mobile-core";
 import { eventClient } from "../../src/services/api";
+import { serviceErrorMessage } from "../../src/services/service-errors";
 
 function displayDate(start: string | null, end: string | null): string {
   if (!start) return "Date to be announced";
@@ -68,7 +70,7 @@ export default function Events() {
       });
       setEvents(result.items ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AFCON360 could not load events.");
+      setError(serviceErrorMessage(e, "Events"));
     } finally {
       setLoading(false);
     }
@@ -81,7 +83,7 @@ export default function Events() {
       const result = await eventClient.listRegistrations(30, 0);
       setRegistrations(result.items ?? []);
     } catch (e) {
-      setRegistrationsError(e instanceof Error ? e.message : "Your event tickets could not be loaded.");
+      setRegistrationsError(serviceErrorMessage(e, "Events"));
     } finally {
       setRegistrationsLoading(false);
     }
@@ -101,7 +103,7 @@ export default function Events() {
       const detail = await eventClient.getEvent(event.public_id);
       setSelectedEvent(detail);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "This event could not be opened.");
+      setError(serviceErrorMessage(e, "Events"));
     } finally {
       setBusy(false);
     }
@@ -125,7 +127,7 @@ export default function Events() {
         ...current.filter((item) => item.registration_reference !== result.registration_reference),
       ]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AFCON360 could not register this ticket.");
+      setError(serviceErrorMessage(e, "Events"));
     } finally {
       setBusy(false);
     }
