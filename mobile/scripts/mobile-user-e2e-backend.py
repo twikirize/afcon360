@@ -11,7 +11,14 @@ import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(
+    os.environ.get(
+        "AFCON360_E2E_BACKEND_ROOT",
+        str(Path(__file__).resolve().parents[2]),
+    )
+).resolve()
+if not ROOT.is_dir():
+    raise RuntimeError("The isolated E2E backend root does not exist.")
 sys.path.insert(0, str(ROOT))
 
 EVIDENCE = Path(os.environ.get("AFCON360_E2E_EVIDENCE_DIR", "mobile-e2e-evidence"))
@@ -145,18 +152,26 @@ def assert_evidence(app) -> None:
             checks["device session revoked on logout"] = "NOT_EXERCISED"
             checks["Redis mobile session revoked on logout"] = "NOT_EXERCISED"
 
-        known_optional = {}
-        for name, method, path in (
-            ("Accommodation property discovery", "GET", "/api/mobile/v1/accommodation/properties"),
-            ("Accommodation booking history", "GET", "/api/mobile/v1/accommodation/bookings"),
-            ("Events discovery", "GET", "/api/mobile/v1/events"),
-            ("Event registration history", "GET", "/api/mobile/v1/events/registrations"),
+        service_api_requests = {}
+        for name, method, path, required_stage in (
+            ("Accommodation property discovery", "GET", "/api/mobile/v1/accommodation/properties", "stays_screen"),
+            ("Accommodation booking history", "GET", "/api/mobile/v1/accommodation/bookings", "stays_screen"),
+            ("Events discovery", "GET", "/api/mobile/v1/events", "events_screen"),
+            ("Event registration history", "GET", "/api/mobile/v1/events/registrations", "events_screen"),
         ):
             statuses = [
                 status for status, actual_method, actual_path in records
                 if actual_method == method and actual_path == path
             ]
-            known_optional[name] = statuses or ["not-requested"]
+            service_api_requests[name] = statuses or ["not-requested"]
+            if statuses:
+                checks[f"native service API: {name}"] = (
+                    "PASS" if all(status == 200 for status in statuses) else "FAIL"
+                )
+            elif required_stage in stages:
+                checks[f"native service API: {name}"] = "FAIL"
+            else:
+                checks[f"native service API: {name}"] = "NOT_EXERCISED"
 
         db.session.rollback()
 
@@ -171,7 +186,7 @@ def assert_evidence(app) -> None:
         "synthetic_user": USERNAME,
         "checks": checks,
         "journey_progress": progress,
-        "native_backend_dependencies_not_yet_merged": known_optional,
+        "native_service_api_requests": service_api_requests,
         "backend_request_audit": [
             {"status": status, "method": method, "path": path}
             for status, method, path in records
@@ -187,13 +202,9 @@ def assert_evidence(app) -> None:
     for label, status in checks.items():
         print(f"{status}: {label}", flush=True)
 
-    for label, statuses in known_optional.items():
-        if isinstance(statuses, list) and statuses and all(s == 404 for s in statuses):
-            print(f"KNOWN_BACKEND_GAP: {label} returned HTTP 404; server API dependency is not merged.", flush=True)
-        elif statuses == ["not-requested"]:
-            print(f"NOT_EXERCISED: {label}", flush=True)
-        else:
-            print(f"BACKEND_STATUS: {label}: {statuses}", flush=True)
+    for label, statuses in service_api_requests.items():
+        status = checks[f"native service API: {label}"]
+        print(f"{status}: {label}: {statuses}", flush=True)
 
     failures = [label for label, status in checks.items() if status == "FAIL"]
     if failures:
