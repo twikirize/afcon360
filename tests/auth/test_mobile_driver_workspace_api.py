@@ -224,7 +224,7 @@ def test_driver_trip_history_all_scope_uses_booking_service_and_redacts_rows(
 
 
 def test_driver_assignments_are_self_scoped_and_return_90_day_vehicle_history(
-    client, monkeypatch
+    app, client, monkeypatch
 ):
     from app.transport.models import DriverVehicleHistory, ScheduledRoute
     from app.transport.services import get_provider_service
@@ -255,8 +255,9 @@ def test_driver_assignments_are_self_scoped_and_return_90_day_vehicle_history(
         "app.transport.services.get_provider_service",
         lambda: SimpleNamespace(get_user_vehicles=lambda user_id: [assigned, owned]),
     )
-    monkeypatch.setattr(DriverVehicleHistory, "query", FakeQuery([history_row]))
-    monkeypatch.setattr(ScheduledRoute, "query", FakeQuery([route_row]))
+    with app.app_context():
+        monkeypatch.setattr(DriverVehicleHistory, "query", FakeQuery([history_row]))
+        monkeypatch.setattr(ScheduledRoute, "query", FakeQuery([route_row]))
 
     response = client.get("/api/mobile/v1/driver/assignments", headers=_driver_headers())
     assert response.status_code == 200
@@ -312,7 +313,7 @@ def test_driver_vehicle_switch_uses_public_reference_and_redacts_internal_id(
 
 
 def test_driver_vehicle_switch_resolves_public_id_through_canonical_resource(
-    client, monkeypatch
+    app, client, monkeypatch
 ):
     from app.auth import helpers
     from app.extensions import db
@@ -348,7 +349,6 @@ def test_driver_vehicle_switch_resolves_public_id_through_canonical_resource(
         "can_go_live",
         lambda driver: SimpleNamespace(checks=[SimpleNamespace(key="blocked", ok=True)]),
     )
-    monkeypatch.setattr(Vehicle, "query", FakeQuery([target]))
     from app.transport import models as transport_models
     captured = {}
 
@@ -356,9 +356,11 @@ def test_driver_vehicle_switch_resolves_public_id_through_canonical_resource(
         captured.update(driver=driver, vehicle=vehicle, kwargs=kwargs)
         driver.current_vehicle = vehicle
 
-    monkeypatch.setattr(transport_models, "assign_driver_to_vehicle", assign)
-    monkeypatch.setattr(db.session, "expire", lambda *args, **kwargs: None)
-    monkeypatch.setattr(db.session, "refresh", lambda *args, **kwargs: None)
+    with app.app_context():
+        monkeypatch.setattr(Vehicle, "query", FakeQuery([target]))
+        monkeypatch.setattr(transport_models, "assign_driver_to_vehicle", assign)
+        monkeypatch.setattr(db.session, "expire", lambda *args, **kwargs: None)
+        monkeypatch.setattr(db.session, "refresh", lambda *args, **kwargs: None)
 
     response = client.post(
         "/api/mobile/v1/driver/vehicles/switch",
@@ -383,7 +385,7 @@ def test_driver_vehicle_switch_rejects_missing_public_reference(client, monkeypa
 
 
 def test_driver_marketplace_lists_only_public_eligible_vehicles_and_no_internal_ids(
-    client, monkeypatch
+    app, client, monkeypatch
 ):
     from app.transport.models import VehicleMarketplaceListing
     from app.transport.services import get_provider_service
@@ -406,7 +408,8 @@ def test_driver_marketplace_lists_only_public_eligible_vehicles_and_no_internal_
         "app.transport.services.get_provider_service",
         lambda: SimpleNamespace(get_user_vehicles=lambda user_id: []),
     )
-    monkeypatch.setattr(VehicleMarketplaceListing, "query", FakeQuery([listing]))
+    with app.app_context():
+        monkeypatch.setattr(VehicleMarketplaceListing, "query", FakeQuery([listing]))
     monkeypatch.setattr(
         "app.transport.services.marketplace_service.get_marketplace_service",
         lambda: SimpleNamespace(_check_driver_eligibility=lambda driver, item: driver is profile),
@@ -424,7 +427,7 @@ def test_driver_marketplace_lists_only_public_eligible_vehicles_and_no_internal_
 
 
 def test_driver_marketplace_application_uses_canonical_service_and_public_listing_ref(
-    client, monkeypatch
+    app, client, monkeypatch
 ):
     from app.transport.models import VehicleMarketplaceListing
 
@@ -438,7 +441,8 @@ def test_driver_marketplace_application_uses_canonical_service_and_public_listin
         applied_at=datetime(2026, 11, 9, tzinfo=timezone.utc),
     )
     _user, profile, _calls = _driver_mobile_context(monkeypatch)
-    monkeypatch.setattr(VehicleMarketplaceListing, "query", FakeQuery([listing]))
+    with app.app_context():
+        monkeypatch.setattr(VehicleMarketplaceListing, "query", FakeQuery([listing]))
     captured = {}
     monkeypatch.setattr(
         "app.transport.services.marketplace_service.get_marketplace_service",
@@ -469,7 +473,7 @@ def test_driver_marketplace_application_uses_canonical_service_and_public_listin
     assert "listing_id" not in response.get_data(as_text=True).lower()
 
 
-def test_driver_safety_is_scoped_to_own_incidents_and_redacted(client, monkeypatch):
+def test_driver_safety_is_scoped_to_own_incidents_and_redacted(app, client, monkeypatch):
     from app.transport.models import TransportIncident
 
     incident = SimpleNamespace(
@@ -483,7 +487,8 @@ def test_driver_safety_is_scoped_to_own_incidents_and_redacted(client, monkeypat
     )
     _user, profile, _calls = _driver_mobile_context(monkeypatch)
     profile.current_vehicle = SimpleNamespace(safety_features=["seatbelts", "first_aid_kit"])
-    monkeypatch.setattr(TransportIncident, "query", FakeQuery([incident]))
+    with app.app_context():
+        monkeypatch.setattr(TransportIncident, "query", FakeQuery([incident]))
 
     response = client.get("/api/mobile/v1/driver/safety", headers=_driver_headers())
     assert response.status_code == 200
@@ -498,7 +503,7 @@ def test_driver_safety_is_scoped_to_own_incidents_and_redacted(client, monkeypat
 
 
 def test_driver_notifications_are_scoped_to_authenticated_user_transport_module(
-    client, monkeypatch
+    app, client, monkeypatch
 ):
     from app.notifications.models import Notification
 
@@ -512,7 +517,8 @@ def test_driver_notifications_are_scoped_to_authenticated_user_transport_module(
         )
     ]
     fake = FakeQuery(rows, count=2)
-    monkeypatch.setattr(Notification, "query", fake)
+    with app.app_context():
+        monkeypatch.setattr(Notification, "query", fake)
     _user, profile, _calls = _driver_mobile_context(monkeypatch)
 
     response = client.get("/api/mobile/v1/driver/notifications", headers=_driver_headers())
@@ -524,11 +530,12 @@ def test_driver_notifications_are_scoped_to_authenticated_user_transport_module(
     assert {"user_id": profile.user_id, "module": "transport", "is_deleted": False} in filter_calls
 
 
-def test_driver_opportunities_returns_aggregate_count_only(client, monkeypatch):
+def test_driver_opportunities_returns_aggregate_count_only(app, client, monkeypatch):
     from app.transport.models import Booking
 
     fake = FakeQuery(count=14)
-    monkeypatch.setattr(Booking, "query", fake)
+    with app.app_context():
+        monkeypatch.setattr(Booking, "query", fake)
     _driver_mobile_context(monkeypatch)
 
     response = client.get("/api/mobile/v1/driver/opportunities", headers=_driver_headers())
