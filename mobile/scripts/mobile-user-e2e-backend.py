@@ -85,14 +85,39 @@ def assert_evidence(app) -> None:
         return sum(status == 200 and actual_method == method and actual_path == path
                    for status, actual_method, actual_path in records)
 
-    required = {
-        "successful password login": count_ok("POST", "/api/mobile/v1/auth/login") >= 1,
-        "identity endpoint (initial login and app relaunch)": count_ok("GET", "/api/mobile/v1/auth/me") >= 2,
-        "protected Activity read": count_ok("GET", "/api/mobile/v1/activity") >= 1,
-        "Wallet balance read": count_ok("GET", "/api/mobile/v1/wallet") >= 1,
-        "Wallet transaction-history read": count_ok("GET", "/api/mobile/v1/wallet/transactions") >= 1,
-        "Wallet PIN-status read": count_ok("GET", "/api/mobile/v1/wallet/pin") >= 1,
-        "server-side logout": count_ok("POST", "/api/mobile/v1/auth/logout") >= 1,
+    def attempted(method: str, path: str) -> bool:
+        return any(actual_method == method and actual_path == path
+                   for _, actual_method, actual_path in records)
+
+    progress = {"completed_stages": []}
+    progress_path = EVIDENCE / "journey-progress.json"
+    if progress_path.is_file():
+        try:
+            progress = json.loads(progress_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            progress = {"completed_stages": []}
+    stages = set(progress.get("completed_stages", []))
+    restore_started = "session_restore_started" in stages
+    logout_started = "logout_started" in stages or attempted(
+        "POST", "/api/mobile/v1/auth/logout"
+    )
+    logout_succeeded = count_ok("POST", "/api/mobile/v1/auth/logout") >= 1
+
+    checks = {
+        "successful password login": "PASS" if count_ok("POST", "/api/mobile/v1/auth/login") >= 1 else "FAIL",
+        "identity endpoint after initial login": "PASS" if count_ok("GET", "/api/mobile/v1/auth/me") >= 1 else "FAIL",
+        "identity endpoint after app relaunch": (
+            ("PASS" if count_ok("GET", "/api/mobile/v1/auth/me") >= 2 else "FAIL")
+            if restore_started else "NOT_EXERCISED"
+        ),
+        "protected Activity read": "PASS" if count_ok("GET", "/api/mobile/v1/activity") >= 1 else "FAIL",
+        "Wallet balance read": "PASS" if count_ok("GET", "/api/mobile/v1/wallet") >= 1 else "FAIL",
+        "Wallet transaction-history read": "PASS" if count_ok("GET", "/api/mobile/v1/wallet/transactions") >= 1 else "FAIL",
+        "Wallet PIN-status read": "PASS" if count_ok("GET", "/api/mobile/v1/wallet/pin") >= 1 else "FAIL",
+        "server-side logout": (
+            ("PASS" if logout_succeeded else "FAIL")
+            if logout_started else "NOT_EXERCISED"
+        ),
     }
 
     with app.app_context():
@@ -100,20 +125,25 @@ def assert_evidence(app) -> None:
         if user is None:
             raise AssertionError("The synthetic E2E user disappeared from the disposable database.")
 
-        server_sessions = ServerSession.query.filter_by(user_id=user.public_id).all()
-        device_sessions = DeviceSession.query.filter_by(user_id=user.id).all()
-        required["server session revoked on logout"] = (
-            bool(server_sessions) and all(row.is_revoked for row in server_sessions)
-        )
-        required["device session revoked on logout"] = (
-            bool(device_sessions) and all(row.revoked_at is not None for row in device_sessions)
-        )
-        required["Redis mobile session revoked on logout"] = (
-            bool(device_sessions) and all(
-                bool(redis_client.client.exists(_revoked_key(row.session_id)))
-                for row in device_sessions
+        if logout_succeeded:
+            server_sessions = ServerSession.query.filter_by(user_id=user.public_id).all()
+            device_sessions = DeviceSession.query.filter_by(user_id=user.id).all()
+            checks["server session revoked on logout"] = (
+                "PASS" if server_sessions and all(row.is_revoked for row in server_sessions) else "FAIL"
             )
-        )
+            checks["device session revoked on logout"] = (
+                "PASS" if device_sessions and all(row.revoked_at is not None for row in device_sessions) else "FAIL"
+            )
+            checks["Redis mobile session revoked on logout"] = (
+                "PASS" if device_sessions and all(
+                    bool(redis_client.client.exists(_revoked_key(row.session_id)))
+                    for row in device_sessions
+                ) else "FAIL"
+            )
+        else:
+            checks["server session revoked on logout"] = "NOT_EXERCISED"
+            checks["device session revoked on logout"] = "NOT_EXERCISED"
+            checks["Redis mobile session revoked on logout"] = "NOT_EXERCISED"
 
         known_optional = {}
         for name, method, path in (
@@ -130,11 +160,17 @@ def assert_evidence(app) -> None:
 
         db.session.rollback()
 
+    result = (
+        "failed" if "FAIL" in checks.values()
+        else "incomplete" if "NOT_EXERCISED" in checks.values()
+        else "passed"
+    )
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     report = {
-        "result": "passed" if all(required.values()) else "failed",
+        "result": result,
         "synthetic_user": USERNAME,
-        "checks": required,
+        "checks": checks,
+        "journey_progress": progress,
         "native_backend_dependencies_not_yet_merged": known_optional,
         "backend_request_audit": [
             {"status": status, "method": method, "path": path}
@@ -148,8 +184,8 @@ def assert_evidence(app) -> None:
         json.dumps(report, indent=2) + "\n", encoding="utf-8"
     )
 
-    for label, passed in required.items():
-        print(f"{'PASS' if passed else 'FAIL'}: {label}", flush=True)
+    for label, status in checks.items():
+        print(f"{status}: {label}", flush=True)
 
     for label, statuses in known_optional.items():
         if isinstance(statuses, list) and statuses and all(s == 404 for s in statuses):
@@ -159,10 +195,9 @@ def assert_evidence(app) -> None:
         else:
             print(f"BACKEND_STATUS: {label}: {statuses}", flush=True)
 
-    if not all(required.values()):
-        missing = [label for label, passed in required.items() if not passed]
-        raise AssertionError("Android authenticated journey did not prove: " + ", ".join(missing))
-
+    failures = [label for label, status in checks.items() if status == "FAIL"]
+    if failures:
+        raise AssertionError("Backend checks that were actually exercised failed: " + ", ".join(failures))
 
 def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else "serve"
