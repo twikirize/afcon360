@@ -2079,6 +2079,209 @@ def _mobile_driver_vehicle_card(vehicle):
     }
 
 
+
+def _mobile_driver_vehicle_management_gate(*, require_profile_complete):
+    """Match the website's KYC-3 and optional profile-completion gates."""
+    from app.auth.kyc_compliance import calculate_kyc_tier
+
+    try:
+        kyc = calculate_kyc_tier(current_user.id)
+        tier = int(kyc.get("tier") or 0)
+    except Exception:
+        logger.exception("Driver vehicle-management KYC check unavailable")
+        return _error(
+            "vehicle_kyc_check_unavailable",
+            "AFCON360 could not verify your KYC tier. Please try again.",
+            503,
+        )
+
+    if tier < 3:
+        return _error(
+            "vehicle_kyc_tier_required",
+            "Vehicle registration and management require KYC tier 3.",
+            403,
+        )
+
+    if require_profile_complete:
+        from app.auth.decorators import require_profile_completion
+
+        # Reuse the website's session-backed profile-completion gate. This
+        # adapter turns its redirect into a native API error; it does not
+        # weaken the requirement or invent a new profile-completion rule.
+        probe = require_profile_completion(lambda: None)
+        result = probe()
+        if result is not None:
+            return _error(
+                "profile_completion_required",
+                "Complete your AFCON360 profile before registering a vehicle.",
+                403,
+            )
+    return None
+
+
+def _mobile_vehicle_specification_payload(raw):
+    """Allowlist the fields supported by ProviderService's vehicle validator."""
+    if not isinstance(raw, dict):
+        return None
+    allowed = (
+        "license_plate",
+        "plate_number",
+        "make",
+        "model",
+        "year",
+        "vehicle_type",
+        "vehicle_class",
+        "passenger_capacity",
+        "capacity",
+        "luggage_capacity",
+        "color",
+        "vin",
+        "vin_number",
+        "registration_number",
+        "insurance_expiry",
+        "registration_expiry",
+    )
+    data = {
+        key: raw[key]
+        for key in allowed
+        if key in raw
+    }
+    if not data.get("plate_number") and data.get("license_plate"):
+        data["plate_number"] = data["license_plate"]
+    if not data.get("license_plate") and data.get("plate_number"):
+        data["license_plate"] = data["plate_number"]
+    if not data.get("capacity") and data.get("passenger_capacity") is not None:
+        data["capacity"] = data["passenger_capacity"]
+    if not data.get("passenger_capacity") and data.get("capacity") is not None:
+        data["passenger_capacity"] = data["capacity"]
+    if not data.get("vin") and data.get("vin_number"):
+        data["vin"] = data["vin_number"]
+    if not data.get("vin_number") and data.get("vin"):
+        data["vin_number"] = data["vin"]
+    for key, value in data.items():
+        if isinstance(value, str) and len(value) > 500:
+            return None
+    return data
+
+
+@mobile_api_bp.post("/driver/vehicles")
+@_bearer_required("driver")
+def mobile_driver_vehicle_register():
+    """Register a vehicle owned by this Driver using ProviderService."""
+    from app.transport.models import Vehicle
+    from app.transport.services import get_provider_service
+    from app.utils.exceptions import ValidationError
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+
+    gate_error = _mobile_driver_vehicle_management_gate(require_profile_complete=True)
+    if gate_error is not None:
+        return gate_error
+
+    payload = _mobile_vehicle_specification_payload(request.get_json(silent=True) or {})
+    if payload is None:
+        return _error("vehicle_registration_invalid", "Vehicle details are invalid or contain an oversized field.", 400)
+
+    try:
+        result = get_provider_service().register_vehicle(
+            owner_type="driver",
+            owner_id=profile.id,
+            vehicle_data=payload,
+        )
+        vehicle_id = (result or {}).get("data", {}).get("vehicle_id")
+        vehicle = Vehicle.query.filter_by(id=vehicle_id, is_deleted=False).first()
+        if vehicle is None:
+            return _error(
+                "vehicle_registration_unavailable",
+                "The vehicle was registered but its public record could not be loaded.",
+                503,
+            )
+        return jsonify({
+            "success": True,
+            "data": {"vehicle": _mobile_driver_vehicle_card(vehicle)},
+        }), 201
+    except ValidationError as exc:
+        from app.extensions import db
+        db.session.rollback()
+        return _error(
+            getattr(exc, "code", None) or "vehicle_registration_rejected",
+            getattr(exc, "message", None) or str(exc),
+            400,
+        )
+    except Exception:
+        from app.extensions import db
+        db.session.rollback()
+        logger.exception("Native Driver vehicle registration failed")
+        return _error(
+            "vehicle_registration_unavailable",
+            "Vehicle registration could not be completed. Please try again.",
+            503,
+        )
+
+
+@mobile_api_bp.put("/driver/vehicles/<string:vehicle_public_id>")
+@_bearer_required("driver")
+def mobile_driver_vehicle_update(vehicle_public_id):
+    """Update this Driver's owned vehicle through ProviderService validation."""
+    from app.transport.models import Vehicle
+    from app.transport.services import get_provider_service
+    from app.utils.exceptions import ValidationError
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+
+    gate_error = _mobile_driver_vehicle_management_gate(require_profile_complete=False)
+    if gate_error is not None:
+        return gate_error
+
+    vehicle = Vehicle.query.filter_by(
+        public_id=vehicle_public_id,
+        is_deleted=False,
+    ).first()
+    if vehicle is None:
+        return _error("vehicle_not_found", "This vehicle could not be found.", 404)
+
+    owns_vehicle = (
+        (vehicle.owner_type == "driver" and vehicle.owner_id == profile.id)
+        or (vehicle.owner_type == "user" and vehicle.owner_id == profile.user_id)
+    )
+    if not owns_vehicle:
+        return _error("vehicle_not_owned", "You may only update a vehicle you own.", 403)
+
+    payload = _mobile_vehicle_specification_payload(request.get_json(silent=True) or {})
+    if payload is None:
+        return _error("vehicle_update_invalid", "Vehicle details are invalid or contain an oversized field.", 400)
+
+    try:
+        get_provider_service().update_vehicle(vehicle.id, payload)
+        from app.extensions import db
+        db.session.refresh(vehicle)
+        return jsonify({
+            "success": True,
+            "data": {"vehicle": _mobile_driver_vehicle_card(vehicle)},
+        }), 200
+    except ValidationError as exc:
+        from app.extensions import db
+        db.session.rollback()
+        return _error(
+            getattr(exc, "code", None) or "vehicle_update_rejected",
+            getattr(exc, "message", None) or str(exc),
+            400,
+        )
+    except Exception:
+        from app.extensions import db
+        db.session.rollback()
+        logger.exception("Native Driver vehicle update failed")
+        return _error(
+            "vehicle_update_unavailable",
+            "Vehicle details could not be saved. Please try again.",
+            503,
+        )
+
+
 @mobile_api_bp.get("/driver/assignments")
 @_bearer_required("driver")
 def mobile_driver_assignments():
