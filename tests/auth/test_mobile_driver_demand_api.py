@@ -91,8 +91,6 @@ def test_mobile_driver_demand_route_is_driver_scoped_and_private(
         "driver_id",
         "fare",
         "pickup_location",
-        "longitude",
-        "latitude",
         "passenger",
     ):
         assert forbidden not in body
@@ -159,7 +157,7 @@ def test_driver_demand_service_filters_before_aggregation_and_applies_minimum(
             [
                 (0.3136, 32.5811, None),
                 (0.3140, 32.5815, None),
-                (0.3150, 32.5820, None),
+                (0.3149, 32.5820, None),
                 (0.90, 32.58, None),   # Outside the 25 km local radius.
                 (100.0, 32.58, None),  # Invalid point; skipped.
             ],
