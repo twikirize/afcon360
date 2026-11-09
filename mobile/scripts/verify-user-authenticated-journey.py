@@ -105,24 +105,51 @@ def bounds_center(value: str) -> tuple[int, int] | None:
 
 def tap_text(value: str, *, last: bool = False, timeout: int = 12) -> None:
     deadline = time.monotonic() + timeout
+    last_diagnostics = []
     while time.monotonic() < deadline:
         try:
             root = dump_tree()
             matches = []
             for node in root.iter("node"):
-                if node.attrib.get("text", "").strip() == value or node.attrib.get("content-desc", "").strip() == value:
-                    center = bounds_center(node.attrib.get("bounds", ""))
+                text_value = node.attrib.get("text", "").strip()
+                description = node.attrib.get("content-desc", "").strip()
+                if text_value == value or description == value:
+                    bounds = node.attrib.get("bounds", "")
+                    center = bounds_center(bounds)
                     if center:
-                        matches.append(center)
+                        matches.append({
+                            "center": center,
+                            "bounds": bounds,
+                            "class": node.attrib.get("class", ""),
+                            "clickable": node.attrib.get("clickable", ""),
+                            "enabled": node.attrib.get("enabled", ""),
+                            "text": text_value,
+                            "content_desc": description,
+                        })
             if matches:
-                x, y = matches[-1] if last else matches[0]
+                chosen = matches[-1] if last else matches[0]
+                x, y = chosen["center"]
+                print(
+                    "ANDROID_TAP_TARGET: "
+                    + json.dumps({
+                        "label": value,
+                        "match_count": len(matches),
+                        "chosen": chosen,
+                        "all_matches": matches,
+                    }, sort_keys=True),
+                    flush=True,
+                )
                 run_adb("shell", "input", "tap", str(x), str(y))
                 time.sleep(0.7)
                 return
-        except Exception:
-            pass
+            last_diagnostics = []
+        except Exception as error:
+            last_diagnostics = [f"{type(error).__name__}: {error}"]
         time.sleep(0.5)
-    raise AssertionError(f"Could not find tappable Android UI text: {value!r}")
+    raise AssertionError(
+        f"Could not find tappable Android UI text: {value!r}. "
+        + "; ".join(last_diagnostics)
+    )
 
 
 def tap_edit_field(label: str) -> None:
@@ -162,8 +189,13 @@ def save_screen(name: str) -> None:
         ["adb", "exec-out", "screencap", "-p"],
         check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     ).stdout
+    root = dump_tree()
     (EVIDENCE / f"{name}.png").write_bytes(data)
-    (EVIDENCE / f"{name}.txt").write_text(visible_text(), encoding="utf-8")
+    (EVIDENCE / f"{name}.xml").write_bytes(ET.tostring(root, encoding="utf-8"))
+    (EVIDENCE / f"{name}.txt").write_text(
+        "\n".join(filter(None, (node_value(node) for node in root.iter("node")))),
+        encoding="utf-8",
+    )
 
 
 def return_to_explore() -> None:
@@ -268,8 +300,11 @@ def main() -> None:
     wait_for_text("Where are you going?", "Pickup", timeout=25, label="native ride request screen")
     save_screen("07-ride")
     return_to_explore()
+    save_screen("07b-explore-before-stays")
 
     tap_text("Find and book a stay")
+    time.sleep(2)
+    save_screen("08-stays-navigation-attempt")
     wait_for_text("Find your place to stay.", timeout=30, label="native accommodation screen")
     save_screen("08-stays")
     mark_stage("stays_screen")
