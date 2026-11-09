@@ -2288,8 +2288,8 @@ def mobile_driver_vehicle_update(vehicle_public_id):
 def mobile_driver_assignments():
     """Return only this Driver's assigned vehicle, owned vehicles, work and history."""
     from datetime import datetime, timedelta, timezone
-    from app.transport.models import DriverVehicleHistory, ScheduledRoute
-    from app.transport.services import get_provider_service
+    from sqlalchemy import or_
+    from app.transport.models import DriverVehicleHistory, ScheduledRoute, Vehicle
 
     profile, error, status = _current_driver()
     if error:
@@ -2298,7 +2298,21 @@ def mobile_driver_assignments():
     now = datetime.now(timezone.utc)
     current_vehicle = profile.current_vehicle
     try:
-        owned = get_provider_service().get_user_vehicles(profile.user_id) or []
+        # Driver ownership and personal-user ownership are distinct canonical
+        # owner types. The generic get_user_vehicles service is user-owner
+        # scoped, so include both legitimate ownership paths here.
+        owned = (
+            Vehicle.query
+            .filter(
+                Vehicle.is_deleted.is_(False),
+                or_(
+                    (Vehicle.owner_type == "driver") & (Vehicle.owner_id == profile.id),
+                    (Vehicle.owner_type == "user") & (Vehicle.owner_id == profile.user_id),
+                ),
+            )
+            .order_by(Vehicle.created_at.desc())
+            .all()
+        )
     except Exception:
         logger.exception("Native Driver owned-vehicle list unavailable")
         owned = []
@@ -2431,9 +2445,9 @@ def mobile_driver_vehicle_switch():
 @_bearer_required("driver")
 def mobile_driver_vehicle_marketplace():
     """List active, public vehicle listings that meet this Driver's requirements."""
+    from sqlalchemy import or_
     from sqlalchemy.orm import joinedload
-    from app.transport.models import VehicleMarketplaceListing
-    from app.transport.services import get_provider_service
+    from app.transport.models import Vehicle, VehicleMarketplaceListing
     from app.transport.services.marketplace_service import get_marketplace_service
 
     profile, error, status = _current_driver()
@@ -2441,8 +2455,16 @@ def mobile_driver_vehicle_marketplace():
         return jsonify(error), status
 
     try:
-        owned = get_provider_service().get_user_vehicles(profile.user_id) or []
-        owned_ids = [v.id for v in owned if getattr(v, "id", None) is not None]
+        owned_ids = [
+            row.id
+            for row in Vehicle.query.filter(
+                Vehicle.is_deleted.is_(False),
+                or_(
+                    (Vehicle.owner_type == "driver") & (Vehicle.owner_id == profile.id),
+                    (Vehicle.owner_type == "user") & (Vehicle.owner_id == profile.user_id),
+                ),
+            ).all()
+        ]
         query = (
             VehicleMarketplaceListing.query
             .options(joinedload(VehicleMarketplaceListing.vehicle))
