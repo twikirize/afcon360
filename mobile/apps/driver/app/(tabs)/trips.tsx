@@ -16,6 +16,16 @@ import { authClient } from "../../src/services/api";
 type ActiveTrip = {
   booking_reference: string;
   status: string;
+  next_action?: string | null;
+  can_cancel?: boolean;
+  can_mark_no_show?: boolean;
+  pickup_time?: string | null;
+  pickup_schedule?: {
+    local_datetime?: string;
+    timezone_name?: string;
+    utc_datetime?: string;
+    utc_offset?: string;
+  } | null;
   pickup?: { address?: string };
   dropoff?: { address?: string };
   pickup_time?: string | null;
@@ -35,7 +45,7 @@ type ActiveTrip = {
   currency?: string;
 };
 
-type TripHistoryScope = "upcoming" | "recent";
+type TripHistoryScope = "upcoming" | "recent" | "all";
 
 type TripHistoryItem = {
   booking_reference: string;
@@ -75,6 +85,13 @@ const nextAction: Record<string, { action: string; label: string }> = {
   driver_en_route: { action: "arrive", label: "I have arrived" },
   pickup_arrived: { action: "start", label: "Start trip" },
   in_progress: { action: "complete", label: "Complete trip" }
+};
+
+const serverActionLabels: Record<string, { action: string; label: string }> = {
+  en_route: { action: "en_route", label: "Start driving to pickup" },
+  arrive: { action: "arrive", label: "I have arrived" },
+  start: { action: "start", label: "Start trip" },
+  complete: { action: "complete", label: "Complete trip" }
 };
 
 function TripDetail({ label, value }: { label: string; value: string }) {
@@ -239,6 +256,46 @@ export default function Trips() {
     }
   }
 
+  function confirmTripAction(action: "cancel" | "no_show") {
+    if (!trip) return;
+    const isNoShow = action === "no_show";
+    Alert.alert(
+      isNoShow ? "Report passenger no-show" : "Cancel assigned trip",
+      isNoShow
+        ? "Only report a no-show after you have arrived at the scheduled pickup and the passenger has not appeared. AFCON360 will verify the booking's scheduled pickup and grace period."
+        : "Cancel this assigned trip only when you cannot complete it. AFCON360 will apply the booking's cancellation and reassignment rules.",
+      [
+        { text: "Keep trip", style: "cancel" },
+        {
+          text: isNoShow ? "Report no-show" : "Cancel trip",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await authClient.request(
+                "/api/mobile/v1/driver/trips/" +
+                  encodeURIComponent(trip.booking_reference) +
+                  "/status",
+                { method: "POST", body: { action } }
+              );
+              await load();
+            } catch (e) {
+              Alert.alert(
+                isNoShow ? "No-show not recorded" : "Trip not cancelled",
+                e instanceof Error
+                  ? e.message
+                  : "AFCON360 rejected this action or requires a different trip state."
+              );
+              await load();
+            } finally {
+              setBusy(false);
+            }
+          }
+        }
+      ]
+    );
+  }
+
   async function confirmCash() {
     if (!trip) return;
     Alert.alert(
@@ -272,7 +329,11 @@ export default function Trips() {
     );
   }
 
-  const action = trip ? nextAction[trip.status.toLowerCase()] : undefined;
+  const action = trip
+    ? (trip.next_action
+        ? serverActionLabels[trip.next_action]
+        : nextAction[trip.status.toLowerCase()])
+    : undefined;
   const canCancel = trip?.can_cancel === true;
   const canMarkNoShow = trip?.can_mark_no_show === true;
   const pickupTimeLabel = trip?.pickup_schedule?.local_datetime
@@ -335,6 +396,12 @@ export default function Trips() {
               <TripDetail label="Payment method" value={trip.payment_method ?? "Not provided"} />
               <TripDetail label="Payment status" value={trip.payment_status ?? "Pending"} />
             </View>
+            {trip.pickup_schedule?.local_datetime ? (
+              <Text style={{ color: palette.muted, fontSize: 12 }}>
+                Scheduled pickup: {trip.pickup_schedule.local_datetime}
+                {trip.pickup_schedule.timezone_name ? " · " + trip.pickup_schedule.timezone_name : ""}
+              </Text>
+            ) : null}
             {action ? (
               <ActionButton
                 label={busy ? "Updating trip…" : action.label}
@@ -346,6 +413,20 @@ export default function Trips() {
                 There is no further trip action available for this server-reported status.
               </Text>
             )}
+            {trip.can_cancel ? (
+              <ActionButton
+                label={busy ? "Please wait…" : "Cancel assigned trip"}
+                disabled={busy}
+                onPress={() => confirmTripAction("cancel")}
+              />
+            ) : null}
+            {trip.can_mark_no_show ? (
+              <ActionButton
+                label={busy ? "Please wait…" : "Report passenger no-show"}
+                disabled={busy}
+                onPress={() => confirmTripAction("no_show")}
+              />
+            ) : null}
             {canCancel ? (
               <ActionButton
                 label="Cancel trip"
@@ -404,7 +485,7 @@ export default function Trips() {
           <StatusPill>{historyItems.length} trips</StatusPill>
         </View>
         <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["upcoming", "recent"] as const).map(scope => {
+          {(["upcoming", "recent", "all"] as const).map(scope => {
             const selected = historyScope === scope;
             return (
               <Pressable
@@ -421,7 +502,7 @@ export default function Trips() {
                 }}
               >
                 <Text style={{ color: selected ? "#FFFFFF" : palette.ink, fontSize: 13, fontWeight: "800" }}>
-                  {scope === "upcoming" ? "Upcoming" : "Recent"}
+                  {scope === "upcoming" ? "Upcoming" : scope === "recent" ? "Recent" : "All"}
                 </Text>
               </Pressable>
             );
@@ -447,7 +528,9 @@ export default function Trips() {
             description={
               historyScope === "upcoming"
                 ? "Assigned scheduled trips will appear here when AFCON360 confirms them."
-                : "Completed and past assigned trips will appear here."
+                : historyScope === "recent"
+                  ? "Completed and past assigned trips will appear here."
+                  : "Your assigned trips will appear here, including upcoming and completed work."
             }
           />
         ) : null}
