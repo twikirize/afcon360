@@ -33,6 +33,25 @@ type DriverProfileSummary = {
     ready: boolean;
     checks: ReadinessCheck[];
   };
+  performance?: {
+    reliability_score?: number | null;
+    safety_score?: number | null;
+    acceptance_rate?: string | null;
+    cancellation_rate?: string | null;
+    total_trips?: number | null;
+    completed_trips?: number | null;
+    total_distance_km?: string | null;
+    average_rating?: string | null;
+    total_ratings?: number | null;
+  };
+  assigned_vehicle?: {
+    make?: string | null;
+    model?: string | null;
+    year?: number | null;
+    license_plate?: string | null;
+    vehicle_class?: string | null;
+    passenger_capacity?: number | null;
+  } | null;
 };
 
 function AccountValue({ label, value }: { label: string; value: string }) {
@@ -191,6 +210,88 @@ export default function DriverAccount() {
           disabled={loading}
           onPress={() => { setLoading(true); void load(); }}
         />
+      </Panel>
+
+      {profile?.performance ? (
+        <Panel>
+          <SectionTitle>Driving performance</SectionTitle>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
+            <AccountValue
+              label="Average rating"
+              value={profile.performance.average_rating ?? "Not rated"}
+            />
+            <AccountValue
+              label="Safety score"
+              value={profile.performance.safety_score === null || profile.performance.safety_score === undefined
+                ? "Not available"
+                : String(profile.performance.safety_score) + "/100"}
+            />
+            <AccountValue
+              label="Acceptance rate"
+              value={profile.performance.acceptance_rate
+                ? profile.performance.acceptance_rate + "%"
+                : "Not available"}
+            />
+            <AccountValue
+              label="Cancellation rate"
+              value={profile.performance.cancellation_rate
+                ? profile.performance.cancellation_rate + "%"
+                : "Not available"}
+            />
+            <AccountValue
+              label="Completed trips"
+              value={profile.performance.completed_trips === null || profile.performance.completed_trips === undefined
+                ? "Not available"
+                : String(profile.performance.completed_trips)}
+            />
+            <AccountValue
+              label="Total trips"
+              value={profile.performance.total_trips === null || profile.performance.total_trips === undefined
+                ? "Not available"
+                : String(profile.performance.total_trips)}
+            />
+            <AccountValue
+              label="Driving distance"
+              value={profile.performance.total_distance_km
+                ? profile.performance.total_distance_km + " km"
+                : "Not available"}
+            />
+          </View>
+          <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
+            These figures come from AFCON360 Transport. The app does not calculate or alter your performance scores.
+          </Text>
+        </Panel>
+      ) : null}
+
+      <Panel>
+        <SectionTitle>Current assigned vehicle</SectionTitle>
+        {profile?.assigned_vehicle ? (
+          <>
+            <Text style={{ color: palette.ink, fontSize: 16, fontWeight: "900" }}>
+              {[profile.assigned_vehicle.make, profile.assigned_vehicle.model, profile.assigned_vehicle.year]
+                .filter(value => value !== undefined && value !== null && value !== "")
+                .join(" ")}
+            </Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
+              <AccountValue label="Registration" value={profile.assigned_vehicle.license_plate ?? "Not provided"} />
+              <AccountValue label="Vehicle class" value={profile.assigned_vehicle.vehicle_class ?? "Not provided"} />
+              <AccountValue
+                label="Passenger capacity"
+                value={profile.assigned_vehicle.passenger_capacity === null || profile.assigned_vehicle.passenger_capacity === undefined
+                  ? "Not provided"
+                  : String(profile.assigned_vehicle.passenger_capacity)}
+              />
+            </View>
+          </>
+        ) : (
+          <EmptyState
+            title="No vehicle assigned"
+            description="AFCON360 Transport has not assigned an operating vehicle to this Driver profile."
+          />
+        )}
+        <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
+          This is your current assignment, not a list of vehicles you own.
+        </Text>
       </Panel>
 
       <Panel>
