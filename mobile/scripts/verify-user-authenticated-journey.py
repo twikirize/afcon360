@@ -147,6 +147,47 @@ def back_to_previous(expected: str) -> None:
     wait_for_text(expected, label=f"returned to {expected}")
 
 
+def save_failure_diagnostics() -> None:
+    """Capture safe device diagnostics before the emulator action shuts down."""
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+
+    def capture(name: str, *args: str) -> None:
+        try:
+            result = subprocess.run(
+                ["adb", *args], check=False, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45,
+            )
+            (EVIDENCE / name).write_text(result.stdout or "", encoding="utf-8")
+        except Exception as error:
+            (EVIDENCE / name).write_text(
+                f"Diagnostic command failed: {type(error).__name__}: {error}\n",
+                encoding="utf-8",
+            )
+
+    try:
+        image = subprocess.run(
+            ["adb", "exec-out", "screencap", "-p"],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=45,
+        ).stdout
+        if image:
+            (EVIDENCE / "failure-screen.png").write_bytes(image)
+    except Exception as error:
+        (EVIDENCE / "failure-screen-error.txt").write_text(
+            f"{type(error).__name__}: {error}\n", encoding="utf-8",
+        )
+
+    capture(
+        "failure-logcat-errors.txt", "logcat", "-d", "-t", "2500",
+        "AndroidRuntime:E", "ReactNativeJS:E", "ReactNative:E", "Expo:E", "*:S",
+    )
+    capture("failure-foreground-activity.txt", "shell", "dumpsys", "activity", "activities")
+    capture("failure-focused-window.txt", "shell", "dumpsys", "window", "windows")
+    capture("failure-package-path.txt", "shell", "pm", "path", PACKAGE)
+    capture("failure-process.txt", "shell", "pidof", PACKAGE)
+    capture("failure-ui-dump-command.txt", "shell", "uiautomator", "dump", UI_XML)
+    capture("failure-ui-hierarchy.xml", "shell", "cat", UI_XML)
+
+
 def main() -> None:
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     run_adb("wait-for-device")
@@ -228,4 +269,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        try:
+            save_failure_diagnostics()
+            print("ANDROID_E2E_FAILURE_DIAGNOSTICS_CAPTURED", flush=True)
+        except Exception as diagnostic_error:
+            print(f"ANDROID_E2E_DIAGNOSTICS_ERROR: {diagnostic_error}", flush=True)
+        raise
