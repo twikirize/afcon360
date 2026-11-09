@@ -18,6 +18,14 @@ on:
       - "mobile/.npmrc"
       - "mobile/scripts/**"
       - ".github/workflows/mobile-preview-apk.yml"
+  push:
+    branches:
+      - fix/native-user-service-stack-routes-20261109
+    paths:
+      - "mobile/apps/user/**"
+      - "mobile/packages/**"
+      - "mobile/scripts/**"
+      - ".github/workflows/mobile-preview-apk.yml"
   workflow_dispatch:
 
 concurrency:
@@ -31,6 +39,7 @@ permissions:
 
 jobs:
   build-preview-apk:
+    if: github.event_name != 'push'
     name: Build and verify ${{ matrix.app }} Android preview APK
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -211,6 +220,7 @@ jobs:
           retention-days: 90
 
   android-compatibility:
+    if: github.event_name != 'push'
     name: Android API ${{ matrix.api-level }} / ${{ matrix.app }} install and launch
     needs: build-preview-apk
     if: ${{ needs.build-preview-apk.result == 'success' }}
@@ -303,6 +313,7 @@ jobs:
           script: bash mobile/scripts/verify-android-emulator-install.sh "$APP" "$EXPECTED_PACKAGE" "${{ matrix.api-level }}"
 
   apk-manifest-audit:
+    if: github.event_name != 'push'
     name: Audit ${{ matrix.app }} APK permissions and components
     needs: build-preview-apk
     if: ${{ needs.build-preview-apk.result == 'success' }}
@@ -401,6 +412,7 @@ jobs:
           retention-days: 30
 
   ios-compatibility:
+    if: github.event_name != 'push'
     name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
     runs-on: macos-26-intel
     timeout-minutes: 90
