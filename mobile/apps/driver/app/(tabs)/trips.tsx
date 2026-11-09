@@ -161,6 +161,9 @@ export default function Trips() {
 
   const loadHistory = useCallback(async (scope: TripHistoryScope) => {
     setHistoryLoading(true);
+    setHistoryLoaded(false);
+    setHistoryItems([]);
+    setHistoryError(null);
     try {
       const response = await authClient.request<TripHistoryResponse>(
         "/api/mobile/v1/driver/trips?scope=" + scope + "&limit=20"
