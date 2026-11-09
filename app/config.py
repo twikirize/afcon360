@@ -76,7 +76,7 @@ try:
     import config as branding
 except ImportError:
     class _Branding:
-        APP_NAME = "AFCON 360"
+        APP_NAME = "Pamoja"
         TOURNAMENT_NAME = "AFCON 360"
         YEAR = 2025
         VERSION = "0.1.0"
@@ -89,7 +89,7 @@ except ImportError:
 class Config:
 
     # ---- Identity -----------------------------------------------------------
-    APP_NAME        = getattr(branding, "APP_NAME",        os.getenv("APP_NAME",        "AFCON 360"))
+    APP_NAME        = getattr(branding, "APP_NAME",        os.getenv("APP_NAME",        "Pamoja"))
     TOURNAMENT_NAME = getattr(branding, "TOURNAMENT_NAME", os.getenv("TOURNAMENT_NAME", "AFCON 360"))
     YEAR            = getattr(branding, "YEAR",            int(os.getenv("YEAR",        "2025")))
     VERSION         = getattr(branding, "VERSION",         os.getenv("VERSION",         "0.1.0"))
