@@ -18,10 +18,17 @@ const approved = [
 const nativeInternalRoutes = [
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/events" as never)'],
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/stays" as never)'],
+  ["apps/user/app/(tabs)/index.tsx", 'router.push("/(service)/ride" as never)'],
+  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/ride" as never)'],
+  ["apps/user/app/(tabs)/activity.tsx", 'pathname: "/(service)/ride-status/[reference]"'],
+  ["apps/user/app/(tabs)/account.tsx", 'router.push("/(service)/delete-account" as never)'],
   ["apps/user/app/(service)/_layout.tsx", 'if (!user) return <Redirect href="/login" />;'],
   ["apps/user/app/(service)/_layout.tsx", 'return <Stack screenOptions={{ headerShown: false }} />;'],
   ["apps/user/app/(service)/events.tsx", "export default function Events()"],
   ["apps/user/app/(service)/stays.tsx", "export default function Stays()"],
+  ["apps/user/app/(service)/ride.tsx", "export default function RideScreen()"],
+  ["apps/user/app/(service)/ride-status/[reference].tsx", "export default function RideStatusScreen()"],
+  ["apps/user/app/(service)/delete-account.tsx", "export default function DeleteAccountScreen()"],
 ];
 
 const nativeResetRoutes = [
@@ -32,6 +39,17 @@ const nativeResetRoutes = [
   ["packages/core/src/auth/mobile-auth-client.ts", "/api/mobile/v1/auth/password-reset/request"],
   ["packages/ui/src/auth.tsx", "export function PasswordResetFlow"],
 ];
+
+const forbiddenUnprotectedRoutes = [
+  "apps/user/app/ride.tsx",
+  "apps/user/app/ride-status/[reference].tsx",
+  "apps/user/app/delete-account.tsx",
+];
+for (const relative of forbiddenUnprotectedRoutes) {
+  if (fs.existsSync(path.join(root, relative))) {
+    throw new Error(`Authenticated User route must remain inside the guarded service stack: ${relative}`);
+  }
+}
 
 for (const [relative, snippet] of [...nativeInternalRoutes, ...nativeResetRoutes]) {
   const source = fs.readFileSync(path.join(root, relative), "utf8");
