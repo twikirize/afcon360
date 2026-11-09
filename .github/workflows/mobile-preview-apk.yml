@@ -668,7 +668,7 @@ jobs:
           opening = app_tag.group(0)
           if re.search(r"\bandroid:usesCleartextTraffic\s*=", opening):
               opening = re.sub(
-                  r'\bandroid:usesCleartextTraffic\s*=\s*["'][^"']*["']',
+                  r"\bandroid:usesCleartextTraffic\s*=\s*[\"'][^\"']*[\"']",
                   'android:usesCleartextTraffic="true"',
                   opening,
               )
