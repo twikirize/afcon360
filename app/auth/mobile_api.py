@@ -1197,6 +1197,98 @@ def mobile_driver_active_trip():
     }), 200
 
 
+@mobile_api_bp.get("/driver/trips")
+@_bearer_required("driver")
+def mobile_driver_trips():
+    """Read the authenticated driver's upcoming or recent trip cards.
+
+    The route delegates filtering to BookingService and deliberately returns
+    a small driver-facing projection. Passenger identities/contact details,
+    internal row IDs, and the booking metadata blob never cross this boundary.
+    """
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+
+    scope = str(request.args.get("scope") or "recent").strip().lower()
+    if scope not in {"upcoming", "recent"}:
+        return _error(
+            "driver_trip_scope_invalid",
+            "Choose upcoming or recent trips.",
+            400,
+        )
+
+    raw_limit = request.args.get("limit", "10")
+    try:
+        limit = int(raw_limit)
+    except (TypeError, ValueError):
+        return _error("driver_trip_limit_invalid", "Trip limit must be a whole number from 1 to 20.", 400)
+    if not 1 <= limit <= 20:
+        return _error("driver_trip_limit_invalid", "Trip limit must be between 1 and 20.", 400)
+
+    from app.transport.services.booking_service import BookingService
+
+    service = BookingService()
+    if scope == "upcoming":
+        rows = service.get_driver_upcoming_bookings(profile.user_id, limit=limit)
+    else:
+        rows = service.get_driver_recent_bookings(profile.user_id, limit=limit)
+
+    def _plain(value):
+        return getattr(value, "value", value)
+
+    def _iso(value):
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return value if isinstance(value, str) else None
+
+    def _amount(value):
+        return str(value) if value is not None else None
+
+    items = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        status_value = _plain(row.get("status"))
+        currency_value = _plain(row.get("currency"))
+        fare_value = row.get("final_price")
+        if fare_value is None:
+            fare_value = row.get("total_amount")
+
+        items.append({
+            "booking_reference": row.get("booking_reference"),
+            "status": str(status_value) if status_value is not None else "unknown",
+            "booking_mode": row.get("booking_mode"),
+            "pickup_time": _iso(row.get("pickup_time")),
+            "pickup_schedule": row.get("pickup_schedule"),
+            "pickup": {
+                "address": row.get("pickup_location_text") or "Pickup details unavailable",
+            },
+            "dropoff": {
+                "address": row.get("dropoff_location_text") or "Destination details unavailable",
+            },
+            "passenger_count": row.get("passenger_count"),
+            "fare_amount": _amount(fare_value),
+            "currency": str(currency_value) if currency_value is not None else None,
+            "payment_method": row.get("payment_method"),
+            "payment_status": str(_plain(row.get("payment_status")))
+            if row.get("payment_status") is not None else None,
+            "can_mark_no_show": bool(row.get("can_mark_no_show", False)),
+            "created_at": _iso(row.get("created_at")),
+            "completed_at": _iso(row.get("completed_at")),
+        })
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "scope": scope,
+            "items": items,
+            "count": len(items),
+            "limit": limit,
+        },
+    }), 200
+
+
 @mobile_api_bp.post("/driver/trips/<string:booking_reference>/status")
 @_bearer_required("driver")
 def mobile_driver_trip_status(booking_reference):
