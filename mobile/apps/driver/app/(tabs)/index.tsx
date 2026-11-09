@@ -32,6 +32,25 @@ type DriverProfile = {
       hint?: string;
     }>;
   };
+  performance?: {
+    reliability_score?: number | null;
+    safety_score?: number | null;
+    acceptance_rate?: string | null;
+    cancellation_rate?: string | null;
+    total_trips?: number | null;
+    completed_trips?: number | null;
+    total_distance_km?: string | null;
+    average_rating?: string | null;
+    total_ratings?: number | null;
+  };
+  assigned_vehicle?: {
+    make?: string | null;
+    model?: string | null;
+    year?: number | null;
+    license_plate?: string | null;
+    vehicle_class?: string | null;
+    passenger_capacity?: number | null;
+  } | null;
 };
 
 type Offer = {
@@ -55,6 +74,12 @@ type ActiveTrip = {
   payment_status?: string;
   fare_amount?: string;
   currency?: string;
+  can_cancel?: boolean;
+  can_mark_no_show?: boolean;
+  pickup_schedule?: {
+    local_datetime?: string;
+    timezone_name?: string;
+  } | null;
 };
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -308,6 +333,58 @@ export default function DriverHome() {
         >
           <Text style={{ color: palette.greenDark, fontWeight: "800" }}>Refresh dashboard</Text>
         </Pressable>
+      </Panel>
+
+      <Panel>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <SectionTitle>Driving performance</SectionTitle>
+          <StatusPill tone="neutral">
+            {profile?.performance?.total_trips === undefined || profile.performance.total_trips === null
+              ? "No summary"
+              : String(profile.performance.total_trips) + " trips"}
+          </StatusPill>
+        </View>
+        {profile?.performance ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
+            <DetailRow label="Average rating" value={profile.performance.average_rating ?? "Not rated"} />
+            <DetailRow
+              label="Safety score"
+              value={profile.performance.safety_score === undefined || profile.performance.safety_score === null
+                ? "Not available"
+                : String(profile.performance.safety_score) + "/100"}
+            />
+            <DetailRow label="Acceptance rate" value={profile.performance.acceptance_rate ? profile.performance.acceptance_rate + "%" : "Not available"} />
+            <DetailRow label="Cancellation rate" value={profile.performance.cancellation_rate ? profile.performance.cancellation_rate + "%" : "Not available"} />
+            <DetailRow
+              label="Completed trips"
+              value={profile.performance.completed_trips === undefined || profile.performance.completed_trips === null
+                ? "Not available"
+                : String(profile.performance.completed_trips)}
+            />
+            <DetailRow
+              label="Total distance"
+              value={profile.performance.total_distance_km ? profile.performance.total_distance_km + " km" : "Not available"}
+            />
+          </View>
+        ) : (
+          <Text style={{ color: palette.muted, fontSize: 12 }}>
+            Performance information is not available from Transport yet.
+          </Text>
+        )}
+        {profile?.assigned_vehicle ? (
+          <View style={{ padding: 12, borderRadius: 13, backgroundColor: "#F8FBF9", gap: 4 }}>
+            <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "700" }}>Current assigned vehicle</Text>
+            <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "900" }}>
+              {[profile.assigned_vehicle.make, profile.assigned_vehicle.model, profile.assigned_vehicle.year]
+                .filter(value => value !== undefined && value !== null && value !== "")
+                .join(" ")}
+            </Text>
+            <Text style={{ color: palette.muted, fontSize: 12 }}>
+              {profile.assigned_vehicle.license_plate ?? "Registration not provided"}
+              {profile.assigned_vehicle.vehicle_class ? " · " + profile.assigned_vehicle.vehicle_class : ""}
+            </Text>
+          </View>
+        ) : null}
       </Panel>
 
       <Panel>
