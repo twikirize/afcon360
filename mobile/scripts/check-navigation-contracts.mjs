@@ -11,6 +11,7 @@ const approved = [
   ["apps/user/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", 'label="Back to AFCON360 website home"'],
   ["apps/driver/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", 'label="Back to AFCON360 website home"'],
   ["apps/driver/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', 'label="Privacy notice (website)"'],
+  ["apps/driver/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/support")', 'label="Contact AFCON360 support"'],
   ["apps/user/app/(tabs)/wallet.tsx", "Linking.openURL(checkout.toString())", 'label={busy ? "Starting secure checkout…" : "Continue to Flutterwave"}'],
   ["apps/user/app/(tabs)/wallet.tsx", "Linking.openURL(checkout.toString())", 'label="Open Flutterwave checkout"'],
 ];
