@@ -1,5 +1,5 @@
 ﻿# afcon 360_app/config.py
-APP_NAME = "AFCON 360"
+APP_NAME = "Pamoja"
 TOURNAMENT_NAME = "AFCON 360"
 YEAR = 2025
 VERSION = "1.0.0"
