@@ -51,6 +51,22 @@ for (const relative of forbiddenUnprotectedRoutes) {
   }
 }
 
+// Root-level User routes are public entry points only. New authenticated pages
+// must be placed in the guarded service Stack or the guarded tabs group.
+const publicRootRouteFiles = new Set([
+  "_layout.tsx",
+  "index.tsx",
+  "login.tsx",
+  "register.tsx",
+  "forgot-password.tsx",
+]);
+const userRootRoutes = path.join(root, "apps/user/app");
+for (const entry of fs.readdirSync(userRootRoutes, { withFileTypes: true })) {
+  if (entry.isFile() && [".tsx", ".ts", ".jsx", ".js"].some((extension) => entry.name.endsWith(extension)) && !publicRootRouteFiles.has(entry.name)) {
+    throw new Error(`Unclassified User root route ${entry.name}; private routes belong in a guarded route group.`);
+  }
+}
+
 for (const [relative, snippet] of [...nativeInternalRoutes, ...nativeResetRoutes]) {
   const source = fs.readFileSync(path.join(root, relative), "utf8");
   if (!source.includes(snippet)) throw new Error(`Required native route or password-recovery flow is missing or changed: ${relative}`);
