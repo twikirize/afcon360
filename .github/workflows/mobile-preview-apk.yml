@@ -693,7 +693,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk
-          key: afcon360-driver-e2e-release-v2-${{ runner.os }}-${{ hashFiles('mobile/apps/driver/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+          key: afcon360-driver-e2e-release-v2-${{ runner.os }}-${{ hashFiles('mobile/apps/driver/**', '!mobile/apps/driver/android/**', '!mobile/apps/driver/ios/**', '!mobile/apps/driver/node_modules/**', '!mobile/apps/driver/.expo/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
 
       - name: Configure temporary signing for the standalone Driver E2E APK
         if: steps.driver-e2e-apk-cache.outputs.cache-hit != 'true'
@@ -738,7 +738,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk
-          key: afcon360-driver-e2e-release-v2-${{ runner.os }}-${{ hashFiles('mobile/apps/driver/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+          key: afcon360-driver-e2e-release-v2-${{ runner.os }}-${{ hashFiles('mobile/apps/driver/**', '!mobile/apps/driver/android/**', '!mobile/apps/driver/ios/**', '!mobile/apps/driver/node_modules/**', '!mobile/apps/driver/.expo/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
 
       - name: Verify and stage the standalone Driver E2E APK
         shell: bash
