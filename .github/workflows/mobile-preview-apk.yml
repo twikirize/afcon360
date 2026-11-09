@@ -685,21 +685,74 @@ jobs:
           }
           NODE
 
-      - name: Build isolated Driver debug APK
-        working-directory: mobile
-        run: cd apps/driver/android && ./gradlew --no-daemon --stacktrace assembleDebug
+      # This cache is keyed only by Driver application inputs, not this workflow or
+      # the E2E/backend test scripts. Test-harness corrections therefore reuse the
+      # same self-contained APK; changing Driver app code/dependencies invalidates it.
+      - name: Restore reusable Driver E2E release APK
+        id: driver-e2e-apk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk
+          key: afcon360-driver-e2e-release-v2-${{ runner.os }}-${{ hashFiles('mobile/apps/driver/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
 
-      - name: Verify and stage the isolated Driver APK
+      - name: Configure temporary signing for the standalone Driver E2E APK
+        if: steps.driver-e2e-apk-cache.outputs.cache-hit != 'true'
+        working-directory: mobile
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const path = "apps/driver/android/app/build.gradle";
+          let source = fs.readFileSync(path, "utf8");
+          const buildTypes = source.indexOf("buildTypes {");
+          const release = source.indexOf("release {", buildTypes);
+          if (buildTypes < 0 || release < 0) throw new Error("Could not find Android release build type");
+          const open = source.indexOf("{", release);
+          let depth = 0;
+          let end = -1;
+          for (let i = open; i < source.length; i++) {
+            if (source[i] === "{") depth++;
+            if (source[i] === "}") {
+              depth--;
+              if (depth === 0) { end = i + 1; break; }
+            }
+          }
+          if (end < 0) throw new Error("Could not find end of Android release build type");
+          let block = source.slice(release, end);
+          const signing = /signingConfig\\s+signingConfigs\\.[A-Za-z0-9_]+/;
+          if (signing.test(block)) {
+            block = block.replace(signing, "signingConfig signingConfigs.debug");
+          } else {
+            block = block.replace("release {", "release {\\n            signingConfig signingConfigs.debug");
+          }
+          source = source.slice(0, release) + block + source.slice(end);
+          fs.writeFileSync(path, source);
+          NODE
+
+      - name: Build self-contained Driver E2E release APK
+        if: steps.driver-e2e-apk-cache.outputs.cache-hit != 'true'
+        working-directory: mobile
+        run: cd apps/driver/android && ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Save reusable Driver E2E release APK
+        if: steps.driver-e2e-apk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk
+          key: afcon360-driver-e2e-release-v2-${{ runner.os }}-${{ hashFiles('mobile/apps/driver/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+
+      - name: Verify and stage the standalone Driver E2E APK
         shell: bash
         run: |
           set -euo pipefail
-          APK="mobile/apps/driver/android/app/build/outputs/apk/debug/app-debug.apk"
+          APK="mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
+          apksigner verify --verbose "$APK"
+          unzip -l "$APK" | grep -F "assets/index.android.bundle"
           mkdir -p driver-e2e-evidence
           cp "$APK" driver-e2e-evidence/driver-e2e.apk
           aapt dump badging driver-e2e-evidence/driver-e2e.apk | grep -F "package: name='space.pamoja.afcon360.driver.preview'"
           sha256sum driver-e2e-evidence/driver-e2e.apk | tee driver-e2e-evidence/driver-e2e-apk.sha256
-          echo "The test-only APK points to the disposable loopback API and is not a release artifact."
+          echo "The standalone test APK embeds the Driver app bundle and points only to the disposable loopback API."
 
       - name: Enable and verify KVM hardware acceleration for authenticated Driver journey
         shell: bash
