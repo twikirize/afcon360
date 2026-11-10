@@ -72,20 +72,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
           disable-animations: true
           emulator-boot-timeout: 900
-          script: |
-            set -eu
-            mkdir -p android17-install-evidence
-            APK="mobile-e2e-cache/user-e2e.apk"
-            API="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
-            RELEASE="$(adb shell getprop ro.build.version.release | tr -d '\r')"
-            echo "Emulator Android release=$RELEASE api=$API"
-            test "$API" = "37"
-            adb install -r "$APK" | tee android17-install-evidence/adb-install.txt
-            adb shell pm path space.pamoja.afcon360.user.preview | tee android17-install-evidence/package-path.txt
-            adb shell monkey -p space.pamoja.afcon360.user.preview -c android.intent.category.LAUNCHER 1 | tee android17-install-evidence/launch.txt
-            sleep 8
-            adb logcat -d -t 2500 > android17-install-evidence/logcat.txt
-            echo "PASS: exact AFCON360 User APK installed on Android $RELEASE (API $API)."
+          script: bash mobile/scripts/verify-user-apk-android17.sh
           working-directory: .
 
       - name: Upload Android 17 install evidence
