@@ -364,6 +364,23 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 600
           script: python mobile/scripts/verify-user-authenticated-journey.py
+      - name: Run the complete User journey on Android 17
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        env:
+          AFCON360_E2E_EVIDENCE_DIR: mobile-e2e-evidence/android-17
+        with:
+          disable-linux-hw-accel: false
+          api-level: '37.0'
+          system-image-api-level: '37.0'
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          ram-size: 4096M
+          disk-size: 12G
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: bash mobile/scripts/verify-user-authenticated-journey-android17.sh
       - name: Verify server-side logout and protected API evidence
         if: always()
         run: python mobile/scripts/mobile-user-e2e-backend.py assert
