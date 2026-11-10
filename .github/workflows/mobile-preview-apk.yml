@@ -35,6 +35,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       apps_json: ${{ steps.detect.outputs.apps_json }}
+      build_apps_json: ${{ steps.detect.outputs.build_apps_json }}
     steps:
       - name: Check out source history
         uses: actions/checkout@v7
@@ -51,6 +52,7 @@ jobs:
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
             echo 'apps_json=["user","driver"]' >> "$GITHUB_OUTPUT"
+            echo 'build_apps_json=["user","driver"]' >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -81,7 +83,36 @@ jobs:
           fi
           apps+="]"
           echo "apps_json=$apps" >> "$GITHUB_OUTPUT"
-          echo "Affected native apps: $apps"
+          echo "Affected native apps in the PR: $apps"
+
+          # Only a native source/dependency change in this commit requires a
+          # new platform compile. Test-harness-only commits reuse the cached APK.
+          latest_changed="$(git diff --name-only "$HEAD_SHA^" "$HEAD_SHA")"
+          build_shared=false
+          build_user=false
+          build_driver=false
+          if grep -Eq '^mobile/(packages/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|\.npmrc$)' <<< "$latest_changed"; then
+            build_shared=true
+          fi
+          if grep -Eq '^mobile/apps/user/' <<< "$latest_changed"; then build_user=true; fi
+          if grep -Eq '^mobile/apps/driver/' <<< "$latest_changed"; then build_driver=true; fi
+          if [[ "$build_shared" == "true" ]]; then
+            build_user=true
+            build_driver=true
+          fi
+
+          build_apps="["
+          build_separator=""
+          if [[ "$build_user" == "true" ]]; then
+            build_apps+="$build_separator\"user\""
+            build_separator=","
+          fi
+          if [[ "$build_driver" == "true" ]]; then
+            build_apps+="$build_separator\"driver\""
+          fi
+          build_apps+="]"
+          echo "build_apps_json=$build_apps" >> "$GITHUB_OUTPUT"
+          echo "Apps requiring a fresh Android/iOS platform build: $build_apps"
 
   build-preview-apk:
     name: Build and verify ${{ matrix.app }} Android preview APK
