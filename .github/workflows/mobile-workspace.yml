@@ -133,15 +133,6 @@ jobs:
         with:
           path: mobile-e2e-cache/
           key: ${{ steps.user-apk-key.outputs.key }}
-      - name: Prepare disposable backend with native Events and Accommodation APIs
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin test/native-user-services-api-e2e-20261109
-          git worktree add --detach "$RUNNER_TEMP/afcon360-services-backend" FETCH_HEAD
-          test -f "$RUNNER_TEMP/afcon360-services-backend/app/accommodation/services/native_booking_service.py"
-          test -f "$RUNNER_TEMP/afcon360-services-backend/app/events/native_event_service.py"
-          echo "Prepared API overlay for E2E only; the User app source remains checked out from this PR."
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -153,16 +144,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
       - name: Build a fresh disposable PostgreSQL schema
-        working-directory: ${{ runner.temp }}/afcon360-services-backend
         run: python -m flask --app 'app:create_app()' db upgrade
       - name: Seed one synthetic, non-MFA AFCON360 User
-        env:
-          AFCON360_E2E_BACKEND_ROOT: ${{ runner.temp }}/afcon360-services-backend
         run: python mobile/scripts/mobile-user-e2e-backend.py seed
       - name: Start isolated Flask API and wait for health
         shell: bash
-        env:
-          AFCON360_E2E_BACKEND_ROOT: ${{ runner.temp }}/afcon360-services-backend
         run: |
           set -euo pipefail
           mkdir -p mobile-e2e-evidence
@@ -366,8 +352,6 @@ jobs:
           script: python mobile/scripts/verify-user-authenticated-journey.py
       - name: Verify server-side logout and protected API evidence
         if: always()
-        env:
-          AFCON360_E2E_BACKEND_ROOT: ${{ runner.temp }}/afcon360-services-backend
         run: python mobile/scripts/mobile-user-e2e-backend.py assert
       - name: Upload User Android journey evidence
         if: always()
