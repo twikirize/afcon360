@@ -74,13 +74,28 @@ The repository CI runs these workspace and navigation checks. Do not hide TypeSc
 
 | Change | New Android/iOS build? |
 |---|---|
-| Screen text, layout, React Native component or navigation change | Yes, under the current release workflow |
-| Shared UI or API client behavior | Yes |
-| Native permission, plugin, application ID, URL scheme or platform config | Yes; also inspect generated native projects and manifests |
+| Screen text, layout, React Native component, navigation, JavaScript logic or bundled image/content | **No**, after an OTA-enabled binary is installed; publish an EAS Update |
+| Shared UI or API-client JavaScript behavior | **No**, after an OTA-enabled binary is installed; publish an EAS Update |
 | Flask endpoint/business-rule change only | No app rebuild if the app binary and client contract do not change |
+| Native permission, native library/module, plugin, application ID, URL scheme, Android/iOS manifest, native build setting or SDK upgrade | **Yes**; build and install a new binary |
 | Website template/CSS change only | No app rebuild; those website assets are not bundled into the native APK/IPA |
 
-Do not assume over-the-air updates are enabled. No approved EAS Update channel/runtime policy is established by the current build configuration. Treat a source change as requiring a new binary unless an OTA release process is separately configured, reviewed and tested.
+The User app is being configured for Expo Updates with separate `preview` and `production` channels. Ordinary JavaScript, screen and bundled-asset changes can be published from GitHub to the User preview channel after the CI checks pass. The app checks for compatible updates when it starts and applies a downloaded update on a subsequent launch/reload; it does not rebuild or reinstall the APK for those changes.
+
+The existing preview APK built before Expo Updates was added cannot receive OTA updates. One new OTA-enabled APK must be built and installed once. After that, ordinary compatible JavaScript/UI changes do not require another APK build.
+
+The runtime policy is `appVersion`. Any change to native code or native configuration must also increment the app version and produce a new binary. This keeps OTA updates from being sent to binaries with a different native runtime. Never publish JavaScript that calls a native module not present in the installed binary.
+
+## 5A. User OTA publishing and safeguards
+
+The planned User GitHub workflow publishes to the **preview** EAS Update channel only after workspace checks and the Android 16 authenticated journey pass. Android 17 and the wider Android compatibility matrix remain separate release evidence; emulator infrastructure failures must be diagnosed rather than treated as app compatibility failures.
+
+To activate publishing, configure these GitHub Actions settings for the repository:
+
+- Repository variable `AFCON360_USER_EAS_PROJECT_ID`: the UUID of the dedicated **User** EAS project. Do not reuse a Driver project ID.
+- Repository secret `EXPO_TOKEN`: an Expo access token permitted to publish updates to that User project.
+
+The project ID is public configuration; the token is a secret. Do not put the token in source code or any `EXPO_PUBLIC_*` variable. The first OTA-enabled APK must be built with the project ID present so the native binary contains the updates URL, runtime version and preview channel. The current APK made before this setup does not have the Expo Updates native client. Production updates are not published automatically from the User feature branch; they require a separately approved production release.
 
 ## 6. Review through a pull request
 
