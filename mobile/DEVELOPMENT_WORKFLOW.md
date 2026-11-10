@@ -88,7 +88,7 @@ The runtime policy is `appVersion`. Any change to native code or native configur
 
 ## 5A. User OTA publishing and safeguards
 
-The planned User GitHub workflow publishes to the **preview** EAS Update channel only after workspace checks and the Android 16 authenticated journey pass. Android 17 and the wider Android compatibility matrix remain separate release evidence; emulator infrastructure failures must be diagnosed rather than treated as app compatibility failures.
+The User GitHub workflow publishes to the **preview** EAS Update channel after its dependency, TypeScript, Android bundle and iOS bundle checks pass. It runs on User-app changes pushed to the User feature branch. It does not publish to production. Android device and authenticated-journey checks remain separate release evidence; emulator infrastructure failures must be diagnosed rather than treated as app compatibility failures.
 
 To activate publishing, configure these GitHub Actions settings for the repository:
 
