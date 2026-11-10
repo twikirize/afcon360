@@ -139,16 +139,10 @@ jobs:
           version: 10.12.4
           run_install: false
 
-      - name: Prepare pnpm store cache directory
-        shell: bash
-        run: mkdir -p "$(pnpm store path)"
-
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
-          cache: pnpm
-          cache-dependency-path: mobile/pnpm-lock.yaml
 
       - name: Restore reusable unsigned Android preview APK
         id: apk-cache
@@ -512,16 +506,10 @@ jobs:
           version: 10.12.4
           run_install: false
 
-      - name: Prepare pnpm store cache directory
-        shell: bash
-        run: mkdir -p "$(pnpm store path)"
-
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
-          cache: pnpm
-          cache-dependency-path: mobile/pnpm-lock.yaml
 
       - name: Confirm Xcode 26.4 or later
         shell: bash
@@ -727,16 +715,10 @@ jobs:
           version: 10.12.4
           run_install: false
 
-      - name: Prepare pnpm store cache directory
-        shell: bash
-        run: mkdir -p "$(pnpm store path)"
-
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
-          cache: pnpm
-          cache-dependency-path: mobile/pnpm-lock.yaml
 
       - name: Set up Java
         uses: actions/setup-java@v6
