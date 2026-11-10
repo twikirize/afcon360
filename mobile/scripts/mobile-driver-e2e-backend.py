@@ -14,7 +14,15 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+# The APK source and the backend candidate are intentionally separate pull
+# requests. In the authenticated E2E job, load Flask/app models from the
+# consolidated backend candidate while keeping this test harness from PR #73.
+BACKEND_ROOT = Path(
+    os.environ.get("AFCON360_DRIVER_E2E_BACKEND_ROOT", str(ROOT))
+).resolve()
+sys.path.insert(0, str(BACKEND_ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
 
 EVIDENCE = Path(os.environ.get("AFCON360_DRIVER_E2E_EVIDENCE_DIR", "driver-e2e-evidence"))
 REQUEST_LOG = Path(os.environ.get(
