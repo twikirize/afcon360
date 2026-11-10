@@ -28,6 +28,7 @@ NON_DRIVER_USERNAME = os.environ.get("AFCON360_NON_DRIVER_E2E_USERNAME", "native
 NON_DRIVER_EMAIL = os.environ.get("AFCON360_NON_DRIVER_E2E_EMAIL", "native-customer-e2e@afcon360.test")
 NON_DRIVER_PASSWORD = os.environ.get("AFCON360_NON_DRIVER_E2E_PASSWORD", "CustomerE2ePassword2026")
 DRIVER_CODE = "E2E-DRV01"
+BACKEND_PREFLIGHT_USER_AGENT = "AFCON360 Driver E2E backend preflight"
 
 
 def build_app():
@@ -51,8 +52,12 @@ def build_app():
         # Method/path/status only. Never record credentials, bodies, headers,
         # cookies, bearer tokens, query values or personal data.
         EVIDENCE.mkdir(parents=True, exist_ok=True)
-        with REQUEST_LOG.open("a", encoding="utf-8") as handle:
-            handle.write(f"{response.status_code}\t{request.method}\t{request.path}\n")
+        # The backend-only offers preflight has its own sanitized response summary.
+        # Keep it out of the APK request audit so it cannot satisfy client-journey
+        # login, identity-read or logout evidence.
+        if request.headers.get("User-Agent") != BACKEND_PREFLIGHT_USER_AGENT:
+            with REQUEST_LOG.open("a", encoding="utf-8") as handle:
+                handle.write(f"{response.status_code}\t{request.method}\t{request.path}\n")
 
         # Keep a deliberately narrow, non-identifying projection of the
         # server-owned Driver API response for audit evidence.
@@ -79,7 +84,11 @@ def build_app():
             payload = response.get_json(silent=True) or {}
             data = payload.get("data") if isinstance(payload, dict) else {}
             offers = data.get("offers") if isinstance(data, dict) else None
-            summary = {"offers_count": len(offers) if isinstance(offers, list) else None}
+            summary = {
+                "http_status": response.status_code,
+                "offers_count": len(offers) if isinstance(offers, list) else None,
+                "offers_list_valid": isinstance(offers, list),
+            }
             (EVIDENCE / "driver-offers-summary.json").write_text(
                 json.dumps(summary, indent=2) + "\n", encoding="utf-8"
             )
@@ -190,6 +199,70 @@ def verify_driver_only_login_guard(app) -> None:
         print("PASS: customer-only identity rejected by Driver sign-in guard", flush=True)
 
 
+def verify_offline_driver_offers_api(app) -> None:
+    """Prove the protected offers contract without polling offers while Driver is offline.
+
+    The synthetic Driver is deliberately pending approval and offline. The native
+    app must not poll dispatch offers in that state, so this isolated backend
+    preflight verifies the bearer-protected read directly and revokes its own
+    temporary session before the Android journey begins.
+    """
+    headers = {"User-Agent": BACKEND_PREFLIGHT_USER_AGENT}
+    with app.test_client() as client:
+        login = client.post(
+            "/api/mobile/v1/auth/login",
+            headers=headers,
+            json={
+                "identifier": DRIVER_USERNAME,
+                "password": DRIVER_PASSWORD,
+                "client": "driver",
+                "device_id": "driver-e2e-offers-probe-device",
+                "device_name": "AFCON360 Driver E2E offers contract probe",
+            },
+        )
+        login_payload = login.get_json(silent=True) or {}
+        login_data = login_payload.get("data") if isinstance(login_payload, dict) else {}
+        access_token = login_data.get("access_token") if isinstance(login_data, dict) else None
+        if login.status_code != 200 or not access_token:
+            raise AssertionError(
+                "The backend-only Driver offers preflight could not establish a bearer session: "
+                f"HTTP {login.status_code}, code={login_payload.get('code')!r}."
+            )
+
+        bearer_headers = {
+            **headers,
+            "Authorization": f"Bearer {access_token}",
+        }
+        response = client.get(
+            "/api/mobile/v1/driver/offers",
+            headers=bearer_headers,
+        )
+        payload = response.get_json(silent=True) or {}
+        data = payload.get("data") if isinstance(payload, dict) else {}
+        offers = data.get("offers") if isinstance(data, dict) else None
+        if response.status_code != 200 or not isinstance(offers, list) or offers:
+            raise AssertionError(
+                "The authenticated pending/offline Driver offers endpoint did not return an empty list: "
+                f"HTTP {response.status_code}, offers_is_list={isinstance(offers, list)}, "
+                f"offers_count={len(offers) if isinstance(offers, list) else 'invalid'}."
+            )
+
+        logout = client.post(
+            "/api/mobile/v1/auth/logout",
+            headers=bearer_headers,
+        )
+        logout_payload = logout.get_json(silent=True) or {}
+        logout_data = logout_payload.get("data") if isinstance(logout_payload, dict) else {}
+        if logout.status_code != 200 or not (isinstance(logout_data, dict) and logout_data.get("revoked") is True):
+            raise AssertionError(
+                "The backend-only Driver offers preflight did not revoke its temporary session: "
+                f"HTTP {logout.status_code}."
+            )
+
+    print("PASS: authenticated offline Driver offers API returns an empty list", flush=True)
+    print("PASS: backend-only Driver offers preflight session revoked", flush=True)
+
+
 def assert_evidence(app) -> None:
     from app.auth.mobile_tokens import _revoked_key
     from app.auth.sessions import ServerSession
@@ -237,7 +310,10 @@ def assert_evidence(app) -> None:
         "successful Driver password login": count_ok("POST", "/api/mobile/v1/auth/login") >= 1,
         "identity read on sign-in and after process restart": count_ok("GET", "/api/mobile/v1/auth/me") >= 2,
         "Driver profile/readiness API": count_ok("GET", "/api/mobile/v1/driver/me") >= 2,
-        "Driver offers API": count_ok("GET", "/api/mobile/v1/driver/offers") >= 1,
+        "Driver offers API": (
+            offers_summary.get("http_status") == 200
+            and offers_summary.get("offers_list_valid") is True
+        ),
         "active-trip API": count_ok("GET", "/api/mobile/v1/driver/trips/active") >= 1,
         "Driver earnings API": count_ok("GET", "/api/mobile/v1/driver/earnings") >= 1,
         "server-side logout": count_ok("POST", "/api/mobile/v1/auth/logout") >= 1,
@@ -325,6 +401,7 @@ def main() -> None:
     if command == "seed":
         seed_test_accounts(app)
         verify_driver_only_login_guard(app)
+        verify_offline_driver_offers_api(app)
     elif command == "serve":
         EVIDENCE.mkdir(parents=True, exist_ok=True)
         print("DRIVER_E2E_BACKEND_STARTING on 0.0.0.0:5000", flush=True)
