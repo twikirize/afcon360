@@ -366,3 +366,109 @@ jobs:
           path: mobile-e2e-evidence/
           if-no-files-found: warn
           retention-days: 90
+
+  user-android-version-compatibility:
+    name: User APK install and launch — ${{ matrix.android-label }}
+    needs: user-authenticated-journey
+    if: ${{ needs.user-authenticated-journey.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - android-label: android-7-minimum
+            api-level: '24'
+            system-image-api-level: '24'
+            expected-api: '24'
+          - android-label: android-10
+            api-level: '29'
+            system-image-api-level: '29'
+            expected-api: '29'
+          - android-label: android-12
+            api-level: '31'
+            system-image-api-level: '31'
+            expected-api: '31'
+          - android-label: android-12l
+            api-level: '32'
+            system-image-api-level: '32'
+            expected-api: '32'
+          - android-label: android-13
+            api-level: '33'
+            system-image-api-level: '33'
+            expected-api: '33'
+          - android-label: android-14
+            api-level: '34'
+            system-image-api-level: '34'
+            expected-api: '34'
+          - android-label: android-15
+            api-level: '35'
+            system-image-api-level: '35'
+            expected-api: '35'
+          - android-label: android-16
+            api-level: '36'
+            system-image-api-level: '36'
+            expected-api: '36'
+          - android-label: android-17
+            api-level: '37.0'
+            system-image-api-level: '37.0'
+            expected-api: '37'
+    steps:
+      - name: Check out User app verification script
+        uses: actions/checkout@v7
+
+      - name: Download the exact APK tested in the authenticated User journey
+        uses: actions/download-artifact@v8
+        with:
+          name: afcon360-user-android-e2e-evidence
+          path: mobile-e2e-artifact
+
+      - name: Verify APK provenance and checksum before platform tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s mobile-e2e-artifact/user-e2e.apk
+          test -s mobile-e2e-artifact/user-e2e-apk.sha256
+          test -s mobile-e2e-artifact/user-e2e-build-info.txt
+          grep -Fxq "app=user" mobile-e2e-artifact/user-e2e-build-info.txt
+          grep -Fxq "package=space.pamoja.afcon360.user.preview" mobile-e2e-artifact/user-e2e-build-info.txt
+          EXPECTED_SHA="$(awk 'NR == 1 { print $1 }' mobile-e2e-artifact/user-e2e-apk.sha256)"
+          ACTUAL_SHA="$(sha256sum mobile-e2e-artifact/user-e2e.apk | awk '{ print $1 }')"
+          test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA"
+          echo "Verified the same authenticated-journey APK: $ACTUAL_SHA"
+
+      - name: Enable hardware acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+
+      - name: Install and launch on ${{ matrix.android-label }}
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          system-image-api-level: ${{ matrix.system-image-api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          ram-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: bash mobile/scripts/verify-user-apk-platform-install.sh "${{ matrix.expected-api }}" "mobile-e2e-artifact/user-e2e.apk" "mobile-e2e-artifact/user-e2e-apk.sha256" "android-compat-evidence/${{ matrix.android-label }}"
+
+      - name: Upload platform installation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-${{ matrix.android-label }}-install-evidence
+          path: android-compat-evidence/${{ matrix.android-label }}/
+          if-no-files-found: warn
+          retention-days: 30
