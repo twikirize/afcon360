@@ -297,10 +297,19 @@ jobs:
           mkdir -p mobile-e2e-cache
           cp "$APK" mobile-e2e-cache/user-e2e.apk
           APK_SHA256="$(sha256sum mobile-e2e-cache/user-e2e.apk | awk '{print $1}')"
-          aapt dump badging mobile-e2e-cache/user-e2e.apk | grep -F "space.pamoja.afcon360.user.preview"
+          BADGING="$(aapt dump badging mobile-e2e-cache/user-e2e.apk)"
+          PACKAGE="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
+          MINIMUM="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
+          TARGET="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
+          test "$PACKAGE" = "space.pamoja.afcon360.user.preview"
+          test "$MINIMUM" = "24"
+          test -n "$TARGET" && test "$TARGET" -ge 36
+          echo "Verified APK package=$PACKAGE minSdkVersion=$MINIMUM targetSdkVersion=$TARGET"
           cat > mobile-e2e-cache/build-info.txt <<EOF
           app=user
-          package=space.pamoja.afcon360.user.preview
+          package=$PACKAGE
+          min_sdk=$MINIMUM
+          target_sdk=$TARGET
           api_origin=http://127.0.0.1:5000
           source_commit=$GITHUB_SHA
           cache_key=$USER_APK_CACHE_KEY
