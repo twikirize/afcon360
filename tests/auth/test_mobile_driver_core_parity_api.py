@@ -648,7 +648,7 @@ def test_driver_map_notifications_and_incident_routes_are_registered(app):
     expected = {
         "/api/mobile/v1/driver/map-config",
         "/api/mobile/v1/driver/notifications",
-        "/api/mobile/v1/driver/notifications/<string:notification_public_id>/read",
+        "/api/mobile/v1/driver/notifications/<string:notification_ref>/read",
         "/api/mobile/v1/driver/notifications/read-all",
         "/api/mobile/v1/driver/incidents",
     }
@@ -715,7 +715,7 @@ def test_mobile_driver_notifications_are_user_and_transport_scoped_and_redacted(
     from app.notifications.models import Notification
 
     notification = SimpleNamespace(
-        public_id="notification-public-123",
+        id=123,
         type="driver_offer",
         module="transport",
         subject="New ride offer",
@@ -775,15 +775,18 @@ def test_mobile_driver_notifications_are_user_and_transport_scoped_and_redacted(
     assert data["unread_count"] == 2
     assert data["count"] == 1
     item = data["items"][0]
-    assert item["public_id"] == "notification-public-123"
+    assert item["notification_ref"]
     assert item["subject"] == "New ride offer"
     serialized = response.get_data(as_text=True).lower()
     for forbidden in ("user_id", "external_id", "phone", "email", "context", "private"):
         assert forbidden not in serialized
     criteria_text = " ".join(str(item) for item in query.filters)
+    criteria_params = {}
+    for expression in query.filters:
+        criteria_params.update(expression.compile().params)
     assert "notifications.user_id" in criteria_text
     assert "notifications.module" in criteria_text
-    assert "transport" in criteria_text
+    assert "transport" in criteria_params.values()
 
 
 def test_mobile_driver_notification_read_only_updates_own_transport_notification(
@@ -793,7 +796,7 @@ def test_mobile_driver_notification_read_only_updates_own_transport_notification
     from app.notifications.models import Notification
 
     notification = SimpleNamespace(
-        public_id="notification-public-123",
+        id=123,
         user_id=451,
         module="transport",
         is_deleted=False,
@@ -816,8 +819,10 @@ def test_mobile_driver_notification_read_only_updates_own_transport_notification
     from app.extensions import db
     monkeypatch.setattr(db.session, "commit", lambda: None)
 
+    from app.auth import mobile_api
+    notification_ref = mobile_api._driver_notification_ref(451, 123)
     response = client.post(
-        "/api/mobile/v1/driver/notifications/notification-public-123/read",
+        "/api/mobile/v1/driver/notifications/" + notification_ref + "/read",
         headers={"Authorization": "Bearer synthetic-driver-access-token"},
     )
 
@@ -842,8 +847,10 @@ def test_mobile_driver_notification_read_cannot_read_another_users_notification(
     with app.app_context():
         monkeypatch.setattr(Notification, "query", Query())
 
+    from app.auth import mobile_api
+    notification_ref = mobile_api._driver_notification_ref(999, 123)
     response = client.post(
-        "/api/mobile/v1/driver/notifications/not-owned/read",
+        "/api/mobile/v1/driver/notifications/" + notification_ref + "/read",
         headers={"Authorization": "Bearer synthetic-driver-access-token"},
     )
 
