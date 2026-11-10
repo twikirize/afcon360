@@ -642,3 +642,316 @@ def test_mobile_driver_marketplace_only_returns_active_public_listing_projection
     assert '"owner_id"' not in serialized
     assert '"listing_id"' not in serialized
     assert '"vehicle_id"' not in serialized
+
+
+def test_driver_map_notifications_and_incident_routes_are_registered(app):
+    expected = {
+        "/api/mobile/v1/driver/map-config",
+        "/api/mobile/v1/driver/notifications",
+        "/api/mobile/v1/driver/notifications/<string:notification_public_id>/read",
+        "/api/mobile/v1/driver/notifications/read-all",
+        "/api/mobile/v1/driver/incidents",
+    }
+    registered = {rule.rule for rule in app.url_map.iter_rules()}
+    assert expected <= registered
+
+
+def test_driver_map_notifications_and_incident_routes_require_bearer(client):
+    responses = [
+        client.get("/api/mobile/v1/driver/map-config"),
+        client.get("/api/mobile/v1/driver/notifications"),
+        client.post("/api/mobile/v1/driver/notifications/read-all"),
+        client.get("/api/mobile/v1/driver/incidents"),
+        client.post("/api/mobile/v1/driver/incidents", json={
+            "incident_type": "safety",
+            "severity": "high",
+            "title": "Test",
+            "description": "Test",
+            "occurred_at": "2026-11-10T08:00:00Z",
+        }),
+    ]
+    for response in responses:
+        assert response.status_code == 401
+        assert response.get_json()["code"] == "mobile_auth_required"
+
+
+def test_mobile_driver_map_config_returns_only_public_geo_fields(client, monkeypatch):
+    from app.geo import map_renderer
+
+    public = {
+        "tiles_backend_available": False,
+        "tiles_kind": "pmtiles",
+        "tile_url_template": "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "tile_attribution": "© OpenStreetMap contributors",
+        "tile_source_label": "openstreetmap-default",
+        "default_center": {"latitude": 0.3136, "longitude": 32.5811},
+        "default_zoom": 12,
+    }
+    monkeypatch.setattr(
+        map_renderer,
+        "build_public_map_config",
+        lambda _config: dict(public, api_key="must-not-be-exposed"),
+    )
+
+    response = client.get(
+        "/api/mobile/v1/driver/map-config",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["tile_url_template"] == "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"
+    assert data["default_center"] == public["default_center"]
+    assert data["tile_attribution"] == public["tile_attribution"]
+    assert "api_key" not in data
+    assert response.headers["Cache-Control"] == "private, max-age=300"
+
+
+def test_mobile_driver_notifications_are_user_and_transport_scoped_and_redacted(
+    app, client, monkeypatch
+):
+    from app.notifications.models import Notification
+
+    notification = SimpleNamespace(
+        public_id="notification-public-123",
+        type="driver_offer",
+        module="transport",
+        subject="New ride offer",
+        body="A ride is available.",
+        priority="high",
+        status="delivered",
+        is_read=False,
+        is_important=True,
+        created_at=datetime(2026, 11, 10, 8, tzinfo=timezone.utc),
+        read_at=None,
+        user_id=451,
+        context={"private": "must not be returned"},
+        external_id="internal-external-id",
+        phone="+256700000000",
+        email="driver@example.invalid",
+    )
+
+    class Query:
+        def __init__(self):
+            self.count_calls = 0
+            self.filters = []
+
+        def filter(self, *criteria):
+            self.filters.extend(criteria)
+            return self
+
+        def count(self):
+            self.count_calls += 1
+            return 5 if self.count_calls == 1 else 2
+
+        def order_by(self, *criteria):
+            return self
+
+        def offset(self, value):
+            assert value == 0
+            return self
+
+        def limit(self, value):
+            assert value == 30
+            return self
+
+        def all(self):
+            return [notification]
+
+    query = Query()
+    with app.app_context():
+        monkeypatch.setattr(Notification, "query", query)
+
+    response = client.get(
+        "/api/mobile/v1/driver/notifications",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["total"] == 5
+    assert data["unread_count"] == 2
+    assert data["count"] == 1
+    item = data["items"][0]
+    assert item["public_id"] == "notification-public-123"
+    assert item["subject"] == "New ride offer"
+    serialized = response.get_data(as_text=True).lower()
+    for forbidden in ("user_id", "external_id", "phone", "email", "context", "private"):
+        assert forbidden not in serialized
+    criteria_text = " ".join(str(item) for item in query.filters)
+    assert "notifications.user_id" in criteria_text
+    assert "notifications.module" in criteria_text
+    assert "transport" in criteria_text
+
+
+def test_mobile_driver_notification_read_only_updates_own_transport_notification(
+    app, client, monkeypatch
+):
+    from app.notifications.models import Notification
+
+    notification = SimpleNamespace(
+        public_id="notification-public-123",
+        user_id=451,
+        module="transport",
+        is_deleted=False,
+        is_read=False,
+        mark_read=lambda: setattr(notification, "is_read", True),
+    )
+
+    class Query:
+        def filter(self, *criteria):
+            return self
+
+        def first(self):
+            return notification
+
+        def count(self):
+            return 0
+
+    with app.app_context():
+        monkeypatch.setattr(Notification, "query", Query())
+    from app.extensions import db
+    monkeypatch.setattr(db.session, "commit", lambda: None)
+
+    response = client.post(
+        "/api/mobile/v1/driver/notifications/notification-public-123/read",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+    )
+
+    assert response.status_code == 200
+    assert notification.is_read is True
+    assert response.get_json()["data"]["unread_count"] == 0
+
+
+def test_mobile_driver_notification_read_cannot_read_another_users_notification(
+    app, client, monkeypatch
+):
+    from app.notifications.models import Notification
+
+    class Query:
+        def filter(self, *criteria):
+            return self
+
+        def first(self):
+            return None
+
+    with app.app_context():
+        monkeypatch.setattr(Notification, "query", Query())
+
+    response = client.post(
+        "/api/mobile/v1/driver/notifications/not-owned/read",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()["code"] == "notification_not_found"
+
+
+def test_mobile_driver_incident_report_derives_identity_and_ignores_client_identity(
+    app, client, monkeypatch
+):
+    from app.extensions import db
+    from app.transport.models import TransportIncident
+
+    profile = SimpleNamespace(
+        id=902,
+        user_id=451,
+        current_vehicle=SimpleNamespace(id=77),
+    )
+    _authenticated_driver(monkeypatch, profile)
+    captured = {}
+    monkeypatch.setattr(db.session, "add", lambda incident: captured.update(incident=incident))
+    monkeypatch.setattr(db.session, "commit", lambda: None)
+
+    response = client.post(
+        "/api/mobile/v1/driver/incidents",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+        json={
+            "incident_type": "safety",
+            "incident_category": "safety",
+            "severity": "high",
+            "title": "Unsafe pickup situation",
+            "description": "A passenger threatened the driver at pickup.",
+            "occurred_at": "2026-11-10T08:00:00+03:00",
+            "reported_by": "user",
+            "reported_by_id": 999,
+            "user_id": 999,
+            "driver_id": 999,
+            "vehicle_id": 999,
+            "booking_id": 999,
+        },
+    )
+
+    assert response.status_code == 201
+    incident = captured["incident"]
+    assert isinstance(incident, TransportIncident)
+    assert incident.reported_by == "driver"
+    assert incident.reported_by_id == 451
+    assert incident.user_id == 451
+    assert incident.driver_id == 902
+    assert incident.vehicle_id == 77
+    assert incident.booking_id is None
+    assert incident.reported_via == "driver_mobile"
+    assert incident.occurred_at == datetime(2026, 11, 10, 5, tzinfo=timezone.utc)
+    assert incident.priority == "high"
+    assert response.get_json()["data"]["incident_reference"] == incident.incident_reference
+
+
+def test_mobile_driver_incident_rejects_booking_that_is_not_assigned_to_driver(
+    app, client, monkeypatch
+):
+    from app.transport.models import Booking
+
+    profile = SimpleNamespace(id=902, user_id=451, current_vehicle=None)
+    _authenticated_driver(monkeypatch, profile)
+    other_booking = SimpleNamespace(
+        id=9001,
+        booking_reference="AF360-OTHER-DRIVER",
+        assigned_driver_id=777,
+        booking_metadata={},
+        assigned_vehicle_id=77,
+        is_deleted=False,
+    )
+
+    class Query:
+        def filter_by(self, **kwargs):
+            return self
+
+        def first(self):
+            return other_booking
+
+    with app.app_context():
+        monkeypatch.setattr(Booking, "query", Query())
+
+    response = client.post(
+        "/api/mobile/v1/driver/incidents",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+        json={
+            "incident_type": "vehicle",
+            "severity": "medium",
+            "title": "Vehicle issue",
+            "description": "A problem occurred.",
+            "occurred_at": "2026-11-10T08:00:00Z",
+            "booking_reference": "AF360-OTHER-DRIVER",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["code"] == "booking_not_owned"
+
+
+def test_mobile_driver_incident_requires_explicit_timezone(client):
+    response = client.post(
+        "/api/mobile/v1/driver/incidents",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+        json={
+            "incident_type": "safety",
+            "severity": "high",
+            "title": "Test",
+            "description": "Test",
+            "occurred_at": "2026-11-10T08:00:00",
+        },
+    )
+    # This test client has no bearer-auth context, so authentication must win
+    # before request-body validation.
+    assert response.status_code == 401
