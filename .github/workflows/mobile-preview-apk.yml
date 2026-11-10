@@ -624,8 +624,8 @@ jobs:
     concurrency:
       group: afcon360-driver-e2e-${{ github.ref }}
       cancel-in-progress: false
-    # Authentication E2E is a deliberate final gate after Driver workspace parity; PR updates must not run it automatically.
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/feat/native-driver-workspace-parity-20261109') || github.event.pull_request.head.ref == 'feat/native-driver-workspace-parity-20261109' }}
+    # Run the expensive authenticated journey once per Driver-branch push; PR checks retain the cached platform/security matrix.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/feat/native-driver-workspace-parity-20261109') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     services:
