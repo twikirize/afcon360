@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, Share, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Share, Text, View } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
@@ -324,15 +324,18 @@ export default function DriverAccount() {
           onPress={() => router.push("/incidents")}
         />
         <ActionButton
-          label="Contact AFCON360 support"
-          onPress={() => { void WebBrowser.openBrowserAsync("https://www.pamoja.space/support"); }}
+          label="Email AFCON360 support"
+          onPress={() => {
+            void Linking.openURL("mailto:support@afcon360.com?subject=AFCON360%20Driver%20Support")
+              .catch(() => Alert.alert("Email unavailable", "Contact support@afcon360.com from your email app."));
+          }}
         />
         <ActionButton
           label="Share AFCON360 Driver page"
           onPress={() => share("https://www.pamoja.space/apps", "AFCON360 Driver — official app information and downloads.")}
         />
         <ActionButton
-          label="Privacy notice (website)"
+          label="Privacy notice (working draft)"
           onPress={() => { void WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy"); }}
         />
         <ActionButton label="Delete AFCON360 account" onPress={() => router.push("/delete-account")} />
