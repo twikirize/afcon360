@@ -117,7 +117,6 @@ jobs:
       AFCON360_E2E_PASSWORD: NativeE2ePassword2026
       AFCON360_E2E_EVIDENCE_DIR: mobile-e2e-evidence
       AFCON360_E2E_REQUEST_LOG: mobile-e2e-evidence/backend-requests.tsv
-      AFCON360_E2E_BACKEND_ROOT: ${{ runner.temp }}/afcon360-services-backend
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -152,9 +151,13 @@ jobs:
         working-directory: ${{ runner.temp }}/afcon360-services-backend
         run: python -m flask --app 'app:create_app()' db upgrade
       - name: Seed one synthetic, non-MFA AFCON360 User
+        env:
+          AFCON360_E2E_BACKEND_ROOT: ${{ runner.temp }}/afcon360-services-backend
         run: python mobile/scripts/mobile-user-e2e-backend.py seed
       - name: Start isolated Flask API and wait for health
         shell: bash
+        env:
+          AFCON360_E2E_BACKEND_ROOT: ${{ runner.temp }}/afcon360-services-backend
         run: |
           set -euo pipefail
           mkdir -p mobile-e2e-evidence
@@ -352,6 +355,8 @@ jobs:
           script: python mobile/scripts/verify-user-authenticated-journey.py
       - name: Verify server-side logout and protected API evidence
         if: always()
+        env:
+          AFCON360_E2E_BACKEND_ROOT: ${{ runner.temp }}/afcon360-services-backend
         run: python mobile/scripts/mobile-user-e2e-backend.py assert
       - name: Upload User Android journey evidence
         if: always()
