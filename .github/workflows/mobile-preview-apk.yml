@@ -88,15 +88,16 @@ jobs:
           build_user=false
           build_driver=false
           # JavaScript/TypeScript screens and shared UI logic are OTA-compatible.
-          # Only native project/configuration or dependency-manifest changes
-          # require a new Android/iOS binary.
-          while IFS= read -r changed_file; do
-            case "$changed_file" in
-              mobile/package.json|mobile/pnpm-lock.yaml|mobile/pnpm-workspace.yaml|mobile/.npmrc|mobile/packages/*/package.json) build_shared=true ;;
-              mobile/apps/user/app.config.ts|mobile/apps/user/package.json|mobile/apps/user/android/*|mobile/apps/user/ios/*|mobile/apps/user/plugins/*) build_user=true ;;
-              mobile/apps/driver/app.config.ts|mobile/apps/driver/package.json|mobile/apps/driver/android/*|mobile/apps/driver/ios/*|mobile/apps/driver/plugins/*) build_driver=true ;;
-            esac
-          done <<< "$latest_changed"
+          # Rebuild only when native projects, native config or dependency manifests change.
+          if grep -Eq "^mobile/(package[.]json|pnpm-lock[.]yaml|pnpm-workspace[.]yaml|[.]npmrc)$|^mobile/packages/.*/package[.]json$" <<< "$latest_changed"; then
+            build_shared=true
+          fi
+          if grep -Eq "^mobile/apps/user/(app[.]config[.]ts|package[.]json|android/|ios/|plugins/)" <<< "$latest_changed"; then
+            build_user=true
+          fi
+          if grep -Eq "^mobile/apps/driver/(app[.]config[.]ts|package[.]json|android/|ios/|plugins/)" <<< "$latest_changed"; then
+            build_driver=true
+          fi
           if [[ "$build_shared" == "true" ]]; then
             build_user=true
             build_driver=true
