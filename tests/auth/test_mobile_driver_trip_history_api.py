@@ -64,6 +64,75 @@ def _trip_row():
 
 
 
+def test_mobile_driver_all_trip_history_merges_deduplicates_and_sorts_both_scopes(
+    client, monkeypatch
+):
+    from app.transport.services.booking_service import BookingService
+
+    _user, profile, calls = _driver_mobile_context(monkeypatch)
+    service_calls = {}
+
+    recent = _trip_row()
+    recent["booking_reference"] = "AF360-TRIP-RECENT"
+    recent["created_at"] = datetime(2026, 11, 9, 8, 0, tzinfo=timezone.utc)
+
+    overlap_recent = _trip_row()
+    overlap_recent["booking_reference"] = "AF360-TRIP-OVERLAP"
+    overlap_recent["status"] = "completed"
+    overlap_recent["pickup_time"] = datetime(2026, 11, 8, 8, 0, tzinfo=timezone.utc)
+
+    upcoming = _trip_row()
+    upcoming["booking_reference"] = "AF360-TRIP-UPCOMING"
+    upcoming["status"] = "assigned"
+    upcoming["pickup_time"] = datetime(2026, 11, 14, 8, 0, tzinfo=timezone.utc)
+    upcoming["created_at"] = datetime(2026, 11, 10, 8, 0, tzinfo=timezone.utc)
+
+    overlap_upcoming = dict(overlap_recent)
+    overlap_upcoming["status"] = "assigned"
+    overlap_upcoming["pickup_time"] = datetime(2026, 11, 12, 8, 0, tzinfo=timezone.utc)
+
+    def recent_bookings(self, driver_user_id, limit=10):
+        service_calls["recent"] = (driver_user_id, limit)
+        return [recent, overlap_recent]
+
+    def upcoming_bookings(self, driver_user_id, limit=5):
+        service_calls["upcoming"] = (driver_user_id, limit)
+        return [upcoming, overlap_upcoming]
+
+    monkeypatch.setattr(BookingService, "get_driver_recent_bookings", recent_bookings)
+    monkeypatch.setattr(BookingService, "get_driver_upcoming_bookings", upcoming_bookings)
+
+    response = client.get(
+        "/api/mobile/v1/driver/trips?scope=all&limit=5",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+    )
+
+    assert response.status_code == 200, response.get_data(as_text=True)
+    assert calls["expected_client"] == "driver"
+    assert service_calls == {
+        "recent": (profile.user_id, 5),
+        "upcoming": (profile.user_id, 5),
+    }
+
+    data = response.get_json()["data"]
+    assert data["scope"] == "all"
+    assert data["limit"] == 5
+    assert data["count"] == 3
+    assert [item["booking_reference"] for item in data["items"]] == [
+        "AF360-TRIP-UPCOMING",
+        "AF360-TRIP-OVERLAP",
+        "AF360-TRIP-RECENT",
+    ]
+    # The upcoming copy is authoritative when one booking is present in
+    # both service results during an assignment/status transition.
+    overlap = next(
+        item for item in data["items"]
+        if item["booking_reference"] == "AF360-TRIP-OVERLAP"
+    )
+    assert overlap["status"] == "assigned"
+    assert "passenger_phone" not in response.get_data(as_text=True)
+
+
 def test_mobile_driver_trip_history_route_is_registered_for_get(app):
     routes = [
         rule for rule in app.url_map.iter_rules()
@@ -180,12 +249,12 @@ def test_mobile_driver_trip_history_uses_upcoming_service_and_validates_scope_an
     assert service_calls == {"driver_user_id": profile.user_id, "limit": 20}
     assert calls["expected_client"] == "driver"
 
-    unsupported = client.get(
-        "/api/mobile/v1/driver/trips?scope=all",
+    invalid_scope = client.get(
+        "/api/mobile/v1/driver/trips?scope=everything",
         headers={"Authorization": "Bearer synthetic-driver-access-token"},
     )
-    assert unsupported.status_code == 400
-    assert unsupported.get_json()["code"] == "driver_trip_scope_invalid"
+    assert invalid_scope.status_code == 400
+    assert invalid_scope.get_json()["code"] == "driver_trip_scope_invalid"
 
     invalid_limit = client.get(
         "/api/mobile/v1/driver/trips?scope=recent&limit=21",
