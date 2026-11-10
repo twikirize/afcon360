@@ -2134,9 +2134,11 @@ def mobile_driver_active_trip():
 @mobile_api_bp.get("/driver/trips")
 @_bearer_required("driver")
 def mobile_driver_trips():
-    """Read the authenticated driver's upcoming or recent trip cards.
+    """Read the authenticated driver's upcoming, recent or combined trip cards.
 
-    The route delegates filtering to BookingService and deliberately returns
+    The all scope merges the two existing self-scoped BookingService
+    projections, deduplicates by booking reference, and keeps a bounded result.
+    The route deliberately returns
     a small driver-facing projection. Passenger identities/contact details,
     internal row IDs, and the booking metadata blob never cross this boundary.
     """
