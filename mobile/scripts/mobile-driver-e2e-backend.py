@@ -324,6 +324,13 @@ def assert_evidence(app) -> None:
         ),
         "active-trip API": count_ok("GET", "/api/mobile/v1/driver/trips/active") >= 1,
         "Driver earnings API": count_ok("GET", "/api/mobile/v1/driver/earnings") >= 1,
+        "Driver map configuration API": count_ok("GET", "/api/mobile/v1/driver/map-config") >= 1,
+        "Driver demand heatmap API": count_ok("GET", "/api/mobile/v1/driver/demand/cells") >= 1,
+        "Driver trip-history API": count_ok("GET", "/api/mobile/v1/driver/trips") >= 1,
+        "Driver assignments API": count_ok("GET", "/api/mobile/v1/driver/assignments") >= 1,
+        "Driver vehicle marketplace API": count_ok("GET", "/api/mobile/v1/driver/marketplace/vehicles") >= 1,
+        "Driver notifications inbox API": count_ok("GET", "/api/mobile/v1/driver/notifications") >= 1,
+        "Driver incident history API": count_ok("GET", "/api/mobile/v1/driver/incidents") >= 1,
         "server-side logout": count_ok("POST", "/api/mobile/v1/auth/logout") >= 1,
         "sanitized Driver API response evidence": summaries_present,
         "pending Driver remains not ready and offline": (
