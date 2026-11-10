@@ -17,15 +17,6 @@ type ActiveTrip = {
   booking_reference: string;
   status: string;
   next_action?: string | null;
-  can_cancel?: boolean;
-  can_mark_no_show?: boolean;
-  pickup_time?: string | null;
-  pickup_schedule?: {
-    local_datetime?: string;
-    timezone_name?: string;
-    utc_datetime?: string;
-    utc_offset?: string;
-  } | null;
   pickup?: { address?: string };
   dropoff?: { address?: string };
   pickup_time?: string | null;
