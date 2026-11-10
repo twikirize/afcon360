@@ -104,7 +104,8 @@ permissions:
 
 concurrency:
   group: mobile-auth-postgres-${{ github.ref }}
-  cancel-in-progress: true
+  # Let PostgreSQL and Redis regression runs finish when a new commit arrives.
+  cancel-in-progress: false
 
 jobs:
   native-auth-contract:
