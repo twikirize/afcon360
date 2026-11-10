@@ -297,6 +297,14 @@ export default function DriverAccount() {
       <Panel>
         <SectionTitle>Account and help</SectionTitle>
         <ActionButton
+          label="Transport notifications"
+          onPress={() => router.push("/notifications")}
+        />
+        <ActionButton
+          label="Report a safety or service incident"
+          onPress={() => router.push("/incidents")}
+        />
+        <ActionButton
           label="Contact AFCON360 support"
           onPress={() => { void WebBrowser.openBrowserAsync("https://www.pamoja.space/support"); }}
         />
