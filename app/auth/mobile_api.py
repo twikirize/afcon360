@@ -1458,8 +1458,12 @@ def mobile_driver_update_vehicle(vehicle_public_id):
 def mobile_driver_marketplace_vehicles():
     """List active public vehicle listings using a narrow, driver-safe projection."""
     from sqlalchemy.orm import joinedload
-    from app.transport.models import Vehicle, VehicleMarketplaceListing, DriverVehicleApplication
-    from app.utils.enums import MarketplaceListingStatus
+    from app.transport.models import (
+        DriverVehicleApplication,
+        MarketplaceListingStatus,
+        Vehicle,
+        VehicleMarketplaceListing,
+    )
 
     profile, error, status = _current_driver()
     if error:
@@ -1535,9 +1539,11 @@ def mobile_driver_marketplace_vehicles():
 @_bearer_required("driver")
 def mobile_driver_apply_vehicle_marketplace(listing_public_id):
     """Apply to a public listing as the authenticated Driver; never accepts a Driver ID."""
-    from app.transport.models import VehicleMarketplaceListing
+    from app.transport.models import (
+        MarketplaceListingStatus,
+        VehicleMarketplaceListing,
+    )
     from app.transport.services.marketplace_service import get_marketplace_service
-    from app.utils.enums import MarketplaceListingStatus
 
     profile, error, status = _current_driver()
     if error:
