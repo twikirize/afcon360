@@ -43,6 +43,19 @@ def test_mobile_driver_profile_exposes_safe_performance_and_assigned_vehicle(cli
         is_online=True,
         is_available=True,
         current_vehicle=vehicle,
+        service_types=["on_demand"],
+        vehicle_classes=["comfort"],
+        operational_zones=["Kampala"],
+        max_passenger_capacity=4,
+        max_luggage_capacity=2,
+        auto_accept_bookings=False,
+        max_concurrent_bookings=1,
+        license_verified=True,
+        license_expiry=None,
+        background_check_status="approved",
+        police_clearance_verified=True,
+        next_training_due=None,
+        requires_retraining=False,
         reliability_score=94,
         safety_score=92,
         acceptance_rate=Decimal("96.50"),
@@ -492,6 +505,11 @@ def test_mobile_driver_vehicle_switch_enforces_ownership_before_assignment(
             driver=driver, vehicle=selected, **kwargs
         ),
     )
+    # The real profile is a mapped SQLAlchemy entity. The focused fixture is a
+    # SimpleNamespace, so suppress only the post-write refresh in this unit
+    # contract test; the ownership and service invocation remain exercised.
+    from app.extensions import db
+    monkeypatch.setattr(db.session, "refresh", lambda _profile: None)
 
     response = client.post(
         "/api/mobile/v1/driver/vehicles/switch",
