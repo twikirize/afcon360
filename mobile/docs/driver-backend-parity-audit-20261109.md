@@ -31,7 +31,7 @@ The native implementation now includes:
 |---|---|---|
 | Driver identity/readiness | `GET /api/mobile/v1/driver/me`; DriverProfile and `can_go_live` | Existing Bearer route; PR #72 adds safe performance, operating preferences, compliance facts and current assigned-vehicle display fields |
 | Online/offline | `POST /api/mobile/v1/driver/status`; DriverStatusResource and go-live guard | Existing; server remains authoritative |
-| Offers | `GET /api/mobile/v1/driver/offers`, accept/decline routes; OfferService and RideRequestDispatchService | Existing; native Home polls while active |
+| Offers | `GET /api/mobile/v1/driver/offers`, accept/decline routes; OfferService and RideRequestDispatchService | Native Home uses a single-flight foreground poller: 4-second base while offers exist, exponential idle/error backoff up to 30 seconds, and no offers polling while offline/backgrounded. Push/realtime delivery and ETag parity remain outstanding |
 | Active trip | `GET /api/mobile/v1/driver/trips/active`; BookingService projection | PR #72 adds pickup schedule, booking mode, `can_cancel` and server-calculated `can_mark_no_show` |
 | Trip lifecycle | `POST /api/mobile/v1/driver/trips/{reference}/status` | Existing; state transitions and fees remain server-owned |
 | Cash receipt | `POST /api/mobile/v1/driver/trips/{reference}/payment/confirm-cash` | Existing; Wallet owns the payment/ledger state |
