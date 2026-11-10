@@ -138,6 +138,10 @@ jobs:
           version: 10.12.4
           run_install: false
 
+      - name: Prepare pnpm store cache directory
+        shell: bash
+        run: mkdir -p "$(pnpm store path)"
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -506,6 +510,10 @@ jobs:
           version: 10.12.4
           run_install: false
 
+      - name: Prepare pnpm store cache directory
+        shell: bash
+        run: mkdir -p "$(pnpm store path)"
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -715,6 +723,10 @@ jobs:
         with:
           version: 10.12.4
           run_install: false
+
+      - name: Prepare pnpm store cache directory
+        shell: bash
+        run: mkdir -p "$(pnpm store path)"
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
