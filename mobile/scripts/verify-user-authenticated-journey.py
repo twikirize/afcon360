@@ -225,16 +225,19 @@ def save_screen(name: str) -> None:
 
 
 def return_to_explore() -> None:
-    """Return to Explore after a service route; handle Back landing on Home."""
+    """Return to Explore and verify a stable action, even when scroll is preserved."""
     run_adb("shell", "input", "keyevent", "4")
     time.sleep(1)
     try:
-        wait_for_text("Make more of the journey.", timeout=8, label="Explore after Android Back")
+        # Android can restore Explore at the previous scroll offset. The top
+        # heading is therefore not a reliable screen identity check. The Stays
+        # action is present on the Explore service list at both tested offsets.
+        wait_for_text("Find and book a stay", timeout=8, label="Explore after Android Back")
     except AssertionError:
-        # The Ride route may return to the Home tab. Select Explore explicitly.
+        # If Back leaves us on another tab, explicitly select Explore and then
+        # verify its stable Stays action rather than assuming scroll-to-top.
         tap_text("Explore", last=True)
-        wait_for_text("Make more of the journey.", timeout=20, label="Explore tab")
-    wait_for_text("Find and book a stay", label="Explore accommodation action")
+        wait_for_text("Find and book a stay", timeout=20, label="Explore tab")
 
 
 def save_failure_diagnostics() -> None:
@@ -367,7 +370,9 @@ def main() -> None:
     tap_text("Sign out")
     wait_for_text("Sign out of AFCON360 on this device?", timeout=12, label="logout confirmation")
     mark_stage("logout_started")
-    tap_text("Sign out", last=True)
+    # The Android confirmation action is rendered in uppercase; target that
+    # actual dialog button, not its title or the underlying Account action.
+    tap_text("SIGN OUT")
     wait_for_text("Sign in securely", "Username or email", "Password", timeout=35, label="signed-out login screen")
     save_screen("11-logged-out")
     mark_stage("logout_completed")

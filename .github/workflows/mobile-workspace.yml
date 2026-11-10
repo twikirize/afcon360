@@ -122,12 +122,17 @@ jobs:
         uses: actions/checkout@v7
       - name: Prepare User APK cache directory
         run: mkdir -p mobile-e2e-cache
+      - name: Calculate User APK cache key before prebuild
+        id: user-apk-key
+        env:
+          USER_APK_SOURCE_KEY: afcon360-user-e2e-apk-v1-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+        run: echo "key=$USER_APK_SOURCE_KEY" >> "$GITHUB_OUTPUT"
       - name: Restore source-keyed User E2E APK
         id: user-apk-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: mobile-e2e-cache/
-          key: afcon360-user-e2e-apk-v1-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+          key: ${{ steps.user-apk-key.outputs.key }}
       - name: Prepare disposable backend with native Events and Accommodation APIs
         shell: bash
         run: |
@@ -174,32 +179,32 @@ jobs:
           echo "::error::Disposable AFCON360 API did not become healthy."
           exit 1
       - name: Set up Node.js
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
       - name: Set up pnpm
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 10.12.4
           run_install: false
       - name: Set up Java
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
       - name: Install User app workspace dependencies
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         working-directory: mobile
         run: pnpm install --no-frozen-lockfile
       - name: Check User app Expo dependency compatibility
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         working-directory: mobile
         run: pnpm --filter "@afcon360/user-app" exec expo install --check
       - name: Install Android platform and build tools
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -220,14 +225,14 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
       - name: Generate a fresh User APK pointing only to the disposable local API
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         working-directory: mobile
         env:
           AFCON360_PREVIEW_BUILD: "true"
           EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: pnpm --filter "@afcon360/user-app" exec expo prebuild --platform android --no-install --clean
       - name: Allow loopback HTTP only in this disposable E2E APK
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -257,7 +262,7 @@ jobs:
           print("Loopback HTTP enabled only in the temporary test APK.")
           PY
       - name: Configure ephemeral release signing
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         working-directory: mobile
         run: |
           node <<'NODE'
@@ -286,14 +291,14 @@ jobs:
           fs.writeFileSync(path, source);
           NODE
       - name: Build isolated User release APK
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         working-directory: mobile/apps/user/android
         run: ./gradlew --no-daemon --stacktrace assembleRelease
       - name: Save fresh APK under the source-keyed cache key
-        if: steps.user-apk-cache.outputs.cache-hit != 'true'
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         shell: bash
         env:
-          USER_APK_CACHE_KEY: afcon360-user-e2e-apk-v1-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+          USER_APK_CACHE_KEY: ${{ steps.user-apk-key.outputs.key }}
         run: |
           set -euo pipefail
           APK="$(find mobile/apps/user/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
@@ -310,6 +315,12 @@ jobs:
           cache_key=$USER_APK_CACHE_KEY
           apk_sha256=$APK_SHA256
           EOF
+      - name: Persist fresh User APK immediately
+        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: mobile-e2e-cache/
+          key: ${{ steps.user-apk-key.outputs.key }}
       - name: Stage and verify cached User APK for this journey
         shell: bash
         run: |
@@ -325,7 +336,7 @@ jobs:
           cp "$APK" mobile-e2e-evidence/user-e2e.apk
           cp "$INFO" mobile-e2e-evidence/user-e2e-build-info.txt
           printf '%s  %s\n' "$ACTUAL_SHA" "user-e2e.apk" | tee mobile-e2e-evidence/user-e2e-apk.sha256
-          echo "Verified reusable User APK (cache_hit=${{ steps.user-apk-cache.outputs.cache-hit }}): $ACTUAL_SHA"
+          echo "Verified reusable User APK (cache_hit=${{ steps.user-apk-cache.outputs['cache-hit'] }}): $ACTUAL_SHA"
           cat mobile-e2e-evidence/user-e2e-build-info.txt
       - name: Enable KVM hardware acceleration
         shell: bash
