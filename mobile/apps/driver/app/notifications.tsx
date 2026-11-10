@@ -78,7 +78,7 @@ export default function DriverNotifications() {
 
   const markRead = async (item: DriverNotification) => {
     if (item.is_read) return;
-    setBusy(item.public_id);
+    setBusy(item.notification_ref);
     try {
       await authClient.request(
         "/api/mobile/v1/driver/notifications/" +
