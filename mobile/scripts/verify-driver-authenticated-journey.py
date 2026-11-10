@@ -307,7 +307,9 @@ def main() -> None:
         "Sign out this driver device?",
         timeout=15, label="Driver logout confirmation",
     )
-    tap_text("Sign out", last=True)
+    # Android renders the Alert action in uppercase; the Account-page
+    # button behind the modal remains title-cased and must not be tapped.
+    tap_text("SIGN OUT", last=True)
     wait_for_text(
         "AFCON360 Driver", "Username or email", "Password", "Sign in to Driver",
         timeout=45, label="Driver signed-out login screen",
