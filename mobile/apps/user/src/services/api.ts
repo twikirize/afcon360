@@ -25,7 +25,7 @@ const store: SecureTokenStore = {
   getAccessToken: () => SecureStore.getItemAsync(ACCESS_TOKEN_KEY),
   setAccessToken: token => SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token),
   getRefreshToken: () => SecureStore.getItemAsync(REFRESH_TOKEN_KEY),
-  setRefreshToken: token => SecureStore.setItemAsync(REFRESH_TOKEN_KEY),
+  setRefreshToken: token => SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token),
   async getDeviceId() {
     let id = await SecureStore.getItemAsync(DEVICE_ID_KEY);
     if (!id) {
