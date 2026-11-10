@@ -1591,14 +1591,56 @@ def mobile_driver_apply_vehicle_marketplace(listing_public_id):
         return _error("marketplace_application_unavailable", "The application service is unavailable.", 503)
 
 
+def _driver_notification_ref(user_id: int, notification_id: int) -> str:
+    """Opaque, user-bound reference for a Notification without a public UUID."""
+    import base64
+    import hmac
+
+    secret = current_app.secret_key
+    if isinstance(secret, str):
+        secret = secret.encode("utf-8")
+    payload = f"{int(user_id)}:{int(notification_id)}"
+    signature = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode(
+        f"{int(notification_id)}:{signature}".encode("ascii")
+    ).decode("ascii").rstrip("=")
+
+
+def _resolve_driver_notification_ref(value: str, user_id: int):
+    """Verify an opaque notification reference and return its internal row id."""
+    import base64
+    import hmac
+
+    try:
+        padding = "=" * (-len(value) % 4)
+        decoded = base64.urlsafe_b64decode((value + padding).encode("ascii")).decode("ascii")
+        raw_id, supplied_signature = decoded.split(":", 1)
+        notification_id = int(raw_id)
+        if notification_id <= 0:
+            return None
+        secret = current_app.secret_key
+        if isinstance(secret, str):
+            secret = secret.encode("utf-8")
+        payload = f"{int(user_id)}:{notification_id}"
+        expected = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        return notification_id if hmac.compare_digest(supplied_signature, expected) else None
+    except (TypeError, ValueError, UnicodeDecodeError):
+        return None
+
+
 @mobile_api_bp.get("/driver/map-config")
 @_bearer_required("driver")
 def mobile_driver_map_config():
     """Return only the public GEO tile renderer configuration to a Driver."""
     from app.geo.config import load_geo_config
-    from app.geo.map_renderer import build_public_map_config
+    from app.geo.map_renderer import PUBLIC_MAP_CONFIG_KEYS, build_public_map_config
 
-    config = build_public_map_config(load_geo_config())
+    built_config = build_public_map_config(load_geo_config())
+    config = {
+        key: built_config[key]
+        for key in PUBLIC_MAP_CONFIG_KEYS
+        if key in built_config
+    }
     template = str(config.get("tile_url_template") or "")
     # React Native's raster tile renderer accepts {z}/{x}/{y}. Resolve the
     # harmless OSM subdomain token server-side; never return any credentials.
@@ -1640,7 +1682,7 @@ def mobile_driver_notifications():
     )
     items = [
         {
-            "public_id": str(row.public_id),
+            "notification_ref": _driver_notification_ref(int(user.id), int(row.id)),
             "type": row.type,
             "module": row.module,
             "subject": row.subject,
@@ -1670,9 +1712,9 @@ def mobile_driver_notifications():
     return response, 200
 
 
-@mobile_api_bp.post("/driver/notifications/<string:notification_public_id>/read")
+@mobile_api_bp.post("/driver/notifications/<string:notification_ref>/read")
 @_bearer_required("driver")
-def mobile_driver_notification_read(notification_public_id):
+def mobile_driver_notification_read(notification_ref):
     """Mark one Transport notification read using its public identifier."""
     from app.notifications.models import Notification
 
@@ -1680,8 +1722,11 @@ def mobile_driver_notification_read(notification_public_id):
     if error:
         return jsonify(error), status
     user = g._afcon360_mobile_auth_context["user"]
+    notification_id = _resolve_driver_notification_ref(notification_ref, int(user.id))
+    if notification_id is None:
+        return _error("notification_not_found", "This Transport notification was not found.", 404)
     notification = Notification.query.filter(
-        Notification.public_id == notification_public_id,
+        Notification.id == notification_id,
         Notification.user_id == user.id,
         Notification.module == "transport",
         Notification.is_deleted.is_(False),
