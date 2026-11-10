@@ -4,6 +4,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { AppScreen, PageHeader, Panel, SectionTitle, ServiceTile, StatusPill, ActionButton, palette } from "@afcon360/mobile-ui";
 import { useAuth } from "../../src/auth/AuthProvider";
+import { SERVER_SELECTION_ENABLED } from "../../src/services/api";
 
 export default function Account() {
   const router = useRouter();
@@ -37,6 +38,7 @@ export default function Account() {
       <ServiceTile title="Secure device session" description="Access credentials are kept in the device secure store and can be revoked by signing out." symbol="🔐" />
       <ActionButton label="Share AFCON360 app page" onPress={() => share("https://www.pamoja.space/apps", "AFCON360 — official app information and downloads.")} />
       <ActionButton label="Privacy notice (website)" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")} />
+      {SERVER_SELECTION_ENABLED ? <ActionButton label="Connection settings (preview)" onPress={() => router.push("/server-settings" as never)} /> : null}
       <ActionButton label="Delete AFCON360 account" onPress={() => router.push("/(service)/delete-account" as never)} />
       <ActionButton label="Sign out" onPress={() => Alert.alert("Sign out", "Sign out of AFCON360 on this device?", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", onPress: () => { void signOut(); } }])} />
     </Panel>

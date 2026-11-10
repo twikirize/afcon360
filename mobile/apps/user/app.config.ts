@@ -18,6 +18,9 @@ const config: ExpoConfig = {
   android: {
     package: appId,
     allowBackup: false,
+    // Plain HTTP is enabled only in the isolated preview package so a test
+    // phone can reach a laptop staging server on its private Wi-Fi network.
+    usesCleartextTraffic: isPreview,
     // Use the Android system photo/document picker instead of broad legacy storage.
     // The User app does not require full-screen overlay access.
     blockedPermissions: [
@@ -29,7 +32,8 @@ const config: ExpoConfig = {
   },
   plugins: ["expo-router", "expo-secure-store", "expo-dev-client"],
   extra: {
-    apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://www.pamoja.space"
+    apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://www.pamoja.space",
+    allowServerSelection: isPreview
   }
 };
 

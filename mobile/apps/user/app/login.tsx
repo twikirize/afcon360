@@ -6,6 +6,7 @@ import { AppScreen, PageHeader, Panel, StatusPill, palette } from "@afcon360/mob
 import { AuthField, AuthLink, AuthNotice, AuthPasswordField, AuthShell, AuthSubmit } from "@afcon360/mobile-ui/auth";
 import { MobileAuthError } from "@afcon360/mobile-core";
 import { useAuth } from "../src/auth/AuthProvider";
+import { SERVER_SELECTION_ENABLED } from "../src/services/api";
 
 const SITE = "https://www.pamoja.space";
 
@@ -53,6 +54,7 @@ export default function LoginScreen() {
               <AuthSubmit label="Sign in securely" loading={signingIn} disabled={!identifier.trim() || !password} onPress={() => signIn(identifier, password).then(needsMfa => { if (!needsMfa) router.replace("/(tabs)"); }).catch(showError)} />
               <AuthLink label="Create an AFCON360 account" onPress={() => router.push("/register")} />
               <AuthLink label="Forgot your password?" onPress={() => router.push("/forgot-password")} />
+              {SERVER_SELECTION_ENABLED ? <AuthLink label="Connection settings (preview)" onPress={() => router.push("/server-settings" as never)} /> : null}
             </>
           )}
           <AuthLink label="Back to AFCON360 website home" onPress={() => WebBrowser.openBrowserAsync(SITE)} />

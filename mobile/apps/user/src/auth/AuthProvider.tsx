@@ -1,6 +1,12 @@
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { MobileAuthError, MobileIdentity } from "@afcon360/mobile-core";
-import { authClient } from "../services/api";
+import { authClient, changeApiServerBaseUrl } from "../services/api";
+
+type ApiServerChangeResult = {
+  baseUrl: string;
+  changed: boolean;
+  remoteLogoutConfirmed: boolean;
+};
 
 type AuthContextValue = {
   user: MobileIdentity | null;
@@ -14,6 +20,7 @@ type AuthContextValue = {
   signIn(identifier: string, password: string): Promise<boolean>;
   verifyMfa(code: string): Promise<void>;
   cancelMfa(): void;
+  changeApiServer(url: string): Promise<ApiServerChangeResult>;
   logout(): Promise<void>;
   deleteAccount(password: string, confirmation: string, mfaCode?: string): Promise<void>;
 };
@@ -96,6 +103,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMfaChallenge(null);
       setMfaType(null);
       setMfaDestinationHint(null);
+    },
+    async changeApiServer(url) {
+      const result = await changeApiServerBaseUrl(url);
+      if (result.changed) {
+        setUser(null);
+        setMfaChallenge(null);
+        setMfaType(null);
+        setMfaDestinationHint(null);
+        setRestoreError(null);
+      }
+      return result;
     },
     async logout() {
       setRestoreError(null);
