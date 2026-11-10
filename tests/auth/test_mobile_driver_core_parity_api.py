@@ -305,3 +305,322 @@ def test_new_driver_core_parity_routes_still_require_driver_bearer(client):
     for response in responses:
         assert response.status_code == 401
         assert response.get_json()["code"] == "mobile_auth_required"
+
+
+def test_driver_assignment_and_vehicle_routes_are_registered(app):
+    expected = {
+        "/api/mobile/v1/driver/assignments",
+        "/api/mobile/v1/driver/vehicles/switch",
+        "/api/mobile/v1/driver/vehicles",
+        "/api/mobile/v1/driver/vehicles/<string:vehicle_public_id>",
+        "/api/mobile/v1/driver/marketplace/vehicles",
+        "/api/mobile/v1/driver/marketplace/vehicles/<string:listing_public_id>/apply",
+    }
+    registered = {rule.rule for rule in app.url_map.iter_rules()}
+    assert expected <= registered
+
+
+def test_driver_assignment_and_vehicle_routes_reject_missing_bearer(client):
+    responses = [
+        client.get("/api/mobile/v1/driver/assignments"),
+        client.post("/api/mobile/v1/driver/vehicles/switch", json={"vehicle_public_id": "vehicle-public"}),
+        client.post("/api/mobile/v1/driver/vehicles", json={"make": "Toyota"}),
+        client.put("/api/mobile/v1/driver/vehicles/vehicle-public", json={"make": "Toyota"}),
+        client.get("/api/mobile/v1/driver/marketplace/vehicles"),
+        client.post(
+            "/api/mobile/v1/driver/marketplace/vehicles/listing-public/apply",
+            json={"cover_letter": "I am interested."},
+        ),
+    ]
+    for response in responses:
+        assert response.status_code == 401
+        assert response.get_json()["code"] == "mobile_auth_required"
+
+
+def test_mobile_driver_assignments_return_only_the_authenticated_profile_scope(
+    app, client, monkeypatch
+):
+    from app.transport.models import DriverVehicleHistory, ScheduledRoute
+    from app.transport.services import provider_service
+
+    assigned = SimpleNamespace(
+        id=10,
+        public_id="vehicle-current-public",
+        is_deleted=False,
+        make="Toyota",
+        model="Corolla",
+        year=2022,
+        license_plate="UXX 123A",
+        vehicle_class=SimpleNamespace(value="comfort"),
+        status="active",
+        is_available=True,
+        passenger_capacity=4,
+        safety_features=["seatbelts"],
+    )
+    owned = SimpleNamespace(
+        id=11,
+        public_id="vehicle-owned-public",
+        is_deleted=False,
+        make="Honda",
+        model="Fit",
+        year=2021,
+        license_plate="UYY 456B",
+        vehicle_class=SimpleNamespace(value="economy"),
+        status="active",
+        is_available=True,
+        passenger_capacity=4,
+        safety_features=["seatbelts"],
+    )
+    history_vehicle = SimpleNamespace(license_plate="UXX 123A")
+    history_row = SimpleNamespace(
+        vehicle=history_vehicle,
+        assignment_reason="shift_start",
+        was_breakdown=False,
+        started_at=datetime(2026, 11, 1, tzinfo=timezone.utc),
+        ended_at=None,
+    )
+    route_row = SimpleNamespace(
+        name="Kampala–Entebbe",
+        route_code="KLA-EBB-01",
+        route_type="scheduled",
+        primary_zone="Kampala",
+        next_departure=datetime(2026, 11, 10, 9, tzinfo=timezone.utc),
+        available_seats=3,
+        vehicle_capacity=4,
+        price_per_seat=Decimal("15000"),
+        is_free=False,
+    )
+    profile = SimpleNamespace(id=902, user_id=451, current_vehicle=assigned)
+    _authenticated_driver(monkeypatch, profile)
+
+    class Query:
+        def filter(self, *criteria):
+            return self
+
+        def filter_by(self, **criteria):
+            return self
+
+        def order_by(self, *criteria):
+            return self
+
+        def limit(self, value):
+            return self
+
+        def all(self):
+            if self is history_query:
+                return [history_row]
+            return [route_row]
+
+    history_query = Query()
+    route_query = Query()
+    with app.app_context():
+        monkeypatch.setattr(DriverVehicleHistory, "query", history_query)
+        monkeypatch.setattr(ScheduledRoute, "query", route_query)
+    monkeypatch.setattr(
+        provider_service,
+        "get_provider_service",
+        lambda: SimpleNamespace(get_user_vehicles=lambda user_id: [assigned, owned]),
+    )
+
+    response = client.get(
+        "/api/mobile/v1/driver/assignments",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["assigned_vehicle"]["public_id"] == "vehicle-current-public"
+    assert [item["public_id"] for item in data["owned_vehicles"]] == [
+        "vehicle-current-public", "vehicle-owned-public"
+    ]
+    assert [item["public_id"] for item in data["switchable_vehicles"]] == [
+        "vehicle-owned-public"
+    ]
+    assert data["vehicle_history"][0]["license_plate"] == "UXX 123A"
+    assert data["scheduled_routes"][0]["route_code"] == "KLA-EBB-01"
+    assert data["history_window_days"] == 90
+    serialized = response.get_data(as_text=True).lower()
+    assert '"user_id"' not in serialized
+    assert '"owner_id"' not in serialized
+    assert '"vehicle_id"' not in serialized
+    assert '"driver_id"' not in serialized
+
+
+def test_mobile_driver_vehicle_switch_enforces_ownership_before_assignment(
+    app, client, monkeypatch
+):
+    from app.auth import mobile_api
+    from app.transport.models import Vehicle
+    from app.transport import models as transport_models
+    from app.transport.services import go_live_service
+
+    profile = SimpleNamespace(id=902, user_id=451, current_vehicle=None)
+    _authenticated_driver(monkeypatch, profile)
+    vehicle = SimpleNamespace(
+        id=77,
+        public_id="owned-vehicle-public",
+        owner_type="driver",
+        owner_id=902,
+        status="active",
+        is_deleted=False,
+        make="Toyota",
+        model="Corolla",
+        year=2022,
+        license_plate="UXX 123A",
+    )
+
+    class Query:
+        def filter_by(self, **kwargs):
+            assert kwargs["public_id"] == "owned-vehicle-public"
+            return self
+
+        def first(self):
+            return vehicle
+
+    with app.app_context():
+        monkeypatch.setattr(Vehicle, "query", Query())
+    monkeypatch.setattr(
+        go_live_service,
+        "can_go_live",
+        lambda _profile: SimpleNamespace(checks=[] , to_dict=lambda: {"ready": True, "checks": []}),
+    )
+    calls = {}
+    monkeypatch.setattr(
+        transport_models,
+        "assign_driver_to_vehicle",
+        lambda driver, selected, **kwargs: calls.update(
+            driver=driver, vehicle=selected, **kwargs
+        ),
+    )
+
+    response = client.post(
+        "/api/mobile/v1/driver/vehicles/switch",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+        json={"vehicle_public_id": "owned-vehicle-public"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["unchanged"] is False
+    assert calls["driver"] is profile
+    assert calls["vehicle"] is vehicle
+    assert calls["authorized_by"].id == 451
+
+
+def test_mobile_driver_vehicle_switch_rejects_vehicle_not_owned(
+    app, client, monkeypatch
+):
+    from app.transport.models import Vehicle
+    profile = SimpleNamespace(id=902, user_id=451, current_vehicle=None)
+    _authenticated_driver(monkeypatch, profile)
+    vehicle = SimpleNamespace(
+        id=88,
+        public_id="other-owner-vehicle",
+        owner_type="driver",
+        owner_id=999,
+        status="active",
+        is_deleted=False,
+    )
+
+    class Query:
+        def filter_by(self, **kwargs):
+            return self
+
+        def first(self):
+            return vehicle
+
+    with app.app_context():
+        monkeypatch.setattr(Vehicle, "query", Query())
+
+    response = client.post(
+        "/api/mobile/v1/driver/vehicles/switch",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+        json={"vehicle_public_id": "other-owner-vehicle"},
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["code"] == "vehicle_not_owned"
+
+
+def test_mobile_driver_marketplace_only_returns_active_public_listing_projection(
+    app, client, monkeypatch
+):
+    from app.transport.models import DriverVehicleApplication, VehicleMarketplaceListing
+
+    vehicle = SimpleNamespace(
+        id=701,
+        public_id="market-vehicle-public",
+        is_deleted=False,
+        status="active",
+        is_available=True,
+        is_reserved=False,
+        owner_type="organisation",
+        make="Toyota",
+        model="Hiace",
+        year=2023,
+        vehicle_class=SimpleNamespace(value="van"),
+        passenger_capacity=14,
+    )
+    listing = SimpleNamespace(
+        id=801,
+        public_id="market-listing-public",
+        vehicle=vehicle,
+        compensation_model=SimpleNamespace(value="revenue_split"),
+        driver_revenue_share_pct=Decimal("75.00"),
+        fixed_rental_amount=None,
+        rental_frequency=None,
+        title="Airport shuttle vehicle",
+        description="A vehicle for scheduled shuttle operations.",
+        application_deadline=None,
+        owner_id=999,
+    )
+    profile = SimpleNamespace(id=902, user_id=451)
+    _authenticated_driver(monkeypatch, profile)
+
+    class ListingQuery:
+        def options(self, *args):
+            return self
+
+        def join(self, *args):
+            return self
+
+        def filter(self, *args):
+            return self
+
+        def order_by(self, *args):
+            return self
+
+        def limit(self, value):
+            return self
+
+        def all(self):
+            return [listing]
+
+    class ApplicationQuery:
+        def filter_by(self, **kwargs):
+            return self
+
+        def all(self):
+            return []
+
+    with app.app_context():
+        monkeypatch.setattr(VehicleMarketplaceListing, "query", ListingQuery())
+        monkeypatch.setattr(DriverVehicleApplication, "query", ApplicationQuery())
+
+    response = client.get(
+        "/api/mobile/v1/driver/marketplace/vehicles",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["count"] == 1
+    item = data["items"][0]
+    assert item["listing_public_id"] == "market-listing-public"
+    assert item["vehicle_public_id"] == "market-vehicle-public"
+    assert item["owner_type"] == "Organisation"
+    assert item["compensation"] == "75% revenue share"
+    assert item["already_applied"] is False
+    serialized = response.get_data(as_text=True).lower()
+    assert '"owner_id"' not in serialized
+    assert '"listing_id"' not in serialized
+    assert '"vehicle_id"' not in serialized
