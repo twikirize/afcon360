@@ -132,18 +132,18 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
           cache: pnpm
           cache-dependency-path: mobile/pnpm-lock.yaml
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.12.4
-          run_install: false
 
       - name: Restore reusable unsigned Android preview APK
         id: apk-cache
@@ -500,18 +500,18 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
           cache: pnpm
           cache-dependency-path: mobile/pnpm-lock.yaml
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.12.4
-          run_install: false
 
       - name: Confirm Xcode 26.4 or later
         shell: bash
@@ -710,18 +710,18 @@ jobs:
           echo "::error::Disposable AFCON360 Driver API did not become healthy."
           exit 1
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
           cache: pnpm
           cache-dependency-path: mobile/pnpm-lock.yaml
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.12.4
-          run_install: false
 
       - name: Set up Java
         uses: actions/setup-java@v6
