@@ -264,9 +264,13 @@ def main() -> None:
 
     tap_text("Status", last=True)
     wait_for_text(
-        "Your operating status.", "Operating preferences", "Compliance status",
-        timeout=60, label="Driver status, preferences and compliance",
+        "Your operating status.",
+        timeout=60, label="Driver operating status",
     )
+    scroll_until_text("Operating preferences", label="Driver operating preferences")
+    wait_for_text("Operating preferences", label="Driver operating preferences section")
+    scroll_until_text("Compliance status", label="Driver compliance section")
+    wait_for_text("Compliance status", label="Driver compliance section visible")
     save_screen("03-status")
 
     tap_text("Trips", last=True)
@@ -286,16 +290,21 @@ def main() -> None:
     tap_text("Assignments", last=True)
     wait_for_text(
         "Your assigned transport.", "Current assigned vehicle",
-        "Scheduled work", "Vehicle history",
-        timeout=60, label="Driver assignments and scheduled work",
+        timeout=60, label="Driver current vehicle assignment",
     )
+    scroll_until_text("Scheduled work", label="Driver scheduled routes section")
+    wait_for_text("Scheduled work", label="Driver scheduled routes section visible")
+    scroll_until_text("Vehicle history", label="Driver vehicle assignment history")
+    wait_for_text("Vehicle history", label="Driver vehicle history section visible")
     save_screen("06-assignments")
 
     tap_text("Vehicles", last=True)
     wait_for_text(
-        "Your vehicles and opportunities.", "Vehicles you own", "Vehicle marketplace",
-        timeout=60, label="Driver owned vehicles and public marketplace",
+        "Your vehicles and opportunities.", "Vehicles you own",
+        timeout=60, label="Driver owned vehicles",
     )
+    scroll_until_text("Vehicle marketplace", label="Driver public vehicle marketplace")
+    wait_for_text("Vehicle marketplace", label="Driver vehicle marketplace section visible")
     save_screen("07-vehicles")
 
     tap_text("Account", last=True)
@@ -316,9 +325,11 @@ def main() -> None:
     scroll_until_text("Report a safety or service incident", label="Driver account incident link")
     tap_text("Report a safety or service incident")
     wait_for_text(
-        "Report an incident.", "Your incident reports",
-        timeout=60, label="Driver incident history (read-only)",
+        "Report an incident.",
+        timeout=60, label="Driver incident report form",
     )
+    scroll_until_text("Your incident reports", label="Driver incident history")
+    wait_for_text("Your incident reports", label="Driver incident history section visible")
     save_screen("09-incidents")
     tap_text("Back to Driver account")
     wait_for_text("Your AFCON360 identity.", label="Driver account before process restart")
