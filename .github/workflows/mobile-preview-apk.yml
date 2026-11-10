@@ -552,3 +552,283 @@ jobs:
           xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
           xcrun simctl launch "$SIMULATOR_UDID" "$EXPECTED_BUNDLE_ID"
           echo "PASS: $APP installed and launched on iOS 26.4; deployment minimum is iOS $MIN_IOS."
+
+  driver-authenticated-journey:
+    name: Driver APK — real login, Driver workspace reads, session restore and logout
+    # Authentication E2E is a deliberate final gate after Driver workspace parity; PR updates must not run it automatically.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'feat/native-driver-workspace-parity-20261109' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: afcon360_driver_e2e_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d afcon360_driver_e2e_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      APP_ENV: testing
+      FLASK_ENV: testing
+      SECRET_KEY: "ci-only-not-a-production-secret"
+      SECURITY_SALT: "ci-only-security-salt-value-long-enough-for-driver-e2e-2026"
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/afcon360_driver_e2e_test"
+      TEST_DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/afcon360_driver_e2e_test"
+      REDIS_URL: "redis://127.0.0.1:6379/15"
+      DISABLE_REDIS: "0"
+      SOCKETIO_ENABLED: "false"
+      ANALYTICS_ENABLED: "false"
+      MAIL_SUPPRESS_SEND: "true"
+      EXPO_PUBLIC_API_BASE_URL: "http://127.0.0.1:5000"
+      AFCON360_PREVIEW_BUILD: "true"
+      AFCON360_DRIVER_E2E_USERNAME: native_e2e_driver
+      AFCON360_DRIVER_E2E_EMAIL: native-driver-e2e@afcon360.test
+      AFCON360_DRIVER_E2E_PASSWORD: DriverE2ePassword2026
+      AFCON360_NON_DRIVER_E2E_USERNAME: native_e2e_customer
+      AFCON360_NON_DRIVER_E2E_EMAIL: native-customer-e2e@afcon360.test
+      AFCON360_NON_DRIVER_E2E_PASSWORD: CustomerE2ePassword2026
+      AFCON360_DRIVER_E2E_EVIDENCE_DIR: driver-e2e-evidence
+    steps:
+      - name: Check out the Driver app source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install backend test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build a fresh disposable PostgreSQL schema
+        run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Seed a synthetic pending Driver and a customer-only identity
+        run: python mobile/scripts/mobile-driver-e2e-backend.py seed
+
+      - name: Start isolated Flask API and wait for health
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p driver-e2e-evidence
+          nohup python mobile/scripts/mobile-driver-e2e-backend.py serve > driver-e2e-evidence/backend.log 2>&1 < /dev/null &
+          echo $! > driver-e2e-evidence/backend.pid
+
+          for attempt in $(seq 1 90); do
+            if curl --connect-timeout 2 --max-time 5 --silent --fail http://127.0.0.1:5000/api/health/ping >/dev/null; then
+              echo "Disposable AFCON360 Driver API is healthy."
+              exit 0
+            fi
+            if ! kill -0 "$(cat driver-e2e-evidence/backend.pid)" 2>/dev/null; then
+              cat driver-e2e-evidence/backend.log
+              echo "::error::The disposable Driver API process exited before becoming healthy."
+              exit 1
+            fi
+            sleep 2
+          done
+
+          cat driver-e2e-evidence/backend.log
+          echo "::error::Disposable AFCON360 Driver API did not become healthy."
+          exit 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install mobile workspace dependencies
+        working-directory: mobile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Check Driver Expo dependency compatibility
+        working-directory: mobile
+        run: pnpm --filter "@afcon360/driver-app" exec expo install --check
+
+      - name: Install Android platform and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::Android sdkmanager was not found."
+            exit 1
+          fi
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" "platform-tools" "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+          test -s "$ANDROID_HOME/platforms/android-37/android.jar"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
+
+      - name: Generate Driver Android project for the isolated test API
+        working-directory: mobile
+        run: pnpm --filter "@afcon360/driver-app" exec expo prebuild --platform android --no-install --clean
+
+      - name: Permit cleartext only in this disposable loopback test APK
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("fs");
+          const path = "apps/driver/android/app/src/main/AndroidManifest.xml";
+          let manifest = fs.readFileSync(path, "utf8");
+          if (!/<application\b/.test(manifest)) {
+            throw new Error("Generated Driver Android manifest has no application element.");
+          }
+          manifest = manifest.replace(/<application\b([^>]*)>/, (_match, attrs) => {
+            const cleaned = attrs.replace(/\s+android:usesCleartextTraffic="[^"]*"/, "");
+            return '<application' + cleaned + ' android:usesCleartextTraffic="true">';
+          });
+          fs.writeFileSync(path, manifest);
+          if (!/android:usesCleartextTraffic="true"/.test(manifest)) {
+            throw new Error("Could not enable loopback HTTP for the disposable test APK.");
+          }
+          NODE
+
+      # This cache is keyed only by Driver application inputs, not this workflow or
+      # the E2E/backend test scripts. Test-harness corrections therefore reuse the
+      # same self-contained APK; changing Driver app code/dependencies invalidates it.
+      - name: Restore reusable Driver E2E release APK
+        id: driver-e2e-apk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk
+          key: afcon360-driver-e2e-release-v2-${{ runner.os }}-${{ hashFiles('mobile/apps/driver/**', '!mobile/apps/driver/android/**', '!mobile/apps/driver/ios/**', '!mobile/apps/driver/node_modules/**', '!mobile/apps/driver/.expo/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+
+      - name: Configure temporary signing for the standalone Driver E2E APK
+        if: steps.driver-e2e-apk-cache.outputs.cache-hit != 'true'
+        working-directory: mobile
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const path = "apps/driver/android/app/build.gradle";
+          let source = fs.readFileSync(path, "utf8");
+          const buildTypes = source.indexOf("buildTypes {");
+          const release = source.indexOf("release {", buildTypes);
+          if (buildTypes < 0 || release < 0) throw new Error("Could not find Android release build type");
+          const open = source.indexOf("{", release);
+          let depth = 0;
+          let end = -1;
+          for (let i = open; i < source.length; i++) {
+            if (source[i] === "{") depth++;
+            if (source[i] === "}") {
+              depth--;
+              if (depth === 0) { end = i + 1; break; }
+            }
+          }
+          if (end < 0) throw new Error("Could not find end of Android release build type");
+          let block = source.slice(release, end);
+          const signing = /signingConfig\s+signingConfigs\.[A-Za-z0-9_]+/;
+          if (signing.test(block)) {
+            block = block.replace(signing, "signingConfig signingConfigs.debug");
+          } else {
+            block = block.replace("release {", "release {\n            signingConfig signingConfigs.debug");
+          }
+          source = source.slice(0, release) + block + source.slice(end);
+          fs.writeFileSync(path, source);
+          NODE
+
+      - name: Build self-contained Driver E2E release APK
+        if: steps.driver-e2e-apk-cache.outputs.cache-hit != 'true'
+        working-directory: mobile
+        run: cd apps/driver/android && ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Save reusable Driver E2E release APK
+        if: steps.driver-e2e-apk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk
+          key: afcon360-driver-e2e-release-v2-${{ runner.os }}-${{ hashFiles('mobile/apps/driver/**', '!mobile/apps/driver/android/**', '!mobile/apps/driver/ios/**', '!mobile/apps/driver/node_modules/**', '!mobile/apps/driver/.expo/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+
+      - name: Verify and stage the standalone Driver E2E APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          apksigner verify --verbose "$APK"
+          unzip -l "$APK" | grep -F "assets/index.android.bundle"
+          mkdir -p driver-e2e-evidence
+          cp "$APK" driver-e2e-evidence/driver-e2e.apk
+          aapt dump badging driver-e2e-evidence/driver-e2e.apk | grep -F "package: name='space.pamoja.afcon360.driver.preview'"
+          sha256sum driver-e2e-evidence/driver-e2e.apk | tee driver-e2e-evidence/driver-e2e-apk.sha256
+          echo "The standalone test APK embeds the Driver app bundle and points only to the disposable loopback API."
+
+      - name: Enable and verify KVM hardware acceleration for authenticated Driver journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::/dev/kvm is unavailable; refusing a slow software-emulation fallback."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+
+      - name: Install, sign in, read Driver screens, restore session and sign out on Android
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: python mobile/scripts/verify-driver-authenticated-journey.py
+
+      - name: Verify Driver API evidence and server-side session revocation
+        if: always()
+        run: python mobile/scripts/mobile-driver-e2e-backend.py assert
+
+      - name: Upload Driver screenshots and sanitized backend evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-driver-authenticated-journey-evidence
+          path: driver-e2e-evidence/
+          if-no-files-found: warn
+          retention-days: 30
