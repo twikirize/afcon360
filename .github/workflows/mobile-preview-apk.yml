@@ -29,21 +29,72 @@ permissions:
   contents: read
 
 jobs:
+  detect-app-changes:
+    name: Detect affected native clients
+    runs-on: ubuntu-24.04
+    outputs:
+      apps_json: ${{ steps.detect.outputs.apps_json }}
+    steps:
+      - name: Check out source history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Select only changed native applications
+        id: detect
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo 'apps_json=["user","driver"]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          shared=false
+          user=false
+          driver=false
+
+          if grep -Eq '^mobile/(packages/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|\\.npmrc$)' <<< "$changed"; then
+            shared=true
+          fi
+          if grep -Eq '^mobile/apps/user/' <<< "$changed"; then user=true; fi
+          if grep -Eq '^mobile/apps/driver/' <<< "$changed"; then driver=true; fi
+
+          if [[ "$shared" == "true" ]]; then
+            user=true
+            driver=true
+          fi
+
+          apps="["
+          separator=""
+          if [[ "$user" == "true" ]]; then
+            apps+="$separator\"user\""
+            separator=","
+          fi
+          if [[ "$driver" == "true" ]]; then
+            apps+="$separator\"driver\""
+          fi
+          apps+="]"
+          echo "apps_json=$apps" >> "$GITHUB_OUTPUT"
+          echo "Affected native apps: $apps"
+
   build-preview-apk:
     name: Build and verify ${{ matrix.app }} Android preview APK
+    needs: detect-app-changes
+    if: ${{ needs.detect-app-changes.outputs.apps_json != '[]' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.apps_json) }}
     env:
       APP: ${{ matrix.app }}
-      EXPECTED_PACKAGE: ${{ matrix.package }}
+      EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
       AFCON360_PREVIEW_BUILD: "true"
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
     steps:
@@ -60,6 +111,13 @@ jobs:
         with:
           version: 10.12.4
           run_install: false
+
+      - name: Restore reusable unsigned Android preview APK
+        id: apk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: mobile/apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk
+          key: afcon360-${{ matrix.app }}-preview-v1-${{ runner.os }}-${{ hashFiles(format('mobile/apps/{0}/**', matrix.app), format('!mobile/apps/{0}/android/**', matrix.app), format('!mobile/apps/{0}/ios/**', matrix.app), format('!mobile/apps/{0}/node_modules/**', matrix.app), format('!mobile/apps/{0}/.expo/**', matrix.app), 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
 
       - name: Set up Java
         uses: actions/setup-java@v6
@@ -98,10 +156,12 @@ jobs:
           echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
 
       - name: Generate native Android project
+        if: steps.apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile
         run: pnpm --filter "@afcon360/${{ matrix.app }}-app" exec expo prebuild --platform android --no-install --clean
 
       - name: Configure temporary Android release signing
+        if: steps.apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile
         run: |
           node <<'NODE'
@@ -134,8 +194,16 @@ jobs:
           NODE
 
       - name: Build standalone release APK
+        if: steps.apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile
         run: cd "apps/$APP/android" && ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Save reusable unsigned Android preview APK
+        if: steps.apk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: mobile/apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk
+          key: afcon360-${{ matrix.app }}-preview-v1-${{ runner.os }}-${{ hashFiles(format('mobile/apps/{0}/**', matrix.app), format('!mobile/apps/{0}/android/**', matrix.app), format('!mobile/apps/{0}/ios/**', matrix.app), format('!mobile/apps/{0}/node_modules/**', matrix.app), format('!mobile/apps/{0}/.expo/**', matrix.app), 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
 
       - name: Sign and verify APK package, SDK and payload
         working-directory: mobile
@@ -211,39 +279,16 @@ jobs:
 
   android-compatibility:
     name: Android API ${{ matrix.api-level }} / ${{ matrix.app }} install and launch
-    needs: build-preview-apk
-    if: ${{ needs.build-preview-apk.result == 'success' }}
+    needs: [detect-app-changes, build-preview-apk]
+    if: ${{ needs.detect-app-changes.outputs.apps_json != '[]' && needs.build-preview-apk.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
-        include:
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-            api-level: 24
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-            api-level: 29
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-            api-level: 33
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-            api-level: 36
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
-            api-level: 24
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
-            api-level: 29
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
-            api-level: 33
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
-            api-level: 36
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.apps_json) }}
+        api-level: [24, 29, 33, 36]
     env:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.package }}
@@ -303,18 +348,14 @@ jobs:
 
   apk-manifest-audit:
     name: Audit ${{ matrix.app }} APK permissions and components
-    needs: build-preview-apk
-    if: ${{ needs.build-preview-apk.result == 'success' }}
+    needs: [detect-app-changes, build-preview-apk]
+    if: ${{ needs.detect-app-changes.outputs.apps_json != '[]' && needs.build-preview-apk.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.apps_json) }}
     env:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.package }}
@@ -401,19 +442,17 @@ jobs:
 
   ios-compatibility:
     name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
+    needs: detect-app-changes
+    if: ${{ needs.detect-app-changes.outputs.apps_json != '[]' }}
     runs-on: macos-26-intel
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - app: user
-            bundle-id: space.pamoja.afcon360.user
-          - app: driver
-            bundle-id: space.pamoja.afcon360.driver
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.apps_json) }}
     env:
       APP: ${{ matrix.app }}
-      EXPECTED_BUNDLE_ID: ${{ matrix.bundle-id }}
+      EXPECTED_BUNDLE_ID: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user' || 'space.pamoja.afcon360.driver' }}
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
     steps:
       - name: Check out source
