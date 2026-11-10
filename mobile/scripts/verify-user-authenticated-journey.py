@@ -370,7 +370,9 @@ def main() -> None:
     tap_text("Sign out")
     wait_for_text("Sign out of AFCON360 on this device?", timeout=12, label="logout confirmation")
     mark_stage("logout_started")
-    tap_text("Sign out", last=True)
+    # The Android confirmation action is rendered in uppercase; target that
+    # actual dialog button, not its title or the underlying Account action.
+    tap_text("SIGN OUT")
     wait_for_text("Sign in securely", "Username or email", "Password", timeout=35, label="signed-out login screen")
     save_screen("11-logged-out")
     mark_stage("logout_completed")
