@@ -40,7 +40,7 @@ jobs:
   publish-user-preview:
     name: Validate and publish User preview update
     needs: report-ota-configuration
-    if: ${{ github.event_name == 'push' && vars.AFCON360_USER_EAS_PROJECT_ID != '' }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/feat/native-user-app-integration-20261108' && vars.AFCON360_USER_EAS_PROJECT_ID != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     defaults:
