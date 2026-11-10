@@ -1591,6 +1591,314 @@ def mobile_driver_apply_vehicle_marketplace(listing_public_id):
         return _error("marketplace_application_unavailable", "The application service is unavailable.", 503)
 
 
+@mobile_api_bp.get("/driver/map-config")
+@_bearer_required("driver")
+def mobile_driver_map_config():
+    """Return only the public GEO tile renderer configuration to a Driver."""
+    from app.geo.config import load_geo_config
+    from app.geo.map_renderer import build_public_map_config
+
+    config = build_public_map_config(load_geo_config())
+    template = str(config.get("tile_url_template") or "")
+    # React Native's raster tile renderer accepts {z}/{x}/{y}. Resolve the
+    # harmless OSM subdomain token server-side; never return any credentials.
+    config["tile_url_template"] = template.replace("{s}", "a")
+    response = jsonify({"success": True, "data": config})
+    response.headers["Cache-Control"] = "private, max-age=300"
+    return response, 200
+
+
+@mobile_api_bp.get("/driver/notifications")
+@_bearer_required("driver")
+def mobile_driver_notifications():
+    """Bearer inbox limited to this user and the Transport module."""
+    from app.notifications.models import Notification
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+
+    try:
+        limit = min(max(int(request.args.get("limit", 30)), 1), 50)
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except (TypeError, ValueError):
+        return _error("invalid_pagination", "Use a positive limit and non-negative offset.", 400)
+
+    query = Notification.query.filter(
+        Notification.user_id == user.id,
+        Notification.module == "transport",
+        Notification.is_deleted.is_(False),
+    )
+    total = query.count()
+    unread_count = query.filter(Notification.is_read.is_(False)).count()
+    rows = (
+        query.order_by(Notification.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    items = [
+        {
+            "public_id": str(row.public_id),
+            "type": row.type,
+            "module": row.module,
+            "subject": row.subject,
+            "body": (row.body or "")[:1600],
+            "priority": row.priority,
+            "status": str(getattr(row.status, "value", row.status)),
+            "is_read": bool(row.is_read),
+            "is_important": bool(row.is_important),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "read_at": row.read_at.isoformat() if row.read_at else None,
+        }
+        for row in rows
+    ]
+    response = jsonify({
+        "success": True,
+        "data": {
+            "items": items,
+            "count": len(items),
+            "total": total,
+            "unread_count": unread_count,
+            "limit": limit,
+            "offset": offset,
+        },
+    })
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["Vary"] = "Authorization"
+    return response, 200
+
+
+@mobile_api_bp.post("/driver/notifications/<string:notification_public_id>/read")
+@_bearer_required("driver")
+def mobile_driver_notification_read(notification_public_id):
+    """Mark one Transport notification read using its public identifier."""
+    from app.notifications.models import Notification
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    notification = Notification.query.filter(
+        Notification.public_id == notification_public_id,
+        Notification.user_id == user.id,
+        Notification.module == "transport",
+        Notification.is_deleted.is_(False),
+    ).first()
+    if notification is None:
+        return _error("notification_not_found", "This Transport notification was not found.", 404)
+    notification.mark_read()
+    db.session.commit()
+    remaining = Notification.query.filter(
+        Notification.user_id == user.id,
+        Notification.module == "transport",
+        Notification.is_read.is_(False),
+        Notification.is_deleted.is_(False),
+    ).count()
+    return jsonify({"success": True, "data": {"unread_count": remaining}}), 200
+
+
+@mobile_api_bp.post("/driver/notifications/read-all")
+@_bearer_required("driver")
+def mobile_driver_notifications_read_all():
+    """Mark only this Driver user's Transport notifications as read."""
+    from app.notifications.models import Notification
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    rows = Notification.query.filter(
+        Notification.user_id == user.id,
+        Notification.module == "transport",
+        Notification.is_read.is_(False),
+        Notification.is_deleted.is_(False),
+    ).all()
+    for row in rows:
+        row.mark_read()
+    if rows:
+        db.session.commit()
+    return jsonify({"success": True, "data": {"marked": len(rows), "unread_count": 0}}), 200
+
+
+@mobile_api_bp.get("/driver/incidents")
+@_bearer_required("driver")
+def mobile_driver_incidents():
+    """List only incidents this authenticated Driver personally reported."""
+    from app.transport.models import TransportIncident
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    try:
+        limit = min(max(int(request.args.get("limit", 20)), 1), 50)
+    except (TypeError, ValueError):
+        return _error("invalid_limit", "Limit must be between 1 and 50.", 400)
+
+    rows = (
+        TransportIncident.query
+        .filter(
+            TransportIncident.reported_by == "driver",
+            TransportIncident.reported_by_id == user.id,
+            TransportIncident.driver_id == profile.id,
+            TransportIncident.is_deleted.is_(False),
+        )
+        .order_by(TransportIncident.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    items = [
+        {
+            "incident_reference": row.incident_reference,
+            "incident_type": row.incident_type,
+            "incident_category": row.incident_category,
+            "severity": str(getattr(row.severity, "value", row.severity)),
+            "title": row.title,
+            "description": row.description,
+            "occurred_at": row.occurred_at.isoformat() if row.occurred_at else None,
+            "status": row.status,
+            "priority": row.priority,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+    response = jsonify({"success": True, "data": {"items": items, "count": len(items)}})
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["Vary"] = "Authorization"
+    return response, 200
+
+
+@mobile_api_bp.post("/driver/incidents")
+@limiter.limit("10 per hour")
+@_bearer_required("driver")
+def mobile_driver_report_incident():
+    """Report an incident as the authenticated Driver; caller cannot choose identity."""
+    from datetime import datetime
+    from math import isfinite
+    from app.transport.models import Booking, IncidentSeverity, TransportIncident
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return _error("incident_payload_required", "Incident details are required.", 400)
+
+    incident_type = str(data.get("incident_type") or "").strip()[:50]
+    title = str(data.get("title") or "").strip()[:200]
+    description = str(data.get("description") or "").strip()[:5000]
+    severity_value = str(data.get("severity") or "").strip().lower()
+    occurred_value = data.get("occurred_at")
+    if not incident_type or not title or not description or not occurred_value:
+        return _error(
+            "incident_fields_required",
+            "Incident type, title, description and occurrence time are required.",
+            400,
+        )
+    try:
+        severity = IncidentSeverity(severity_value)
+    except ValueError:
+        return _error("invalid_incident_severity", "Choose a valid incident severity.", 400)
+
+    if not isinstance(occurred_value, str):
+        return _error("invalid_occurred_at", "Use an ISO-8601 time with an explicit timezone.", 400)
+    try:
+        occurred_at = datetime.fromisoformat(occurred_value.replace("Z", "+00:00"))
+    except ValueError:
+        return _error("invalid_occurred_at", "Use an ISO-8601 time with an explicit timezone.", 400)
+    if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
+        return _error("timezone_required", "Incident time must include a timezone offset.", 400)
+    occurred_at = occurred_at.astimezone(timezone.utc)
+
+    booking_id = None
+    vehicle_id = None
+    booking_reference = str(data.get("booking_reference") or "").strip()
+    if booking_reference:
+        booking = Booking.query.filter_by(
+            booking_reference=booking_reference,
+            is_deleted=False,
+        ).first()
+        if booking is None:
+            return _error("booking_not_found", "The referenced trip was not found.", 404)
+        metadata = booking.booking_metadata or {}
+        belongs_to_driver = (
+            booking.assigned_driver_id == profile.id
+            or str(metadata.get("completed_by_driver_profile_id") or "") == str(profile.id)
+        )
+        if not belongs_to_driver:
+            return _error("booking_not_owned", "You may report only on a trip assigned to you.", 403)
+        booking_id = booking.id
+        vehicle_id = booking.assigned_vehicle_id
+
+    location = data.get("location")
+    safe_location = None
+    if location is not None:
+        if not isinstance(location, dict):
+            return _error("invalid_incident_location", "Location must contain coordinates.", 400)
+        try:
+            lat_raw, lon_raw = location.get("latitude"), location.get("longitude")
+            if isinstance(lat_raw, bool) or isinstance(lon_raw, bool):
+                raise ValueError
+            latitude, longitude = float(lat_raw), float(lon_raw)
+            if not isfinite(latitude) or not isfinite(longitude):
+                raise ValueError
+            if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+                raise ValueError
+        except (TypeError, ValueError):
+            return _error("invalid_incident_location", "Location coordinates are invalid.", 400)
+        safe_location = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "address": str(location.get("address") or "")[:500],
+        }
+
+    if vehicle_id is None:
+        current_vehicle = profile.current_vehicle
+        vehicle_id = getattr(current_vehicle, "id", None)
+
+    category = str(data.get("incident_category") or "safety").strip().lower()[:50]
+    incident = TransportIncident(
+        incident_type=incident_type,
+        incident_category=category,
+        severity=severity,
+        title=title,
+        description=description,
+        occurred_at=occurred_at,
+        reported_by="driver",
+        reported_by_id=user.id,
+        reported_via="driver_mobile",
+        user_id=user.id,
+        driver_id=profile.id,
+        booking_id=booking_id,
+        vehicle_id=vehicle_id,
+        location=safe_location,
+        photos=[],
+        videos=[],
+        status="reported",
+        priority="high" if severity in (IncidentSeverity.HIGH, IncidentSeverity.CRITICAL) else "medium",
+    )
+    try:
+        incident.generate_reference()
+        db.session.add(incident)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native Driver incident report failed")
+        return _error("incident_report_failed", "AFCON360 could not save the incident report.", 503)
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "incident_reference": incident.incident_reference,
+            "status": incident.status,
+            "severity": str(getattr(incident.severity, "value", incident.severity)),
+        },
+    }), 201
+
+
 @mobile_api_bp.get("/driver/offers")
 @_bearer_required("driver")
 def mobile_driver_offers():
