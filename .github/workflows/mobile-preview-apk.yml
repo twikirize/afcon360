@@ -137,6 +137,8 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
+          cache: pnpm
+          cache-dependency-path: mobile/pnpm-lock.yaml
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -494,6 +496,8 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
+          cache: pnpm
+          cache-dependency-path: mobile/pnpm-lock.yaml
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -699,6 +703,8 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
+          cache: pnpm
+          cache-dependency-path: mobile/pnpm-lock.yaml
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
