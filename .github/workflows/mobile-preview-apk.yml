@@ -713,7 +713,7 @@ jobs:
           nohup python mobile/scripts/mobile-driver-e2e-backend.py serve > driver-e2e-evidence/backend.log 2>&1 < /dev/null &
           echo $! > driver-e2e-evidence/backend.pid
 
-          for attempt in $(seq 1 90); do
+          for _ in $(seq 1 90); do
             if curl --connect-timeout 2 --max-time 5 --silent --fail http://127.0.0.1:5000/api/health/ping >/dev/null; then
               echo "Disposable AFCON360 Driver API is healthy."
               exit 0
