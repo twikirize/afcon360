@@ -117,13 +117,13 @@ jobs:
   build-preview-apk:
     name: Build and verify ${{ matrix.app }} Android preview APK
     needs: detect-app-changes
-    if: ${{ needs.detect-app-changes.outputs.apps_json != '[]' }}
+    if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.detect-app-changes.outputs.apps_json) }}
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
     env:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
@@ -312,14 +312,14 @@ jobs:
   android-compatibility:
     name: Android API ${{ matrix.api-level }} / ${{ matrix.app }} install and launch
     needs: [detect-app-changes, build-preview-apk]
-    if: ${{ needs.detect-app-changes.outputs.apps_json != '[]' && needs.build-preview-apk.result == 'success' }}
+    if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' && needs.build-preview-apk.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
-        app: ${{ fromJSON(needs.detect-app-changes.outputs.apps_json) }}
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
         api-level: [24, 29, 33, 36]
     env:
       APP: ${{ matrix.app }}
@@ -381,13 +381,13 @@ jobs:
   apk-manifest-audit:
     name: Audit ${{ matrix.app }} APK permissions and components
     needs: [detect-app-changes, build-preview-apk]
-    if: ${{ needs.detect-app-changes.outputs.apps_json != '[]' && needs.build-preview-apk.result == 'success' }}
+    if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' && needs.build-preview-apk.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.detect-app-changes.outputs.apps_json) }}
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
     env:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
@@ -475,13 +475,13 @@ jobs:
   ios-compatibility:
     name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
     needs: detect-app-changes
-    if: ${{ needs.detect-app-changes.outputs.apps_json != '[]' }}
+    if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' }}
     runs-on: macos-26-intel
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.detect-app-changes.outputs.apps_json) }}
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
     env:
       APP: ${{ matrix.app }}
       EXPECTED_BUNDLE_ID: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user' || 'space.pamoja.afcon360.driver' }}
