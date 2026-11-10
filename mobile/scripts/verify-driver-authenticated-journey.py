@@ -279,13 +279,20 @@ def main() -> None:
         timeout=30, label="Driver active-trip empty state",
     )
     save_screen("03-trips")
+    scroll_until_text("Trip history", label="Driver trip history filters")
+    tap_text("All", last=True)
+    wait_for_text(
+        "Trip history", "No recent trips",
+        timeout=60, label="All Driver trip history filter",
+    )
+    save_screen("04-all-trips")
 
     tap_text("Earnings", last=True)
     wait_for_text(
         "Know what you have earned.", "No captured earnings yet",
         timeout=30, label="Driver captured-earnings empty state",
     )
-    save_screen("05-earnings")
+    save_screen("06-earnings")
 
     tap_text("Assignments", last=True)
     wait_for_text(
@@ -296,7 +303,7 @@ def main() -> None:
     wait_for_text("Scheduled work", label="Driver scheduled routes section visible")
     scroll_until_text("Vehicle history", label="Driver vehicle assignment history")
     wait_for_text("Vehicle history", label="Driver vehicle history section visible")
-    save_screen("06-assignments")
+    save_screen("07-assignments")
 
     tap_text("Vehicles", last=True)
     wait_for_text(
@@ -305,7 +312,7 @@ def main() -> None:
     )
     scroll_until_text("Vehicle marketplace", label="Driver public vehicle marketplace")
     wait_for_text("Vehicle marketplace", label="Driver vehicle marketplace section visible")
-    save_screen("07-vehicles")
+    save_screen("08-vehicles")
 
     tap_text("Account", last=True)
     wait_for_text(
@@ -318,7 +325,7 @@ def main() -> None:
         "Your Driver inbox.", "Inbox", "No Transport notifications",
         timeout=60, label="Driver notification inbox (read-only)",
     )
-    save_screen("08-notifications")
+    save_screen("09-notifications")
     tap_text("Back to Driver account")
     wait_for_text("Your AFCON360 identity.", label="Driver account after notification review")
 
@@ -330,11 +337,11 @@ def main() -> None:
     )
     scroll_until_text("Your incident reports", label="Driver incident history")
     wait_for_text("Your incident reports", label="Driver incident history section visible")
-    save_screen("09-incidents")
+    save_screen("10-incidents")
     tap_text("Back to Driver account")
     wait_for_text("Your AFCON360 identity.", label="Driver account before process restart")
     scroll_until_text("Sign out", label="authenticated Driver account sign-out control")
-    save_screen("10-account")
+    save_screen("11-account")
 
 
 
@@ -349,7 +356,7 @@ def main() -> None:
         "Your driving workspace.", DRIVER_CODE,
         timeout=60, label="restored authenticated Driver session",
     )
-    save_screen("11-session-restored")
+    save_screen("12-session-restored")
 
     tap_text("Account", last=True)
     wait_for_text("Your AFCON360 identity.", label="Driver account before logout")
@@ -366,7 +373,7 @@ def main() -> None:
         "AFCON360 Driver", "Username or email", "Password", "Sign in to Driver",
         timeout=45, label="Driver signed-out login screen",
     )
-    save_screen("07-logged-out")
+    save_screen("13-logged-out")
 
     print(
         "DRIVER_ANDROID_E2E_UI_PASS: Driver login, status/readiness, map and demand, "
