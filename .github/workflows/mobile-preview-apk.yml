@@ -291,7 +291,7 @@ jobs:
         api-level: [24, 29, 33, 36]
     env:
       APP: ${{ matrix.app }}
-      EXPECTED_PACKAGE: ${{ matrix.package }}
+      EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
     steps:
       - name: Check out emulator verification script
         uses: actions/checkout@v7
@@ -358,7 +358,7 @@ jobs:
         app: ${{ fromJSON(needs.detect-app-changes.outputs.apps_json) }}
     env:
       APP: ${{ matrix.app }}
-      EXPECTED_PACKAGE: ${{ matrix.package }}
+      EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
     steps:
       - name: Download this run's app APK
         uses: actions/download-artifact@v8
