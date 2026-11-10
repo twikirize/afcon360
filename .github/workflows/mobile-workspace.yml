@@ -125,7 +125,7 @@ jobs:
       - name: Calculate User APK cache key before prebuild
         id: user-apk-key
         env:
-          USER_APK_SOURCE_KEY: afcon360-user-e2e-apk-v1-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+          USER_APK_SOURCE_KEY: afcon360-user-e2e-apk-v2-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc', '.github/workflows/mobile-workspace.yml') }}
         run: echo "key=$USER_APK_SOURCE_KEY" >> "$GITHUB_OUTPUT"
       - name: Restore source-keyed User E2E APK
         id: user-apk-cache
@@ -279,6 +279,11 @@ jobs:
       - name: Build isolated User release APK
         if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         working-directory: mobile/apps/user/android
+        env:
+          # Re-evaluate the dynamic Expo config during Metro/Gradle bundling too,
+          # so the embedded manifest retains preview-only server selection.
+          AFCON360_PREVIEW_BUILD: "true"
+          EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: ./gradlew --no-daemon --stacktrace assembleRelease
       - name: Save fresh APK under the source-keyed cache key
         if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
