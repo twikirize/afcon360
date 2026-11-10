@@ -1,0 +1,191 @@
+name: Build OTA-enabled AFCON360 User preview APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-user-ota-apk:
+    name: Build one-time OTA-enabled User APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      AFCON360_PREVIEW_BUILD: "true"
+      AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+      EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
+    steps:
+      - name: Require the dedicated User EAS project ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AFCON360_USER_EAS_PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || {
+            echo "::error::Create the dedicated User EAS project and set the AFCON360_USER_EAS_PROJECT_ID repository variable before running this workflow."
+            exit 1
+          }
+
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install User workspace dependencies
+        working-directory: mobile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify User Expo dependency compatibility
+        working-directory: mobile
+        run: pnpm --filter @afcon360/user-app exec expo install --check
+
+      - name: Install Android SDK platform, build tools and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" "platform-tools" "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+          test -s "$ANDROID_HOME/platforms/android-37/android.jar"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
+
+      - name: Generate clean User Android native project with OTA configuration
+        working-directory: mobile
+        run: pnpm --filter @afcon360/user-app exec expo prebuild --platform android --no-install --clean
+
+      - name: Allow private-network HTTP only in this preview APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import re
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          manifest = Path("mobile/apps/user/android/app/src/main/AndroidManifest.xml")
+          source = manifest.read_text(encoding="utf-8")
+          app_tag = re.search(r"<application\\b[^>]*>", source, flags=re.DOTALL)
+          if app_tag is None:
+              raise SystemExit("Generated Android manifest has no application element")
+          opening = app_tag.group(0)
+          if re.search(r"\\bandroid:usesCleartextTraffic\\s*=", opening):
+              opening = re.sub(
+                  r"\\bandroid:usesCleartextTraffic\\s*=\\s*['\\"][^'\\"]*['\\"]",
+                  'android:usesCleartextTraffic="true"',
+                  opening,
+              )
+          else:
+              opening = opening[:-1] + ' android:usesCleartextTraffic="true">'
+          source = source[:app_tag.start()] + opening + source[app_tag.end():]
+          ET.fromstring(source)
+          manifest.write_text(source, encoding="utf-8")
+          print("Cleartext HTTP enabled only for this preview APK.")
+          PY
+
+      - name: Verify EAS Update URL and preview channel are embedded
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          manifest = Path("mobile/apps/user/android/app/src/main/AndroidManifest.xml")
+          root = ET.parse(manifest).getroot()
+          ns = "{http://schemas.android.com/apk/res/android}"
+          metadata = {
+              node.attrib.get(ns + "name"): node.attrib.get(ns + "value")
+              for node in root.findall(".//meta-data")
+          }
+          expected_url = "https://u.expo.dev/" + os.environ["AFCON360_USER_EAS_PROJECT_ID"]
+          if metadata.get("expo.modules.updates.EXPO_UPDATE_URL") != expected_url:
+              raise SystemExit("EAS Update URL was not embedded in the preview APK manifest")
+          channel_headers = metadata.get("expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY", "")
+          if "preview" not in channel_headers:
+              raise SystemExit("The preview update channel was not embedded in the APK manifest")
+          print("Verified EAS Update URL and preview channel in Android manifest.")
+          PY
+
+      - name: Configure disposable preview signing
+        working-directory: mobile
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const path = "apps/user/android/app/build.gradle";
+          let source = fs.readFileSync(path, "utf8");
+          const buildTypes = source.indexOf("buildTypes {");
+          const release = source.indexOf("release {", buildTypes);
+          if (buildTypes < 0 || release < 0) throw new Error("Could not find Android release build type");
+          const open = source.indexOf("{", release);
+          let depth = 0;
+          let end = -1;
+          for (let i = open; i < source.length; i++) {
+            if (source[i] === "{") depth++;
+            if (source[i] === "}") {
+              depth--;
+              if (depth === 0) { end = i + 1; break; }
+            }
+          }
+          if (end < 0) throw new Error("Could not find end of Android release build type");
+          let block = source.slice(release, end);
+          const signing = /signingConfig\\s+signingConfigs\\.[A-Za-z0-9_]+/;
+          if (signing.test(block)) block = block.replace(signing, "signingConfig signingConfigs.debug");
+          else block = block.replace("release {", "release {\\n            signingConfig signingConfigs.debug");
+          source = source.slice(0, release) + block + source.slice(end);
+          fs.writeFileSync(path, source);
+          NODE
+
+      - name: Build OTA-enabled User APK
+        working-directory: mobile/apps/user/android
+        run: ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Verify APK identity and Android support levels
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find mobile/apps/user/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          test -s "$APK"
+          BADGING="$(aapt dump badging "$APK")"
+          PACKAGE="$(printf '%s\\n' "$BADGING" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
+          MINIMUM="$(printf '%s\\n' "$BADGING" | sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
+          TARGET="$(printf '%s\\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
+          test "$PACKAGE" = "space.pamoja.afcon360.user.preview"
+          test "$MINIMUM" = "24"
+          test -n "$TARGET" && test "$TARGET" -ge 36
+          echo "Verified package=$PACKAGE minSdk=$MINIMUM targetSdk=$TARGET"
+          mkdir -p user-ota-apk
+          cp "$APK" user-ota-apk/AFCON360-User-OTA-Preview.apk
+          sha256sum user-ota-apk/AFCON360-User-OTA-Preview.apk | tee user-ota-apk/SHA256SUMS.txt
+
+      - name: Upload one-time OTA-enabled User preview APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-ota-enabled-preview-apk
+          path: user-ota-apk/
+          if-no-files-found: error
+          retention-days: 30
