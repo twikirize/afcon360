@@ -229,10 +229,15 @@ def test_mobile_driver_trip_history_uses_upcoming_service_and_validates_scope_an
     service_calls = {}
 
     def upcoming(self, driver_user_id, limit=10):
-        service_calls.update(driver_user_id=driver_user_id, limit=limit)
+        service_calls["upcoming"] = {"driver_user_id": driver_user_id, "limit": limit}
+        return []
+
+    def recent(self, driver_user_id, limit=10):
+        service_calls["recent"] = {"driver_user_id": driver_user_id, "limit": limit}
         return []
 
     monkeypatch.setattr(BookingService, "get_driver_upcoming_bookings", upcoming)
+    monkeypatch.setattr(BookingService, "get_driver_recent_bookings", recent)
 
     response = client.get(
         "/api/mobile/v1/driver/trips?scope=upcoming&limit=20",
@@ -246,8 +251,22 @@ def test_mobile_driver_trip_history_uses_upcoming_service_and_validates_scope_an
         "count": 0,
         "limit": 20,
     }
-    assert service_calls == {"driver_user_id": profile.user_id, "limit": 20}
+    assert service_calls["upcoming"] == {"driver_user_id": profile.user_id, "limit": 20}
     assert calls["expected_client"] == "driver"
+
+    all_trips = client.get(
+        "/api/mobile/v1/driver/trips?scope=all&limit=20",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+    )
+    assert all_trips.status_code == 200
+    assert all_trips.get_json()["data"] == {
+        "scope": "all",
+        "items": [],
+        "count": 0,
+        "limit": 20,
+    }
+    assert service_calls["upcoming"] == {"driver_user_id": profile.user_id, "limit": 20}
+    assert service_calls["recent"] == {"driver_user_id": profile.user_id, "limit": 20}
 
     invalid_scope = client.get(
         "/api/mobile/v1/driver/trips?scope=everything",
