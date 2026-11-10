@@ -348,7 +348,7 @@ export default function DriverVehicles() {
             <Field label="Luggage capacity" value={form.luggage_capacity} keyboardType="numeric" onChangeText={v => setField("luggage_capacity", v)} />
           </View>
           <ActionButton label={saving ? "Saving…" : editingVehicle ? "Save vehicle details" : "Submit vehicle registration"} disabled={saving} onPress={() => { void saveVehicle(); }} />
-          <ActionButton label="Cancel" color="secondary" disabled={saving} onPress={() => { setShowForm(false); setEditingVehicle(null); }} />
+          <ActionButton label="Cancel" disabled={saving} onPress={() => { setShowForm(false); setEditingVehicle(null); }} />
         </Panel>
       ) : null}
 
