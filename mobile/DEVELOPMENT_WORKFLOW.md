@@ -95,7 +95,11 @@ To activate publishing, configure these GitHub Actions settings for the reposito
 - Repository variable `AFCON360_USER_EAS_PROJECT_ID`: the UUID of the dedicated **User** EAS project. Do not reuse a Driver project ID.
 - Repository secret `EXPO_TOKEN`: an Expo access token permitted to publish updates to that User project.
 
-The project ID is public configuration; the token is a secret. Do not put the token in source code or any `EXPO_PUBLIC_*` variable. The first OTA-enabled APK must be built with the project ID present so the native binary contains the updates URL, runtime version and preview channel. The current APK made before this setup does not have the Expo Updates native client. Production updates are not published automatically from the User feature branch; they require a separately approved production release.
+The project ID is public configuration; the token is a secret. Do not put the token in source code or any `EXPO_PUBLIC_*` variable.
+
+After setting the project ID, run **Actions → Build OTA-enabled AFCON360 User preview APK → Run workflow** on the User feature branch. Install the resulting `afcon360-user-ota-enabled-preview-apk` artifact once. The earlier `AFCON360-User-WiFi-Preview-3b03c06.apk` was built without the Expo Updates native client and cannot receive OTA updates. Once the new binary is installed and `EXPO_TOKEN` is configured, compatible User UI/JavaScript changes pushed to this branch are published automatically to the preview channel. The app checks at startup and applies a downloaded update on a later launch/reload.
+
+Production updates are not published automatically from the User feature branch; they require a separately approved production release. Native code, permissions, SDK or plugin changes still require a new binary and app-version/runtime change.
 
 ## 6. Review through a pull request
 
