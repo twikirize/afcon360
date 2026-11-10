@@ -39,6 +39,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: appId,
+    versionCode: Math.max(1, Number.parseInt(process.env.AFCON360_ANDROID_VERSION_CODE ?? "1", 10) || 1),
     allowBackup: false,
     // Use scoped system pickers rather than broad legacy storage permissions.
     // Driver does not require full-screen overlay access.
