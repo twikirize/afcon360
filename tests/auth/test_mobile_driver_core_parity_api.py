@@ -676,6 +676,7 @@ def test_driver_map_notifications_and_incident_routes_require_bearer(client):
 
 
 def test_mobile_driver_map_config_returns_only_public_geo_fields(client, monkeypatch):
+    _authenticated_driver(monkeypatch, SimpleNamespace(id=902, user_id=451))
     from app.geo import map_renderer
 
     public = {
@@ -710,6 +711,7 @@ def test_mobile_driver_map_config_returns_only_public_geo_fields(client, monkeyp
 def test_mobile_driver_notifications_are_user_and_transport_scoped_and_redacted(
     app, client, monkeypatch
 ):
+    _authenticated_driver(monkeypatch, SimpleNamespace(id=902, user_id=451))
     from app.notifications.models import Notification
 
     notification = SimpleNamespace(
@@ -787,6 +789,7 @@ def test_mobile_driver_notifications_are_user_and_transport_scoped_and_redacted(
 def test_mobile_driver_notification_read_only_updates_own_transport_notification(
     app, client, monkeypatch
 ):
+    _authenticated_driver(monkeypatch, SimpleNamespace(id=902, user_id=451))
     from app.notifications.models import Notification
 
     notification = SimpleNamespace(
@@ -826,6 +829,7 @@ def test_mobile_driver_notification_read_only_updates_own_transport_notification
 def test_mobile_driver_notification_read_cannot_read_another_users_notification(
     app, client, monkeypatch
 ):
+    _authenticated_driver(monkeypatch, SimpleNamespace(id=902, user_id=451))
     from app.notifications.models import Notification
 
     class Query:
