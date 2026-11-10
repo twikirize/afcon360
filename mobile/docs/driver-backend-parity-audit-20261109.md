@@ -120,3 +120,10 @@ These changes add no database schema or migration. They do not make admin endpoi
 - All Driver operations are scoped to the authenticated Driver profile and delegate to existing Transport, Booking, Assignment, Marketplace, Tracking and Wallet authorities.
 - No User app screens/workflows are imported into the Driver app.
 - Do not claim complete functionality solely because a screen renders; API contracts and end-to-end verification are required.
+
+
+## 6. Authenticated Android E2E navigation note
+
+The read-only journey checks the Driver Account page after returning from Notifications and Incidents. Those routes use native back navigation and restore the previous Account scroll offset. The test must scroll the restored Account page back to its header before asserting the Account heading; it must not replace the real back action or weaken later incident, process-restart, logout, or server/device/Redis revocation checks.
+
+The authenticated E2E APK is cached by Driver app source and dependency inputs. Changes to this Python test harness or this audit document do not invalidate that APK and must not trigger Gradle compilation. The preview APK and its Android/iOS compatibility checks are built separately when native app configuration, dependency manifests, plugins, or platform project files change.
