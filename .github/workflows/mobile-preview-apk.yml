@@ -58,7 +58,7 @@ jobs:
           user=false
           driver=false
 
-          if grep -Eq '^mobile/(packages/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|\\.npmrc$)' <<< "$changed"; then
+          if grep -Eq '^mobile/(packages/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|\.npmrc$)' <<< "$changed"; then
             shared=true
           fi
           if grep -Eq '^mobile/apps/user/' <<< "$changed"; then user=true; fi
