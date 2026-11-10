@@ -40,6 +40,7 @@ type DriverProfile = {
     cancellation_rate?: string | null;
     total_trips?: number | null;
     completed_trips?: number | null;
+    total_duration_minutes?: number | null;
     total_distance_km?: string | null;
     average_rating?: string | null;
     total_ratings?: number | null;
