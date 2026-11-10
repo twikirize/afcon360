@@ -40,6 +40,7 @@ type DriverProfileSummary = {
     cancellation_rate?: string | null;
     total_trips?: number | null;
     completed_trips?: number | null;
+    total_duration_minutes?: number | null;
     total_distance_km?: string | null;
     average_rating?: string | null;
     total_ratings?: number | null;
@@ -221,6 +222,18 @@ export default function DriverAccount() {
               value={profile.performance.average_rating ?? "Not rated"}
             />
             <AccountValue
+              label="Total ratings"
+              value={profile.performance.total_ratings === null || profile.performance.total_ratings === undefined
+                ? "Not available"
+                : String(profile.performance.total_ratings)}
+            />
+            <AccountValue
+              label="Reliability score"
+              value={profile.performance.reliability_score === null || profile.performance.reliability_score === undefined
+                ? "Not available"
+                : String(profile.performance.reliability_score) + "/100"}
+            />
+            <AccountValue
               label="Safety score"
               value={profile.performance.safety_score === null || profile.performance.safety_score === undefined
                 ? "Not available"
@@ -255,6 +268,12 @@ export default function DriverAccount() {
               value={profile.performance.total_distance_km
                 ? profile.performance.total_distance_km + " km"
                 : "Not available"}
+            />
+            <AccountValue
+              label="Total driving time"
+              value={profile.performance.total_duration_minutes === null || profile.performance.total_duration_minutes === undefined
+                ? "Not available"
+                : String(profile.performance.total_duration_minutes) + " min"}
             />
           </View>
           <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
