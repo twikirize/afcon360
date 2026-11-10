@@ -20,10 +20,6 @@ on:
       - ".github/workflows/mobile-preview-apk.yml"
   workflow_dispatch:
 
-concurrency:
-  group: afcon360-mobile-platform-checks-${{ github.ref }}
-  cancel-in-progress: false
-
 # This PR-capable workflow never receives stable signing keys or write-capable tokens.
 permissions:
   actions: read
@@ -116,6 +112,9 @@ jobs:
 
   build-preview-apk:
     name: Build and verify ${{ matrix.app }} Android preview APK
+    concurrency:
+      group: afcon360-preview-build-${{ github.ref }}-${{ matrix.app }}
+      cancel-in-progress: false
     needs: detect-app-changes
     if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' }}
     runs-on: ubuntu-24.04
@@ -313,6 +312,9 @@ jobs:
 
   android-compatibility:
     name: Android API ${{ matrix.api-level }} / ${{ matrix.app }} install and launch
+    concurrency:
+      group: afcon360-android-compat-${{ github.ref }}-${{ matrix.app }}-${{ matrix.api-level }}
+      cancel-in-progress: false
     needs: [detect-app-changes, build-preview-apk]
     if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' && needs.build-preview-apk.result == 'success' }}
     runs-on: ubuntu-24.04
@@ -382,6 +384,9 @@ jobs:
 
   apk-manifest-audit:
     name: Audit ${{ matrix.app }} APK permissions and components
+    concurrency:
+      group: afcon360-apk-audit-${{ github.ref }}-${{ matrix.app }}
+      cancel-in-progress: false
     needs: [detect-app-changes, build-preview-apk]
     if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' && needs.build-preview-apk.result == 'success' }}
     runs-on: ubuntu-24.04
@@ -476,6 +481,9 @@ jobs:
 
   ios-compatibility:
     name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
+    concurrency:
+      group: afcon360-ios-compat-${{ github.ref }}-${{ matrix.app }}
+      cancel-in-progress: false
     needs: detect-app-changes
     if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' }}
     runs-on: macos-26-intel
@@ -594,6 +602,9 @@ jobs:
 
   driver-authenticated-journey:
     name: Driver APK — real login, Driver workspace reads, session restore and logout
+    concurrency:
+      group: afcon360-driver-e2e-${{ github.ref }}
+      cancel-in-progress: false
     # Authentication E2E is a deliberate final gate after Driver workspace parity; PR updates must not run it automatically.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'feat/native-driver-workspace-parity-20261109' }}
     runs-on: ubuntu-24.04
