@@ -110,6 +110,30 @@ def scroll_until_text(value: str, *, max_swipes: int = 10, label: str = "screen"
     )
 
 
+def scroll_to_top(*, max_swipes: int = 10, label: str = "screen") -> str:
+    """Return a restored long screen to its top before asserting its page header."""
+    last = ""
+    for _ in range(max_swipes):
+        try:
+            last = visible_text()
+        except Exception:
+            last = ""
+        if "Your AFCON360 identity." in last:
+            print(f"PASS: {label}: Account page top is visible", flush=True)
+            return last
+        # Finger moves downward, revealing the upper part of the scroll view.
+        run_adb("shell", "input", "swipe", "540", "700", "540", "1900", "450")
+        time.sleep(0.45)
+    last = visible_text()
+    if "Your AFCON360 identity." not in last:
+        raise AssertionError(
+            f"Could not return {label} to the Account page header. "
+            f"Last visible hierarchy:\\n{last[:7000]}"
+        )
+    print(f"PASS: {label}: Account page top is visible", flush=True)
+    return last
+
+
 def tap_text(value: str, *, last: bool = False, timeout: int = 15) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -327,6 +351,9 @@ def main() -> None:
     )
     save_screen("09-notifications")
     tap_text("Back to Driver account")
+    # router.back() restores the previous scroll offset; return to the top
+    # before checking the Account heading and moving to the next section.
+    scroll_to_top(label="Driver account after notification review")
     wait_for_text("Your AFCON360 identity.", label="Driver account after notification review")
 
     scroll_until_text("Report a safety or service incident", label="Driver account incident link")
@@ -339,6 +366,7 @@ def main() -> None:
     wait_for_text("Your incident reports", label="Driver incident history section visible")
     save_screen("10-incidents")
     tap_text("Back to Driver account")
+    scroll_to_top(label="Driver account after incident review")
     wait_for_text("Your AFCON360 identity.", label="Driver account before process restart")
     scroll_until_text("Sign out", label="authenticated Driver account sign-out control")
     save_screen("11-account")
