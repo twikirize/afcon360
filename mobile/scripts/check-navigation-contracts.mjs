@@ -22,6 +22,8 @@ const nativeInternalRoutes = [
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/ride" as never)'],
   ["apps/user/app/(tabs)/activity.tsx", 'pathname: "/(service)/ride-status/[reference]"'],
   ["apps/user/app/(tabs)/account.tsx", 'router.push("/(service)/delete-account" as never)'],
+  ["apps/user/app/login.tsx", 'router.push("/server-settings" as never)'],
+  ["apps/user/app/server-settings.tsx", "export default function ServerSettingsScreen()"],
   ["apps/user/app/(service)/_layout.tsx", 'if (!user) return <Redirect href="/login" />;'],
   ["apps/user/app/(service)/_layout.tsx", 'return <Stack screenOptions={{ headerShown: false }} />;'],
   ["apps/user/app/(service)/events.tsx", "export default function Events()"],
@@ -59,6 +61,9 @@ const publicRootRouteFiles = new Set([
   "login.tsx",
   "register.tsx",
   "forgot-password.tsx",
+  // Public preview-only route: users must be able to select the laptop API
+  // before login when the installed preview APK initially targets loopback.
+  "server-settings.tsx",
 ]);
 const userRootRoutes = path.join(root, "apps/user/app");
 for (const entry of fs.readdirSync(userRootRoutes, { withFileTypes: true })) {
