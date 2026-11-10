@@ -152,6 +152,32 @@ def tap_text(value: str, *, last: bool = False, timeout: int = 12) -> None:
     )
 
 
+def tap_text_scrolling(value: str, *, max_swipes: int = 6) -> None:
+    """Scroll a long native screen until an exact action is visible, then tap it."""
+    size_output = run_adb("shell", "wm", "size")
+    sizes = re.findall(r"(\d+)x(\d+)", size_output)
+    if not sizes:
+        raise RuntimeError(f"Could not determine Android display size: {size_output.strip()}")
+    width, height = map(int, sizes[-1])
+    last_error: AssertionError | None = None
+    for attempt in range(max_swipes + 1):
+        try:
+            tap_text(value, timeout=2)
+            print(f"PASS: tapped after {attempt} Explore scroll(s): {value}", flush=True)
+            return
+        except AssertionError as error:
+            last_error = error
+        if attempt < max_swipes:
+            x = width // 2
+            start_y = int(height * 0.82)
+            end_y = int(height * 0.38)
+            run_adb("shell", "input", "swipe", str(x), str(start_y), str(x), str(end_y), "450")
+            time.sleep(0.5)
+    raise AssertionError(
+        f"Could not reveal and tap {value!r} after {max_swipes} vertical swipes."
+    ) from last_error
+
+
 def tap_edit_field(label: str) -> None:
     root = dump_tree()
     candidates = []
@@ -315,14 +341,13 @@ def main() -> None:
     wait_for_text("Find your place to stay.", timeout=30, label="native accommodation screen")
     save_screen("08-stays")
     mark_stage("stays_screen")
-    mark_stage("stays_screen")
     return_to_explore()
     mark_stage("explore_after_stays")
 
-    tap_text("Discover events and tickets")
+    mark_stage("events_navigation_started")
+    tap_text_scrolling("Discover events and tickets")
     wait_for_text("Be there for the moments.", timeout=30, label="native events screen")
     save_screen("09-events")
-    mark_stage("events_screen")
     mark_stage("events_screen")
     return_to_explore()
     mark_stage("explore_after_events")
