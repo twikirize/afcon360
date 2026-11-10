@@ -1138,6 +1138,7 @@ def mobile_driver_me():
                 "cancellation_rate": _numeric_text(getattr(profile, "cancellation_rate", None)),
                 "total_trips": getattr(profile, "total_trips", None),
                 "completed_trips": getattr(profile, "completed_trips", None),
+                "total_duration_minutes": getattr(profile, "total_duration_minutes", None),
                 "total_distance_km": _numeric_text(getattr(profile, "total_distance_km", None)),
                 "average_rating": _numeric_text(getattr(profile, "average_rating", None)),
                 "total_ratings": getattr(profile, "total_ratings", None),
