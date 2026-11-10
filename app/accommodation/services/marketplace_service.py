@@ -324,19 +324,30 @@ class MarketplaceService:
         booking: AccommodationBooking,
         total_amount: Decimal,
         currency: str,
-        idempotency_key: str
+        idempotency_key: str,
+        transaction_pin: Optional[str] = None,
+        authorized_user_id: Optional[int] = None,
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         Charge guest and hold funds in platform escrow.
-        Uses WalletService.transfer() with platform_fee to atomically:
-        - Debit guest
-        - Credit platform escrow
-        - Record platform commission
+        Moves the quoted gross amount from the guest wallet into platform
+        escrow in one balanced debit/credit transfer. The platform commission
+        is retained as the difference between that gross amount and the host's
+        later net payout; it is not an extra charge on top of the quote.
 
         Returns:
             (success, transaction_id, error_message)
         """
         try:
+            if authorized_user_id is not None and int(booking.booked_by_user_id or 0) != int(authorized_user_id):
+                return False, None, "Authenticated user is not the booking payer."
+
+            existing_commission = BookingCommission.query.filter_by(booking_id=booking.id).first()
+            if existing_commission is not None:
+                if existing_commission.status == "held" and booking.wallet_txn_id:
+                    return True, str(booking.wallet_txn_id), None
+                return False, None, f"Booking payment is already {existing_commission.status}."
+
             guest_account_id = MarketplaceService._get_account_for_user(
                 booking.booked_by_user_id, currency
             )
@@ -366,8 +377,13 @@ class MarketplaceService:
                     'commission_amount': str(commission_amount),
                     'host_payout': str(host_payout),
                 },
-                platform_fee=commission_amount,
-                fee_currency=currency,
+                # total_amount is the complete guest quote. Do not pass
+                # commission_amount as WalletService.platform_fee: that API
+                # debits it in addition to amount, while escrow receives only
+                # amount. Commission is already inside the gross escrow amount
+                # and remains after host_payout is released.
+                pin=transaction_pin,
+                authorized_user_id=authorized_user_id,
             )
 
             txn_id = result.get('transaction_id')
@@ -933,6 +949,8 @@ class MarketplaceService:
     def refund_guest(
         booking_id: int,
         refund_amount: Decimal,
+        *,
+        authorized_user_id: Optional[int] = None,
     ) -> Tuple[bool, Optional[str]]:
         """Execute a policy refund under the shared per-booking settlement guard."""
         try:
@@ -943,7 +961,7 @@ class MarketplaceService:
                         "booking; retry after it completes"
                     )
                 return MarketplaceService._refund_guest_locked(
-                    booking_id, refund_amount
+                    booking_id, refund_amount, authorized_user_id=authorized_user_id
                 )
         except Exception:
             db.session.rollback()
@@ -960,6 +978,8 @@ class MarketplaceService:
     def _refund_guest_locked(
         booking_id: int,
         refund_amount: Decimal,
+        *,
+        authorized_user_id: Optional[int] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Process a guest-authorized, booking-policy refund automatically when
@@ -980,11 +1000,19 @@ class MarketplaceService:
             if booking is None:
                 return False, "Booking not found"
 
-            actor = current_user
-            if not actor or not actor.is_authenticated:
-                return False, "An authenticated booking cancellation is required"
+            if authorized_user_id is not None:
+                actor_id = int(authorized_user_id)
+                from app.identity.models.user import User
+                actor = db.session.get(User, actor_id)
+                if actor is None or not actor.is_active or getattr(actor, "is_deleted", False):
+                    return False, "The authenticated cancellation actor is not active"
+            else:
+                actor = current_user
+                if not actor or not actor.is_authenticated:
+                    return False, "An authenticated booking cancellation is required"
+                actor_id = int(actor.id)
             if (
-                booking.cancelled_by_user_id != actor.id
+                int(booking.cancelled_by_user_id or 0) != actor_id
                 or booking.status not in {
                     AccommodationBookingStatus.CANCELLED.value,
                     AccommodationBookingStatus.REFUNDED.value,
@@ -1014,7 +1042,7 @@ class MarketplaceService:
                 MarketplaceService._store_refund_workflow(booking, snapshot, workflow)
                 MarketplaceService._record_refund_history(
                     booking,
-                    actor.id,
+                    actor_id,
                     "refund_workflow_integrity_review_queued",
                     {
                         "risk_flag": "refund_workflow_integrity_failed",
@@ -1057,7 +1085,7 @@ class MarketplaceService:
                 booking.policy_snapshot = snapshot
                 MarketplaceService._record_refund_history(
                     booking,
-                    actor.id,
+                    actor_id,
                     "refund_review_queued",
                     {
                         "proposed_amount": str(amount),
@@ -1078,7 +1106,7 @@ class MarketplaceService:
                 commission,
                 amount,
                 authorization_source="booking_time_policy",
-                authorized_by_user_id=actor.id,
+                authorized_by_user_id=actor_id,
                 approval_reason=reason,
             )
         except Exception as exc:

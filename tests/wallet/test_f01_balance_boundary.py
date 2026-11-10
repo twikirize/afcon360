@@ -208,7 +208,7 @@ class TestF01ContractShape:
 
 class TestWalletProcessorCharge:
 
-    def _charge(self, guest, amount, currency, charge_guest_return=None):
+    def _charge(self, guest, amount, currency, charge_guest_return=None, metadata=None):
         from app.accommodation.services.payment_processors.wallet_processor import WalletProcessor
         from app.accommodation.services.marketplace_service import MarketplaceService
         idempotency_key = f'f01-{uuid.uuid4()}'
@@ -226,6 +226,7 @@ class TestWalletProcessorCharge:
                 currency=currency,
                 description='F01 wallet checkout charge',
                 idempotency_key=idempotency_key,
+                metadata=metadata,
             )
         return result, mock_charge
 
@@ -287,6 +288,19 @@ class TestWalletProcessorCharge:
             guest, Decimal('1000'), 'UGX')
         assert success is True, f'UGX charge failed: {error}'
         assert mock_charge.called
+
+
+    def test_processor_passes_transaction_pin_and_bearer_user_to_marketplace(self, app):
+        guest = _make_user('pinpass')
+        account = _user_account(guest.id, 'USD')
+        _fund(account.id, 'USD', Decimal('1000'))
+
+        (_, _, _), mock_charge = self._charge(
+            guest, Decimal('200'), 'USD', metadata={"transaction_pin": "4826"}
+        )
+        kwargs = mock_charge.call_args.kwargs
+        assert kwargs["transaction_pin"] == "4826"
+        assert kwargs["authorized_user_id"] == guest.id
 
 
 # ===========================================================================

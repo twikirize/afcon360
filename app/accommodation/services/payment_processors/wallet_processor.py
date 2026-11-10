@@ -48,6 +48,8 @@ class WalletProcessor(PaymentProcessor):
             total_amount=amount,
             currency=currency,
             idempotency_key=idempotency_key,
+            transaction_pin=(metadata or {}).get("transaction_pin"),
+            authorized_user_id=int(user_id),
         )
         return success, txn_id, error
 
