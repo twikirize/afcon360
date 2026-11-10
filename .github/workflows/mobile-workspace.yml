@@ -1,6 +1,19 @@
 name: Mobile workspace CI
 
 on:
+  push:
+    branches:
+      - feat/native-user-app-integration-20261108
+      - fix/native-user-apk-cache-and-e2e-20261110
+    paths:
+      - "mobile/apps/user/**"
+      - "mobile/packages/**"
+      - "mobile/scripts/**"
+      - "mobile/package.json"
+      - "mobile/pnpm-lock.yaml"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/.npmrc"
+      - ".github/workflows/mobile-workspace.yml"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [feat/native-user-app-integration-20261108]
