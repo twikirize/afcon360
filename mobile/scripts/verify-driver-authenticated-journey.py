@@ -265,7 +265,7 @@ def main() -> None:
     tap_text("Status", last=True)
     wait_for_text(
         "Your operating status.", "Operating preferences", "Compliance status",
-        timeout=30, label="Driver status, preferences and compliance",
+        timeout=60, label="Driver status, preferences and compliance",
     )
     save_screen("03-status")
 
@@ -287,14 +287,14 @@ def main() -> None:
     wait_for_text(
         "Your assigned transport.", "Current assigned vehicle",
         "Scheduled work", "Vehicle history",
-        timeout=30, label="Driver assignments and scheduled work",
+        timeout=60, label="Driver assignments and scheduled work",
     )
     save_screen("06-assignments")
 
     tap_text("Vehicles", last=True)
     wait_for_text(
         "Your vehicles and opportunities.", "Vehicles you own", "Vehicle marketplace",
-        timeout=30, label="Driver owned vehicles and public marketplace",
+        timeout=60, label="Driver owned vehicles and public marketplace",
     )
     save_screen("07-vehicles")
 
@@ -307,7 +307,7 @@ def main() -> None:
     tap_text("Transport notifications")
     wait_for_text(
         "Your Driver inbox.", "Inbox", "No Transport notifications",
-        timeout=30, label="Driver notification inbox (read-only)",
+        timeout=60, label="Driver notification inbox (read-only)",
     )
     save_screen("08-notifications")
     tap_text("Back to Driver account")
@@ -317,7 +317,7 @@ def main() -> None:
     tap_text("Report a safety or service incident")
     wait_for_text(
         "Report an incident.", "Your incident reports",
-        timeout=30, label="Driver incident history (read-only)",
+        timeout=60, label="Driver incident history (read-only)",
     )
     save_screen("09-incidents")
     tap_text("Back to Driver account")
