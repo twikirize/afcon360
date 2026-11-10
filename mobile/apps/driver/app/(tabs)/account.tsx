@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, Linking, Share, Text, View } from "react-native";
 import * as WebBrowser from "expo-web-browser";
+import * as Updates from "expo-updates";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   ActionButton,
@@ -70,6 +71,9 @@ export default function DriverAccount() {
   const [profile, setProfile] = useState<DriverProfileSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -96,6 +100,53 @@ export default function DriverAccount() {
       await Share.share({ message: message + " " + url, url });
     } catch {
       Alert.alert("Share unavailable", "Copy this link: " + url);
+    }
+  };
+
+  const checkAppUpdates = async () => {
+    if (!Updates.isEnabled) {
+      setUpdateMessage("Automatic updates are not configured in this installed build yet.");
+      return;
+    }
+    setUpdateBusy(true);
+    setUpdateMessage(null);
+    try {
+      const check = await Updates.checkForUpdateAsync();
+      if (!check.isAvailable) {
+        setUpdateReady(false);
+        setUpdateMessage("This Driver app is already up to date.");
+        return;
+      }
+      const result = await Updates.fetchUpdateAsync();
+      setUpdateReady(result.isNew);
+      setUpdateMessage(
+        result.isNew
+          ? "An update is downloaded. Apply it when you are safely off duty; your next launch will use the new version."
+          : "No new compatible update was downloaded."
+      );
+    } catch (e) {
+      setUpdateMessage(
+        e instanceof Error
+          ? "Update check failed: " + e.message
+          : "AFCON360 could not check for updates. Try again later."
+      );
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+
+  const applyAppUpdate = async () => {
+    if (!updateReady || updateBusy) return;
+    setUpdateBusy(true);
+    try {
+      await Updates.reloadAsync();
+    } catch (e) {
+      setUpdateMessage(
+        e instanceof Error
+          ? "The update is ready, but the app could not restart: " + e.message
+          : "The update is ready. Close and reopen AFCON360 Driver to apply it."
+      );
+      setUpdateBusy(false);
     }
   };
 
@@ -311,6 +362,35 @@ export default function DriverAccount() {
         <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
           This is your current assignment, not a list of vehicles you own.
         </Text>
+      </Panel>
+
+      <Panel>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <SectionTitle>App updates</SectionTitle>
+          <StatusPill tone={Updates.isEnabled ? "green" : "neutral"}>
+            {Updates.isEnabled ? "Update service enabled" : "Setup required"}
+          </StatusPill>
+        </View>
+        <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
+          AFCON360 checks for compatible screen and feature updates when the app opens. Native Android components still require an app update.
+        </Text>
+        {updateMessage ? (
+          <Text accessibilityRole="status" style={{ color: palette.ink, fontSize: 12, lineHeight: 18 }}>
+            {updateMessage}
+          </Text>
+        ) : null}
+        <ActionButton
+          label={updateBusy ? "Checking…" : "Check for app updates"}
+          disabled={updateBusy || !Updates.isEnabled}
+          onPress={() => { void checkAppUpdates(); }}
+        />
+        {updateReady ? (
+          <ActionButton
+            label="Apply downloaded update"
+            disabled={updateBusy}
+            onPress={() => { void applyAppUpdate(); }}
+          />
+        ) : null}
       </Panel>
 
       <Panel>
