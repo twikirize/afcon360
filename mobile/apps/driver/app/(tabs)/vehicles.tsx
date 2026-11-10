@@ -19,7 +19,12 @@ type Vehicle = {
   model: string;
   year?: number | null;
   license_plate: string;
+  registration_number?: string | null;
+  color?: string | null;
+  vin_number?: string | null;
+  vehicle_type?: string | null;
   vehicle_class?: string | null;
+  luggage_capacity?: number | null;
   status: string;
   is_available: boolean;
   passenger_capacity: number;
@@ -187,11 +192,18 @@ export default function DriverVehicles() {
     setForm({
       ...emptyForm,
       license_plate: vehicle.license_plate,
+      registration_number: vehicle.registration_number ?? "",
       make: vehicle.make,
       model: vehicle.model,
       year: vehicle.year ? String(vehicle.year) : "",
+      color: vehicle.color ?? "",
+      vin_number: vehicle.vin_number ?? "",
+      vehicle_type: vehicle.vehicle_type ?? "sedan",
       vehicle_class: vehicle.vehicle_class ?? "comfort",
-      passenger_capacity: String(vehicle.passenger_capacity ?? 4)
+      passenger_capacity: String(vehicle.passenger_capacity ?? 4),
+      luggage_capacity: vehicle.luggage_capacity === null || vehicle.luggage_capacity === undefined
+        ? ""
+        : String(vehicle.luggage_capacity)
     });
     setShowForm(true);
   }
