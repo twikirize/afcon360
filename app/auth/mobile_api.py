@@ -1114,6 +1114,23 @@ def mobile_driver_me():
             "is_online": bool(profile.is_online),
             "is_available": bool(profile.is_available),
             "go_live": readiness,
+            "operational_preferences": {
+                "service_types": list(profile.service_types or []),
+                "vehicle_classes": list(profile.vehicle_classes or []),
+                "operational_zones": list(profile.operational_zones or []),
+                "max_passenger_capacity": profile.max_passenger_capacity,
+                "max_luggage_capacity": profile.max_luggage_capacity,
+                "auto_accept_bookings": bool(profile.auto_accept_bookings),
+                "max_concurrent_bookings": profile.max_concurrent_bookings,
+            },
+            "compliance": {
+                "license_verified": bool(profile.license_verified),
+                "license_expiry": profile.license_expiry.isoformat() if profile.license_expiry else None,
+                "background_check_status": profile.background_check_status,
+                "police_clearance_verified": bool(profile.police_clearance_verified),
+                "next_training_due": profile.next_training_due.isoformat() if profile.next_training_due else None,
+                "requires_retraining": bool(profile.requires_retraining),
+            },
             "performance": {
                 "reliability_score": getattr(profile, "reliability_score", None),
                 "safety_score": getattr(profile, "safety_score", None),
@@ -1128,6 +1145,444 @@ def mobile_driver_me():
             "assigned_vehicle": assigned_vehicle,
         },
     }), 200
+
+
+@mobile_api_bp.get("/driver/assignments")
+@_bearer_required("driver")
+def mobile_driver_assignments():
+    """Self-scoped Driver assignment, owned-vehicle and scheduled-route view."""
+    from datetime import timedelta
+    from app.transport.models import (
+        DriverVehicleHistory,
+        ScheduledRoute,
+        Vehicle,
+    )
+    from app.transport.services.provider_service import get_provider_service
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+
+    def _enum_value(value):
+        return getattr(value, "value", value)
+
+    def _vehicle_view(vehicle):
+        if vehicle is None or bool(getattr(vehicle, "is_deleted", False)):
+            return None
+        return {
+            "public_id": str(vehicle.public_id),
+            "make": vehicle.make,
+            "model": vehicle.model,
+            "year": vehicle.year,
+            "license_plate": vehicle.license_plate,
+            "vehicle_class": _enum_value(vehicle.vehicle_class),
+            "status": str(_enum_value(vehicle.status)),
+            "is_available": bool(vehicle.is_available),
+            "passenger_capacity": vehicle.passenger_capacity,
+            "safety_features": list(vehicle.safety_features or []),
+        }
+
+    assigned = profile.current_vehicle
+    owned = get_provider_service().get_user_vehicles(profile.user_id) or []
+    current_id = getattr(assigned, "id", None)
+    switchable = [
+        vehicle for vehicle in owned
+        if vehicle.id != current_id
+        and str(_enum_value(vehicle.status)).lower() == "active"
+        and bool(getattr(vehicle, "is_available", True))
+        and not bool(getattr(vehicle, "is_deleted", False))
+    ]
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    history_rows = (
+        DriverVehicleHistory.query
+        .filter(
+            DriverVehicleHistory.driver_id == profile.id,
+            DriverVehicleHistory.is_deleted.is_(False),
+            DriverVehicleHistory.started_at >= cutoff,
+        )
+        .order_by(DriverVehicleHistory.started_at.desc())
+        .limit(20)
+        .all()
+    )
+    history = [
+        {
+            "license_plate": row.vehicle.license_plate if row.vehicle else "Vehicle",
+            "assignment_reason": row.assignment_reason,
+            "was_breakdown": bool(row.was_breakdown),
+            "started_at": row.started_at.isoformat() if row.started_at else None,
+            "ended_at": row.ended_at.isoformat() if row.ended_at else None,
+        }
+        for row in history_rows
+    ]
+
+    scheduled_rows = (
+        ScheduledRoute.query
+        .filter(
+            ScheduledRoute.current_driver_id == profile.id,
+            ScheduledRoute.is_active.is_(True),
+            ScheduledRoute.is_cancelled.is_(False),
+        )
+        .order_by(ScheduledRoute.next_departure.asc())
+        .limit(10)
+        .all()
+    )
+    scheduled = [
+        {
+            "name": row.name,
+            "route_code": row.route_code,
+            "route_type": row.route_type,
+            "primary_zone": row.primary_zone,
+            "next_departure": row.next_departure.isoformat() if row.next_departure else None,
+            "available_seats": row.available_seats,
+            "vehicle_capacity": row.vehicle_capacity,
+            "price_per_seat": str(row.price_per_seat) if row.price_per_seat is not None else None,
+            "is_free": bool(row.is_free),
+        }
+        for row in scheduled_rows
+    ]
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "assigned_vehicle": _vehicle_view(assigned),
+            "owned_vehicles": [
+                view for view in (_vehicle_view(vehicle) for vehicle in owned)
+                if view is not None
+            ],
+            "switchable_vehicles": [
+                view for view in (_vehicle_view(vehicle) for vehicle in switchable)
+                if view is not None
+            ],
+            "vehicle_history": history,
+            "scheduled_routes": scheduled,
+            "history_window_days": 90,
+        },
+    }), 200
+
+
+@mobile_api_bp.post("/driver/vehicles/switch")
+@_bearer_required("driver")
+def mobile_driver_switch_vehicle():
+    """Switch only to an active vehicle owned by this authenticated Driver."""
+    from app.transport.models import Vehicle, assign_driver_to_vehicle
+    from app.transport.services.go_live_service import can_go_live
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    data = request.get_json(silent=True) or {}
+    vehicle_public_id = str(data.get("vehicle_public_id") or "").strip()
+    if not vehicle_public_id:
+        return _error("vehicle_public_id_required", "Choose a vehicle to assign.", 400)
+
+    vehicle = Vehicle.query.filter_by(
+        public_id=vehicle_public_id,
+        is_deleted=False,
+    ).first()
+    if vehicle is None:
+        return _error("vehicle_not_found", "That vehicle could not be found.", 404)
+
+    checklist = can_go_live(profile)
+    blocked = next((item for item in checklist.checks if item.key == "blocked"), None)
+    if blocked is not None and not blocked.ok:
+        return jsonify({
+            "success": False,
+            "error": "blocked driver cannot switch vehicles",
+            "go_live": checklist.to_dict(),
+        }), 403
+
+    owns = (
+        (vehicle.owner_type == "driver" and int(vehicle.owner_id) == int(profile.id))
+        or (vehicle.owner_type == "user" and int(vehicle.owner_id) == int(user.id))
+    )
+    if not owns:
+        return _error("vehicle_not_owned", "You may only switch to a vehicle you own.", 403)
+    if str(getattr(vehicle.status, "value", vehicle.status)).lower() != "active":
+        return _error("vehicle_not_active", "This vehicle is not active.", 422)
+    if bool(vehicle.is_deleted):
+        return _error("vehicle_not_found", "That vehicle could not be found.", 404)
+
+    current = profile.current_vehicle
+    reason = str(data.get("reason") or "shift_start").strip()[:50]
+    notes = str(data.get("notes") or "").strip()[:500] or None
+    if current is not None and current.id == vehicle.id:
+        return jsonify({
+            "success": True,
+            "data": {
+                "unchanged": True,
+                "assigned_vehicle": {
+                    "make": vehicle.make,
+                    "model": vehicle.model,
+                    "year": vehicle.year,
+                    "license_plate": vehicle.license_plate,
+                },
+                "reason": reason,
+            },
+        }), 200
+
+    try:
+        assign_driver_to_vehicle(
+            profile,
+            vehicle,
+            reason=reason,
+            authorized_by=user,
+            notes=notes,
+        )
+        db.session.refresh(profile)
+        assigned = profile.current_vehicle
+        return jsonify({
+            "success": True,
+            "data": {
+                "unchanged": False,
+                "assigned_vehicle": {
+                    "make": assigned.make,
+                    "model": assigned.model,
+                    "year": assigned.year,
+                    "license_plate": assigned.license_plate,
+                } if assigned else None,
+                "reason": reason,
+            },
+        }), 200
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native Driver vehicle switch failed")
+        return _error("vehicle_switch_failed", "AFCON360 could not switch this vehicle.", 503)
+
+
+@mobile_api_bp.post("/driver/vehicles")
+@_bearer_required("driver")
+def mobile_driver_register_vehicle():
+    """Register a vehicle owned by the authenticated Driver, with website KYC tier gate."""
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+
+    try:
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        kyc = calculate_kyc_tier(int(user.id))
+    except Exception:
+        logger.exception("Native Driver vehicle registration KYC check unavailable")
+        return _error("kyc_check_unavailable", "KYC status could not be verified. Try again later.", 503)
+    if int(kyc.get("tier", 0)) < 3:
+        return jsonify({
+            "success": False,
+            "code": "kyc_tier_required",
+            "error": "Vehicle registration requires KYC tier 3.",
+            "required_tier": 3,
+            "current_tier": kyc.get("tier", 0),
+        }), 403
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return _error("vehicle_payload_required", "Vehicle details are required.", 400)
+    allowed = {
+        "license_plate", "registration_number", "make", "model", "year",
+        "color", "vin_number", "vehicle_type", "vehicle_class",
+        "passenger_capacity", "luggage_capacity",
+    }
+    payload = {key: data[key] for key in allowed if key in data}
+    try:
+        from app.transport.services.provider_service import get_provider_service
+        result = get_provider_service().register_vehicle(
+            owner_type="driver",
+            owner_id=int(profile.id),
+            vehicle_data=payload,
+            request_id=request.headers.get("Idempotency-Key"),
+        )
+        from app.transport.models import Vehicle
+        vehicle_id = result.get("data", {}).get("vehicle_id")
+        vehicle = db.session.get(Vehicle, vehicle_id) if vehicle_id else None
+        if vehicle is None:
+            return _error("vehicle_registration_incomplete", "Vehicle registration could not be confirmed.", 503)
+        return jsonify({
+            "success": True,
+            "message": result.get("message") or "Vehicle registration submitted.",
+            "data": {"public_id": str(vehicle.public_id)},
+        }), 201
+    except Exception as exc:
+        db.session.rollback()
+        logger.info("Native Driver vehicle registration rejected: %s", exc)
+        return _error("vehicle_registration_rejected", str(exc), 400)
+
+
+@mobile_api_bp.put("/driver/vehicles/<string:vehicle_public_id>")
+@_bearer_required("driver")
+def mobile_driver_update_vehicle(vehicle_public_id):
+    """Update only editable specification fields of a vehicle owned by this Driver."""
+    from app.transport.models import Vehicle
+    from app.transport.services.provider_service import get_provider_service
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    vehicle = Vehicle.query.filter_by(
+        public_id=vehicle_public_id,
+        is_deleted=False,
+    ).first()
+    if vehicle is None:
+        return _error("vehicle_not_found", "That vehicle could not be found.", 404)
+    owns = (
+        (vehicle.owner_type == "driver" and int(vehicle.owner_id) == int(profile.id))
+        or (vehicle.owner_type == "user" and int(vehicle.owner_id) == int(user.id))
+    )
+    if not owns:
+        return _error("vehicle_not_owned", "You may only edit a vehicle you own.", 403)
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return _error("vehicle_payload_required", "Vehicle details are required.", 400)
+    allowed = {
+        "license_plate", "registration_number", "make", "model", "year",
+        "color", "vin_number", "vehicle_type", "vehicle_class",
+        "passenger_capacity", "luggage_capacity", "luggage_space_cubic_meters",
+    }
+    payload = {key: data[key] for key in allowed if key in data}
+    try:
+        result = get_provider_service().update_vehicle(int(vehicle.id), payload)
+        return jsonify({
+            "success": True,
+            "message": result.get("message") or "Vehicle details updated.",
+        }), 200
+    except Exception as exc:
+        db.session.rollback()
+        logger.info("Native Driver vehicle update rejected: %s", exc)
+        return _error("vehicle_update_rejected", str(exc), 400)
+
+
+@mobile_api_bp.get("/driver/marketplace/vehicles")
+@_bearer_required("driver")
+def mobile_driver_marketplace_vehicles():
+    """List active public vehicle listings using a narrow, driver-safe projection."""
+    from sqlalchemy.orm import joinedload
+    from app.transport.models import Vehicle, VehicleMarketplaceListing, DriverVehicleApplication
+    from app.utils.enums import MarketplaceListingStatus
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+
+    query = (
+        VehicleMarketplaceListing.query
+        .options(joinedload(VehicleMarketplaceListing.vehicle))
+        .join(Vehicle, Vehicle.id == VehicleMarketplaceListing.vehicle_id)
+        .filter(
+            VehicleMarketplaceListing.is_deleted.is_(False),
+            VehicleMarketplaceListing.listing_status == MarketplaceListingStatus.ACTIVE,
+            VehicleMarketplaceListing.visibility == "public",
+            VehicleMarketplaceListing.owner_id != user.id,
+            Vehicle.is_deleted.is_(False),
+            Vehicle.status == "active",
+            Vehicle.is_available.is_(True),
+            Vehicle.is_reserved.is_(False),
+        )
+        .order_by(VehicleMarketplaceListing.listed_at.desc())
+        .limit(50)
+    )
+    rows = query.all()
+    applications = {
+        int(row.listing_id)
+        for row in DriverVehicleApplication.query.filter_by(
+            driver_id=profile.id,
+            is_deleted=False,
+        ).all()
+    }
+    items = []
+    for listing in rows:
+        vehicle = listing.vehicle
+        if vehicle is None:
+            continue
+        owner_type = str(vehicle.owner_type or "").lower()
+        owner_label = (
+            "Organisation" if owner_type == "organisation"
+            else "Driver owner" if owner_type == "driver"
+            else "Private owner"
+        )
+        model = getattr(listing.compensation_model, "value", listing.compensation_model)
+        if model == "revenue_split":
+            compensation = f"{float(listing.driver_revenue_share_pct):g}% revenue share"
+        elif model == "fixed_rental":
+            amount = float(listing.fixed_rental_amount or 0)
+            frequency = listing.rental_frequency or ""
+            compensation = f"Fixed rental {amount:,.0f}{' / ' + frequency if frequency else ''}"
+        elif model == "hybrid":
+            compensation = f"{float(listing.driver_revenue_share_pct):g}% revenue share"
+        else:
+            compensation = "Compensation per agreement"
+        items.append({
+            "listing_public_id": str(listing.public_id),
+            "vehicle_public_id": str(vehicle.public_id),
+            "title": listing.title or f"{vehicle.make} {vehicle.model}",
+            "make": vehicle.make,
+            "model": vehicle.model,
+            "year": vehicle.year,
+            "description": listing.description or "",
+            "vehicle_class": str(getattr(vehicle.vehicle_class, "value", vehicle.vehicle_class)),
+            "passenger_capacity": vehicle.passenger_capacity,
+            "owner_type": owner_label,
+            "compensation": compensation,
+            "application_deadline": listing.application_deadline.isoformat() if listing.application_deadline else None,
+            "already_applied": int(listing.id) in applications,
+        })
+    return jsonify({"success": True, "data": {"items": items, "count": len(items)}}), 200
+
+
+@mobile_api_bp.post("/driver/marketplace/vehicles/<string:listing_public_id>/apply")
+@_bearer_required("driver")
+def mobile_driver_apply_vehicle_marketplace(listing_public_id):
+    """Apply to a public listing as the authenticated Driver; never accepts a Driver ID."""
+    from app.transport.models import VehicleMarketplaceListing
+    from app.transport.services.marketplace_service import get_marketplace_service
+    from app.utils.enums import MarketplaceListingStatus
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    listing = VehicleMarketplaceListing.query.filter_by(
+        public_id=listing_public_id,
+        is_deleted=False,
+        listing_status=MarketplaceListingStatus.ACTIVE,
+        visibility="public",
+    ).first()
+    if listing is None:
+        return _error("marketplace_listing_not_found", "That vehicle listing is not available.", 404)
+
+    vehicle = listing.vehicle
+    if vehicle is None or vehicle.is_deleted or not vehicle.is_available or vehicle.is_reserved:
+        return _error("marketplace_vehicle_unavailable", "That vehicle is no longer available.", 409)
+    data = request.get_json(silent=True) or {}
+    safe_application = {
+        "cover_letter": str(data.get("cover_letter") or "")[:5000],
+        "proposed_schedule": data.get("proposed_schedule") if isinstance(data.get("proposed_schedule"), dict) else {},
+        "proposed_hours_per_week": data.get("proposed_hours_per_week"),
+        "expected_earnings": data.get("expected_earnings"),
+        "references": data.get("references") if isinstance(data.get("references"), list) else [],
+    }
+    try:
+        application = get_marketplace_service().submit_application(
+            int(user.id),
+            int(listing.id),
+            safe_application,
+        )
+        return jsonify({
+            "success": True,
+            "data": {
+                "status": str(getattr(application.status, "value", application.status)),
+                "listing_public_id": str(listing.public_id),
+            },
+        }), 201
+    except ValueError as exc:
+        db.session.rollback()
+        return _error("marketplace_application_rejected", str(exc), 400)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native Driver vehicle marketplace application failed")
+        return _error("marketplace_application_unavailable", "The application service is unavailable.", 503)
 
 
 @mobile_api_bp.get("/driver/offers")
