@@ -3,6 +3,21 @@
 name: AFCON360 Mobile Android and iOS compatibility
 
 on:
+  # The isolated Driver branch also runs its cached-APK authenticated journey
+  # directly on push, so harness/document-only corrections do not depend on
+  # a path filter evaluated from an older PR base workflow.
+  push:
+    branches:
+      - feat/native-driver-workspace-parity-20261109
+    paths:
+      - "mobile/apps/**"
+      - "mobile/packages/**"
+      - "mobile/scripts/**"
+      - "mobile/docs/**"
+      - "mobile/package.json"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/.npmrc"
+      - ".github/workflows/mobile-preview-apk.yml"
   pull_request:
     branches:
       - feat/native-mobile-apps-20261104
@@ -610,7 +625,7 @@ jobs:
       group: afcon360-driver-e2e-${{ github.ref }}
       cancel-in-progress: false
     # Authentication E2E is a deliberate final gate after Driver workspace parity; PR updates must not run it automatically.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'feat/native-driver-workspace-parity-20261109' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/feat/native-driver-workspace-parity-20261109' || github.event.pull_request.head.ref == 'feat/native-driver-workspace-parity-20261109' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     services:
