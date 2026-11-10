@@ -385,7 +385,12 @@ def test_mobile_driver_assignments_return_only_the_authenticated_profile_scope(
         model="Fit",
         year=2021,
         license_plate="UYY 456B",
+        registration_number="REG-452",
+        color="blue",
+        vin_number="2HGBH41JXMN109187",
+        vehicle_type="hatchback",
         vehicle_class=SimpleNamespace(value="economy"),
+        luggage_capacity=1,
         status="active",
         is_available=True,
         passenger_capacity=4,
@@ -988,7 +993,7 @@ def test_mobile_driver_incident_requires_explicit_timezone(client, monkeypatch):
     assert response.get_json()["code"] == "timezone_required"
 
 
-def test_mobile_driver_marketplace_rejects_own_listing(client, monkeypatch):
+def test_mobile_driver_marketplace_rejects_own_listing(app, client, monkeypatch):
     from app.transport.models import MarketplaceListingStatus, VehicleMarketplaceListing
 
     profile = SimpleNamespace(id=902, user_id=451)
@@ -1015,7 +1020,8 @@ def test_mobile_driver_marketplace_rejects_own_listing(client, monkeypatch):
         def first(self):
             return listing
 
-    monkeypatch.setattr(VehicleMarketplaceListing, "query", Query())
+    with app.app_context():
+        monkeypatch.setattr(VehicleMarketplaceListing, "query", Query())
     response = client.post(
         "/api/mobile/v1/driver/marketplace/vehicles/own-listing-public/apply",
         headers={"Authorization": "Bearer synthetic-driver-access-token"},
