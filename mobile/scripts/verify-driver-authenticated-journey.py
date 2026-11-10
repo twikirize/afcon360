@@ -365,6 +365,10 @@ def main() -> None:
     scroll_until_text("Your incident reports", label="Driver incident history")
     wait_for_text("Your incident reports", label="Driver incident history section visible")
     save_screen("10-incidents")
+    scroll_until_text(
+        "Back to Driver account",
+        label="Driver incident return control",
+    )
     tap_text("Back to Driver account")
     scroll_to_top(label="Driver account after incident review")
     wait_for_text("Your AFCON360 identity.", label="Driver account before process restart")
