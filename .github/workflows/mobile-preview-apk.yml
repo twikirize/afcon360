@@ -935,4 +935,3 @@ jobs:
           fi
           build_apps+="]"
           echo "build_apps_json=$build_apps" >> "$GITHUB_OUTPUT"
-          echo "Apps requiring a fresh Android/iOS platform build: $build_apps"
