@@ -1,14 +1,38 @@
 name: Build OTA-enabled AFCON360 User preview APK
 
 on:
+  push:
+    branches:
+      - feat/native-user-app-integration-20261108
+    paths:
+      - "mobile/apps/user/app.config.ts"
+      - "mobile/apps/user/package.json"
+      - "mobile/apps/user/eas.json"
+      - ".github/workflows/user-ota-enabled-apk.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  report-ota-build-configuration:
+    name: Check one-time OTA APK build setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report missing User EAS project ID
+        env:
+          AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+        run: |
+          if [ -z "$AFCON360_USER_EAS_PROJECT_ID" ]; then
+            echo "::warning::The one-time OTA-enabled APK build is waiting for the AFCON360_USER_EAS_PROJECT_ID repository variable."
+          else
+            echo "Dedicated User EAS project ID is configured."
+          fi
+
   build-user-ota-apk:
     name: Build one-time OTA-enabled User APK
+    needs: report-ota-build-configuration
+    if: ${{ vars.AFCON360_USER_EAS_PROJECT_ID != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
