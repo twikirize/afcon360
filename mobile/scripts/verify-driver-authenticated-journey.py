@@ -262,6 +262,13 @@ def main() -> None:
         timeout=20, label="go-online action gated by the server readiness checklist",
     )
 
+    tap_text("Status", last=True)
+    wait_for_text(
+        "Your operating status.", "Operating preferences", "Compliance status",
+        timeout=30, label="Driver status, preferences and compliance",
+    )
+    save_screen("03-status")
+
     tap_text("Trips", last=True)
     wait_for_text(
         "Your assigned work.", "No active trip",
@@ -274,17 +281,51 @@ def main() -> None:
         "Know what you have earned.", "No captured earnings yet",
         timeout=30, label="Driver captured-earnings empty state",
     )
-    save_screen("04-earnings")
+    save_screen("05-earnings")
+
+    tap_text("Assignments", last=True)
+    wait_for_text(
+        "Your assigned transport.", "Current assigned vehicle",
+        "Scheduled work", "Vehicle history",
+        timeout=30, label="Driver assignments and scheduled work",
+    )
+    save_screen("06-assignments")
+
+    tap_text("Vehicles", last=True)
+    wait_for_text(
+        "Your vehicles and opportunities.", "Vehicles you own", "Vehicle marketplace",
+        timeout=30, label="Driver owned vehicles and public marketplace",
+    )
+    save_screen("07-vehicles")
 
     tap_text("Account", last=True)
     wait_for_text(
         "Your AFCON360 identity.", "Signed in securely",
         timeout=30, label="authenticated Driver account",
     )
-    save_screen("05-account")
-    # The account page is longer than the viewport; sign-out is intentionally
-    # near the bottom and must be scrolled into view before the test can tap it.
+    scroll_until_text("Transport notifications", label="Driver account notification link")
+    tap_text("Transport notifications")
+    wait_for_text(
+        "Your Driver inbox.", "Inbox", "No Transport notifications",
+        timeout=30, label="Driver notification inbox (read-only)",
+    )
+    save_screen("08-notifications")
+    tap_text("Back to Driver account")
+    wait_for_text("Your AFCON360 identity.", label="Driver account after notification review")
+
+    scroll_until_text("Report a safety or service incident", label="Driver account incident link")
+    tap_text("Report a safety or service incident")
+    wait_for_text(
+        "Report an incident.", "Your incident reports",
+        timeout=30, label="Driver incident history (read-only)",
+    )
+    save_screen("09-incidents")
+    tap_text("Back to Driver account")
+    wait_for_text("Your AFCON360 identity.", label="Driver account before process restart")
     scroll_until_text("Sign out", label="authenticated Driver account sign-out control")
+    save_screen("10-account")
+
+
 
     # Kill the real Android process, not just navigate away, then prove the
     # driver session restores from the app's SecureStore token pair.
@@ -297,7 +338,7 @@ def main() -> None:
         "Your driving workspace.", DRIVER_CODE,
         timeout=60, label="restored authenticated Driver session",
     )
-    save_screen("06-session-restored")
+    save_screen("11-session-restored")
 
     tap_text("Account", last=True)
     wait_for_text("Your AFCON360 identity.", label="Driver account before logout")
@@ -317,9 +358,10 @@ def main() -> None:
     save_screen("07-logged-out")
 
     print(
-        "DRIVER_ANDROID_E2E_UI_PASS: Driver login, server go-live gate, offers read, "
-        "active-trip read, earnings read, account, Android process-death session restore, "
-        "and logout. No dispatch, status, location, booking or payment action was performed.",
+        "DRIVER_ANDROID_E2E_UI_PASS: Driver login, status/readiness, map and demand, "
+        "active trip and trip history, earnings, assignments, owned vehicles and marketplace, "
+        "notifications, incident history, account, process-death session restore and logout. "
+        "No dispatch, status/location, vehicle, booking, incident or payment write was performed.",
         flush=True,
     )
 
