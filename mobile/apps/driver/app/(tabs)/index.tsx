@@ -434,6 +434,18 @@ export default function DriverHome() {
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
             <DetailRow label="Average rating" value={profile.performance.average_rating ?? "Not rated"} />
             <DetailRow
+              label="Total ratings"
+              value={profile.performance.total_ratings === undefined || profile.performance.total_ratings === null
+                ? "Not available"
+                : String(profile.performance.total_ratings)}
+            />
+            <DetailRow
+              label="Reliability score"
+              value={profile.performance.reliability_score === undefined || profile.performance.reliability_score === null
+                ? "Not available"
+                : String(profile.performance.reliability_score) + "/100"}
+            />
+            <DetailRow
               label="Safety score"
               value={profile.performance.safety_score === undefined || profile.performance.safety_score === null
                 ? "Not available"
@@ -450,6 +462,12 @@ export default function DriverHome() {
             <DetailRow
               label="Total distance"
               value={profile.performance.total_distance_km ? profile.performance.total_distance_km + " km" : "Not available"}
+            />
+            <DetailRow
+              label="Total driving time"
+              value={profile.performance.total_duration_minutes === undefined || profile.performance.total_duration_minutes === null
+                ? "Not available"
+                : String(profile.performance.total_duration_minutes) + " min"}
             />
           </View>
         ) : (
