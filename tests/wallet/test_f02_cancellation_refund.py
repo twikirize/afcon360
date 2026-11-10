@@ -211,7 +211,7 @@ class TestF02CancellationRefundContract:
         import inspect
         sig = inspect.signature(MarketplaceService.refund_guest)
         params = list(sig.parameters.keys())
-        assert params == ['booking_id', 'refund_amount']
+        assert params == ['booking_id', 'refund_amount', 'authorized_user_id']
         # ─── FIX: correct annotation check ───
         assert sig.return_annotation == Tuple[bool, Optional[str]]
 
