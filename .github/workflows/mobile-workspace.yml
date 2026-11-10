@@ -31,6 +31,9 @@ on:
 permissions:
   contents: read
 
+env:
+  AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+
 jobs:
   mobile-typecheck:
     name: Expo dependency and TypeScript checks
