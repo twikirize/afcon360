@@ -2145,10 +2145,10 @@ def mobile_driver_trips():
         return jsonify(error), status
 
     scope = str(request.args.get("scope") or "recent").strip().lower()
-    if scope not in {"upcoming", "recent"}:
+    if scope not in {"upcoming", "recent", "all"}:
         return _error(
             "driver_trip_scope_invalid",
-            "Choose upcoming or recent trips.",
+            "Choose upcoming, recent or all trips.",
             400,
         )
 
@@ -2165,8 +2165,37 @@ def mobile_driver_trips():
     service = BookingService()
     if scope == "upcoming":
         rows = service.get_driver_upcoming_bookings(profile.user_id, limit=limit)
-    else:
+    elif scope == "recent":
         rows = service.get_driver_recent_bookings(profile.user_id, limit=limit)
+    else:
+        # Reuse the website-owned query services, then combine their narrow
+        # projections. A booking can appear in both sets during a status
+        # transition; its public booking reference is the deduplication key.
+        upcoming_rows = service.get_driver_upcoming_bookings(profile.user_id, limit=limit)
+        recent_rows = service.get_driver_recent_bookings(profile.user_id, limit=limit)
+        by_reference = {}
+        for row in (recent_rows or []) + (upcoming_rows or []):
+            if isinstance(row, dict) and row.get("booking_reference"):
+                by_reference[str(row["booking_reference"])] = row
+
+        def _trip_sort_timestamp(row):
+            value = row.get("pickup_time") or row.get("created_at")
+            if isinstance(value, str):
+                try:
+                    value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                except ValueError:
+                    value = None
+            if not isinstance(value, datetime):
+                return float("-inf")
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return value.timestamp()
+
+        rows = sorted(
+            by_reference.values(),
+            key=_trip_sort_timestamp,
+            reverse=True,
+        )[:limit]
 
     def _plain(value):
         return getattr(value, "value", value)
