@@ -39,6 +39,7 @@ on:
       - "tests/auth/test_mobile_registration_api.py"
       - "tests/auth/test_mobile_driver_core_parity_api.py"
       - "tests/auth/test_mobile_driver_trip_history_api.py"
+      # Covers the native Upcoming, Recent and All Driver trip-history filters.
       - "tests/auth/test_mobile_driver_demand_api.py"
       - "app/transport/services/driver_demand_service.py"
       - "app/transport/routes.py"
