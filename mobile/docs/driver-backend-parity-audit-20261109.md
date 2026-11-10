@@ -1,104 +1,122 @@
 # AFCON360 Native Driver Workspace — Backend Parity Audit
 
-**Audit date:** 2026-11-09  
-**Backend source:** `main` at `2e95ac007aafcd67c045e4f54f3cc150bad14958`  
-**Native source baseline:** `feat/native-mobile-apps-20261104` at `f2ab3109673e2ba86363b927381b13edf6953833`  
-**Scope:** Driver-facing capabilities only. Admin, dispatcher, fleet-owner and organisation-governance endpoints are not obligations of the Driver client.
+**Audit updated:** 2026-11-10  
+**Authoritative backend:** `main` at `2e95ac007aafcd67c045e4f54f3cc150bad14958`  
+**Native integration baseline:** `feat/native-mobile-apps-20261104` at `f2ab3109673e2ba86363b927381b13edf6953833`  
+**Driver implementation:** `feat/native-driver-workspace-parity-20261109`  
+**Backend parity work:** PR #72, `feat/driver-native-core-parity-api-20261109`  
+**Scope:** Driver-facing capabilities only. Admin, dispatcher, fleet-owner and organisation-governance operations are not Driver-client obligations.
 
 ## Executive finding
 
-The native Driver React Native app is **not yet at Driver Workspace parity**. It already has code for the operational essentials (Driver profile/readiness, online/offline, offer list/accept/decline, active-trip actions, one-shot location publishing and captured earnings). The Trips and Account screens have additional in-progress work in this branch.
+The native Driver app now has the seven workspace areas corresponding to the website's Home, Status, Trips, Earnings, Assignments, Vehicles and Account panels. The app is a separate React Native client, not a second backend or identity system. Its protected operations use Flask Bearer APIs and the existing Transport/Wallet services.
 
-That is not the same as proving end-to-end operation: authenticated Android login/session validation is deliberately not a release gate until the missing Driver capabilities and their APIs have been reconciled. Existing login E2E work must remain separate from this parity work.
+The native implementation now includes:
+- Driver profile/readiness, performance and assigned-vehicle summaries.
+- Online/offline status, ride offers and the active-trip lifecycle.
+- Upcoming/recent trip-history UI (waiting on backend PR #62).
+- Currency-grouped captured earnings, with the completed-driver attribution correction in PR #72.
+- Owned/current/switchable vehicle, assignment-history and scheduled-route views.
+- Vehicle registration/edit and marketplace browse/application flows.
+- A foreground-only location publisher while the Driver is confirmed online.
+- A native map, GEO place search and a demand overlay that consumes the proposed aggregate-only endpoint in PR #63.
+- A Driver Transport notification inbox and self-reported incident workflow.
+- Account compliance/readiness, support/privacy handoffs, account deletion and secure logout.
 
-The canonical website workspace has seven panels: Home, Status, Trips, Earnings, Assignments, Vehicles and Account. The native app can retain its four-tab navigation, but every real Driver workflow inside those panels must be reachable and backed by the same Flask services and database.
+**This is not yet a complete parity or release sign-off.** The native workspace CI and selective Android/iOS compatibility runs must pass on the current branch. The backend parity PR's latest PostgreSQL/Redis rerun must pass. Trip history and demand-cell APIs are still in separate draft PRs. Incoming offer delivery remains polling-based; native push/realtime and background location are not claimed as complete. Authenticated Android login/session restoration remains deliberately held until the parity gate is met.
 
-## 1. Existing native-to-backend wiring
+## 1. Native-to-backend contract inventory
 
-The baseline Driver app calls these Bearer-protected mobile routes:
-
-| Mobile API | Native use | Audit |
+| Driver operation | API / service authority | Current state |
 |---|---|---|
-| `GET /api/mobile/v1/driver/me` | Driver code, verification/compliance, online/available and go-live checklist | Present; response is too narrow for website profile/performance parity |
-| `GET /api/mobile/v1/driver/offers` | Current offer cards | Present |
-| `POST /api/mobile/v1/driver/offers/{reference}/accept` | Accept server-owned offer | Present |
-| `POST /api/mobile/v1/driver/offers/{reference}/decline` | Decline server-owned offer | Present |
-| `POST /api/mobile/v1/driver/status` | Online/offline transition | Present; delegates to the canonical go-live guard |
-| `POST /api/mobile/v1/driver/location` | Publish a location fix | Present; currently invoked as a one-shot user action, not a live foreground publisher |
-| `GET /api/mobile/v1/driver/trips/active` | Active trip / outstanding cash receipt | Present; projection omits no-show/cancel capability flags |
-| `POST /api/mobile/v1/driver/trips/{reference}/status` | En-route, arrived, start and complete transitions | Present; backend additionally supports cancel and no-show |
-| `POST /api/mobile/v1/driver/trips/{reference}/payment/confirm-cash` | Explicit post-completion cash receipt | Present; Wallet remains settlement authority |
-| `GET /api/mobile/v1/driver/earnings` | Currency-grouped captured earnings | Present; query does not match the website's completed-driver attribution rule |
+| Driver identity/readiness | `GET /api/mobile/v1/driver/me`; DriverProfile and `can_go_live` | Existing Bearer route; PR #72 adds safe performance, operating preferences, compliance facts and current assigned-vehicle display fields |
+| Online/offline | `POST /api/mobile/v1/driver/status`; DriverStatusResource and go-live guard | Existing; server remains authoritative |
+| Offers | `GET /api/mobile/v1/driver/offers`, accept/decline routes; OfferService and RideRequestDispatchService | Existing; native Home polls while active |
+| Active trip | `GET /api/mobile/v1/driver/trips/active`; BookingService projection | PR #72 adds pickup schedule, booking mode, `can_cancel` and server-calculated `can_mark_no_show` |
+| Trip lifecycle | `POST /api/mobile/v1/driver/trips/{reference}/status` | Existing; state transitions and fees remain server-owned |
+| Cash receipt | `POST /api/mobile/v1/driver/trips/{reference}/payment/confirm-cash` | Existing; Wallet owns the payment/ledger state |
+| Upcoming/recent trips | `GET /api/mobile/v1/driver/trips?scope=upcoming|recent&limit=...` | Proposed by backend PR #62; native Trips UI is ready for that contract but must not be released until the route is integrated |
+| Earnings | `GET /api/mobile/v1/driver/earnings` | PR #72 corrects completed-driver attribution after AssignmentService releases the live assignment |
+| Assignments and routes | `GET /api/mobile/v1/driver/assignments` | PR #72; returns current assigned vehicle, owned/switchable vehicles, 90-day assignment history and self-scoped scheduled routes |
+| Switch vehicle | `POST /api/mobile/v1/driver/vehicles/switch` | PR #72; ownership, active status and blocked-driver rules enforced server-side |
+| Vehicle registration/edit | `POST /api/mobile/v1/driver/vehicles`, `PUT /api/mobile/v1/driver/vehicles/{public_id}` | PR #72; registration rechecks KYC tier 3 and canonical ProviderService validation; edits are owner-scoped |
+| Marketplace | `GET /api/mobile/v1/driver/marketplace/vehicles`, `POST /api/mobile/v1/driver/marketplace/vehicles/{listing_public_id}/apply` | PR #72; active/public listing projection; actor is derived from Bearer identity |
+| Map configuration | `GET /api/mobile/v1/driver/map-config` | PR #72; GEO renderer's public allowlisted map config only |
+| Place search | `GET /geo/api/geocode?q=...` | Existing anonymous-allowed, rate-limited GEO geocoder; returns provider attribution |
+| Demand cells | `GET /api/mobile/v1/driver/demand/cells` | Proposed by backend PR #63; native map displays only aggregate cells and gracefully reports unavailable until the route is deployed |
+| Location publishing | `POST /api/mobile/v1/driver/location` | Existing Bearer adapter to TrackingService; native publisher is foreground-only and active only when server confirms online |
+| Transport notifications | `GET /api/mobile/v1/driver/notifications`, read/read-all routes | PR #72; user + Transport-module scoped; opaque signed notification references, no internal notification IDs exposed |
+| Incident reporting/history | `GET/POST /api/mobile/v1/driver/incidents` | PR #72; reporter/user/driver identity derived from token, optional booking reference must belong to the Driver |
+| Account/support | Existing account deletion, logout, support/privacy website handoffs | Native app; no fake in-app support or emergency/SOS operation is claimed |
 
-The mobile API is a deliberate Bearer adapter. Do not replace it by calling website routes with invented cookies or by querying a parallel client-side database.
+The native client must never connect directly to PostgreSQL/Redis or use website cookies as a substitute for Bearer authentication.
 
 ## 2. Seven-panel capability comparison
 
-| Website Driver capability | Native status | Required parity work |
+| Website Driver capability | Native implementation | Remaining qualification |
 |---|---|---|
-| **Home — profile/readiness** | Partial; readiness is displayed on Home. PR #70 adds a richer Account view. | Add safe performance/profile facts: rating, safety score, acceptance/cancellation rates, trip totals and distance. Do not expose encrypted licence numbers or admin-only data. |
-| **Home — online/offline** | Present | Retain the server go-live decision and invariant. Show actionable server hints; never locally approve a Driver. |
-| **Home — offers** | Present | Improve offer refresh/expiry handling and background/foreground notification behaviour. Current native Home polls every 10 seconds. |
-| **Home — active trip** | Partial | Expose server-derived `can_mark_no_show` and `can_cancel`; add guarded cancel/no-show actions. Do not calculate no-show grace periods on-device. |
-| **Home — live location** | Incomplete | Replace one-shot location publishing with a permission-aware foreground watch while online and foregrounded, using the configured server cadence, bounded retries, stale-fix rejection and single-flight writes. Stop on offline/logout/background. Background tracking is not assumed. |
-| **Home — map and place search** | Missing | Add a native map using the public GEO map configuration and existing geocode service. Preserve provider attribution. A default map centre must never be presented as the Driver's actual location. |
-| **Home — demand heatmap** | Missing | Backend Bearer route is proposed in PR #63, but no native map layer consumes it yet. It must show only thresholded aggregate demand cells, never booking IDs, rider details, raw pickup points or driver supply. |
-| **Home — opportunities / scheduled work** | Missing | Add a self-scoped scheduled-route read API and screen/card. The website currently reads routes assigned to the current Driver directly from Transport data. Do not use the admin route-list endpoint. |
-| **Status — preferences** | Partial | Online/offline works; vehicle classes are shown read-only. The website's current Status panel also presents these preferences read-only. Do not invent edit controls unless a canonical write contract exists. |
-| **Trips — active lifecycle** | Partial | Add server-authorized cancel and no-show actions, pickup schedule/time and capability flags. Existing server transitions remain authoritative. |
-| **Trips — upcoming/recent history** | UI work in PR #68; API work in PR #62 | Rebase/retest the backend API against current `main`, merge it first, then integrate the UI. PR #68 must not ship against a missing endpoint. |
-| **Earnings — captured amounts** | Partial | Keep currency groups separate. Fix the backend attribution query: completed trips clear `assigned_driver_id` and persist `completed_by_driver_profile_id`; website earnings includes both, current mobile earnings only includes the former. |
-| **Earnings — performance** | Missing | Add the existing safe Driver performance metrics to the mobile summary response. The website shows safety, acceptance and cancellation performance. Do not recalculate them in React. |
-| **Assignments — current vehicle** | Missing | Add a self-scoped Driver API projection for the current assigned vehicle. |
-| **Assignments — switch vehicle** | Missing | Add a Bearer adapter to the canonical self-service switch operation. Preserve its ownership, active-status and blocked-driver checks; only vehicles actually owned by the Driver/user may be selected. |
-| **Assignments — vehicle history** | Missing | Add a self-scoped last-90-days history projection; do not use the admin Driver history route. |
-| **Assignments — scheduled work** | Missing | Add a self-scoped read-only scheduled-route projection. The current generic route-list API is admin-only. |
-| **Vehicles — owned vehicles** | Missing | Add a self-scoped list/projection that distinguishes ownership from assignment. Use the existing provider service and model ownership rules. |
-| **Vehicles — registration/edit** | Missing in native | Existing website forms may be used as an explicitly labelled web handoff until validated owner-scoped mobile API contracts exist. Do not call admin Vehicle CRUD endpoints. |
-| **Vehicles — marketplace/contract request** | Missing | Add public listing projection and Bearer contract-request adapter. The current request endpoint is cookie-session based and must be adapted without trusting a client-supplied Driver ID. |
-| **Account — profile/readiness** | PR #70 adds Driver profile and go-live checklist | Retain this change. Continue to expose only safe fields and server-provided checks. |
-| **Account — notifications** | Missing | The website shows Transport notification previews and unread counts. Existing `/api/notifications` routes require a Flask login session, not the native Bearer contract. Add a self-scoped mobile adapter and read-state actions. |
-| **Account — safety/incidents** | Missing | Add a self-scoped open-incident list and safe Driver incident-report endpoint. The existing incident GET is admin-only; generic POST accepts client-supplied identity fields and is not a safe native Driver contract. Force Driver/user identity from the Bearer session. |
-| **Account — offer alert sounds** | Missing | Add native local alert preference/preview and integrate with incoming offer notifications. This is device preference, not a new Transport business rule. |
-| **Account — support/privacy/logout/delete** | Partial | Support/privacy handoffs, account deletion and secure logout exist. Retain clear labels and avoid fictitious in-app support/SOS actions. |
+| **Home — identity/readiness** | Driver code, verification/compliance, go-live checklist, rating, safety/acceptance/cancellation metrics, trip totals/distance and assigned vehicle | Backend PR #72 must be integrated before release |
+| **Home — online/offline** | Native Status screen; server go-live guard controls transitions | No local approval or bypass |
+| **Home — offers** | Native offer list, accept/decline and expiry display | Polling remains active-tab/foreground; native push/realtime offer alerts are not implemented |
+| **Home — active trip** | Active trip, pickup time, fare/payment, cancel/no-show prompts and cash confirmation | Cancel/no-show affordances follow server capability flags; BookingService remains authoritative |
+| **Home — live location** | Foreground watch while signed-in Driver is confirmed online; balanced GPS, 120-second watcher cadence, single-flight publishing, stop on offline/background/unmount | Background location is intentionally not requested; network/backoff, Android process death and long-running shift behaviour still require device testing |
+| **Home — map/place search** | Leaflet map in WebView using GEO public tile config, OSM attribution and existing geocoder; current-device location is shown only after explicit permission/action | Map depends on network/CDN/tiles; error state leaves Driver operations usable |
+| **Home — demand heatmap** | Native aggregate-cell overlay consuming `center` and `request_count` only | API is still proposed in PR #63; until integrated, demand status reports unavailable. No raw booking points or rider identity are shown |
+| **Home — opportunities/scheduled work** | Assignments tab lists server-scoped scheduled routes | Only the current self-scoped scheduled-route projection is implemented; do not expose admin route CRUD |
+| **Status — preferences/compliance** | Service types, vehicle classes, zones, capacities, auto-accept, licence/background-check/training facts | Display-only; changing sensitive preferences remains governed by Transport |
+| **Trips — active lifecycle** | Active trip actions and pickup schedule | Server action contracts and eligibility flags remain authoritative |
+| **Trips — upcoming/recent** | Native history view with safe route/fare/payment summary | Backend PR #62 must be rebased, tested and integrated before release |
+| **Earnings — captured amounts** | Currency-grouped totals, platform commission and driver net display | PR #72 corrects metadata attribution; detailed website period/performance analytics are not yet equivalent |
+| **Earnings — performance** | Home and Account show canonical rating/safety/acceptance/cancellation/trip/distance summary | Not a full period-by-period analytics report |
+| **Assignments — current/switch/history** | Current assignment, switchable owned vehicles and last-90-day vehicle history | PR #72 supplies self-scoped API; no admin assignment operations exposed |
+| **Assignments — scheduled routes** | Native scheduled-route cards | Read-only driver scope; no dispatcher route management |
+| **Vehicles — owned vehicles** | Ownership-scoped list, distinction from current assignment | PR #72 adapter uses ProviderService.get_user_vehicles |
+| **Vehicles — register/edit** | Native forms | Backend enforces KYC tier 3, approval, validation and ownership; API CI remains required |
+| **Vehicles — marketplace** | Native public listing browse and application form | Listing/eligibility/service validation remains in MarketplaceService |
+| **Account — compliance/readiness** | Native Driver identity, go-live checks and server-provided compliance facts | No document approval or licence secret exposure |
+| **Account — notifications** | Native Transport-only inbox, unread count, mark one/read-all | Inbox polls while page is active; background/push notifications are not yet delivered natively |
+| **Account — safety/incidents** | Native incident submission and self-reported incident history | No emergency SOS, live call centre or emergency dispatch is claimed |
+| **Account — support/privacy/delete/logout** | Explicit website support/privacy handoff, account deletion and secure logout | Website handoff is labelled; no pretend native support workflow |
 
-## 3. Backend/API gaps and unsafe shortcuts to avoid
+## 3. Backend parity corrections in PR #72
 
-1. **Trip history:** current `main` does not yet expose `GET /api/mobile/v1/driver/trips?scope=upcoming|recent`. PR #62 proposes it with a narrow, redacted projection. It was based on commit `70816040885e3d52a7158719dc163afe99180b38`; comparison with current `main` shows the branch is diverged by two main-branch commits. Rebase and rerun PostgreSQL/Redis tests before integration.
-2. **Demand cells:** the current website demand endpoint is cookie/context based. PR #63 proposes extracting a shared Transport demand service and adding a Driver-Bearer adapter. It is also two main-branch commits behind/diverged and needs rebase/retest. The native map UI is still missing.
-3. **Driver profile metrics:** `DriverProfile` already contains average rating, safety score, acceptance/cancellation rates, total/completed trips and distance. The current mobile `/driver/me` response omits these safe summary fields.
-4. **Earnings correctness:** website `BookingService.get_driver_earnings` and its period breakdown include rows attributed by either current `assigned_driver_id` or `booking_metadata.completed_by_driver_profile_id`. The current mobile earnings query uses only `assigned_driver_id`, so it can undercount completed trips after canonical assignment release.
-5. **Trip actions:** the canonical driver action executor supports `en_route`, `arrive`, `start`, `complete`, `cancel` and `no_show`. No-show timing/fee/credit must remain in BookingService. The mobile active-trip projection currently does not return the server's `can_mark_no_show` flag.
-6. **Location:** the website publisher has a continuous geolocation watcher, cadence, quality checks, backoff, health/network handling and explicit offline/visibility behaviour. Native currently sends one fix only after the Driver taps a button. This is inadequate for a fresh-location-dependent demand view and ongoing Driver operation.
-7. **Vehicle APIs:** `DriverVehicleSwitchResource` is cookie-session authenticated but contains the canonical ownership/blocked/active checks and calls `assign_driver_to_vehicle`. Reuse that authority through a Bearer adapter; do not reimplement the assignment write. Generic Vehicle listing/detail CRUD is admin-only.
-8. **Scheduled routes:** generic `ScheduledRouteListResource` GET is admin-only. Driver workspace uses a profile-scoped query on `current_driver_id`; add a narrow self-scoped API rather than opening admin routes.
-9. **Incidents:** generic incident list/detail/follow-up GET/PUT actions are admin-only. Generic POST is not protected by login and trusts identity fields in the body; do not point the native app at it. A mobile adapter must force the authenticated Driver identity, validate the request and return a narrow projection.
-10. **Notifications:** existing `/api/notifications` is protected by Flask session `login_required`, not the native mobile Bearer adapter. Do not assume it works from `authClient`; expose a properly scoped Bearer route or add an explicitly shared token-aware adapter.
-11. **Place search:** `/geo/api/geocode` is public, rate-limited and returns provider attribution. It can be consumed by native map search. Map tiles/configuration need a public-safe config contract; never embed private provider credentials in the app.
-12. **Offer delivery:** current website Driver offer delivery uses an HTTP polling module with a 4-second base and adaptive backoff; native Home currently polls every 10 seconds. No native push registration/offer notification implementation was found in the Driver client. Do not claim socket/push parity without an implemented and tested channel.
+1. **Driver profile projection:** `GET /driver/me` returns safe performance fields and a display-only current assigned-vehicle projection. Encrypted licence data, emergency contacts and private metadata are excluded.
+2. **Operational preferences/compliance:** the same response now includes server-held service types, vehicle classes, operating zones, capacity/preferences and safe licence/background-check/training status.
+3. **Active trip projection:** reuses BookingService for booking mode, pickup timezone and no-show eligibility; selects only a pickup-schedule whitelist. Cancel is exposed only for the pre-start statuses already permitted by the website.
+4. **Earnings attribution:** completed trips can release `assigned_driver_id`; mobile earnings now also recognizes the persisted `completed_by_driver_profile_id` attribution used by the website.
+5. **Assignments/vehicles:** self-scoped assignment, route and history reads; owned-vehicle switch; KYC-gated registration; owner-only editable specification fields; active/public marketplace browse and Driver-scoped application.
+6. **Map config:** derives from GEO's public renderer config and emits only `PUBLIC_MAP_CONFIG_KEYS`; tile URL's OSM subdomain placeholder is resolved for the native raster renderer.
+7. **Notifications:** Bearer endpoints filter by authenticated user and `module='transport'`; internal notification primary keys are wrapped in a user-bound HMAC reference before returning to the client.
+8. **Incidents:** submission derives reporter, user and Driver IDs from the authenticated context; optional booking association is checked against current or completed Driver attribution; ISO-8601 timestamps require an explicit offset; GET exposes only the authenticated Driver's own reports.
+
+These changes add no database schema or migration. They do not make admin endpoints available to Driver tokens.
 
 ## 4. Endpoints that must not be called directly from the native Bearer client
 
-| Existing endpoint/resource | Why it is not the native contract |
+| Existing endpoint/resource | Reason |
 |---|---|
-| `GET /api/transport/drivers`, `GET /api/transport/vehicles`, `GET /api/transport/routes`, `GET /api/transport/incidents` | Admin-only listing surfaces, not Driver self-service. |
-| `POST /api/transport/drivers/{id}/vehicles/switch` | Existing self-service logic is valid, but endpoint uses Flask session authentication. Add a Bearer adapter that preserves the same service/resource checks. |
-| `POST /api/transport/vehicles/{id}/request-contract` | Cookie-session authenticated; actor is derived from current user. Add Bearer adapter and never trust a body Driver ID. |
-| `/api/notifications/*` | Flask session-based `login_required`; no native Bearer integration in this route group. |
-| `POST /api/transport/incidents` | Not a safe native contract: request body supplies Driver/user identity and the endpoint has no login decorator. Add a self-scoped mobile route. |
-| Admin Driver/Vehicle/Incident detail, approval, assignment, investigation and override endpoints | Must remain unavailable to a regular Driver client. |
+| `GET /api/transport/drivers`, `GET /api/transport/vehicles`, `GET /api/transport/routes`, `GET /api/transport/incidents` | Admin-only listing surfaces, not Driver self-service |
+| `POST /api/transport/drivers/{id}/vehicles/switch` | Cookie-session resource; use the mobile Bearer adapter that preserves ownership/assignment checks |
+| `POST /api/transport/vehicles/{id}/request-contract` | Cookie-session resource; use the mobile marketplace adapter and never accept a caller-supplied Driver ID |
+| `/api/notifications/*` | Flask-session `login_required`; use the Driver Bearer notification adapter |
+| `POST /api/transport/incidents` | Generic body permits caller-supplied identity fields; do not use it from native. Use the identity-derived mobile route |
+| Admin Driver/Vehicle/Incident approval, assignment, investigation and override endpoints | Must remain unavailable to a regular Driver client |
 
-## 5. Implementation order and release gates
+## 5. Remaining gaps and release gates
 
-1. **Complete the contract inventory and merge/rebase-safe backend API work:** trip history, demand cells, Driver summary/performance, correct earnings attribution, active-trip capability flags, vehicle/assignment/scheduled-route reads and writes, notifications and safe incident adapters.
-2. **Implement native Driver UX:** map + geocode + aggregate demand; foreground location publishing; upcoming/recent and full active-trip actions; vehicle/assignment/scheduled-route screens; performance/earnings; notification inbox/alerts; safety/incidents.
-3. **Automated app checks:** navigation contract, strict TypeScript, Expo dependency check, Android/iOS exports/builds, targeted API contract tests. Test failures should distinguish missing API, authorization, contract mismatch and client defects.
-4. **Parity gate:** every website Driver capability above is either implemented natively, explicitly handed off to a canonical website flow, or labelled as a true backend dependency. No inert placeholder tiles.
-5. **Only then run authenticated Android E2E:** successful Driver login, protected profile/offer/trip/earnings/vehicle/notification reads, session restore, logout, and server/device/Redis revocation. Until then login E2E is not the completion criterion for this task.
+1. Rebase/retest backend PR #62 (trip history) and PR #63 (demand cells) onto current `main`; both were authored against an older main commit and still need integration.
+2. Confirm PR #72's current PostgreSQL/Redis rerun is green after the new notification/map/incident contracts. Do not treat an earlier passing run as proof for later commits.
+3. Pass the current native workspace CI, SDK dependency validation, strict TypeScript, Android/iOS export, Driver Android APK install/launch, iOS minimum/current builds and APK manifest audit.
+4. Verify the seven screens against live Flask responses in a disposable test environment, including forbidden-user/vehicle/trip cases, KYC denial, no-show eligibility, cash receipt and signed notification read ownership.
+5. Complete incoming offer alerts (push/realtime or a validated fallback), offer expiry/refresh behaviour and device alert preferences. Do not claim native push or background operation until implemented and tested.
+6. Validate foreground location on physical Android/iOS devices, including permissions denied/revoked, offline state, app background/foreground, process restart and stale GPS. Background tracking remains out of scope until separately designed and permitted.
+7. **Only after parity/API gates pass, run authenticated Android E2E:** Driver login, MFA (where required), profile/offers/trips/earnings/assignments/notifications reads, session restore, refresh, logout and server/device/Redis revocation.
 
 ## Safety boundaries
 
-- No changes to production database, production configuration, website business logic or User app.
-- No schema/migration changes are presumed necessary; add migrations only if an evidence-backed domain requirement proves one is needed and it is separately authorised.
-- All native Driver operations remain scoped to the authenticated Driver profile and delegate to existing Transport/Wallet services.
-- No duplicate Driver identity, Booking, Wallet, dispatch, location or vehicle-assignment implementation is permitted.
+- No production database writes, configuration changes or deployment have been made.
+- No schema or migration change is introduced by this parity work.
+- The website/backend `main` remains authoritative; this PR adds no alternate backend.
+- All Driver operations are scoped to the authenticated Driver profile and delegate to existing Transport, Booking, Assignment, Marketplace, Tracking and Wallet authorities.
+- No User app screens/workflows are imported into the Driver app.
+- Do not claim complete functionality solely because a screen renders; API contracts and end-to-end verification are required.
