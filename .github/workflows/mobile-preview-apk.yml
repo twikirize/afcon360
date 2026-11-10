@@ -22,7 +22,7 @@ on:
 
 concurrency:
   group: afcon360-mobile-platform-checks-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 # This PR-capable workflow never receives stable signing keys or write-capable tokens.
 permissions:
