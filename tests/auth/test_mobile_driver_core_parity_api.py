@@ -366,7 +366,12 @@ def test_mobile_driver_assignments_return_only_the_authenticated_profile_scope(
         model="Corolla",
         year=2022,
         license_plate="UXX 123A",
+        registration_number="REG-451",
+        color="white",
+        vin_number="1HGBH41JXMN109186",
+        vehicle_type="sedan",
         vehicle_class=SimpleNamespace(value="comfort"),
+        luggage_capacity=2,
         status="active",
         is_available=True,
         passenger_capacity=4,
@@ -445,6 +450,11 @@ def test_mobile_driver_assignments_return_only_the_authenticated_profile_scope(
     assert response.status_code == 200
     data = response.get_json()["data"]
     assert data["assigned_vehicle"]["public_id"] == "vehicle-current-public"
+    assert data["assigned_vehicle"]["registration_number"] == "REG-451"
+    assert data["assigned_vehicle"]["vin_number"] == "1HGBH41JXMN109186"
+    assert data["assigned_vehicle"]["color"] == "white"
+    assert data["assigned_vehicle"]["vehicle_type"] == "sedan"
+    assert data["assigned_vehicle"]["luggage_capacity"] == 2
     assert [item["public_id"] for item in data["owned_vehicles"]] == [
         "vehicle-current-public", "vehicle-owned-public"
     ]
@@ -974,3 +984,41 @@ def test_mobile_driver_incident_requires_explicit_timezone(client, monkeypatch):
     )
     assert response.status_code == 400
     assert response.get_json()["code"] == "timezone_required"
+
+
+def test_mobile_driver_marketplace_rejects_own_listing(client, monkeypatch):
+    from app.transport.models import MarketplaceListingStatus, VehicleMarketplaceListing
+
+    profile = SimpleNamespace(id=902, user_id=451)
+    _authenticated_driver(monkeypatch, profile)
+    listing = SimpleNamespace(
+        id=801,
+        public_id="own-listing-public",
+        owner_id=451,
+        listing_status=MarketplaceListingStatus.ACTIVE,
+        visibility="public",
+        is_deleted=False,
+        vehicle=SimpleNamespace(
+            is_deleted=False,
+            status="active",
+            is_available=True,
+            is_reserved=False,
+        ),
+    )
+
+    class Query:
+        def filter_by(self, **kwargs):
+            return self
+
+        def first(self):
+            return listing
+
+    monkeypatch.setattr(VehicleMarketplaceListing, "query", Query())
+    response = client.post(
+        "/api/mobile/v1/driver/marketplace/vehicles/own-listing-public/apply",
+        headers={"Authorization": "Bearer synthetic-driver-access-token"},
+        json={"cover_letter": "My own vehicle"},
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["code"] == "own_marketplace_listing"
