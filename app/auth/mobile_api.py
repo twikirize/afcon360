@@ -1167,29 +1167,33 @@ def mobile_driver_assignments():
     def _enum_value(value):
         return getattr(value, "value", value)
 
-    def _vehicle_view(vehicle):
+    def _vehicle_view(vehicle, *, include_edit_fields=False):
         if vehicle is None or bool(getattr(vehicle, "is_deleted", False)):
             return None
-        return {
+        result = {
             "public_id": str(vehicle.public_id),
             "make": vehicle.make,
             "model": vehicle.model,
             "year": vehicle.year,
             "license_plate": vehicle.license_plate,
-            "registration_number": vehicle.registration_number,
-            "make": vehicle.make,
-            "model": vehicle.model,
-            "year": vehicle.year,
-            "color": vehicle.color,
-            "vin_number": vehicle.vin_number,
-            "vehicle_type": vehicle.vehicle_type,
             "vehicle_class": _enum_value(vehicle.vehicle_class),
-            "luggage_capacity": vehicle.luggage_capacity,
             "status": str(_enum_value(vehicle.status)),
             "is_available": bool(vehicle.is_available),
             "passenger_capacity": vehicle.passenger_capacity,
             "safety_features": list(vehicle.safety_features or []),
         }
+        # Registration/VIN/specification details are returned only for
+        # vehicles owned by this authenticated user, never for fleet
+        # vehicles merely assigned to the Driver.
+        if include_edit_fields:
+            result.update({
+                "registration_number": vehicle.registration_number,
+                "color": vehicle.color,
+                "vin_number": vehicle.vin_number,
+                "vehicle_type": vehicle.vehicle_type,
+                "luggage_capacity": vehicle.luggage_capacity,
+            })
+        return result
 
     assigned = profile.current_vehicle
     owned = get_provider_service().get_user_vehicles(profile.user_id) or []
@@ -1256,7 +1260,10 @@ def mobile_driver_assignments():
         "data": {
             "assigned_vehicle": _vehicle_view(assigned),
             "owned_vehicles": [
-                view for view in (_vehicle_view(vehicle) for vehicle in owned)
+                view for view in (
+                    _vehicle_view(vehicle, include_edit_fields=True)
+                    for vehicle in owned
+                )
                 if view is not None
             ],
             "switchable_vehicles": [
