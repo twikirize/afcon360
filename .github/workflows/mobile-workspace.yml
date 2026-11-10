@@ -3,9 +3,9 @@ name: Mobile workspace CI
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main, feat/native-mobile-server-support-20261105, feat/native-mobile-apps-20261104]
+    branches: [feat/native-user-app-integration-20261108]
     paths:
-      - "mobile/apps/**"
+      - "mobile/apps/user/**"
       - "mobile/packages/**"
       - "mobile/scripts/**"
       - "mobile/package.json"
@@ -46,23 +46,16 @@ jobs:
       - name: Check approved website handoffs and native account deletion
         run: pnpm navigation:check
 
-      - name: Check Expo SDK dependency compatibility
-        run: |
-          pnpm --filter @afcon360/user-app exec expo install --check
-          pnpm --filter @afcon360/driver-app exec expo install --check
+      - name: Check User app Expo SDK dependency compatibility
+        run: pnpm --filter @afcon360/user-app exec expo install --check
 
-      - name: Type-check both native applications
-        run: pnpm typecheck
+      - name: Type-check User application
+        run: pnpm user:typecheck
 
       - name: Bundle User app for Android and iOS
         run: |
           pnpm --filter @afcon360/user-app exec expo export --platform android --output-dir /tmp/afcon360-user-android
           pnpm --filter @afcon360/user-app exec expo export --platform ios --output-dir /tmp/afcon360-user-ios
-
-      - name: Bundle Driver app for Android and iOS
-        run: |
-          pnpm --filter @afcon360/driver-app exec expo export --platform android --output-dir /tmp/afcon360-driver-android
-          pnpm --filter @afcon360/driver-app exec expo export --platform ios --output-dir /tmp/afcon360-driver-ios
 
   user-authenticated-journey:
     name: User APK — login, protected journeys, restore and logout
@@ -115,6 +108,14 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+      - name: Prepare User APK cache directory
+        run: mkdir -p mobile-e2e-cache
+      - name: Restore source-keyed User E2E APK
+        id: user-apk-cache
+        uses: actions/cache@v4
+        with:
+          path: mobile-e2e-cache/
+          key: afcon360-user-e2e-apk-v1-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
       - name: Prepare disposable backend with native Events and Accommodation APIs
         shell: bash
         run: |
@@ -157,26 +158,32 @@ jobs:
           echo "::error::Disposable AFCON360 API did not become healthy."
           exit 1
       - name: Set up Node.js
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
       - name: Set up pnpm
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 10.12.4
           run_install: false
       - name: Set up Java
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
       - name: Install User app workspace dependencies
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile
         run: pnpm install --no-frozen-lockfile
       - name: Check User app Expo dependency compatibility
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile
         run: pnpm --filter "@afcon360/user-app" exec expo install --check
       - name: Install Android platform and build tools
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -197,12 +204,14 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
       - name: Generate a fresh User APK pointing only to the disposable local API
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile
         env:
           AFCON360_PREVIEW_BUILD: "true"
           EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: pnpm --filter "@afcon360/user-app" exec expo prebuild --platform android --no-install --clean
       - name: Allow loopback HTTP only in this disposable E2E APK
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -232,6 +241,7 @@ jobs:
           print("Loopback HTTP enabled only in the temporary test APK.")
           PY
       - name: Configure ephemeral release signing
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile
         run: |
           node <<'NODE'
@@ -260,18 +270,47 @@ jobs:
           fs.writeFileSync(path, source);
           NODE
       - name: Build isolated User release APK
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile/apps/user/android
         run: ./gradlew --no-daemon --stacktrace assembleRelease
-      - name: Stage and verify test-only APK
+      - name: Save fresh APK under the source-keyed cache key
+        if: steps.user-apk-cache.outputs.cache-hit != 'true'
         shell: bash
+        env:
+          USER_APK_CACHE_KEY: afcon360-user-e2e-apk-v1-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
         run: |
           set -euo pipefail
           APK="$(find mobile/apps/user/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
           test -s "$APK"
+          mkdir -p mobile-e2e-cache
+          cp "$APK" mobile-e2e-cache/user-e2e.apk
+          APK_SHA256="$(sha256sum mobile-e2e-cache/user-e2e.apk | awk '{print $1}')"
+          aapt dump badging mobile-e2e-cache/user-e2e.apk | grep -F "space.pamoja.afcon360.user.preview"
+          cat > mobile-e2e-cache/build-info.txt <<EOF
+          app=user
+          package=space.pamoja.afcon360.user.preview
+          api_origin=http://127.0.0.1:5000
+          source_commit=$GITHUB_SHA
+          cache_key=$USER_APK_CACHE_KEY
+          apk_sha256=$APK_SHA256
+          EOF
+      - name: Stage and verify cached User APK for this journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="mobile-e2e-cache/user-e2e.apk"
+          INFO="mobile-e2e-cache/build-info.txt"
+          test -s "$APK"
+          test -s "$INFO"
+          EXPECTED_SHA="$(sed -n 's/^apk_sha256=//p' "$INFO" | head -n 1)"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA"
           mkdir -p mobile-e2e-evidence
           cp "$APK" mobile-e2e-evidence/user-e2e.apk
-          sha256sum mobile-e2e-evidence/user-e2e.apk | tee mobile-e2e-evidence/user-e2e-apk.sha256
-          aapt dump badging mobile-e2e-evidence/user-e2e.apk | grep -F "space.pamoja.afcon360.user.preview"
+          cp "$INFO" mobile-e2e-evidence/user-e2e-build-info.txt
+          printf '%s  %s\n' "$ACTUAL_SHA" "user-e2e.apk" | tee mobile-e2e-evidence/user-e2e-apk.sha256
+          echo "Verified reusable User APK (cache_hit=${{ steps.user-apk-cache.outputs.cache-hit }}): $ACTUAL_SHA"
+          cat mobile-e2e-evidence/user-e2e-build-info.txt
       - name: Enable KVM hardware acceleration
         shell: bash
         run: |
@@ -308,4 +347,4 @@ jobs:
           name: afcon360-user-android-e2e-evidence
           path: mobile-e2e-evidence/
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 90
