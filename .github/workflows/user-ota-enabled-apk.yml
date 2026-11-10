@@ -88,13 +88,13 @@ jobs:
           from pathlib import Path
           manifest = Path("mobile/apps/user/android/app/src/main/AndroidManifest.xml")
           source = manifest.read_text(encoding="utf-8")
-          app_tag = re.search(r"<application\\b[^>]*>", source, flags=re.DOTALL)
+          app_tag = re.search(r"<application\b[^>]*>", source, flags=re.DOTALL)
           if app_tag is None:
               raise SystemExit("Generated Android manifest has no application element")
           opening = app_tag.group(0)
-          if re.search(r"\\bandroid:usesCleartextTraffic\\s*=", opening):
+          if re.search(r"\bandroid:usesCleartextTraffic\s*=", opening):
               opening = re.sub(
-                  r"\\bandroid:usesCleartextTraffic\\s*=\\s*['\\"][^'\\"]*['\\"]",
+                  r"\bandroid:usesCleartextTraffic\s*=\s*['\"][^'\"]*['\"]",
                   'android:usesCleartextTraffic="true"',
                   opening,
               )
@@ -153,9 +153,9 @@ jobs:
           }
           if (end < 0) throw new Error("Could not find end of Android release build type");
           let block = source.slice(release, end);
-          const signing = /signingConfig\\s+signingConfigs\\.[A-Za-z0-9_]+/;
+          const signing = /signingConfig\s+signingConfigs\.[A-Za-z0-9_]+/;
           if (signing.test(block)) block = block.replace(signing, "signingConfig signingConfigs.debug");
-          else block = block.replace("release {", "release {\\n            signingConfig signingConfigs.debug");
+          else block = block.replace("release {", "release {\n            signingConfig signingConfigs.debug");
           source = source.slice(0, release) + block + source.slice(end);
           fs.writeFileSync(path, source);
           NODE
@@ -171,9 +171,9 @@ jobs:
           APK="$(find mobile/apps/user/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
           test -s "$APK"
           BADGING="$(aapt dump badging "$APK")"
-          PACKAGE="$(printf '%s\\n' "$BADGING" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
-          MINIMUM="$(printf '%s\\n' "$BADGING" | sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
-          TARGET="$(printf '%s\\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
+          PACKAGE="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n 1)"
+          MINIMUM="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion:'\([0-9]*\)'.*/\1/p" | head -n 1)"
+          TARGET="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\([0-9]*\)'.*/\1/p" | head -n 1)"
           test "$PACKAGE" = "space.pamoja.afcon360.user.preview"
           test "$MINIMUM" = "24"
           test -n "$TARGET" && test "$TARGET" -ge 36
