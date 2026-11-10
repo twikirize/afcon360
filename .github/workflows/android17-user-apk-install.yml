@@ -69,6 +69,7 @@ jobs:
           arch: x86_64
           profile: pixel_7
           ram-size: 4096M
+          disk-size: 12G
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
           disable-animations: true
           emulator-boot-timeout: 900
