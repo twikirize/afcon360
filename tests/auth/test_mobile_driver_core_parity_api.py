@@ -820,7 +820,8 @@ def test_mobile_driver_notification_read_only_updates_own_transport_notification
     monkeypatch.setattr(db.session, "commit", lambda: None)
 
     from app.auth import mobile_api
-    notification_ref = mobile_api._driver_notification_ref(451, 123)
+    with app.app_context():
+        notification_ref = mobile_api._driver_notification_ref(451, 123)
     response = client.post(
         "/api/mobile/v1/driver/notifications/" + notification_ref + "/read",
         headers={"Authorization": "Bearer synthetic-driver-access-token"},
@@ -848,7 +849,8 @@ def test_mobile_driver_notification_read_cannot_read_another_users_notification(
         monkeypatch.setattr(Notification, "query", Query())
 
     from app.auth import mobile_api
-    notification_ref = mobile_api._driver_notification_ref(999, 123)
+    with app.app_context():
+        notification_ref = mobile_api._driver_notification_ref(999, 123)
     response = client.post(
         "/api/mobile/v1/driver/notifications/" + notification_ref + "/read",
         headers={"Authorization": "Bearer synthetic-driver-access-token"},
