@@ -300,12 +300,6 @@
 
     <nav class="main-nav desktop-nav" aria-label="Main menu">
       <ul class="menu">
-        {% if current_user.is_authenticated %}
-          {% from "components/workspace_context_switcher.html" import render_workspace_context_switcher with context %}
-          <li class="menu-item workspace-context-switcher-desktop">
-            {{ render_workspace_context_switcher('desktop') }}
-          </li>
-        {% endif %}
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
 
         <li class="menu-item has-dropdown">
@@ -478,29 +472,70 @@
               </a>
             </li>
 
-            <li class="menu-item">
-              <a href="{% if active_context and active_context.type.value == 'driver' %}{{ safe_url('transport.driver_dashboard') }}
-                       {% elif active_context and active_context.type.value == 'accommodation_host' %}{{ safe_url('accommodation.host_dashboard') }}
-                       {% elif active_context and active_context.type.value == 'organisation' %}{{ url_for('org.org_dashboard', org_id=active_context.public_id) }}
-                       {% elif active_context and active_context.type.value == 'event' %}{{ safe_url('events.admin_dashboard') }}
-                       {% elif current_user.is_app_owner() %}{{ url_for('admin.owner.dashboard') }}
-                       {% elif current_user.has_global_role('super_admin') %}{{ url_for('admin.super_dashboard') }}
-                       {% elif current_user.has_global_role('admin') %}{{ url_for('admin.super_dashboard') }}
-                       {% elif current_user.has_global_role('auditor') %}{{ url_for('admin.auditor.dashboard') }}
-                       {% elif current_user.has_global_role('compliance_officer') %}{{ url_for('admin.compliance.dashboard') }}
-                       {% elif current_user.has_global_role('moderator') %}{{ url_for('admin.moderator.dashboard') }}
-                       {% elif current_user.has_global_role('support') %}{{ url_for('admin.support.dashboard') }}
-                       {% elif current_user.has_global_role('event_manager') %}{{ safe_url('events.admin_dashboard') }}
-                       {% elif current_user.has_global_role('organizer') %}{{ safe_url('events.my_events') }}
-                       {% elif current_user.has_global_role('transport_admin') %}{{ safe_url('transport_admin.dashboard') }}
-                       {% elif current_user.has_global_role('wallet_admin') %}{% if module_enabled('wallet') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
-                       {% elif current_user.has_global_role('accommodation_admin') %}{% if module_enabled('accommodation') %}{{ url_for('accommodation.admin_dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
-                        {% elif current_user.has_global_role('tourism_admin') %}{{ links.tourism_home if links.tourism_home != '#' else url_for('admin.super_dashboard') }}
-                          {% else %}{{ url_for('user.dashboard') }}{% endif %}"
-                   class="nav-dashboard-link">
-                <i class="bi bi-speedometer2 me-1"></i>Dashboard
-              </a>
-            </li>
+            <li class="menu-item has-dropdown nav-dashboard-menu">
+              <button class="nav-dashboard-trigger" title="Dashboard" data-bs-toggle="tooltip" data-bs-placement="bottom">
+              <i class="bi bi-speedometer2 me-1"></i>Dashboard
+              <i class="bi bi-chevron-down" style="font-size:10px;"></i>
+            </button>
+            <ul class="drop-menu drop-menu--right" role="menu">
+              {% set dashboard_url = '' %}
+              {% if active_context and active_context.type.value == 'driver' %}
+                {% set dashboard_url = safe_url('transport.driver_dashboard') %}
+              {% elif active_context and active_context.type.value == 'accommodation_host' %}
+                {% set dashboard_url = safe_url('accommodation.host_dashboard') %}
+              {% elif active_context and active_context.type.value == 'organisation' %}
+                {% set dashboard_url = url_for('org.org_dashboard', org_id=active_context.public_id) %}
+              {% elif active_context and active_context.type.value == 'event' %}
+                {% set dashboard_url = safe_url('events.admin_dashboard') %}
+              {% elif current_user.is_app_owner() %}
+                {% set dashboard_url = url_for('admin.owner.dashboard') %}
+              {% elif current_user.has_global_role('super_admin') %}
+                 {% set dashboard_url = url_for('admin.super_dashboard') %}
+                {% elif current_user.has_global_role('admin') %}
+                 {% set dashboard_url = url_for('admin.super_dashboard') %}
+               {% elif current_user.has_global_role('auditor') %}
+                 {% set dashboard_url = url_for('admin.auditor.dashboard') %}
+               {% elif current_user.has_global_role('compliance_officer') %}
+                 {% set dashboard_url = url_for('admin.compliance.dashboard') %}
+               {% elif current_user.has_global_role('moderator') %}
+                 {% set dashboard_url = url_for('admin.moderator.dashboard') %}
+               {% elif current_user.has_global_role('support') %}
+                 {% set dashboard_url = url_for('admin.support.dashboard') %}
+               {% elif current_user.has_global_role('event_manager') %}
+                 {% set dashboard_url = safe_url('events.admin_dashboard') %}
+               {% elif current_user.has_global_role('organizer') %}
+                 {% set dashboard_url = safe_url('events.my_events') %}
+               {% elif current_user.has_global_role('transport_admin') %}
+                 {% set dashboard_url = safe_url('transport_admin.dashboard') %}
+               {% elif current_user.has_global_role('wallet_admin') %}
+                 {% set dashboard_url = safe_url('wallet.wallet_dashboard') if module_enabled('wallet') else url_for('admin.super_dashboard') %}
+               {% elif current_user.has_global_role('accommodation_admin') %}
+                 {% set dashboard_url = url_for('accommodation.admin_dashboard') if module_enabled('accommodation') else url_for('admin.super_dashboard') %}
+               {% elif current_user.has_global_role('tourism_admin') %}
+                 {% set dashboard_url = links.tourism_home if links.tourism_home != '#' else url_for('admin.super_dashboard') %}
+               {% else %}
+                 {% set dashboard_url = url_for('user.dashboard') %}
+               {% endif %}
+               <li><a class="drop-item" href="{{ dashboard_url }}"><i class="bi bi-speedometer2 me-2"></i>Current Dashboard</a></li>
+               <li><hr class="drop-divider"></li>
+               {% include 'components/account_dropdown_contexts.html' %}
+               {% set user_roles = current_user.roles|list %}
+               {% if user_roles|length > 1 or active_global_role %}
+               <li><hr class="drop-divider"></li>
+               <li><span class="drop-header">Global Persona</span></li>
+               <li>
+                 <a class="drop-item" href="{{ url_for('auth.switch_role') }}" style="color: var(--brand-primary); font-weight: 500;">
+                   <i class="fas fa-exchange-alt me-2"></i>
+                   {% if active_global_role %}
+                     <span class="badge bg-primary me-1">{{ active_global_role|title }}</span> Mode
+                   {% else %}
+                     Switch Active Role
+                   {% endif %}
+                 </a>
+               </li>
+               {% endif %}
+             </ul>
+           </li>
 
             <li class="menu-item nav-notif-item">
               {% include 'components/notification_bell.html' %}
@@ -508,6 +543,7 @@
             </li>
 
             <li class="menu-item has-dropdown nav-user-menu">
+              {% if current_user.is_authenticated %}
               <button class="nav-user-trigger"
                       title="{{ current_user.username or 'Account' }}"
                       data-bs-toggle="tooltip"
@@ -559,6 +595,19 @@
                   </form>
                 </li>
               </ul>
+              {% else %}
+              <button class="nav-user-trigger" title="Account" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                <span class="nav-user-avatar"><i class="bi bi-person"></i></span>
+                <span class="nav-user-name">Account</span>
+                <i class="bi bi-chevron-down" style="font-size:10px;"></i>
+              </button>
+              <ul class="drop-menu drop-menu--right" role="menu">
+                <li><span class="drop-header">Account</span></li>
+                <li><hr class="drop-divider"></li>
+                <li><a class="drop-item" href="{{ url_for('auth.login') }}"><i class="bi bi-box-arrow-in-right me-2"></i>Sign In</a></li>
+                <li><a class="drop-item" href="{{ url_for('auth.register') }}"><i class="bi bi-person-plus me-2"></i>Sign Up</a></li>
+              </ul>
+              {% endif %}
             </li>
 
           {% endif %}
@@ -570,11 +619,30 @@
               <i class="bi bi-wallet2 me-1"></i>Wallet
             </a>
           </li>
-          <li class="menu-item auth">
-            <a href="{{ url_for('auth.login') }}">Sign In</a>
+          <li class="menu-item has-dropdown nav-dashboard-menu">
+            <button class="nav-dashboard-trigger" title="Dashboard" data-bs-toggle="tooltip" data-bs-placement="bottom">
+              <i class="bi bi-speedometer2 me-1"></i>Dashboard
+              <i class="bi bi-chevron-down" style="font-size:10px;"></i>
+            </button>
+            <ul class="drop-menu drop-menu--right" role="menu">
+              <li><span class="drop-header">Dashboard</span></li>
+              <li><hr class="drop-divider"></li>
+              <li><a class="drop-item" href="{{ url_for('auth.login') }}"><i class="bi bi-box-arrow-in-right me-2"></i>Sign In</a></li>
+              <li><a class="drop-item" href="{{ url_for('auth.register') }}"><i class="bi bi-person-plus me-2"></i>Sign Up</a></li>
+            </ul>
           </li>
-          <li class="menu-item auth">
-            <a href="{{ url_for('auth.register') }}" class="btn-create-account">Sign Up</a>
+          <li class="menu-item has-dropdown nav-user-menu">
+            <button class="nav-user-trigger" title="Account" data-bs-toggle="tooltip" data-bs-placement="bottom">
+              <span class="nav-user-avatar"><i class="bi bi-person"></i></span>
+              <span class="nav-user-name">Account</span>
+              <i class="bi bi-chevron-down" style="font-size:10px;"></i>
+            </button>
+            <ul class="drop-menu drop-menu--right" role="menu">
+              <li><span class="drop-header">Account</span></li>
+              <li><hr class="drop-divider"></li>
+              <li><a class="drop-item" href="{{ url_for('auth.login') }}"><i class="bi bi-box-arrow-in-right me-2"></i>Sign In</a></li>
+              <li><a class="drop-item" href="{{ url_for('auth.register') }}"><i class="bi bi-person-plus me-2"></i>Sign Up</a></li>
+            </ul>
           </li>
 
         {% endif %}

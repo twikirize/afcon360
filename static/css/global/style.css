@@ -268,6 +268,82 @@ body.afcon-root {
 /* ── ACCOUNT DROPDOWN ENHANCEMENTS ─────────────────────────── */
 .nav-user-menu .drop-menu { min-width: 260px; }
 
+/* ── DASHBOARD DROPDOWN (mirrors account dropdown) ────────────── */
+.nav-dashboard-menu .drop-menu { min-width: 240px; }
+
+.nav-dashboard-menu .drop-header { border-bottom: 1px solid var(--color-border, #e8eaed); margin-bottom: 0.25rem; padding-bottom: 0.5rem; }
+
+.nav-dashboard-menu .drop-header:first-of-type { border-bottom: none; }
+
+.nav-dashboard-menu .drop-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  margin: 0.125rem 0.5rem;
+  transition: background 0.14s, transform 0.12s, box-shadow 0.14s;
+  position: relative;
+}
+
+.nav-dashboard-menu .drop-item:hover {
+  background: var(--green-light);
+  color: var(--green-dark) !important;
+  transform: translateX(2px);
+  box-shadow: 0 2px 6px rgba(45, 90, 45, 0.12);
+}
+
+.nav-dashboard-menu .drop-item:active {
+  background: var(--gold) !important;
+  color: var(--green-dark) !important;
+  transform: translateX(0);
+}
+
+.nav-dashboard-menu .drop-item i.bi {
+  flex-shrink: 0;
+  width: 1.125rem;
+  height: 1.125rem;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #6c757d);
+  transition: color 0.14s;
+}
+
+.nav-dashboard-menu .drop-item:hover i.bi {
+  color: var(--green);
+}
+
+/* Dashboard trigger button styles */
+.nav-dashboard-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.88);
+  background: transparent;
+  border: none;
+  padding: 0.38rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s, color 0.18s;
+}
+
+.nav-dashboard-trigger:hover,
+.nav-dashboard-trigger:focus {
+  background: rgba(255,204,0,0.15);
+  color: var(--gold);
+}
+
+.nav-dashboard-trigger i.bi-chevron-down {
+  font-size: 0.62rem;
+  opacity: 0.55;
+}
+
 .nav-user-menu .drop-header { border-bottom: 1px solid var(--color-border, #e8eaed); margin-bottom: 0.25rem; padding-bottom: 0.5rem; }
 
 .nav-user-menu .drop-header:first-of-type { border-bottom: none; }
