@@ -20,11 +20,22 @@ ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = Path(
     os.environ.get("AFCON360_DRIVER_E2E_BACKEND_ROOT", str(ROOT))
 ).resolve()
+if not (BACKEND_ROOT / "app" / "__init__.py").is_file():
+    raise RuntimeError(
+        f"Driver E2E backend checkout is incomplete: expected {BACKEND_ROOT / 'app' / '__init__.py'}"
+    )
+
+# Flask's env/config loading and Alembic must run from the same checkout that
+# was migrated. Otherwise a test launched from the native PR root may resolve
+# different app code or search the wrong .env files/database defaults.
+os.chdir(BACKEND_ROOT)
 sys.path.insert(0, str(BACKEND_ROOT))
-if str(ROOT) not in sys.path:
-    sys.path.append(str(ROOT))
+if str(ROOT) in sys.path:
+    sys.path.remove(str(ROOT))
 
 EVIDENCE = Path(os.environ.get("AFCON360_DRIVER_E2E_EVIDENCE_DIR", "driver-e2e-evidence"))
+if not EVIDENCE.is_absolute():
+    EVIDENCE = (ROOT / EVIDENCE).resolve()
 REQUEST_LOG = Path(os.environ.get(
     "AFCON360_DRIVER_E2E_REQUEST_LOG",
     str(EVIDENCE / "backend-requests.tsv"),
@@ -40,10 +51,17 @@ BACKEND_PREFLIGHT_USER_AGENT = "AFCON360 Driver E2E backend preflight"
 
 
 def build_app():
+    import app as backend_app
     from app import create_app
     from app.config import TestingConfig
     from flask import request
 
+    loaded_app = Path(backend_app.__file__).resolve()
+    expected_app = (BACKEND_ROOT / "app" / "__init__.py").resolve()
+    if loaded_app != expected_app:
+        raise RuntimeError(
+            f"Driver E2E loaded Flask app from {loaded_app}, expected backend candidate {expected_app}"
+        )
     app = create_app(config_object=TestingConfig)
     app.config.update(
         TESTING=False,
