@@ -1,0 +1,99 @@
+name: User preview OTA update
+
+on:
+  push:
+    branches:
+      - feat/native-user-app-integration-20261108
+    paths:
+      - "mobile/apps/user/**"
+      - "mobile/packages/**"
+      - "mobile/package.json"
+      - "mobile/pnpm-lock.yaml"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/.npmrc"
+      - ".github/workflows/user-preview-ota-update.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report-ota-configuration:
+    name: Check User OTA publishing setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report missing one-time EAS settings
+        env:
+          AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$AFCON360_USER_EAS_PROJECT_ID" ]; then
+            echo "::warning::Automatic User OTA publishing is not active. Add the AFCON360_USER_EAS_PROJECT_ID repository variable."
+          fi
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::warning::Automatic User OTA publishing is not active. Add the EXPO_TOKEN repository secret."
+          fi
+          if [ -n "$AFCON360_USER_EAS_PROJECT_ID" ] && [ -n "$EXPO_TOKEN" ]; then
+            echo "User OTA project and publisher token are configured."
+          fi
+
+  publish-user-preview:
+    name: Validate and publish User preview update
+    needs: report-ota-configuration
+    if: ${{ github.event_name == 'push' && vars.AFCON360_USER_EAS_PROJECT_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      AFCON360_PREVIEW_BUILD: "true"
+      AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+      EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Install User workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify Expo SDK dependency compatibility
+        run: pnpm --filter @afcon360/user-app exec expo install --check
+
+      - name: Type-check User app
+        run: pnpm user:typecheck
+
+      - name: Export User app for Android and iOS
+        run: |
+          pnpm --filter @afcon360/user-app exec expo export --platform android --output-dir /tmp/afcon360-user-android
+          pnpm --filter @afcon360/user-app exec expo export --platform ios --output-dir /tmp/afcon360-user-ios
+
+      - name: Validate EAS Update credentials
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN" || { echo "::error::Add the EXPO_TOKEN repository secret before publishing User OTA updates."; exit 1; }
+          [[ "$AFCON360_USER_EAS_PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || { echo "::error::AFCON360_USER_EAS_PROJECT_ID must be the dedicated User EAS project UUID."; exit 1; }
+
+      - name: Ensure the preview channel exists and points to the preview branch
+        working-directory: mobile/apps/user
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest branch:view preview --json >/dev/null 2>&1 || npx --yes eas-cli@latest branch:create preview --non-interactive
+          npx --yes eas-cli@latest channel:view preview --json >/dev/null 2>&1 || npx --yes eas-cli@latest channel:create preview --non-interactive
+          npx --yes eas-cli@latest channel:edit preview --branch preview --non-interactive
+
+      - name: Publish User JavaScript and asset update to preview only
+        working-directory: mobile/apps/user
+        run: npx --yes eas-cli@latest update --channel preview --message "AFCON360 User preview $GITHUB_SHA" --platform all --environment preview --non-interactive
