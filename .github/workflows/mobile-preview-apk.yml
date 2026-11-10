@@ -127,6 +127,7 @@ jobs:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
       AFCON360_PREVIEW_BUILD: "true"
+      AFCON360_DRIVER_EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
     steps:
       - name: Check out source
@@ -499,6 +500,7 @@ jobs:
     env:
       APP: ${{ matrix.app }}
       EXPECTED_BUNDLE_ID: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user' || 'space.pamoja.afcon360.driver' }}
+      AFCON360_DRIVER_EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
     steps:
       - name: Check out source
@@ -654,6 +656,7 @@ jobs:
       MAIL_SUPPRESS_SEND: "true"
       EXPO_PUBLIC_API_BASE_URL: "http://127.0.0.1:5000"
       AFCON360_PREVIEW_BUILD: "true"
+      AFCON360_DRIVER_EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
       AFCON360_DRIVER_E2E_USERNAME: native_e2e_driver
       AFCON360_DRIVER_E2E_EMAIL: native-driver-e2e@afcon360.test
       AFCON360_DRIVER_E2E_PASSWORD: DriverE2ePassword2026
