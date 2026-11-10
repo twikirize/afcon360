@@ -14,7 +14,7 @@ import {
 import { authClient } from "../src/services/api";
 
 type DriverNotification = {
-  public_id: string;
+  notification_ref: string;
   type: string;
   module: "transport";
   subject?: string | null;
@@ -82,12 +82,12 @@ export default function DriverNotifications() {
     try {
       await authClient.request(
         "/api/mobile/v1/driver/notifications/" +
-          encodeURIComponent(item.public_id) +
+          encodeURIComponent(item.notification_ref) +
           "/read",
         { method: "POST", body: {} }
       );
       setItems(current => current.map(row =>
-        row.public_id === item.public_id ? { ...row, is_read: true } : row
+        row.notification_ref === item.notification_ref ? { ...row, is_read: true } : row
       ));
       setUnread(current => Math.max(0, current - 1));
       setError(null);
@@ -140,7 +140,7 @@ export default function DriverNotifications() {
         ) : null}
         {items.map(item => (
           <Pressable
-            key={item.public_id}
+            key={item.notification_ref}
             onPress={() => { void markRead(item); }}
             disabled={busy !== null}
             style={{
@@ -163,7 +163,7 @@ export default function DriverNotifications() {
               {(item.created_at ? new Date(item.created_at).toLocaleString() : "Time unavailable") +
                 (item.priority ? " · " + item.priority + " priority" : "")}
             </Text>
-            {busy === item.public_id ? <ActivityIndicator color={palette.green} /> : null}
+            {busy === item.notification_ref ? <ActivityIndicator color={palette.green} /> : null}
           </Pressable>
         ))}
       </Panel>
