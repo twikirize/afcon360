@@ -1176,7 +1176,15 @@ def mobile_driver_assignments():
             "model": vehicle.model,
             "year": vehicle.year,
             "license_plate": vehicle.license_plate,
+            "registration_number": vehicle.registration_number,
+            "make": vehicle.make,
+            "model": vehicle.model,
+            "year": vehicle.year,
+            "color": vehicle.color,
+            "vin_number": vehicle.vin_number,
+            "vehicle_type": vehicle.vehicle_type,
             "vehicle_class": _enum_value(vehicle.vehicle_class),
+            "luggage_capacity": vehicle.luggage_capacity,
             "status": str(_enum_value(vehicle.status)),
             "is_available": bool(vehicle.is_available),
             "passenger_capacity": vehicle.passenger_capacity,
@@ -1559,8 +1567,19 @@ def mobile_driver_apply_vehicle_marketplace(listing_public_id):
     if listing is None:
         return _error("marketplace_listing_not_found", "That vehicle listing is not available.", 404)
 
+    # The marketplace list intentionally excludes the Driver's own
+    # listings. Enforce the same boundary on direct application requests too.
+    if int(listing.owner_id) == int(user.id):
+        return _error("own_marketplace_listing", "You cannot apply to your own vehicle listing.", 403)
+
     vehicle = listing.vehicle
-    if vehicle is None or vehicle.is_deleted or not vehicle.is_available or vehicle.is_reserved:
+    if (
+        vehicle is None
+        or vehicle.is_deleted
+        or str(getattr(vehicle.status, "value", vehicle.status)).lower() != "active"
+        or not vehicle.is_available
+        or vehicle.is_reserved
+    ):
         return _error("marketplace_vehicle_unavailable", "That vehicle is no longer available.", 409)
     data = request.get_json(silent=True) or {}
     safe_application = {
