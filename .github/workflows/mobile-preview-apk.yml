@@ -914,24 +914,3 @@ jobs:
           path: driver-e2e-evidence/
           if-no-files-found: warn
           retention-days: 30
- <<< "$latest_changed"; then
-            build_shared=true
-          fi
-          if grep -Eq '^mobile/apps/user/(app\.config\.ts|package\.json|android/|ios/|plugins/)' <<< "$latest_changed"; then build_user=true; fi
-          if grep -Eq '^mobile/apps/driver/(app\.config\.ts|package\.json|android/|ios/|plugins/)' <<< "$latest_changed"; then build_driver=true; fi
-          if [[ "$build_shared" == "true" ]]; then
-            build_user=true
-            build_driver=true
-          fi
-
-          build_apps="["
-          build_separator=""
-          if [[ "$build_user" == "true" ]]; then
-            build_apps+="$build_separator\"user\""
-            build_separator=","
-          fi
-          if [[ "$build_driver" == "true" ]]; then
-            build_apps+="$build_separator\"driver\""
-          fi
-          build_apps+="]"
-          echo "build_apps_json=$build_apps" >> "$GITHUB_OUTPUT"
