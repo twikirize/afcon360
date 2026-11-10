@@ -10,6 +10,7 @@ on:
       - "mobile/apps/**"
       - "mobile/packages/**"
       - "mobile/docs/**"
+      - "mobile/scripts/**"
       - "mobile/README.md"
       - "mobile/AGENTS.md"
       - "mobile/package.json"
