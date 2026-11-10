@@ -23,7 +23,7 @@ The native implementation now includes:
 - A Driver Transport notification inbox and self-reported incident workflow.
 - Account compliance/readiness, support/privacy handoffs, account deletion and secure logout.
 
-**This is not yet a complete parity or release sign-off.** The native workspace CI and selective Android/iOS compatibility runs must pass on the current branch. The backend parity PR's latest PostgreSQL/Redis rerun must pass. Trip history and demand-cell APIs are still in separate draft PRs. Incoming offer delivery remains polling-based; native push/realtime and background location are not claimed as complete. Authenticated Android login/session restoration remains deliberately held until the parity gate is met.
+**This is not yet a complete parity or release sign-off.** The native workspace CI and selective Android/iOS compatibility runs must pass on the current branch. The backend parity PR's latest PostgreSQL/Redis rerun must pass, including its newly extended total-duration field. Trip history and demand-cell APIs are still in separate draft PRs. Incoming offer delivery remains polling-based; native push/realtime and background location are not claimed as complete. Authenticated Android login/session restoration remains deliberately held until the parity gate is met.
 
 ## 1. Native-to-backend contract inventory
 
@@ -55,7 +55,7 @@ The native client must never connect directly to PostgreSQL/Redis or use website
 
 | Website Driver capability | Native implementation | Remaining qualification |
 |---|---|---|
-| **Home — identity/readiness** | Driver code, verification/compliance, go-live checklist, rating, safety/acceptance/cancellation metrics, trip totals/distance and assigned vehicle | Backend PR #72 must be integrated before release |
+| **Home — identity/readiness** | Driver code, verification/compliance, go-live checklist, reliability/safety scores, acceptance/cancellation rates, average rating + rating count, trip totals/distance/duration and assigned vehicle | Backend PR #72 must be integrated before release |
 | **Home — online/offline** | Native Status screen; server go-live guard controls transitions | No local approval or bypass |
 | **Home — offers** | Native offer list, accept/decline and expiry display | Polling remains active-tab/foreground; native push/realtime offer alerts are not implemented |
 | **Home — active trip** | Active trip, pickup time, fare/payment, cancel/no-show prompts and cash confirmation | Cancel/no-show affordances follow server capability flags; BookingService remains authoritative |
@@ -67,7 +67,7 @@ The native client must never connect directly to PostgreSQL/Redis or use website
 | **Trips — active lifecycle** | Active trip actions and pickup schedule | Server action contracts and eligibility flags remain authoritative |
 | **Trips — upcoming/recent** | Native history view with safe route/fare/payment summary | Backend PR #62 must be rebased, tested and integrated before release |
 | **Earnings — captured amounts** | Currency-grouped totals, platform commission and driver net display | PR #72 corrects metadata attribution; detailed website period/performance analytics are not yet equivalent |
-| **Earnings — performance** | Home and Account show canonical rating/safety/acceptance/cancellation/trip/distance summary | Not a full period-by-period analytics report |
+| **Earnings — performance** | Home and Account show canonical reliability/safety/acceptance/cancellation, average rating + count, trip totals, distance and duration | The website itself directs detailed payout schedules/period reports to Finance; native does not invent an additional period-report API |
 | **Assignments — current/switch/history** | Current assignment, switchable owned vehicles and last-90-day vehicle history | PR #72 supplies self-scoped API; no admin assignment operations exposed |
 | **Assignments — scheduled routes** | Native scheduled-route cards | Read-only driver scope; no dispatcher route management |
 | **Vehicles — owned vehicles** | Ownership-scoped list, distinction from current assignment | PR #72 adapter uses ProviderService.get_user_vehicles |
