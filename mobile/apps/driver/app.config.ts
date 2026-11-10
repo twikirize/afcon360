@@ -8,6 +8,9 @@ const easProjectId = (
 const updateChannel = isPreview ? "driver-preview" : "driver-production";
 const updatesEnabled = Boolean(easProjectId);
 
+// This app config defines the binary runtime contract. Changes to its native
+// update configuration require one fresh APK; later JS-only changes use OTA.
+
 const config: ExpoConfig = {
   name: isPreview ? "AFCON360 Driver Preview" : "AFCON360 Driver",
   slug: "afcon360-driver",
