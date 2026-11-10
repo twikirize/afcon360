@@ -2257,6 +2257,290 @@ def mobile_driver_cash_receipt(booking_reference):
 
 
 # ---------------------------------------------------------------------------
+# Native Events and Tickets APIs
+# ---------------------------------------------------------------------------
+
+def _native_events_user():
+    return g._afcon360_mobile_auth_context["user"]
+
+
+@mobile_api_bp.get("/events")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_events_list():
+    from app.events.native_event_service import NativeEventService
+    try:
+        result = NativeEventService.list_events(
+            query=request.args.get("q"),
+            city=request.args.get("city"),
+            country=request.args.get("country"),
+            category=request.args.get("category"),
+            limit=request.args.get("limit", 20, type=int),
+            offset=request.args.get("offset", 0, type=int),
+        )
+        return jsonify({"success": True, "data": result}), 200
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event discovery failed")
+        return _error("events_unavailable", "Events are temporarily unavailable.", 503)
+
+
+@mobile_api_bp.get("/events/registrations")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_event_registrations():
+    from app.events.native_event_service import NativeEventService
+    try:
+        result = NativeEventService.list_registrations(
+            _native_events_user(),
+            limit=request.args.get("limit", 20, type=int),
+            offset=request.args.get("offset", 0, type=int),
+        )
+        return jsonify({"success": True, "data": result}), 200
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event ticket history failed")
+        return _error("event_tickets_unavailable", "Your event tickets could not be loaded.", 503)
+
+
+@mobile_api_bp.get("/events/registrations/<string:registration_reference>")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_event_registration(registration_reference):
+    from app.events.native_event_service import NativeEventError, NativeEventService
+    try:
+        result = NativeEventService.get_registration(_native_events_user(), registration_reference)
+        return jsonify({"success": True, "data": result}), 200
+    except NativeEventError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event ticket detail failed")
+        return _error("event_ticket_unavailable", "This ticket could not be loaded.", 503)
+
+
+@mobile_api_bp.get("/events/<string:event_public_id>")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_event_detail(event_public_id):
+    from app.events.native_event_service import NativeEventError, NativeEventService
+    try:
+        result = NativeEventService.get_event(event_public_id)
+        return jsonify({"success": True, "data": result}), 200
+    except NativeEventError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event detail failed")
+        return _error("event_detail_unavailable", "This event could not be loaded.", 503)
+
+
+@mobile_api_bp.post("/events/<string:event_public_id>/registrations")
+@limiter.limit("5 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_event_register_free_ticket(event_public_id):
+    from app.events.native_event_service import NativeEventError, NativeEventService
+    data = request.get_json(silent=True) or {}
+    token = str(data.get("ticket_token") or "")
+    if not token:
+        return _error("ticket_selection_required", "Select a ticket type before registering.", 400)
+    try:
+        result = NativeEventService.register_free_ticket(
+            _native_events_user(),
+            event_public_id=event_public_id,
+            ticket_token=token,
+        )
+        return jsonify({"success": True, "data": result}), 201
+    except NativeEventError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event free-ticket registration failed")
+        return _error("event_registration_unavailable", "AFCON360 could not complete this registration. Check your tickets before trying again.", 503)
+
+
+# ---------------------------------------------------------------------------
+# Native Accommodation APIs
+# ---------------------------------------------------------------------------
+
+def _native_accommodation_user():
+    return g._afcon360_mobile_auth_context["user"]
+
+
+@mobile_api_bp.get("/accommodation/properties")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_accommodation_properties():
+    from app.accommodation.services.native_booking_service import NativeAccommodationService
+    try:
+        result = NativeAccommodationService.list_properties(
+            query=request.args.get("q"),
+            city=request.args.get("city"),
+            country=request.args.get("country"),
+            limit=request.args.get("limit", 20, type=int),
+            offset=request.args.get("offset", 0, type=int),
+        )
+        return jsonify({"success": True, "data": result}), 200
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native accommodation property search failed")
+        return _error("accommodation_search_unavailable", "Accommodation search is temporarily unavailable.", 503)
+
+
+@mobile_api_bp.get("/accommodation/properties/<string:property_public_id>")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_accommodation_property(property_public_id):
+    from app.accommodation.services.native_booking_service import (
+        NativeAccommodationError,
+        NativeAccommodationService,
+    )
+    try:
+        result = NativeAccommodationService.get_property(property_public_id)
+        return jsonify({"success": True, "data": result}), 200
+    except NativeAccommodationError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native accommodation property detail failed")
+        return _error("accommodation_detail_unavailable", "This property could not be loaded right now.", 503)
+
+
+@mobile_api_bp.post("/accommodation/quotes")
+@limiter.limit("10 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_accommodation_quote():
+    from app.accommodation.services.native_booking_service import (
+        NativeAccommodationError,
+        NativeAccommodationService,
+    )
+    data = request.get_json(silent=True) or {}
+    required = ("property_public_id", "check_in", "check_out", "num_guests")
+    if any(data.get(name) in (None, "") for name in required):
+        return _error("booking_quote_fields_required", "Property, check-in, check-out and guest count are required.", 400)
+    try:
+        result = NativeAccommodationService.quote_booking(
+            _native_accommodation_user(),
+            property_public_id=data.get("property_public_id"),
+            check_in_value=data.get("check_in"),
+            check_out_value=data.get("check_out"),
+            num_guests=data.get("num_guests"),
+            rooms_requested=data.get("rooms_requested", 1),
+            room_type_token=data.get("room_type_token"),
+        )
+        return jsonify({"success": True, "data": result}), 200
+    except NativeAccommodationError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native accommodation quote failed")
+        return _error("booking_quote_unavailable", "AFCON360 could not prepare this booking quote.", 503)
+
+
+@mobile_api_bp.post("/accommodation/bookings")
+@limiter.limit("5 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_accommodation_create_booking():
+    from app.accommodation.services.native_booking_service import (
+        NativeAccommodationError,
+        NativeAccommodationService,
+    )
+    data = request.get_json(silent=True) or {}
+    quote_token = str(data.get("quote_token") or "")
+    pin = str(data.get("pin") or "")
+    if not quote_token or not pin:
+        return _error("booking_confirmation_required", "A valid booking quote and your transaction PIN are required.", 400)
+    try:
+        result = NativeAccommodationService.confirm_wallet_booking(
+            _native_accommodation_user(),
+            quote_token=quote_token,
+            pin=pin,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+            special_requests=data.get("special_requests"),
+        )
+        return jsonify({"success": True, "data": result}), 201
+    except NativeAccommodationError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native accommodation booking confirmation failed")
+        return _error(
+            "booking_confirmation_unavailable",
+            "AFCON360 could not confirm this booking. Check your booking history before trying again.",
+            503,
+        )
+
+
+@mobile_api_bp.get("/accommodation/bookings")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_accommodation_bookings():
+    from app.accommodation.services.native_booking_service import NativeAccommodationService
+    try:
+        result = NativeAccommodationService.list_bookings(
+            _native_accommodation_user(),
+            limit=request.args.get("limit", 20, type=int),
+            offset=request.args.get("offset", 0, type=int),
+        )
+        return jsonify({"success": True, "data": result}), 200
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native accommodation booking history failed")
+        return _error("booking_history_unavailable", "Your accommodation bookings could not be loaded.", 503)
+
+
+@mobile_api_bp.get("/accommodation/bookings/<string:booking_reference>")
+@limiter.limit("30 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_accommodation_booking(booking_reference):
+    from app.accommodation.services.native_booking_service import (
+        NativeAccommodationError,
+        NativeAccommodationService,
+    )
+    try:
+        result = NativeAccommodationService.get_booking(_native_accommodation_user(), booking_reference)
+        return jsonify({"success": True, "data": result}), 200
+    except NativeAccommodationError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native accommodation booking detail failed")
+        return _error("booking_detail_unavailable", "This booking could not be loaded.", 503)
+
+
+@mobile_api_bp.post("/accommodation/bookings/<string:booking_reference>/cancel")
+@limiter.limit("5 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_accommodation_cancel_booking(booking_reference):
+    from app.accommodation.services.native_booking_service import (
+        NativeAccommodationError,
+        NativeAccommodationService,
+    )
+    data = request.get_json(silent=True) or {}
+    idempotency_key = str(request.headers.get("Idempotency-Key") or data.get("idempotency_key") or "").strip()
+    if len(idempotency_key) < 8 or len(idempotency_key) > 128:
+        return _error("idempotency_key_required", "A unique cancellation request key is required.", 400)
+    try:
+        result = NativeAccommodationService.cancel_booking(
+            _native_accommodation_user(),
+            booking_reference,
+            reason=data.get("reason"),
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+            idempotency_key=idempotency_key,
+        )
+        return jsonify({"success": True, "data": result}), 200
+    except NativeAccommodationError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native accommodation cancellation failed")
+        return _error("booking_cancellation_unavailable", "AFCON360 could not complete this cancellation.", 503)
+
+
+
+# ---------------------------------------------------------------------------
 # Native Wallet APIs
 # ---------------------------------------------------------------------------
 
