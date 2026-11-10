@@ -91,6 +91,25 @@ def bounds_center(value: str) -> tuple[int, int] | None:
     return ((left + right) // 2, (top + bottom) // 2)
 
 
+def scroll_until_text(value: str, *, max_swipes: int = 10, label: str = "screen") -> str:
+    """Scroll a long native screen until its requested control is actually visible."""
+    last = ""
+    for _ in range(max_swipes + 1):
+        try:
+            last = visible_text()
+        except Exception:
+            time.sleep(0.5)
+            continue
+        if value in last:
+            print(f"PASS: {label}: {value}", flush=True)
+            return last
+        run_adb("shell", "input", "swipe", "540", "1900", "540", "700", "450")
+        time.sleep(0.5)
+    raise AssertionError(
+        f"Could not scroll {label} to {value!r}. Last visible hierarchy:\\n{last[:7000]}"
+    )
+
+
 def tap_text(value: str, *, last: bool = False, timeout: int = 15) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -259,10 +278,13 @@ def main() -> None:
 
     tap_text("Account", last=True)
     wait_for_text(
-        "Your AFCON360 identity.", "Signed in securely", "Sign out",
+        "Your AFCON360 identity.", "Signed in securely",
         timeout=30, label="authenticated Driver account",
     )
     save_screen("05-account")
+    # The account page is longer than the viewport; sign-out is intentionally
+    # near the bottom and must be scrolled into view before the test can tap it.
+    scroll_until_text("Sign out", label="authenticated Driver account sign-out control")
 
     # Kill the real Android process, not just navigate away, then prove the
     # driver session restores from the app's SecureStore token pair.
@@ -278,7 +300,8 @@ def main() -> None:
     save_screen("06-session-restored")
 
     tap_text("Account", last=True)
-    wait_for_text("Your AFCON360 identity.", "Sign out", label="Driver account before logout")
+    wait_for_text("Your AFCON360 identity.", label="Driver account before logout")
+    scroll_until_text("Sign out", label="Driver account sign-out control after process restart")
     tap_text("Sign out", last=True)
     wait_for_text(
         "Sign out this driver device?",
