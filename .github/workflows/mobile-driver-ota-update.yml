@@ -1,0 +1,118 @@
+name: AFCON360 Driver — publish OTA updates
+
+on:
+  push:
+    branches:
+      - feat/native-driver-workspace-parity-20261109
+      - main
+    paths:
+      - "mobile/apps/driver/**"
+      - "mobile/packages/**"
+      - "mobile/package.json"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/.npmrc"
+      - ".github/workflows/mobile-driver-ota-update.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: afcon360-driver-ota-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-driver-update:
+    name: Publish compatible Driver JavaScript update
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check OTA project and publishing credentials
+        id: config
+        shell: bash
+        env:
+          EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [[ -z "$EAS_PROJECT_ID" || -z "$EXPO_TOKEN" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Driver OTA publishing is not enabled yet. Configure the AFCON360_DRIVER_EAS_PROJECT_ID repository variable and EXPO_TOKEN repository secret."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out source
+        if: steps.config.outputs.enabled == 'true'
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        if: steps.config.outputs.enabled == 'true'
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Set up Node.js
+        if: steps.config.outputs.enabled == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Install Driver workspace dependencies
+        if: steps.config.outputs.enabled == 'true'
+        working-directory: mobile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Select isolated preview or production channel
+        if: steps.config.outputs.enabled == 'true'
+        id: target
+        shell: bash
+        env:
+          EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
+        run: |
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            echo "branch=driver-production" >> "$GITHUB_OUTPUT"
+            echo "channel=driver-production" >> "$GITHUB_OUTPUT"
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "AFCON360_PREVIEW_BUILD=false" >> "$GITHUB_ENV"
+          else
+            echo "branch=driver-preview" >> "$GITHUB_OUTPUT"
+            echo "channel=driver-preview" >> "$GITHUB_OUTPUT"
+            echo "environment=preview" >> "$GITHUB_OUTPUT"
+            echo "AFCON360_PREVIEW_BUILD=true" >> "$GITHUB_ENV"
+          fi
+          echo "AFCON360_DRIVER_EAS_PROJECT_ID=$EAS_PROJECT_ID" >> "$GITHUB_ENV"
+          echo "EXPO_PUBLIC_API_BASE_URL=https://www.pamoja.space" >> "$GITHUB_ENV"
+
+      - name: Create or align EAS update branch and channel
+        if: steps.config.outputs.enabled == 'true'
+        working-directory: mobile/apps/driver
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_BRANCH: ${{ steps.target.outputs.branch }}
+          EAS_CHANNEL: ${{ steps.target.outputs.channel }}
+        run: |
+          pnpm dlx eas-cli@latest branch:create "$EAS_BRANCH" --non-interactive || true
+          pnpm dlx eas-cli@latest channel:create "$EAS_CHANNEL" --non-interactive || true
+          pnpm dlx eas-cli@latest channel:edit "$EAS_CHANNEL" --branch "$EAS_BRANCH" --non-interactive
+
+      - name: Publish Android and iOS compatible OTA update
+        if: steps.config.outputs.enabled == 'true'
+        working-directory: mobile/apps/driver
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_BRANCH: ${{ steps.target.outputs.branch }}
+          EAS_ENVIRONMENT: ${{ steps.target.outputs.environment }}
+        run: |
+          pnpm dlx eas-cli@latest update \
+            --branch "$EAS_BRANCH" \
+            --message "Driver OTA update $GITHUB_SHA" \
+            --platform all \
+            --environment "$EAS_ENVIRONMENT" \
+            --non-interactive
+
+      - name: Report that publishing is waiting for project setup
+        if: steps.config.outputs.enabled != 'true'
+        run: |
+          echo "No OTA bundle was published. The normal mobile CI remains unaffected."
+          echo "After the Expo project is linked and EXPO_TOKEN is configured, pushes to the Driver branch will publish to driver-preview and pushes to main will publish to driver-production."
