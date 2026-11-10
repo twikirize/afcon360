@@ -387,14 +387,34 @@ jobs:
       max-parallel: 4
       matrix:
         include:
-          - android-label: android-7-minimum
+          - android-label: android-7.0
             api-level: '24'
             system-image-api-level: '24'
             expected-api: '24'
+          - android-label: android-7.1
+            api-level: '25'
+            system-image-api-level: '25'
+            expected-api: '25'
+          - android-label: android-8.0
+            api-level: '26'
+            system-image-api-level: '26'
+            expected-api: '26'
+          - android-label: android-8.1
+            api-level: '27'
+            system-image-api-level: '27'
+            expected-api: '27'
+          - android-label: android-9
+            api-level: '28'
+            system-image-api-level: '28'
+            expected-api: '28'
           - android-label: android-10
             api-level: '29'
             system-image-api-level: '29'
             expected-api: '29'
+          - android-label: android-11
+            api-level: '30'
+            system-image-api-level: '30'
+            expected-api: '30'
           - android-label: android-12
             api-level: '31'
             system-image-api-level: '31'
