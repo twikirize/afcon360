@@ -11,7 +11,7 @@ const SITE = "https://www.pamoja.space";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { user, loading, signingIn, mfaChallenge, mfaType, mfaDestinationHint, signIn, verifyMfa, cancelMfa } = useAuth();
+  const { user, loading, restoreError, retryRestoreSession, signingIn, mfaChallenge, mfaType, mfaDestinationHint, signIn, verifyMfa, cancelMfa } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -33,6 +33,12 @@ export default function LoginScreen() {
           <PageHeader eyebrow="Welcome back" title={mfaChallenge ? "Verify it’s you." : "Your journey starts here."} description={mfaChallenge ? (mfaType === "sms" ? `We sent a sign-in code to ${mfaDestinationHint ?? "your verified phone"}. It expires in five minutes.` : "Enter the current code from your authenticator app to finish signing in.") : "Sign in with your existing AFCON360 account. Your website account works here too."} />
         </View>
         <Panel>
+          {restoreError ? (
+            <>
+              <AuthNotice>{restoreError} Your saved credentials have not been deleted. Check your connection and retry the session check.</AuthNotice>
+              <AuthLink label="Retry saved session" onPress={() => { void retryRestoreSession(); }} />
+            </>
+          ) : null}
           {mfaChallenge ? (
             <>
               <AuthNotice>{mfaType === "sms" ? "Enter the 6-digit code sent to your verified phone. It can only be used once; never share it." : "This authenticator challenge expires shortly and can only be used once. Do not share your code."}</AuthNotice>

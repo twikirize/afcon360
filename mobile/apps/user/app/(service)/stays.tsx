@@ -15,6 +15,7 @@ import {
   AccommodationProperty,
 } from "@afcon360/mobile-core";
 import { accommodationClient } from "../../src/services/api";
+import { serviceErrorMessage } from "../../src/services/service-errors";
 
 function dateOffset(days: number): string {
   const value = new Date();
@@ -64,6 +65,14 @@ function Field({
   );
 }
 
+function isValidDateOnly(value: string): boolean {
+  if (value.length !== 10 || value[4] !== "-" || value[7] !== "-") return false;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return false;
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+}
+
 function money(value: string, currency: string): string {
   const number = Number(value);
   return Number.isFinite(number)
@@ -92,12 +101,23 @@ export default function Stays() {
   const [specialRequests, setSpecialRequests] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const loadBookings = useCallback(async () => {
-    const result = await accommodationClient.listBookings(20, 0);
-    setBookings(result.items ?? []);
+    setBookingsLoading(true);
+    setBookingsError(null);
+    try {
+      const result = await accommodationClient.listBookings(20, 0);
+      setBookings(result.items ?? []);
+    } catch (e) {
+      setBookings([]);
+      setBookingsError(serviceErrorMessage(e, "Accommodation"));
+    } finally {
+      setBookingsLoading(false);
+    }
   }, []);
 
   const loadProperties = useCallback(async (term = "") => {
@@ -110,7 +130,8 @@ export default function Stays() {
       });
       setProperties(result.items ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Accommodation search is unavailable.");
+      setProperties([]);
+      setError(serviceErrorMessage(e, "Accommodation"));
     } finally {
       setLoading(false);
     }
@@ -118,7 +139,7 @@ export default function Stays() {
 
   useEffect(() => {
     void loadProperties();
-    void loadBookings().catch(() => undefined);
+    void loadBookings();
   }, [loadProperties, loadBookings]);
 
   const chooseProperty = (property: AccommodationProperty) => {
@@ -132,8 +153,29 @@ export default function Stays() {
 
   const requestQuote = async () => {
     if (!selectedProperty) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) {
-      setError("Use YYYY-MM-DD for check-in and check-out.");
+    if (!isValidDateOnly(checkIn) || !isValidDateOnly(checkOut)) {
+      setError("Enter real calendar dates using YYYY-MM-DD.");
+      return;
+    }
+    if (checkOut <= checkIn) {
+      setError("Check-out must be after check-in.");
+      return;
+    }
+    const guestCount = Number(guests);
+    const roomCount = Number(rooms);
+    if (!Number.isInteger(guestCount) || guestCount < 1 || guestCount > 32 || !Number.isInteger(roomCount) || roomCount < 1 || roomCount > 10) {
+      setError("Choose 1–32 guests and 1–10 rooms using whole numbers.");
+      return;
+    }
+    if (selectedProperty.max_guests > 0 && guestCount > selectedProperty.max_guests) {
+      setError(`This property accommodates up to ${selectedProperty.max_guests} guests.`);
+      return;
+    }
+    const [checkInYear, checkInMonth, checkInDay] = checkIn.split("-").map(Number);
+    const [checkOutYear, checkOutMonth, checkOutDay] = checkOut.split("-").map(Number);
+    const nights = (Date.UTC(checkOutYear, checkOutMonth - 1, checkOutDay) - Date.UTC(checkInYear, checkInMonth - 1, checkInDay)) / 86400000;
+    if (nights > 90) {
+      setError("A single accommodation booking cannot exceed 90 nights.");
       return;
     }
     if (selectedProperty.room_types.length > 0 && roomTypeToken === null) {
@@ -149,14 +191,14 @@ export default function Stays() {
         propertyPublicId: selectedProperty.public_id,
         checkIn,
         checkOut,
-        numGuests: Number(guests),
-        roomsRequested: Number(rooms),
+        numGuests: guestCount,
+        roomsRequested: roomCount,
         roomTypeToken,
       });
       setQuote(result);
       setNotice("This price was calculated by AFCON360. Review the amount and available Wallet balance before confirming.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AFCON360 could not prepare the booking quote.");
+      setError(serviceErrorMessage(e, "Accommodation"));
     } finally {
       setBusy(false);
     }
@@ -179,7 +221,7 @@ export default function Stays() {
       setNotice(`Booking ${booking.booking_reference} was created. Status: ${booking.status}.`);
       await loadBookings();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AFCON360 could not confirm the booking.");
+      setError(serviceErrorMessage(e, "Accommodation"));
     } finally {
       setBusy(false);
     }
@@ -230,7 +272,7 @@ export default function Stays() {
                 }
                 await loadBookings();
               } catch (e) {
-                setError(e instanceof Error ? e.message : "AFCON360 could not cancel this booking.");
+                setError(serviceErrorMessage(e, "Accommodation"));
               } finally {
                 setBusy(false);
               }
@@ -255,7 +297,7 @@ export default function Stays() {
       <Panel>
         <SectionTitle>Find accommodation</SectionTitle>
         <Field label="Property, city or destination" value={query} onChangeText={setQuery} placeholder="Search Kampala, Nairobi, hotel…" />
-        <ActionButton label={busy ? "Please wait…" : "Search stays"} onPress={() => void loadProperties(query)} />
+        <ActionButton label={loading ? "Searching stays…" : "Search stays"} disabled={loading || busy} onPress={() => void loadProperties(query)} />
         {loading ? (
           <ActivityIndicator color={palette.green} />
         ) : properties.length ? (
@@ -279,7 +321,7 @@ export default function Stays() {
               {property.room_types.length ? <Text style={{ color: palette.muted }}>{property.room_types.length} room type(s)</Text> : null}
             </Pressable>
           ))
-        ) : (
+        ) : error ? null : (
           <Text style={{ color: palette.muted }}>No bookable properties were found. Try another city or search term.</Text>
         )}
       </Panel>
@@ -319,7 +361,7 @@ export default function Stays() {
           <Field label="Check-out (YYYY-MM-DD)" value={checkOut} onChangeText={(value) => { setCheckOut(value); setQuote(null); }} placeholder="2026-12-12" />
           <Field label="Guests" value={guests} onChangeText={(value) => { setGuests(value); setQuote(null); }} placeholder="2" keyboardType="numeric" />
           <Field label="Rooms" value={rooms} onChangeText={(value) => { setRooms(value); setQuote(null); }} placeholder="1" keyboardType="numeric" />
-          <ActionButton label={busy ? "Preparing quote…" : "Check availability and get price"} onPress={() => void requestQuote()} />
+          <ActionButton label={busy ? "Preparing quote…" : "Check availability and get price"} disabled={busy} onPress={() => void requestQuote()} />
         </Panel>
       ) : null}
 
@@ -344,7 +386,7 @@ export default function Stays() {
           </View>
           <Field label="Transaction PIN" value={pin} onChangeText={setPin} placeholder="Enter your Wallet PIN" keyboardType="numeric" />
           <Field label="Special requests (optional)" value={specialRequests} onChangeText={setSpecialRequests} placeholder="Share arrival or accessibility requests" />
-          <ActionButton label={busy ? "Confirming booking…" : "Review and pay from Wallet"} onPress={confirmBooking} />
+          <ActionButton label={busy ? "Confirming booking…" : "Review and pay from Wallet"} disabled={busy} onPress={confirmBooking} />
           <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 17 }}>
             AFCON360 rechecks the property, dates and price on the server before charging your Wallet. The app does not calculate the booking total.
           </Text>
@@ -353,7 +395,9 @@ export default function Stays() {
 
       <Panel>
         <SectionTitle>Your accommodation bookings</SectionTitle>
-        {bookings.length ? bookings.map((booking) => (
+        {bookingsError ? <Text style={{ color: "#9A342D", lineHeight: 20 }}>Booking history is unavailable: {bookingsError}</Text> : null}
+        {bookingsLoading ? <ActivityIndicator color={palette.green} /> : null}
+        {!bookingsLoading && bookings.length ? bookings.map((booking) => (
           <View key={booking.booking_reference} style={{ borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10, gap: 6 }}>
             <Text style={{ color: palette.ink, fontWeight: "900" }}>{booking.property.title || "Accommodation booking"}</Text>
             <Text style={{ color: palette.muted }}>{booking.booking_reference}</Text>
@@ -363,12 +407,12 @@ export default function Stays() {
               <StatusPill tone={booking.status === "confirmed" ? "green" : "gold"}>{booking.status}</StatusPill>
               <StatusPill tone={booking.payment_status === "paid" ? "green" : "gold"}>{booking.payment_status}</StatusPill>
             </View>
-            {bookingCanCancel(booking) ? <ActionButton label="Request cancellation" onPress={() => cancelBooking(booking)} /> : null}
+            {bookingCanCancel(booking) ? <ActionButton label={busy ? "Processing…" : "Request cancellation"} disabled={busy} onPress={() => cancelBooking(booking)} /> : null}
           </View>
-        )) : (
+        )) : bookingsError || bookingsLoading ? null : (
           <Text style={{ color: palette.muted }}>Your accommodation bookings will appear here.</Text>
         )}
-        <ActionButton label="Refresh bookings" onPress={() => void loadBookings()} />
+        <ActionButton label={bookingsLoading ? "Refreshing bookings…" : "Refresh bookings"} disabled={bookingsLoading} onPress={() => void loadBookings()} />
       </Panel>
     </AppScreen>
   );

@@ -12,19 +12,19 @@ export default function Explore() {
     <Panel>
       <SectionTitle>Transport</SectionTitle>
       <ServiceTile title="Rides" description="On-demand transport with resolved locations, signed fares and server-certified payment options." symbol="🚘" />
-      <ActionButton label="Book a ride" onPress={() => router.push("/ride")} />
+      <ActionButton label="Book a ride" onPress={() => router.push("/(service)/ride" as never)} />
     </Panel>
     <Panel>
       <SectionTitle>Accommodation</SectionTitle>
       <ServiceTile title="Stays" description="Discover properties and manage accommodation reservations." symbol="🏨" />
-      <ActionButton label="Find and book a stay" onPress={() => router.push("/(tabs)/stays" as never)} />
+      <ActionButton label="Find and book a stay" onPress={() => router.push("/(service)/stays" as never)} />
     </Panel>
     <Panel>
       <SectionTitle>Tourism and events</SectionTitle>
       <ServiceTile title="Tours and experiences" description="Explore packages and local providers." symbol="🧭" />
       <ActionButton label="Explore tourism on website" onPress={() => WebBrowser.openBrowserAsync(SITE + "/tourism")} />
       <ServiceTile title="Events" description="Discover events and registrations." symbol="🎟️" />
-      <ActionButton label="Discover events and tickets" onPress={() => router.push("/(tabs)/events" as never)} />
+      <ActionButton label="Discover events and tickets" onPress={() => router.push("/(service)/events" as never)} />
     </Panel>
   </AppScreen>;
 }

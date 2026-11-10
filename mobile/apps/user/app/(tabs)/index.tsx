@@ -12,8 +12,8 @@ export default function UserHome() {
       <StatusPill>Signed in securely</StatusPill>
       <SectionTitle>What would you like to do?</SectionTitle>
       <ServiceTile title="Book a ride" description="Choose verified locations, compare signed fares and confirm a payment method before requesting." symbol="🚗" />
-      <ActionButton label="Book a ride" onPress={() => router.push("/ride")} />
-      <ServiceTile title="Find a place to stay" description="Accommodation search and reservations remain available through the AFCON360 web booking experience." symbol="🛏️" />
+      <ActionButton label="Book a ride" onPress={() => router.push("/(service)/ride" as never)} />
+      <ServiceTile title="Find a place to stay" description="Search accommodation, review an AFCON360 quote and manage reservations from your Wallet." symbol="🛏️" />
       <ServiceTile title="Discover experiences" description="Find tours, events and things to do across the region." symbol="🧭" />
       <ActionButton label="Explore AFCON360 services" onPress={() => router.push("/(tabs)/explore")} />
     </Panel>

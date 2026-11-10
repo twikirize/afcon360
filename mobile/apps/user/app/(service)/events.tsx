@@ -16,6 +16,7 @@ import {
   NativeEventTicketType,
 } from "@afcon360/mobile-core";
 import { eventClient } from "../../src/services/api";
+import { serviceErrorMessage } from "../../src/services/service-errors";
 
 function displayDate(start: string | null, end: string | null): string {
   if (!start) return "Date to be announced";
@@ -52,6 +53,8 @@ export default function Events() {
   const [city, setCity] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [registrationsLoading, setRegistrationsLoading] = useState(true);
+  const [registrationsError, setRegistrationsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -66,20 +69,30 @@ export default function Events() {
       });
       setEvents(result.items ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AFCON360 could not load events.");
+      setEvents([]);
+      setError(serviceErrorMessage(e, "Events"));
     } finally {
       setLoading(false);
     }
   }, [query, city]);
 
   const loadRegistrations = useCallback(async () => {
-    const result = await eventClient.listRegistrations(30, 0);
-    setRegistrations(result.items ?? []);
+    setRegistrationsLoading(true);
+    setRegistrationsError(null);
+    try {
+      const result = await eventClient.listRegistrations(30, 0);
+      setRegistrations(result.items ?? []);
+    } catch (e) {
+      setRegistrations([]);
+      setRegistrationsError(serviceErrorMessage(e, "Events"));
+    } finally {
+      setRegistrationsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     void loadEvents("", "");
-    void loadRegistrations().catch(() => undefined);
+    void loadRegistrations();
   }, []);
 
   const openEvent = async (event: NativeEventSummary) => {
@@ -91,7 +104,7 @@ export default function Events() {
       const detail = await eventClient.getEvent(event.public_id);
       setSelectedEvent(detail);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "This event could not be opened.");
+      setError(serviceErrorMessage(e, "Events"));
     } finally {
       setBusy(false);
     }
@@ -115,7 +128,7 @@ export default function Events() {
         ...current.filter((item) => item.registration_reference !== result.registration_reference),
       ]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AFCON360 could not register this ticket.");
+      setError(serviceErrorMessage(e, "Events"));
     } finally {
       setBusy(false);
     }
@@ -156,7 +169,7 @@ export default function Events() {
             style={{ backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink }}
           />
         </View>
-        <ActionButton label="Search events" onPress={() => void loadEvents()} />
+        <ActionButton label={loading ? "Searching events…" : "Search events"} disabled={loading || busy} onPress={() => void loadEvents()} />
         {loading ? (
           <ActivityIndicator color={palette.green} />
         ) : events.length ? (
@@ -164,6 +177,7 @@ export default function Events() {
             <Pressable
               key={event.public_id}
               onPress={() => void openEvent(event)}
+              disabled={busy}
               style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 12, padding: 12, gap: 5, backgroundColor: palette.surface }}
             >
               <Text style={{ color: palette.ink, fontSize: 16, fontWeight: "900" }}>{event.name}</Text>
@@ -172,7 +186,7 @@ export default function Events() {
               <Text style={{ color: palette.ink, fontWeight: "700" }}>{event.category}</Text>
             </Pressable>
           ))
-        ) : (
+        ) : error ? null : (
           <Text style={{ color: palette.muted }}>No published events matched that search.</Text>
         )}
       </Panel>
@@ -201,7 +215,7 @@ export default function Events() {
                   {ticket.is_available_now ? "Available now" : "Not currently available"}
                 </StatusPill>
                 {canRegister ? (
-                  <ActionButton label={busy ? "Registering…" : "Register for free"} onPress={() => void register(ticket)} />
+                  <ActionButton label={busy ? "Registering…" : "Register for free"} disabled={busy} onPress={() => void register(ticket)} />
                 ) : !isFree ? (
                   <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
                     Paid checkout is not enabled in the native app yet. You will not be charged here.
@@ -217,7 +231,9 @@ export default function Events() {
 
       <Panel>
         <SectionTitle>Your tickets</SectionTitle>
-        {registrations.length ? registrations.map((ticket) => (
+        {registrationsError ? <Text style={{ color: "#9A342D", lineHeight: 20 }}>Ticket history is unavailable: {registrationsError}</Text> : null}
+        {registrationsLoading ? <ActivityIndicator color={palette.green} /> : null}
+        {!registrationsLoading && registrations.length ? registrations.map((ticket) => (
           <View key={ticket.registration_reference} style={{ borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10, gap: 6 }}>
             <Text style={{ color: palette.ink, fontWeight: "900" }}>{ticket.event.name || "Event ticket"}</Text>
             <Text style={{ color: palette.muted }}>{ticket.ticket_type} · {ticket.registration_reference}</Text>
@@ -239,10 +255,10 @@ export default function Events() {
               </View>
             ) : null}
           </View>
-        )) : (
+        )) : registrationsError || registrationsLoading ? null : (
           <Text style={{ color: palette.muted }}>Your confirmed event tickets will appear here.</Text>
         )}
-        <ActionButton label="Refresh tickets" onPress={() => void loadRegistrations()} />
+        <ActionButton label={registrationsLoading ? "Refreshing tickets…" : "Refresh tickets"} disabled={registrationsLoading} onPress={() => void loadRegistrations()} />
       </Panel>
     </AppScreen>
   );

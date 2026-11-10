@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ActionButton, AppScreen, PageHeader, Panel, SectionTitle, StatusPill, palette } from "@afcon360/mobile-ui";
-import { authClient } from "../src/services/api";
+import { authClient } from "../../src/services/api";
 import { MobileAuthError } from "@afcon360/mobile-core";
 
 type Place = { label: string; latitude: number; longitude: number; provider: string; osm_type?: string; osm_id?: string | number };
@@ -23,16 +23,20 @@ function PlacePicker({ label, value, onValue, onSelect }: {
   const [results, setResults] = useState<Place[]>([]);
   const [loading, setLoading] = useState(false);
   const [attribution, setAttribution] = useState<string | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
 
   useEffect(() => {
     if (value.trim().length < 2) {
       setResults([]);
       setAttribution(null);
+      setLookupError(null);
+      setLoading(false);
       return;
     }
     let active = true;
     const timer = setTimeout(() => {
       setLoading(true);
+      setLookupError(null);
       authClient.request<{ success: boolean; results?: Place[]; attribution?: string | null }>(
         "/geo/api/geocode?q=" + encodeURIComponent(value.trim()) + "&limit=5"
       ).then(response => {
@@ -40,7 +44,10 @@ function PlacePicker({ label, value, onValue, onSelect }: {
         setResults(response.results ?? []);
         setAttribution(response.attribution ?? null);
       }).catch(() => {
-        if (active) setResults([]);
+        if (active) {
+          setResults([]);
+          setLookupError("Place search is temporarily unavailable. Check your connection and try again.");
+        }
       }).finally(() => { if (active) setLoading(false); });
     }, 400);
     return () => { active = false; clearTimeout(timer); };
@@ -60,6 +67,8 @@ function PlacePicker({ label, value, onValue, onSelect }: {
         returnKeyType="search"
       />
       {loading ? <ActivityIndicator color={palette.green} /> : null}
+      {lookupError ? <Text style={styles.small}>{lookupError}</Text> : null}
+      {!loading && value.trim().length >= 2 && results.length === 0 && !lookupError ? <Text style={styles.small}>No matching places were found. Try a nearby landmark or a more specific address.</Text> : null}
       {results.map((place, index) => (
         <Pressable key={place.provider + ":" + place.latitude + ":" + place.longitude + ":" + index}
           accessibilityRole="button" onPress={() => { onSelect(place); setResults([]); }}
@@ -87,8 +96,6 @@ export default function RideScreen() {
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(() => "mobile-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2));
-
-  const readyMethods = useMemo(() => paymentMethods.filter(item => item.status === "ready"), [paymentMethods]);
 
   const selectPickup = (place: Place) => {
     setPickup(place);
@@ -222,7 +229,7 @@ export default function RideScreen() {
       );
       const reference = response.booking_reference ?? response.data?.request_id;
       if (!reference) throw new Error("The ride request was accepted but no reference was returned.");
-      router.replace({ pathname: "/ride-status/[reference]", params: { reference } });
+      router.replace({ pathname: "/(service)/ride-status/[reference]", params: { reference } } as never);
     } catch (error) {
       Alert.alert("Ride request not submitted", error instanceof MobileAuthError ? error.message : error instanceof Error ? error.message : "AFCON360 could not create the ride request. Your wallet has not been charged.");
     } finally {
@@ -248,7 +255,7 @@ export default function RideScreen() {
             <Pressable key={quote.vehicle_class} onPress={() => chooseQuote(quote)}
               style={{ borderWidth: 1, borderColor: selectedQuote?.vehicle_class === quote.vehicle_class ? palette.green : palette.border, borderRadius: 14, padding: 14, gap: 4 }}>
               <Text style={{ color: palette.ink, fontWeight: "800", fontSize: 15 }}>{quote.display_name}</Text>
-              <Text style={{ color: palette.greenDark, fontSize: 17, fontWeight: "900" }}>{quote.fare_total.toFixed(2)} {quote.currency}</Text>
+              <Text style={{ color: palette.greenDark, fontSize: 17, fontWeight: "900" }}>{quote.display_amount ?? quote.fare_total.toFixed(2)} {quote.display_currency ?? quote.currency}</Text>
               <Text style={styles.small}>Signed fare quote · {quote.vehicle_class}</Text>
             </Pressable>
           ))}

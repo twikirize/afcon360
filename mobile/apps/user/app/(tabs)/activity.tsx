@@ -44,7 +44,7 @@ export default function Activity() {
       {error ? <Text style={{ color: "#9A3A2F" }}>{error}</Text> : null}
       {!loading && !error && items.length === 0 ? <EmptyState title="No rides yet" description="When you request a ride, its reference and matching status will appear here." /> : null}
       {items.map(item => (
-        <Pressable key={item.request_id} onPress={() => router.push({ pathname: "/ride-status/[reference]", params: { reference: item.booking_reference || item.request_id } })}
+        <Pressable key={item.request_id} onPress={() => router.push({ pathname: "/(service)/ride-status/[reference]", params: { reference: item.booking_reference || item.request_id } } as never)}
           style={{ borderTopWidth: 1, borderTopColor: palette.border, paddingVertical: 13, gap: 5 }}>
           <StatusPill tone={item.converted ? "green" : "gold"}>{item.booking_status ?? item.status}</StatusPill>
           <Text selectable style={{ color: palette.ink, fontWeight: "800" }}>{item.booking_reference || item.request_id}</Text>

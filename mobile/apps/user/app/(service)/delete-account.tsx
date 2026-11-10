@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { AppScreen, PageHeader, Panel, palette } from "@afcon360/mobile-ui";
 import { AuthField, AuthNotice, AuthSubmit } from "@afcon360/mobile-ui/auth";
 import { MobileAuthError } from "@afcon360/mobile-core";
-import { useAuth } from "../src/auth/AuthProvider";
+import { useAuth } from "../../src/auth/AuthProvider";
 
 export default function DeleteAccountScreen() {
   const router = useRouter();

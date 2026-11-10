@@ -8,6 +8,21 @@ import { useAuth } from "../../src/auth/AuthProvider";
 export default function Account() {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const signOut = async () => {
+    try {
+      await logout();
+      router.replace("/login");
+    } catch {
+      // Local credentials are cleared by AuthProvider even if the server is
+      // unreachable. Tell the user that remote revocation could not be proven.
+      router.replace("/login");
+      Alert.alert(
+        "Server sign-out not confirmed",
+        "This device has been signed out, but AFCON360 could not confirm that the server session was revoked. Connect to the internet and sign in again to refresh your session, and review any other devices where you are signed in."
+      );
+    }
+  };
+
   const share = async (url: string, message: string) => {
     try { await Share.share({ message: message + " " + url, url }); }
     catch { Alert.alert("Share unavailable", "Copy this link: " + url); }
@@ -22,8 +37,8 @@ export default function Account() {
       <ServiceTile title="Secure device session" description="Access credentials are kept in the device secure store and can be revoked by signing out." symbol="🔐" />
       <ActionButton label="Share AFCON360 app page" onPress={() => share("https://www.pamoja.space/apps", "AFCON360 — official app information and downloads.")} />
       <ActionButton label="Privacy notice (website)" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")} />
-      <ActionButton label="Delete AFCON360 account" onPress={() => router.push("/delete-account")} />
-      <ActionButton label="Sign out" onPress={() => Alert.alert("Sign out", "Sign out of AFCON360 on this device?", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", onPress: () => logout().then(() => router.replace("/login")).catch(() => router.replace("/login")) }])} />
+      <ActionButton label="Delete AFCON360 account" onPress={() => router.push("/(service)/delete-account" as never)} />
+      <ActionButton label="Sign out" onPress={() => Alert.alert("Sign out", "Sign out of AFCON360 on this device?", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", onPress: () => { void signOut(); } }])} />
     </Panel>
     <Text style={{ color: palette.muted, fontSize: 12 }}>Privacy and support: pamoja.space/support</Text>
   </AppScreen>;
