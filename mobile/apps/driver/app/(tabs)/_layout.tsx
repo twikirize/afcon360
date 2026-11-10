@@ -3,6 +3,7 @@ import { Redirect, Tabs } from "expo-router";
 import { Text, View, ActivityIndicator } from "react-native";
 import { palette } from "@afcon360/mobile-ui";
 import { useAuth } from "../../src/auth/AuthProvider";
+import { DriverLocationPublisher } from "../../src/location/DriverLocationPublisher";
 
 const symbols: Record<string, string> = {
   index: "⌂",
@@ -26,6 +27,8 @@ export default function DriverTabs() {
   if (!user) return <Redirect href="/login" />;
 
   return (
+    <>
+    <DriverLocationPublisher active={Boolean(user)} />
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
@@ -54,5 +57,6 @@ export default function DriverTabs() {
       <Tabs.Screen name="vehicles" options={{ title: "Vehicles" }} />
       <Tabs.Screen name="account" options={{ title: "Account" }} />
     </Tabs>
+    </>
   );
 }
