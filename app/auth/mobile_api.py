@@ -1777,7 +1777,8 @@ def mobile_driver_report_incident():
     """Report an incident as the authenticated Driver; caller cannot choose identity."""
     from datetime import datetime
     from math import isfinite
-    from app.transport.models import Booking, IncidentSeverity, TransportIncident
+    from app.transport.models import Booking, TransportIncident
+    from app.utils.enums import IncidentSeverity
 
     profile, error, status = _current_driver()
     if error:
