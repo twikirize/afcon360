@@ -217,7 +217,7 @@ jobs:
           AFCON360_PREVIEW_BUILD: "true"
           EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: pnpm --filter "@afcon360/user-app" exec expo prebuild --platform android --no-install --clean
-      - name: Allow loopback HTTP only in this disposable E2E APK
+      - name: Allow private-network HTTP only in this disposable preview APK
         if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
         shell: bash
         run: |
@@ -245,7 +245,7 @@ jobs:
           source = source[:app_tag.start()] + opening + source[app_tag.end():]
           ET.fromstring(source)
           manifest.write_text(source, encoding="utf-8")
-          print("Loopback HTTP enabled only in the temporary test APK.")
+          print("HTTP enabled only in this disposable preview APK; runtime API validation restricts selected HTTP servers to loopback or private IPv4.")
           PY
       - name: Configure ephemeral release signing
         if: steps.user-apk-cache.outputs['cache-hit'] != 'true'

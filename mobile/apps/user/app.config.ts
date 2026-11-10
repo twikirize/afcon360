@@ -18,9 +18,6 @@ const config: ExpoConfig = {
   android: {
     package: appId,
     allowBackup: false,
-    // Plain HTTP is enabled only in the isolated preview package so a test
-    // phone can reach a laptop staging server on its private Wi-Fi network.
-    usesCleartextTraffic: isPreview,
     // Use the Android system photo/document picker instead of broad legacy storage.
     // The User app does not require full-screen overlay access.
     blockedPermissions: [
