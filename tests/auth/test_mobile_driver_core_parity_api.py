@@ -450,11 +450,13 @@ def test_mobile_driver_assignments_return_only_the_authenticated_profile_scope(
     assert response.status_code == 200
     data = response.get_json()["data"]
     assert data["assigned_vehicle"]["public_id"] == "vehicle-current-public"
-    assert data["assigned_vehicle"]["registration_number"] == "REG-451"
-    assert data["assigned_vehicle"]["vin_number"] == "1HGBH41JXMN109186"
-    assert data["assigned_vehicle"]["color"] == "white"
-    assert data["assigned_vehicle"]["vehicle_type"] == "sedan"
-    assert data["assigned_vehicle"]["luggage_capacity"] == 2
+    assert "vin_number" not in data["assigned_vehicle"]
+    assert "registration_number" not in data["assigned_vehicle"]
+    assert data["owned_vehicles"][0]["registration_number"] == "REG-451"
+    assert data["owned_vehicles"][0]["vin_number"] == "1HGBH41JXMN109186"
+    assert data["owned_vehicles"][0]["color"] == "white"
+    assert data["owned_vehicles"][0]["vehicle_type"] == "sedan"
+    assert data["owned_vehicles"][0]["luggage_capacity"] == 2
     assert [item["public_id"] for item in data["owned_vehicles"]] == [
         "vehicle-current-public", "vehicle-owned-public"
     ]
