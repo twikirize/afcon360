@@ -227,12 +227,17 @@ jobs:
           tests/auth/test_mobile_wallet_api.py
           tests/auth/test_mobile_events_api.py
           tests/auth/test_mobile_accommodation_api.py
-          tests/test_accommodation_booking.py -k test_create_booking_total_amount_accounts_for_all_requested_rooms
           tests/wallet/test_f01_balance_boundary.py
           tests/wallet/test_f02_cancellation_refund.py
           tests/auth/test_pending_registration_expiry.py
           tests/notifications/test_sms_service_adapter.py
           tests/test_public_app_download.py
+
+      - name: Run focused multi-room accommodation pricing regression
+        run: >-
+          python -m pytest -q --timeout=120
+          tests/test_accommodation_booking.py
+          -k test_create_booking_total_amount_accounts_for_all_requested_rooms
 
       - name: Run native bearer-token lifecycle tests against Redis
         env:
