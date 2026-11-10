@@ -14,6 +14,7 @@ import {
 } from "@afcon360/mobile-ui";
 import { MobileAuthError } from "@afcon360/mobile-core";
 import { authClient } from "../../src/services/api";
+import { DriverMapPanel } from "../../src/map/DriverMapPanel";
 import { requestForegroundDriverLocation } from "../../src/location/permissions";
 
 type DriverProfile = {
@@ -334,6 +335,8 @@ export default function DriverHome() {
           <Text style={{ color: palette.greenDark, fontWeight: "800" }}>Refresh dashboard</Text>
         </Pressable>
       </Panel>
+
+      <DriverMapPanel />
 
       <Panel>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
