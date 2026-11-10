@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
@@ -100,43 +100,124 @@ export default function DriverHome() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const onlineRef = useRef(false);
+  const coreLoadInFlight = useRef(false);
 
   const load = useCallback(async () => {
+    if (coreLoadInFlight.current) return;
+    coreLoadInFlight.current = true;
     try {
-      const [me, offerResponse, tripResponse] = await Promise.all([
+      const [me, tripResponse] = await Promise.all([
         authClient.request<{ data: DriverProfile }>("/api/mobile/v1/driver/me"),
-        authClient.request<{ data: { offers: Offer[] } }>("/api/mobile/v1/driver/offers"),
         authClient.request<{ data: ActiveTrip | null }>("/api/mobile/v1/driver/trips/active")
       ]);
+      onlineRef.current = me.data.is_online === true;
       setProfile(me.data);
-      setOffers(offerResponse.data.offers ?? []);
       setActiveTrip(tripResponse.data ?? null);
+      if (!onlineRef.current) setOffers([]);
       setError(null);
     } catch (e) {
+      onlineRef.current = false;
       setError(e instanceof Error ? e.message : "Driver information could not be loaded.");
     } finally {
+      coreLoadInFlight.current = false;
       setLoading(false);
+    }
+  }, []);
+
+  const loadOffers = useCallback(async () => {
+    if (
+      !onlineRef.current ||
+      AppState.currentState !== "active"
+    ) return { ok: false, count: 0 };
+
+    try {
+      const response = await authClient.request<{ data: { offers: Offer[] } }>(
+        "/api/mobile/v1/driver/offers"
+      );
+      const next = response.data.offers ?? [];
+      setOffers(next);
+      return { ok: true, count: next.length };
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ride offers could not be refreshed.");
+      return { ok: false, count: 0 };
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      let active = true;
+      let offerTimer: ReturnType<typeof setTimeout> | null = null;
+      let coreTimer: ReturnType<typeof setInterval> | null = null;
+      let offerDelay = 4000;
+      let offerPollInFlight = false;
 
-      // Poll only while this tab is visible and the app is foregrounded.
-      // Refresh immediately when the driver returns to the dashboard.
+      const clearOfferTimer = () => {
+        if (offerTimer) {
+          clearTimeout(offerTimer);
+          offerTimer = null;
+        }
+      };
+
+      const scheduleOffers = () => {
+        clearOfferTimer();
+        if (!active || AppState.currentState !== "active") return;
+        offerTimer = setTimeout(() => { void pollOffers(); }, offerDelay);
+      };
+
+      const pollOffers = async () => {
+        if (!active || AppState.currentState !== "active") return;
+        if (!onlineRef.current) {
+          offerDelay = Math.min(offerDelay * 2, 30000);
+          scheduleOffers();
+          return;
+        }
+        if (offerPollInFlight) {
+          scheduleOffers();
+          return;
+        }
+
+        offerPollInFlight = true;
+        try {
+          const result = await loadOffers();
+          if (!active) return;
+          offerDelay = result.ok && result.count > 0
+            ? 4000
+            : Math.min(offerDelay * 2, 30000);
+        } finally {
+          offerPollInFlight = false;
+          scheduleOffers();
+        }
+      };
+
+      const refreshWorkspace = async () => {
+        clearOfferTimer();
+        await load();
+        if (!active) return;
+        offerDelay = 4000;
+        void pollOffers();
+      };
+
+      void refreshWorkspace();
+      coreTimer = setInterval(() => {
+        if (AppState.currentState === "active") void refreshWorkspace();
+      }, 15000);
+
       const subscription = AppState.addEventListener("change", state => {
-        if (state === "active") void load();
+        if (state === "active") {
+          void refreshWorkspace();
+        } else {
+          clearOfferTimer();
+        }
       });
-      const interval = setInterval(() => {
-        if (AppState.currentState === "active") void load();
-      }, 10000);
 
       return () => {
-        clearInterval(interval);
+        active = false;
+        clearOfferTimer();
+        if (coreTimer) clearInterval(coreTimer);
         subscription.remove();
       };
-    }, [load])
+    }, [load, loadOffers])
   );
 
   async function toggleOnline() {
@@ -202,6 +283,8 @@ export default function DriverHome() {
           path,
         { method: "POST", body: {} }
       );
+      await load();
+      await loadOffers();
       Alert.alert(
         action === "accept" ? "Ride accepted" : "Offer declined",
         action === "accept"
