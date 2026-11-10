@@ -944,7 +944,12 @@ def test_mobile_driver_incident_rejects_booking_that_is_not_assigned_to_driver(
     assert response.get_json()["code"] == "booking_not_owned"
 
 
-def test_mobile_driver_incident_requires_explicit_timezone(client):
+def test_mobile_driver_incident_requires_explicit_timezone(client, monkeypatch):
+    _authenticated_driver(monkeypatch, SimpleNamespace(
+        id=902,
+        user_id=451,
+        current_vehicle=None,
+    ))
     response = client.post(
         "/api/mobile/v1/driver/incidents",
         headers={"Authorization": "Bearer synthetic-driver-access-token"},
@@ -956,6 +961,5 @@ def test_mobile_driver_incident_requires_explicit_timezone(client):
             "occurred_at": "2026-11-10T08:00:00",
         },
     )
-    # This test client has no bearer-auth context, so authentication must win
-    # before request-body validation.
-    assert response.status_code == 401
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "timezone_required"
