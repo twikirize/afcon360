@@ -87,7 +87,7 @@ def main() -> int:
     # The new introduction must not displace the existing discovery and
     # dynamic content model.
     for required in (
-        ".top-search",
+        'class="top-search"',
         "class=\"trending-tags\"",
         "class=\"quick-actions\"",
         "class=\"featured-grid\"",
