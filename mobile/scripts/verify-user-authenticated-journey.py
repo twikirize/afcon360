@@ -420,6 +420,40 @@ def main() -> None:
     wait_for_text("Where are you going?", "Pickup", timeout=25, label="native ride request screen")
     save_screen("07-ride")
     mark_stage("ride_screen")
+
+    # Verify that both native location inputs reach the shared GEO endpoint
+    # and display its truthful empty state when a deliberately unique query
+    # has no provider match. This does not create a booking or touch Wallet.
+    tap_edit_field("Pickup location")
+    type_text("AFCON360E2ENoSuchPickup92746215")
+    wait_for_text(
+        "No matching places were found.",
+        timeout=30,
+        label="native pickup GEO search empty state",
+    )
+    mark_stage("pickup_geo_search_empty_state")
+
+    tap_edit_field("Destination")
+    type_text("AFCON360E2ENoSuchDestination92746215")
+    deadline = time.monotonic() + 30
+    last_visible = ""
+    while time.monotonic() < deadline:
+        last_visible = visible_text()
+        if last_visible.count("No matching places were found.") >= 2:
+            print(
+                "PASS: native pickup and destination fields both show the GEO empty state.",
+                flush=True,
+            )
+            break
+        time.sleep(1)
+    else:
+        raise AssertionError(
+            "Destination GEO search did not show its own empty state. "
+            f"Visible screen text:\n{last_visible[:6000]}"
+        )
+    save_screen("07a-pickup-destination-geo-search")
+    mark_stage("pickup_and_destination_geo_search")
+
     return_to_explore()
     save_screen("07b-explore-before-stays")
     mark_stage("explore_after_ride")

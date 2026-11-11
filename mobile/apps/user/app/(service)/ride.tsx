@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -25,16 +26,96 @@ import { MobileAuthError } from "@afcon360/mobile-core";
 
 type LocationSource = "search" | "gps" | "map";
 
-type Place = {
+type GeocodeCandidate = {
   label: string;
   latitude: number;
   longitude: number;
   provider: string;
   osm_type?: string;
   osm_id?: string | number;
-  source: LocationSource;
-  geocode?: Record<string, unknown>;
 };
+
+type Place = GeocodeCandidate & {
+  source: LocationSource;
+  geocode?: GeocodeCandidate;
+};
+
+type PlaceSearchStatus = "idle" | "loading" | "success" | "error";
+
+type PlaceSearchState = {
+  query: string;
+  status: PlaceSearchStatus;
+  results: GeocodeCandidate[];
+  attribution: string | null;
+  error: string | null;
+};
+
+type PlaceSearchCacheEntry = {
+  expiresAt: number;
+  results: GeocodeCandidate[];
+  attribution: string | null;
+};
+
+const PLACE_SEARCH_CACHE_POSITIVE_TTL_MS = 24 * 60 * 60 * 1000;
+const PLACE_SEARCH_CACHE_NEGATIVE_TTL_MS = 5 * 60 * 1000;
+const PLACE_SEARCH_CACHE_MAX_ENTRIES = 80;
+const placeSearchCache = new Map<string, PlaceSearchCacheEntry>();
+
+function normalizePlaceSearchQuery(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function readPlaceSearchCache(key: string): PlaceSearchCacheEntry | null {
+  const entry = placeSearchCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    placeSearchCache.delete(key);
+    return null;
+  }
+  // Refresh insertion order so frequently used searches stay in the bounded cache.
+  placeSearchCache.delete(key);
+  placeSearchCache.set(key, entry);
+  return entry;
+}
+
+function writePlaceSearchCache(
+  key: string,
+  results: GeocodeCandidate[],
+  attribution: string | null
+): void {
+  placeSearchCache.delete(key);
+  placeSearchCache.set(key, {
+    expiresAt: Date.now() + (results.length
+      ? PLACE_SEARCH_CACHE_POSITIVE_TTL_MS
+      : PLACE_SEARCH_CACHE_NEGATIVE_TTL_MS),
+    results,
+    attribution
+  });
+  while (placeSearchCache.size > PLACE_SEARCH_CACHE_MAX_ENTRIES) {
+    const oldestKey = placeSearchCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    placeSearchCache.delete(oldestKey);
+  }
+}
+
+const EMPTY_PLACE_SEARCH_STATE: PlaceSearchState = {
+  query: "",
+  status: "idle",
+  results: [],
+  attribution: null,
+  error: null
+};
+
+function validGeocodeCandidate(value: unknown): value is GeocodeCandidate {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<GeocodeCandidate>;
+  return typeof candidate.label === "string" && candidate.label.trim().length > 0 &&
+    typeof candidate.provider === "string" && candidate.provider.trim().length > 0 &&
+    typeof candidate.latitude === "number" && Number.isFinite(candidate.latitude) &&
+    candidate.latitude >= -90 && candidate.latitude <= 90 &&
+    typeof candidate.longitude === "number" && Number.isFinite(candidate.longitude) &&
+    candidate.longitude >= -180 && candidate.longitude <= 180;
+}
 
 type Quote = {
   vehicle_class: string;
@@ -177,77 +258,172 @@ function PlaceSearchField({
   onValue(value: string): void;
   onSelect(place: Place): void;
 }) {
-  const [results, setResults] = useState<Place[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [attribution, setAttribution] = useState<string | null>(null);
-  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [searchState, setSearchState] = useState<PlaceSearchState>(EMPTY_PLACE_SEARCH_STATE);
+  const selectedLabelQuery = useRef<string | null>(null);
+  const query = value.trim().replace(/\s+/g, " ");
+  const queryKey = normalizePlaceSearchQuery(query);
+  // Never flash suggestions from the previous input while the next effect starts.
+  const visibleState = searchState.query === queryKey
+    ? searchState
+    : { ...EMPTY_PLACE_SEARCH_STATE, query: queryKey };
 
   useEffect(() => {
-    if (value.trim().length < 2) {
-      setResults([]);
-      setAttribution(null);
-      setLookupError(null);
-      setLoading(false);
+    if (query.length < 2) {
+      setSearchState({ ...EMPTY_PLACE_SEARCH_STATE, query: queryKey });
       return;
     }
+
+    // Choosing a provider result changes the field to its canonical full label.
+    // Do not immediately run a second search for the label we just selected.
+    if (selectedLabelQuery.current === queryKey) {
+      selectedLabelQuery.current = null;
+      setSearchState({ ...EMPTY_PLACE_SEARCH_STATE, query: queryKey });
+      return;
+    }
+
+    const cached = readPlaceSearchCache(queryKey);
+    if (cached) {
+      setSearchState({
+        query: queryKey,
+        status: "success",
+        results: cached.results,
+        attribution: cached.attribution,
+        error: null
+      });
+      return;
+    }
+
     let active = true;
+    const controller = new AbortController();
+    setSearchState({
+      query: queryKey,
+      status: "loading",
+      results: [],
+      attribution: null,
+      error: null
+    });
+
     const timer = setTimeout(() => {
-      setLoading(true);
-      setLookupError(null);
-      authClient.request<{ success?: boolean; results?: Place[]; attribution?: string | null }>(
-        "/geo/api/geocode?q=" + encodeURIComponent(value.trim()) + "&limit=5"
+      void authClient.request<{
+        success?: boolean;
+        results?: unknown[];
+        attribution?: string | null;
+      }>(
+        "/geo/api/geocode?q=" + encodeURIComponent(query) + "&limit=5",
+        { signal: controller.signal }
       ).then(response => {
         if (!active) return;
-        setResults((response.results ?? []).filter(item => validCoordinate(item)));
-        setAttribution(response.attribution ?? null);
-      }).catch(error => {
-        if (active) {
-          setResults([]);
-          setLookupError(friendlyError(error, "Place search is temporarily unavailable. Check your connection and try again."));
+        if (response.success !== true || !Array.isArray(response.results)) {
+          throw new Error("AFCON360 could not read the place-search results. Search again.");
         }
-      }).finally(() => {
-        if (active) setLoading(false);
+
+        const candidates = response.results.filter(validGeocodeCandidate);
+        if (response.results.length > 0 && candidates.length === 0) {
+          throw new Error("AFCON360 could not verify the returned place results. Search again.");
+        }
+
+        const attribution = typeof response.attribution === "string"
+          ? response.attribution
+          : null;
+        writePlaceSearchCache(queryKey, candidates, attribution);
+        setSearchState({
+          query: queryKey,
+          status: "success",
+          results: candidates,
+          attribution,
+          error: null
+        });
+      }).catch(error => {
+        if (!active || controller.signal.aborted) return;
+        setSearchState({
+          query: queryKey,
+          status: "error",
+          results: [],
+          attribution: null,
+          error: friendlyError(
+            error,
+            "Place search is temporarily unavailable. Check your connection and try again."
+          )
+        });
       });
-    }, 400);
+    }, 300);
+
     return () => {
       active = false;
       clearTimeout(timer);
+      // A new query or unmount cancels the previous network request, not just its UI update.
+      controller.abort();
     };
-  }, [value]);
+  }, [query, queryKey]);
+
+  const selectCandidate = (candidate: GeocodeCandidate) => {
+    // Keep the exact server candidate as evidence; add app-only provenance separately.
+    const geocode = { ...candidate };
+    selectedLabelQuery.current = normalizePlaceSearchQuery(candidate.label);
+    setSearchState({ ...EMPTY_PLACE_SEARCH_STATE, query: selectedLabelQuery.current });
+    onSelect({ ...geocode, source: "search", geocode });
+    Keyboard.dismiss();
+  };
 
   return (
     <View style={styles.fieldGroup}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         value={value}
-        onChangeText={onValue}
+        onChangeText={nextValue => {
+          selectedLabelQuery.current = null;
+          onValue(nextValue);
+        }}
+        onSubmitEditing={() => {
+          if (visibleState.status === "success" && visibleState.results[0]) {
+            selectCandidate(visibleState.results[0]);
+          }
+        }}
         style={styles.input}
         placeholder={placeholder}
         placeholderTextColor={MUTED}
         accessibilityLabel={label}
+        accessibilityHint="Enter at least two characters, then choose a verified place from the suggestions."
         autoCorrect={false}
         returnKeyType="search"
       />
-      {loading ? <ActivityIndicator color={BRAND} /> : null}
-      {lookupError ? <Text style={styles.errorText}>{lookupError}</Text> : null}
-      {!loading && value.trim().length >= 2 && results.length === 0 && !lookupError ? (
-        <Text style={styles.helperText}>No matching places were found. Try a nearby landmark or a more specific address.</Text>
+      {visibleState.status === "loading" ? (
+        <View style={styles.searchStatus}>
+          <ActivityIndicator color={BRAND} />
+          <Text style={styles.helperText}>Searching AFCON360 places…</Text>
+        </View>
       ) : null}
-      {results.map((place, index) => (
-        <Pressable
-          key={String(place.provider) + ":" + place.latitude + ":" + place.longitude + ":" + index}
-          accessibilityRole="button"
-          onPress={() => {
-            onSelect({ ...place, source: "search", geocode: { ...place } });
-            setResults([]);
-          }}
-          style={styles.searchResult}
-        >
-          <Text style={styles.searchResultTitle}>{place.label}</Text>
-          <Text style={styles.helperText}>{place.provider}</Text>
-        </Pressable>
-      ))}
-      {attribution ? <Text style={styles.attribution}>{attribution}</Text> : null}
+      {visibleState.status === "error" ? (
+        <Text style={styles.errorText} accessibilityLiveRegion="polite">
+          {visibleState.error ?? "Place search is temporarily unavailable. Check your connection and try again."}
+        </Text>
+      ) : null}
+      {visibleState.status === "success" && visibleState.results.length === 0 ? (
+        <Text style={styles.helperText} accessibilityLiveRegion="polite">
+          No matching places were found. Try a nearby landmark or a more specific address.
+        </Text>
+      ) : null}
+      {visibleState.status === "success" && visibleState.results.length > 0 ? (
+        <View style={styles.searchResults}>
+          {visibleState.results.map((place, index) => (
+            <Pressable
+              key={place.provider + ":" + (place.osm_type ?? "") + ":" +
+                (place.osm_id ?? place.latitude + "," + place.longitude) + ":" + index}
+              accessibilityRole="button"
+              accessibilityLabel={place.label}
+              accessibilityHint={"Select this result as your " + label.toLowerCase() + "."}
+              onPress={() => selectCandidate(place)}
+              style={styles.searchResult}
+            >
+              <Text style={styles.searchResultTitle}>{place.label}</Text>
+              <Text style={styles.helperText}>{place.provider}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {visibleState.status === "success" && visibleState.attribution ? (
+        <Text style={styles.attribution}>{visibleState.attribution}</Text>
+      ) : null}
     </View>
   );
 }
@@ -1098,7 +1274,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF", marginBottom: 26
   },
   swapText: { fontSize: 22, color: BRAND_DARK, fontWeight: "700" },
-  searchResult: { backgroundColor: BRAND_SOFT, padding: 12, borderRadius: 11, gap: 3 },
+  searchStatus: { flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 5 },
+  searchResults: { gap: 7, marginTop: 2 },
+  searchResult: {
+    backgroundColor: BRAND_SOFT, borderWidth: 1, borderColor: "#D4E8DC",
+    padding: 12, borderRadius: 11, gap: 3, minHeight: 52, justifyContent: "center"
+  },
   searchResultTitle: { color: INK, fontSize: 13, fontWeight: "700" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 10 },
   chip: { borderWidth: 1, borderColor: LINE, backgroundColor: "#FFFFFF", paddingHorizontal: 12, paddingVertical: 9, borderRadius: 99 },

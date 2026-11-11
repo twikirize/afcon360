@@ -72,11 +72,18 @@ export class ApiClient {
     }
     // Resolve the selected origin for every request so a preview server switch
     // takes effect without recreating API clients or rebuilding the APK.
-    const selectedBaseUrl = await this.getBaseUrl?.();
-    const baseUrl = resolveBaseUrl(selectedBaseUrl ?? this.baseUrlOverride, this.allowPrivateHttp);
+    const { signal: callerSignal, ...requestOptions } = options;
     const controller = new AbortController();
+    const relayAbort = () => controller.abort(callerSignal?.reason);
+    if (callerSignal?.aborted) {
+      relayAbort();
+    } else {
+      callerSignal?.addEventListener("abort", relayAbort, { once: true });
+    }
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
+      const selectedBaseUrl = await this.getBaseUrl?.();
+      const baseUrl = resolveBaseUrl(selectedBaseUrl ?? this.baseUrlOverride, this.allowPrivateHttp);
       const token = await this.readAccessToken?.();
       const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
       let body: BodyInit | undefined;
@@ -90,7 +97,7 @@ export class ApiClient {
       }
       if (token) headers.Authorization = "Bearer " + token;
       const response = await fetch(baseUrl + path, {
-        ...options, headers, body, credentials: "omit", signal: controller.signal
+        ...requestOptions, headers, body, credentials: "omit", signal: controller.signal
       });
       const type = response.headers.get("content-type") ?? "";
       const payload = response.status === 204 ? null :
@@ -104,6 +111,7 @@ export class ApiClient {
       return payload as T;
     } finally {
       clearTimeout(timeout);
+      callerSignal?.removeEventListener("abort", relayAbort);
     }
   }
 
