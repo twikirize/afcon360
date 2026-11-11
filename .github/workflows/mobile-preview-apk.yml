@@ -702,7 +702,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: twikirize/afcon360
-          ref: feat/driver-native-history-demand-api-20261110
+          # Use the consolidated Driver API after it lands in authoritative backend main.
+          ref: main
           path: backend-candidate
 
       - name: Set up Python
