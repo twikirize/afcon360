@@ -84,6 +84,14 @@ jobs:
             user=true
             driver=true
           fi
+          # A change to this compatibility workflow on the isolated Driver
+          # candidate is an explicit request to re-run the Driver platform
+          # matrix. The source-keyed cache restores the already-built APK, so
+          # validation does not need a new Gradle build for workflow-only edits.
+          if [[ "$GITHUB_REF" == "refs/heads/feat/native-driver-workspace-parity-20261109" ]] && \
+             grep -Fxq ".github/workflows/mobile-preview-apk.yml" <<< "$changed"; then
+            driver=true
+          fi
 
           apps="["
           separator=""
@@ -117,6 +125,10 @@ jobs:
           fi
           if [[ "$build_shared" == "true" ]]; then
             build_user=true
+            build_driver=true
+          fi
+          if [[ "$GITHUB_REF" == "refs/heads/feat/native-driver-workspace-parity-20261109" ]] && \
+             grep -Fxq ".github/workflows/mobile-preview-apk.yml" <<< "$latest_changed"; then
             build_driver=true
           fi
 
