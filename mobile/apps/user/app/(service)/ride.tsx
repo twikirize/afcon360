@@ -291,6 +291,7 @@ function Progress({ stage }: { stage: Stage }) {
 export default function RideScreen() {
   const router = useRouter();
   const mapRef = useRef<WebView>(null);
+  const mapResolveSeq = useRef({ pickup: 0, dropoff: 0 });
   const [stage, setStage] = useState<Stage>("where");
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -376,7 +377,21 @@ export default function RideScreen() {
   ) => {
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
         latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return;
+    const seq = ++mapResolveSeq.current[side];
+    const fallback = "Pinned location · " + latitude.toFixed(5) + ", " + longitude.toFixed(5);
+    // Commit the coordinates immediately so a fast second map tap can
+    // resolve to the other endpoint while reverse geocoding is still pending.
+    setResolvedPlace(side, {
+      label: fallback,
+      latitude,
+      longitude,
+      provider: "map-pin",
+      source: "map"
+    });
+    setLocationMessage(side === "pickup" ? "Pickup pin placed on the map." : "Destination pin placed on the map.");
     const resolved = await reverseLabel(latitude, longitude, "map");
+    // A slow response must not overwrite a newer pin on the same side.
+    if (seq !== mapResolveSeq.current[side]) return;
     setResolvedPlace(side, {
       label: resolved.label,
       latitude,
@@ -384,7 +399,6 @@ export default function RideScreen() {
       provider: resolved.provider,
       source: "map"
     });
-    setLocationMessage(side === "pickup" ? "Pickup pin placed on the map." : "Destination pin placed on the map.");
   }, [reverseLabel, setResolvedPlace]);
 
   const handleMapMessage = useCallback((event: WebViewMessageEvent) => {
