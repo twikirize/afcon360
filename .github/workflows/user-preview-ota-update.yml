@@ -49,7 +49,7 @@ jobs:
     env:
       AFCON360_PREVIEW_BUILD: "true"
       AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
-      EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+      EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:
       - name: Check out source
@@ -71,6 +71,18 @@ jobs:
 
       - name: Verify Expo SDK dependency compatibility
         run: pnpm --filter @afcon360/user-app exec expo install --check
+
+      - name: Set the EAS preview default to the laptop staging endpoint
+        working-directory: mobile/apps/user
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest env:set \
+            --name EXPO_PUBLIC_API_BASE_URL \
+            --value "$EXPO_PUBLIC_API_BASE_URL" \
+            --environment preview \
+            --scope project \
+            --visibility plaintext \
+            --non-interactive
 
       - name: Type-check User app
         run: pnpm user:typecheck
