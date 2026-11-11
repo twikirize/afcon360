@@ -27,6 +27,27 @@ if [[ "$API_LEVEL" != "$EXPECTED_API" ]]; then
 fi
 
 adb get-state
+# Emulator boot completion can precede Package Manager readiness, especially
+# on newer Android images. Wait for the service rather than misclassifying a
+# transient Binder failure as an APK compatibility failure.
+package_manager_ready=false
+for attempt in $(seq 1 60); do
+  SERVICE_STATUS="$(adb shell service check package 2>&1 || true)"
+  PACKAGE_LIST="$(adb shell pm list packages 2>&1 || true)"
+  if grep -qi "found" <<< "$SERVICE_STATUS" && grep -q "^package:" <<< "$PACKAGE_LIST"; then
+    package_manager_ready=true
+    echo "ANDROID_PACKAGE_MANAGER_READY after ${attempt} check(s)."
+    break
+  fi
+  sleep 2
+done
+if [[ "$package_manager_ready" != "true" ]]; then
+  adb shell service list > "$EVIDENCE_DIR/android-services.txt" 2>&1 || true
+  adb shell dumpsys -l > "$EVIDENCE_DIR/android-dumpsys-services.txt" 2>&1 || true
+  adb logcat -d -t 2000 > "$EVIDENCE_DIR/android-boot-logcat.txt" 2>&1 || true
+  echo "::error::ANDROID_TEST_INFRA_FAILURE: Android Package Manager did not become usable within 120 seconds after emulator boot."
+  exit 1
+fi
 adb install --no-streaming "$APK" | tee "$EVIDENCE_DIR/adb-install.txt"
 adb shell pm path "$PACKAGE" | tee "$EVIDENCE_DIR/package-path.txt"
 adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee "$EVIDENCE_DIR/launch.txt"
