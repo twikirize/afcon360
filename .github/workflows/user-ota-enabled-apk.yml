@@ -38,7 +38,7 @@ jobs:
     env:
       AFCON360_PREVIEW_BUILD: "true"
       AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
-      EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
+      EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
     steps:
       - name: Require the dedicated User EAS project ID
         shell: bash
