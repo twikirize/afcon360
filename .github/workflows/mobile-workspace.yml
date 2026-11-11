@@ -1,6 +1,19 @@
 name: Mobile workspace CI
 
 on:
+  # Keep the canonical Driver integration branch under the same workspace
+  # dependency, TypeScript and native-bundle checks after each merge.
+  push:
+    branches: [feat/native-driver-app-integration-20261108]
+    paths:
+      - "mobile/apps/**"
+      - "mobile/packages/**"
+      - "mobile/scripts/**"
+      - "mobile/package.json"
+      - "mobile/pnpm-lock.yaml"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/.npmrc"
+      - ".github/workflows/mobile-workspace.yml"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, feat/native-mobile-server-support-20261105, feat/native-mobile-apps-20261104, feat/native-driver-app-integration-20261108]
