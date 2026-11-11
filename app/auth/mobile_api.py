@@ -1074,23 +1074,919 @@ def mobile_driver_me():
     if error:
         return jsonify(error), status
     from app.transport.services.go_live_service import can_go_live
+
+    def _enum_value(value):
+        return getattr(value, "value", value)
+
+    def _numeric_text(value):
+        return str(value) if value is not None else None
+
     try:
-        checklist = can_go_live(profile)
-        readiness = checklist.to_dict()
+        readiness = can_go_live(profile).to_dict()
     except Exception:
         logger.exception("Driver readiness check unavailable")
-        readiness = {"ready": False, "items": []}
+        readiness = {"ready": False, "checks": []}
+
+    # Assignment and ownership are different facts. This is only the
+    # currently assigned vehicle's safe display projection; it does not
+    # expose registration/licence documents or vehicle ownership controls.
+    assigned_vehicle = None
+    try:
+        vehicle = profile.current_vehicle
+        if vehicle is not None and not bool(getattr(vehicle, "is_deleted", False)):
+            assigned_vehicle = {
+                "make": getattr(vehicle, "make", None),
+                "model": getattr(vehicle, "model", None),
+                "year": getattr(vehicle, "year", None),
+                "license_plate": getattr(vehicle, "license_plate", None),
+                "vehicle_class": _enum_value(getattr(vehicle, "vehicle_class", None)),
+                "passenger_capacity": getattr(vehicle, "passenger_capacity", None),
+            }
+    except Exception:
+        logger.exception("Assigned Driver vehicle summary unavailable")
+
     return jsonify({
         "success": True,
         "data": {
             "driver_code": profile.driver_code,
-            "verification_tier": str(getattr(profile.verification_tier, "value", profile.verification_tier)),
-            "compliance_status": str(getattr(profile.compliance_status, "value", profile.compliance_status)),
+            "verification_tier": str(_enum_value(profile.verification_tier)),
+            "compliance_status": str(_enum_value(profile.compliance_status)),
             "is_online": bool(profile.is_online),
             "is_available": bool(profile.is_available),
             "go_live": readiness,
+            "operational_preferences": {
+                "service_types": list(profile.service_types or []),
+                "vehicle_classes": list(profile.vehicle_classes or []),
+                "operational_zones": list(profile.operational_zones or []),
+                "max_passenger_capacity": profile.max_passenger_capacity,
+                "max_luggage_capacity": profile.max_luggage_capacity,
+                "auto_accept_bookings": bool(profile.auto_accept_bookings),
+                "max_concurrent_bookings": profile.max_concurrent_bookings,
+            },
+            "compliance": {
+                "license_verified": bool(profile.license_verified),
+                "license_expiry": profile.license_expiry.isoformat() if profile.license_expiry else None,
+                "background_check_status": profile.background_check_status,
+                "police_clearance_verified": bool(profile.police_clearance_verified),
+                "next_training_due": profile.next_training_due.isoformat() if profile.next_training_due else None,
+                "requires_retraining": bool(profile.requires_retraining),
+            },
+            "performance": {
+                "reliability_score": getattr(profile, "reliability_score", None),
+                "safety_score": getattr(profile, "safety_score", None),
+                "acceptance_rate": _numeric_text(getattr(profile, "acceptance_rate", None)),
+                "cancellation_rate": _numeric_text(getattr(profile, "cancellation_rate", None)),
+                "total_trips": getattr(profile, "total_trips", None),
+                "completed_trips": getattr(profile, "completed_trips", None),
+                "total_duration_minutes": getattr(profile, "total_duration_minutes", None),
+                "total_distance_km": _numeric_text(getattr(profile, "total_distance_km", None)),
+                "average_rating": _numeric_text(getattr(profile, "average_rating", None)),
+                "total_ratings": getattr(profile, "total_ratings", None),
+            },
+            "assigned_vehicle": assigned_vehicle,
         },
     }), 200
+
+
+@mobile_api_bp.get("/driver/assignments")
+@_bearer_required("driver")
+def mobile_driver_assignments():
+    """Self-scoped Driver assignment, owned-vehicle and scheduled-route view."""
+    from datetime import timedelta
+    from app.transport.models import (
+        DriverVehicleHistory,
+        ScheduledRoute,
+        Vehicle,
+    )
+    from app.transport.services.provider_service import get_provider_service
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+
+    def _enum_value(value):
+        return getattr(value, "value", value)
+
+    def _vehicle_view(vehicle, *, include_edit_fields=False):
+        if vehicle is None or bool(getattr(vehicle, "is_deleted", False)):
+            return None
+        result = {
+            "public_id": str(vehicle.public_id),
+            "make": vehicle.make,
+            "model": vehicle.model,
+            "year": vehicle.year,
+            "license_plate": vehicle.license_plate,
+            "vehicle_class": _enum_value(vehicle.vehicle_class),
+            "status": str(_enum_value(vehicle.status)),
+            "is_available": bool(vehicle.is_available),
+            "passenger_capacity": vehicle.passenger_capacity,
+            "safety_features": list(vehicle.safety_features or []),
+        }
+        # Registration/VIN/specification details are returned only for
+        # vehicles owned by this authenticated user, never for fleet
+        # vehicles merely assigned to the Driver.
+        if include_edit_fields:
+            result.update({
+                "registration_number": vehicle.registration_number,
+                "color": vehicle.color,
+                "vin_number": vehicle.vin_number,
+                "vehicle_type": vehicle.vehicle_type,
+                "luggage_capacity": vehicle.luggage_capacity,
+            })
+        return result
+
+    assigned = profile.current_vehicle
+    owned = get_provider_service().get_user_vehicles(profile.user_id) or []
+    current_id = getattr(assigned, "id", None)
+    switchable = [
+        vehicle for vehicle in owned
+        if vehicle.id != current_id
+        and str(_enum_value(vehicle.status)).lower() == "active"
+        and bool(getattr(vehicle, "is_available", True))
+        and not bool(getattr(vehicle, "is_deleted", False))
+    ]
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    history_rows = (
+        DriverVehicleHistory.query
+        .filter(
+            DriverVehicleHistory.driver_id == profile.id,
+            DriverVehicleHistory.is_deleted.is_(False),
+            DriverVehicleHistory.started_at >= cutoff,
+        )
+        .order_by(DriverVehicleHistory.started_at.desc())
+        .limit(20)
+        .all()
+    )
+    history = [
+        {
+            "license_plate": row.vehicle.license_plate if row.vehicle else "Vehicle",
+            "assignment_reason": row.assignment_reason,
+            "was_breakdown": bool(row.was_breakdown),
+            "started_at": row.started_at.isoformat() if row.started_at else None,
+            "ended_at": row.ended_at.isoformat() if row.ended_at else None,
+        }
+        for row in history_rows
+    ]
+
+    scheduled_rows = (
+        ScheduledRoute.query
+        .filter(
+            ScheduledRoute.current_driver_id == profile.id,
+            ScheduledRoute.is_active.is_(True),
+            ScheduledRoute.is_cancelled.is_(False),
+        )
+        .order_by(ScheduledRoute.next_departure.asc())
+        .limit(10)
+        .all()
+    )
+    scheduled = [
+        {
+            "name": row.name,
+            "route_code": row.route_code,
+            "route_type": row.route_type,
+            "primary_zone": row.primary_zone,
+            "next_departure": row.next_departure.isoformat() if row.next_departure else None,
+            "available_seats": row.available_seats,
+            "vehicle_capacity": row.vehicle_capacity,
+            "price_per_seat": str(row.price_per_seat) if row.price_per_seat is not None else None,
+            "is_free": bool(row.is_free),
+        }
+        for row in scheduled_rows
+    ]
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "assigned_vehicle": _vehicle_view(assigned),
+            "owned_vehicles": [
+                view for view in (
+                    _vehicle_view(vehicle, include_edit_fields=True)
+                    for vehicle in owned
+                )
+                if view is not None
+            ],
+            "switchable_vehicles": [
+                view for view in (_vehicle_view(vehicle) for vehicle in switchable)
+                if view is not None
+            ],
+            "vehicle_history": history,
+            "scheduled_routes": scheduled,
+            "history_window_days": 90,
+        },
+    }), 200
+
+
+@mobile_api_bp.post("/driver/vehicles/switch")
+@_bearer_required("driver")
+def mobile_driver_switch_vehicle():
+    """Switch only to an active vehicle owned by this authenticated Driver."""
+    from app.transport.models import Vehicle, assign_driver_to_vehicle
+    from app.transport.services.go_live_service import can_go_live
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    data = request.get_json(silent=True) or {}
+    vehicle_public_id = str(data.get("vehicle_public_id") or "").strip()
+    if not vehicle_public_id:
+        return _error("vehicle_public_id_required", "Choose a vehicle to assign.", 400)
+
+    vehicle = Vehicle.query.filter_by(
+        public_id=vehicle_public_id,
+        is_deleted=False,
+    ).first()
+    if vehicle is None:
+        return _error("vehicle_not_found", "That vehicle could not be found.", 404)
+
+    checklist = can_go_live(profile)
+    blocked = next((item for item in checklist.checks if item.key == "blocked"), None)
+    if blocked is not None and not blocked.ok:
+        return jsonify({
+            "success": False,
+            "error": "blocked driver cannot switch vehicles",
+            "go_live": checklist.to_dict(),
+        }), 403
+
+    owns = (
+        (vehicle.owner_type == "driver" and int(vehicle.owner_id) == int(profile.id))
+        or (vehicle.owner_type == "user" and int(vehicle.owner_id) == int(user.id))
+    )
+    if not owns:
+        return _error("vehicle_not_owned", "You may only switch to a vehicle you own.", 403)
+    if str(getattr(vehicle.status, "value", vehicle.status)).lower() != "active":
+        return _error("vehicle_not_active", "This vehicle is not active.", 422)
+    if bool(vehicle.is_deleted):
+        return _error("vehicle_not_found", "That vehicle could not be found.", 404)
+
+    current = profile.current_vehicle
+    reason = str(data.get("reason") or "shift_start").strip()[:50]
+    notes = str(data.get("notes") or "").strip()[:500] or None
+    if current is not None and current.id == vehicle.id:
+        return jsonify({
+            "success": True,
+            "data": {
+                "unchanged": True,
+                "assigned_vehicle": {
+                    "make": vehicle.make,
+                    "model": vehicle.model,
+                    "year": vehicle.year,
+                    "license_plate": vehicle.license_plate,
+                },
+                "reason": reason,
+            },
+        }), 200
+
+    try:
+        assign_driver_to_vehicle(
+            profile,
+            vehicle,
+            reason=reason,
+            authorized_by=user,
+            notes=notes,
+        )
+        db.session.refresh(profile)
+        assigned = profile.current_vehicle
+        return jsonify({
+            "success": True,
+            "data": {
+                "unchanged": False,
+                "assigned_vehicle": {
+                    "make": assigned.make,
+                    "model": assigned.model,
+                    "year": assigned.year,
+                    "license_plate": assigned.license_plate,
+                } if assigned else None,
+                "reason": reason,
+            },
+        }), 200
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native Driver vehicle switch failed")
+        return _error("vehicle_switch_failed", "AFCON360 could not switch this vehicle.", 503)
+
+
+@mobile_api_bp.post("/driver/vehicles")
+@_bearer_required("driver")
+def mobile_driver_register_vehicle():
+    """Register a vehicle owned by the authenticated Driver, with website KYC tier gate."""
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+
+    try:
+        from app.auth.kyc_compliance import calculate_kyc_tier
+        kyc = calculate_kyc_tier(int(user.id))
+    except Exception:
+        logger.exception("Native Driver vehicle registration KYC check unavailable")
+        return _error("kyc_check_unavailable", "KYC status could not be verified. Try again later.", 503)
+    if int(kyc.get("tier", 0)) < 3:
+        return jsonify({
+            "success": False,
+            "code": "kyc_tier_required",
+            "error": "Vehicle registration requires KYC tier 3.",
+            "required_tier": 3,
+            "current_tier": kyc.get("tier", 0),
+        }), 403
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return _error("vehicle_payload_required", "Vehicle details are required.", 400)
+    allowed = {
+        "license_plate", "registration_number", "make", "model", "year",
+        "color", "vin_number", "vehicle_type", "vehicle_class",
+        "passenger_capacity", "luggage_capacity",
+    }
+    payload = {key: data[key] for key in allowed if key in data}
+    try:
+        from app.transport.services.provider_service import get_provider_service
+        result = get_provider_service().register_vehicle(
+            owner_type="driver",
+            owner_id=int(profile.id),
+            vehicle_data=payload,
+            request_id=request.headers.get("Idempotency-Key"),
+        )
+        from app.transport.models import Vehicle
+        vehicle_id = result.get("data", {}).get("vehicle_id")
+        vehicle = db.session.get(Vehicle, vehicle_id) if vehicle_id else None
+        if vehicle is None:
+            return _error("vehicle_registration_incomplete", "Vehicle registration could not be confirmed.", 503)
+        return jsonify({
+            "success": True,
+            "message": result.get("message") or "Vehicle registration submitted.",
+            "data": {"public_id": str(vehicle.public_id)},
+        }), 201
+    except Exception as exc:
+        db.session.rollback()
+        logger.info("Native Driver vehicle registration rejected: %s", exc)
+        return _error("vehicle_registration_rejected", str(exc), 400)
+
+
+@mobile_api_bp.put("/driver/vehicles/<string:vehicle_public_id>")
+@_bearer_required("driver")
+def mobile_driver_update_vehicle(vehicle_public_id):
+    """Update only editable specification fields of a vehicle owned by this Driver."""
+    from app.transport.models import Vehicle
+    from app.transport.services.provider_service import get_provider_service
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    vehicle = Vehicle.query.filter_by(
+        public_id=vehicle_public_id,
+        is_deleted=False,
+    ).first()
+    if vehicle is None:
+        return _error("vehicle_not_found", "That vehicle could not be found.", 404)
+    owns = (
+        (vehicle.owner_type == "driver" and int(vehicle.owner_id) == int(profile.id))
+        or (vehicle.owner_type == "user" and int(vehicle.owner_id) == int(user.id))
+    )
+    if not owns:
+        return _error("vehicle_not_owned", "You may only edit a vehicle you own.", 403)
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return _error("vehicle_payload_required", "Vehicle details are required.", 400)
+    allowed = {
+        "license_plate", "registration_number", "make", "model", "year",
+        "color", "vin_number", "vehicle_type", "vehicle_class",
+        "passenger_capacity", "luggage_capacity", "luggage_space_cubic_meters",
+    }
+    payload = {key: data[key] for key in allowed if key in data}
+    try:
+        result = get_provider_service().update_vehicle(int(vehicle.id), payload)
+        return jsonify({
+            "success": True,
+            "message": result.get("message") or "Vehicle details updated.",
+        }), 200
+    except Exception as exc:
+        db.session.rollback()
+        logger.info("Native Driver vehicle update rejected: %s", exc)
+        return _error("vehicle_update_rejected", str(exc), 400)
+
+
+@mobile_api_bp.get("/driver/marketplace/vehicles")
+@_bearer_required("driver")
+def mobile_driver_marketplace_vehicles():
+    """List active public vehicle listings using a narrow, driver-safe projection."""
+    from sqlalchemy.orm import joinedload
+    from app.transport.models import (
+        DriverVehicleApplication,
+        MarketplaceListingStatus,
+        Vehicle,
+        VehicleMarketplaceListing,
+    )
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+
+    query = (
+        VehicleMarketplaceListing.query
+        .options(joinedload(VehicleMarketplaceListing.vehicle))
+        .join(Vehicle, Vehicle.id == VehicleMarketplaceListing.vehicle_id)
+        .filter(
+            VehicleMarketplaceListing.is_deleted.is_(False),
+            VehicleMarketplaceListing.listing_status == MarketplaceListingStatus.ACTIVE,
+            VehicleMarketplaceListing.visibility == "public",
+            VehicleMarketplaceListing.owner_id != user.id,
+            Vehicle.is_deleted.is_(False),
+            Vehicle.status == "active",
+            Vehicle.is_available.is_(True),
+            Vehicle.is_reserved.is_(False),
+        )
+        .order_by(VehicleMarketplaceListing.listed_at.desc())
+        .limit(50)
+    )
+    rows = query.all()
+    applications = {
+        int(row.listing_id)
+        for row in DriverVehicleApplication.query.filter_by(
+            driver_id=profile.id,
+            is_deleted=False,
+        ).all()
+    }
+    items = []
+    for listing in rows:
+        vehicle = listing.vehicle
+        if vehicle is None:
+            continue
+        owner_type = str(vehicle.owner_type or "").lower()
+        owner_label = (
+            "Organisation" if owner_type == "organisation"
+            else "Driver owner" if owner_type == "driver"
+            else "Private owner"
+        )
+        model = getattr(listing.compensation_model, "value", listing.compensation_model)
+        if model == "revenue_split":
+            compensation = f"{float(listing.driver_revenue_share_pct):g}% revenue share"
+        elif model == "fixed_rental":
+            amount = float(listing.fixed_rental_amount or 0)
+            frequency = listing.rental_frequency or ""
+            compensation = f"Fixed rental {amount:,.0f}{' / ' + frequency if frequency else ''}"
+        elif model == "hybrid":
+            compensation = f"{float(listing.driver_revenue_share_pct):g}% revenue share"
+        else:
+            compensation = "Compensation per agreement"
+        items.append({
+            "listing_public_id": str(listing.public_id),
+            "vehicle_public_id": str(vehicle.public_id),
+            "title": listing.title or f"{vehicle.make} {vehicle.model}",
+            "make": vehicle.make,
+            "model": vehicle.model,
+            "year": vehicle.year,
+            "description": listing.description or "",
+            "vehicle_class": str(getattr(vehicle.vehicle_class, "value", vehicle.vehicle_class)),
+            "passenger_capacity": vehicle.passenger_capacity,
+            "owner_type": owner_label,
+            "compensation": compensation,
+            "application_deadline": listing.application_deadline.isoformat() if listing.application_deadline else None,
+            "already_applied": int(listing.id) in applications,
+        })
+    return jsonify({"success": True, "data": {"items": items, "count": len(items)}}), 200
+
+
+@mobile_api_bp.post("/driver/marketplace/vehicles/<string:listing_public_id>/apply")
+@_bearer_required("driver")
+def mobile_driver_apply_vehicle_marketplace(listing_public_id):
+    """Apply to a public listing as the authenticated Driver; never accepts a Driver ID."""
+    from app.transport.models import (
+        MarketplaceListingStatus,
+        VehicleMarketplaceListing,
+    )
+    from app.transport.services.marketplace_service import get_marketplace_service
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    listing = VehicleMarketplaceListing.query.filter_by(
+        public_id=listing_public_id,
+        is_deleted=False,
+        listing_status=MarketplaceListingStatus.ACTIVE,
+        visibility="public",
+    ).first()
+    if listing is None:
+        return _error("marketplace_listing_not_found", "That vehicle listing is not available.", 404)
+
+    # The marketplace list intentionally excludes the Driver's own
+    # listings. Enforce the same boundary on direct application requests too.
+    if int(listing.owner_id) == int(user.id):
+        return _error("own_marketplace_listing", "You cannot apply to your own vehicle listing.", 403)
+
+    vehicle = listing.vehicle
+    if (
+        vehicle is None
+        or vehicle.is_deleted
+        or str(getattr(vehicle.status, "value", vehicle.status)).lower() != "active"
+        or not vehicle.is_available
+        or vehicle.is_reserved
+    ):
+        return _error("marketplace_vehicle_unavailable", "That vehicle is no longer available.", 409)
+    data = request.get_json(silent=True) or {}
+    safe_application = {
+        "cover_letter": str(data.get("cover_letter") or "")[:5000],
+        "proposed_schedule": data.get("proposed_schedule") if isinstance(data.get("proposed_schedule"), dict) else {},
+        "proposed_hours_per_week": data.get("proposed_hours_per_week"),
+        "expected_earnings": data.get("expected_earnings"),
+        "references": data.get("references") if isinstance(data.get("references"), list) else [],
+    }
+    try:
+        application = get_marketplace_service().submit_application(
+            int(user.id),
+            int(listing.id),
+            safe_application,
+        )
+        return jsonify({
+            "success": True,
+            "data": {
+                "status": str(getattr(application.status, "value", application.status)),
+                "listing_public_id": str(listing.public_id),
+            },
+        }), 201
+    except ValueError as exc:
+        db.session.rollback()
+        return _error("marketplace_application_rejected", str(exc), 400)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native Driver vehicle marketplace application failed")
+        return _error("marketplace_application_unavailable", "The application service is unavailable.", 503)
+
+
+def _driver_notification_ref(user_id: int, notification_id: int) -> str:
+    """Opaque, user-bound reference for a Notification without a public UUID."""
+    import base64
+    import hmac
+
+    secret = current_app.secret_key
+    if isinstance(secret, str):
+        secret = secret.encode("utf-8")
+    payload = f"{int(user_id)}:{int(notification_id)}"
+    signature = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode(
+        f"{int(notification_id)}:{signature}".encode("ascii")
+    ).decode("ascii").rstrip("=")
+
+
+def _resolve_driver_notification_ref(value: str, user_id: int):
+    """Verify an opaque notification reference and return its internal row id."""
+    import base64
+    import hmac
+
+    try:
+        padding = "=" * (-len(value) % 4)
+        decoded = base64.urlsafe_b64decode((value + padding).encode("ascii")).decode("ascii")
+        raw_id, supplied_signature = decoded.split(":", 1)
+        notification_id = int(raw_id)
+        if notification_id <= 0:
+            return None
+        secret = current_app.secret_key
+        if isinstance(secret, str):
+            secret = secret.encode("utf-8")
+        payload = f"{int(user_id)}:{notification_id}"
+        expected = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        return notification_id if hmac.compare_digest(supplied_signature, expected) else None
+    except (TypeError, ValueError, UnicodeDecodeError):
+        return None
+
+
+@mobile_api_bp.get("/driver/map-config")
+@_bearer_required("driver")
+def mobile_driver_map_config():
+    """Return only the public GEO tile renderer configuration to a Driver."""
+    from app.geo.config import load_geo_config
+    from app.geo.map_renderer import PUBLIC_MAP_CONFIG_KEYS, build_public_map_config
+
+    built_config = build_public_map_config(load_geo_config())
+    config = {
+        key: built_config[key]
+        for key in PUBLIC_MAP_CONFIG_KEYS
+        if key in built_config
+    }
+    template = str(config.get("tile_url_template") or "")
+    # React Native's raster tile renderer accepts {z}/{x}/{y}. Resolve the
+    # harmless OSM subdomain token server-side; never return any credentials.
+    config["tile_url_template"] = template.replace("{s}", "a")
+    response = jsonify({"success": True, "data": config})
+    response.headers["Cache-Control"] = "private, max-age=300"
+    return response, 200
+
+
+@mobile_api_bp.get("/driver/demand/cells")
+@_bearer_required("driver")
+def mobile_driver_demand_cells():
+    """Native bearer adapter for the shared, aggregate-only demand service."""
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+
+    from app.transport.services.driver_demand_service import get_driver_demand_cells
+
+    response = jsonify(get_driver_demand_cells(profile))
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["Vary"] = "Authorization"
+    return response, 200
+
+
+
+@mobile_api_bp.get("/driver/notifications")
+@_bearer_required("driver")
+def mobile_driver_notifications():
+    """Bearer inbox limited to this user and the Transport module."""
+    from app.notifications.models import Notification
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+
+    try:
+        limit = min(max(int(request.args.get("limit", 30)), 1), 50)
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except (TypeError, ValueError):
+        return _error("invalid_pagination", "Use a positive limit and non-negative offset.", 400)
+
+    query = Notification.query.filter(
+        Notification.user_id == user.id,
+        Notification.module == "transport",
+        Notification.is_deleted.is_(False),
+    )
+    total = query.count()
+    unread_count = query.filter(Notification.is_read.is_(False)).count()
+    rows = (
+        query.order_by(Notification.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    items = [
+        {
+            "notification_ref": _driver_notification_ref(int(user.id), int(row.id)),
+            "type": row.type,
+            "module": row.module,
+            "subject": row.subject,
+            "body": (row.body or "")[:1600],
+            "priority": row.priority,
+            "status": str(getattr(row.status, "value", row.status)),
+            "is_read": bool(row.is_read),
+            "is_important": bool(row.is_important),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "read_at": row.read_at.isoformat() if row.read_at else None,
+        }
+        for row in rows
+    ]
+    response = jsonify({
+        "success": True,
+        "data": {
+            "items": items,
+            "count": len(items),
+            "total": total,
+            "unread_count": unread_count,
+            "limit": limit,
+            "offset": offset,
+        },
+    })
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["Vary"] = "Authorization"
+    return response, 200
+
+
+@mobile_api_bp.post("/driver/notifications/<string:notification_ref>/read")
+@_bearer_required("driver")
+def mobile_driver_notification_read(notification_ref):
+    """Mark one Transport notification read using its public identifier."""
+    from app.notifications.models import Notification
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    notification_id = _resolve_driver_notification_ref(notification_ref, int(user.id))
+    if notification_id is None:
+        return _error("notification_not_found", "This Transport notification was not found.", 404)
+    notification = Notification.query.filter(
+        Notification.id == notification_id,
+        Notification.user_id == user.id,
+        Notification.module == "transport",
+        Notification.is_deleted.is_(False),
+    ).first()
+    if notification is None:
+        return _error("notification_not_found", "This Transport notification was not found.", 404)
+    notification.mark_read()
+    db.session.commit()
+    remaining = Notification.query.filter(
+        Notification.user_id == user.id,
+        Notification.module == "transport",
+        Notification.is_read.is_(False),
+        Notification.is_deleted.is_(False),
+    ).count()
+    return jsonify({"success": True, "data": {"unread_count": remaining}}), 200
+
+
+@mobile_api_bp.post("/driver/notifications/read-all")
+@_bearer_required("driver")
+def mobile_driver_notifications_read_all():
+    """Mark only this Driver user's Transport notifications as read."""
+    from app.notifications.models import Notification
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    rows = Notification.query.filter(
+        Notification.user_id == user.id,
+        Notification.module == "transport",
+        Notification.is_read.is_(False),
+        Notification.is_deleted.is_(False),
+    ).all()
+    for row in rows:
+        row.mark_read()
+    if rows:
+        db.session.commit()
+    return jsonify({"success": True, "data": {"marked": len(rows), "unread_count": 0}}), 200
+
+
+@mobile_api_bp.get("/driver/incidents")
+@_bearer_required("driver")
+def mobile_driver_incidents():
+    """List only incidents this authenticated Driver personally reported."""
+    from app.transport.models import TransportIncident
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    try:
+        limit = min(max(int(request.args.get("limit", 20)), 1), 50)
+    except (TypeError, ValueError):
+        return _error("invalid_limit", "Limit must be between 1 and 50.", 400)
+
+    rows = (
+        TransportIncident.query
+        .filter(
+            TransportIncident.reported_by == "driver",
+            TransportIncident.reported_by_id == user.id,
+            TransportIncident.driver_id == profile.id,
+            TransportIncident.is_deleted.is_(False),
+        )
+        .order_by(TransportIncident.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    items = [
+        {
+            "incident_reference": row.incident_reference,
+            "incident_type": row.incident_type,
+            "incident_category": row.incident_category,
+            "severity": str(getattr(row.severity, "value", row.severity)),
+            "title": row.title,
+            "description": row.description,
+            "occurred_at": row.occurred_at.isoformat() if row.occurred_at else None,
+            "status": row.status,
+            "priority": row.priority,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+    response = jsonify({"success": True, "data": {"items": items, "count": len(items)}})
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["Vary"] = "Authorization"
+    return response, 200
+
+
+@mobile_api_bp.post("/driver/incidents")
+@limiter.limit("10 per hour")
+@_bearer_required("driver")
+def mobile_driver_report_incident():
+    """Report an incident as the authenticated Driver; caller cannot choose identity."""
+    from datetime import datetime
+    from math import isfinite
+    from app.transport.models import Booking, TransportIncident
+    from app.utils.enums import IncidentSeverity
+
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+    user = g._afcon360_mobile_auth_context["user"]
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return _error("incident_payload_required", "Incident details are required.", 400)
+
+    incident_type = str(data.get("incident_type") or "").strip()[:50]
+    title = str(data.get("title") or "").strip()[:200]
+    description = str(data.get("description") or "").strip()[:5000]
+    severity_value = str(data.get("severity") or "").strip().lower()
+    occurred_value = data.get("occurred_at")
+    if not incident_type or not title or not description or not occurred_value:
+        return _error(
+            "incident_fields_required",
+            "Incident type, title, description and occurrence time are required.",
+            400,
+        )
+    try:
+        severity = IncidentSeverity(severity_value)
+    except ValueError:
+        return _error("invalid_incident_severity", "Choose a valid incident severity.", 400)
+
+    if not isinstance(occurred_value, str):
+        return _error("invalid_occurred_at", "Use an ISO-8601 time with an explicit timezone.", 400)
+    try:
+        occurred_at = datetime.fromisoformat(occurred_value.replace("Z", "+00:00"))
+    except ValueError:
+        return _error("invalid_occurred_at", "Use an ISO-8601 time with an explicit timezone.", 400)
+    if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
+        return _error("timezone_required", "Incident time must include a timezone offset.", 400)
+    occurred_at = occurred_at.astimezone(timezone.utc)
+
+    booking_id = None
+    vehicle_id = None
+    booking_reference = str(data.get("booking_reference") or "").strip()
+    if booking_reference:
+        booking = Booking.query.filter_by(
+            booking_reference=booking_reference,
+            is_deleted=False,
+        ).first()
+        if booking is None:
+            return _error("booking_not_found", "The referenced trip was not found.", 404)
+        metadata = booking.booking_metadata or {}
+        belongs_to_driver = (
+            booking.assigned_driver_id == profile.id
+            or str(metadata.get("completed_by_driver_profile_id") or "") == str(profile.id)
+        )
+        if not belongs_to_driver:
+            return _error("booking_not_owned", "You may report only on a trip assigned to you.", 403)
+        booking_id = booking.id
+        vehicle_id = booking.assigned_vehicle_id
+
+    location = data.get("location")
+    safe_location = None
+    if location is not None:
+        if not isinstance(location, dict):
+            return _error("invalid_incident_location", "Location must contain coordinates.", 400)
+        try:
+            lat_raw, lon_raw = location.get("latitude"), location.get("longitude")
+            if isinstance(lat_raw, bool) or isinstance(lon_raw, bool):
+                raise ValueError
+            latitude, longitude = float(lat_raw), float(lon_raw)
+            if not isfinite(latitude) or not isfinite(longitude):
+                raise ValueError
+            if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+                raise ValueError
+        except (TypeError, ValueError):
+            return _error("invalid_incident_location", "Location coordinates are invalid.", 400)
+        safe_location = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "address": str(location.get("address") or "")[:500],
+        }
+
+    if vehicle_id is None:
+        current_vehicle = profile.current_vehicle
+        vehicle_id = getattr(current_vehicle, "id", None)
+
+    category = str(data.get("incident_category") or "safety").strip().lower()[:50]
+    incident = TransportIncident(
+        incident_type=incident_type,
+        incident_category=category,
+        severity=severity,
+        title=title,
+        description=description,
+        occurred_at=occurred_at,
+        reported_by="driver",
+        reported_by_id=user.id,
+        reported_via="driver_mobile",
+        user_id=user.id,
+        driver_id=profile.id,
+        booking_id=booking_id,
+        vehicle_id=vehicle_id,
+        location=safe_location,
+        photos=[],
+        videos=[],
+        status="reported",
+        priority="high" if severity in (IncidentSeverity.HIGH, IncidentSeverity.CRITICAL) else "medium",
+    )
+    try:
+        incident.generate_reference()
+        db.session.add(incident)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native Driver incident report failed")
+        return _error("incident_report_failed", "AFCON360 could not save the incident report.", 503)
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "incident_reference": incident.incident_reference,
+            "status": incident.status,
+            "severity": str(getattr(incident.severity, "value", incident.severity)),
+        },
+    }), 201
 
 
 @mobile_api_bp.get("/driver/offers")
@@ -1172,29 +2068,207 @@ def mobile_driver_active_trip():
     if booking is None:
         return jsonify({"success": True, "data": None}), 200
 
-    def _point(value):
+    def _point(value, fallback_text=None):
         if not isinstance(value, dict):
-            return None
+            return {"address": fallback_text} if fallback_text else None
         return {
             "latitude": value.get("latitude"),
             "longitude": value.get("longitude"),
-            "address": value.get("address") or value.get("display_name"),
+            "address": value.get("address") or value.get("display_name") or fallback_text,
         }
+
+    # Reuse BookingService's canonical trip projection for booking mode,
+    # pickup timezone display and no-show grace eligibility. The mobile API
+    # then selects only the fields needed by the Driver client.
+    from app.transport.services.booking_service import get_booking_service
+    trip_facts = get_booking_service()._driver_trip_row(booking)
+    status_value = str(getattr(booking.status, "value", booking.status))
+    can_cancel = status_value in {
+        BookingStatus.ASSIGNED.value,
+        BookingStatus.DRIVER_EN_ROUTE.value,
+        BookingStatus.PICKUP_ARRIVED.value,
+    }
+
+    raw_schedule = trip_facts.get("pickup_schedule")
+    pickup_schedule = None
+    if isinstance(raw_schedule, dict):
+        pickup_schedule = {
+            key: raw_schedule[key]
+            for key in (
+                "utc_datetime",
+                "local_datetime",
+                "timezone_name",
+                "utc_offset",
+                "display_timezone_derived",
+            )
+            if key in raw_schedule
+        }
+
     return jsonify({
         "success": True,
         "data": {
             "booking_reference": booking.booking_reference,
-            "status": str(getattr(booking.status, "value", booking.status)),
-            "pickup": _point(booking.pickup_location),
-            "dropoff": _point(booking.dropoff_location),
+            "status": status_value,
+            "booking_mode": trip_facts.get("booking_mode"),
+            "pickup": _point(
+                booking.pickup_location,
+                getattr(booking, "pickup_location_text", None),
+            ),
+            "dropoff": _point(
+                booking.dropoff_location,
+                getattr(booking, "dropoff_location_text", None),
+            ),
             "pickup_time": booking.pickup_time.isoformat() if booking.pickup_time else None,
+            "pickup_schedule": pickup_schedule,
             "passenger_count": booking.passenger_count,
             "payment_method": booking.payment_method,
             "payment_status": str(getattr(booking.payment_status, "value", booking.payment_status)),
             "fare_amount": str(booking.final_price or booking.total_amount or 0),
             "currency": str(getattr(booking.currency, "value", booking.currency)),
+            "can_cancel": can_cancel,
+            "can_mark_no_show": bool(trip_facts.get("can_mark_no_show", False)),
         },
     }), 200
+
+
+@mobile_api_bp.get("/driver/trips")
+@_bearer_required("driver")
+def mobile_driver_trips():
+    """Read the authenticated driver's upcoming, recent or combined trip cards.
+
+    The all scope merges the two existing self-scoped BookingService
+    projections, deduplicates by booking reference, and keeps a bounded result.
+    The route deliberately returns
+    a small driver-facing projection. Passenger identities/contact details,
+    internal row IDs, and the booking metadata blob never cross this boundary.
+    """
+    profile, error, status = _current_driver()
+    if error:
+        return jsonify(error), status
+
+    scope = str(request.args.get("scope") or "recent").strip().lower()
+    if scope not in {"upcoming", "recent", "all"}:
+        return _error(
+            "driver_trip_scope_invalid",
+            "Choose upcoming, recent or all trips.",
+            400,
+        )
+
+    raw_limit = request.args.get("limit", "10")
+    try:
+        limit = int(raw_limit)
+    except (TypeError, ValueError):
+        return _error("driver_trip_limit_invalid", "Trip limit must be a whole number from 1 to 20.", 400)
+    if not 1 <= limit <= 20:
+        return _error("driver_trip_limit_invalid", "Trip limit must be between 1 and 20.", 400)
+
+    from app.transport.services.booking_service import BookingService
+
+    service = BookingService()
+    if scope == "upcoming":
+        rows = service.get_driver_upcoming_bookings(profile.user_id, limit=limit)
+    elif scope == "recent":
+        rows = service.get_driver_recent_bookings(profile.user_id, limit=limit)
+    else:
+        # Reuse the website-owned query services, then combine their narrow
+        # projections. A booking can appear in both sets during a status
+        # transition; its public booking reference is the deduplication key.
+        upcoming_rows = service.get_driver_upcoming_bookings(profile.user_id, limit=limit)
+        recent_rows = service.get_driver_recent_bookings(profile.user_id, limit=limit)
+        by_reference = {}
+        for row in (recent_rows or []) + (upcoming_rows or []):
+            if isinstance(row, dict) and row.get("booking_reference"):
+                by_reference[str(row["booking_reference"])] = row
+
+        def _trip_sort_timestamp(row):
+            value = row.get("pickup_time") or row.get("created_at")
+            if isinstance(value, str):
+                try:
+                    value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                except ValueError:
+                    value = None
+            if not isinstance(value, datetime):
+                return float("-inf")
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return value.timestamp()
+
+        rows = sorted(
+            by_reference.values(),
+            key=_trip_sort_timestamp,
+            reverse=True,
+        )[:limit]
+
+    def _plain(value):
+        return getattr(value, "value", value)
+
+    def _iso(value):
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return value if isinstance(value, str) else None
+
+    def _amount(value):
+        return str(value) if value is not None else None
+
+    items = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        status_value = _plain(row.get("status"))
+        currency_value = _plain(row.get("currency"))
+        fare_value = row.get("final_price")
+        if fare_value is None:
+            fare_value = row.get("total_amount")
+
+        schedule = row.get("pickup_schedule")
+        if isinstance(schedule, dict):
+            schedule = {
+                key: schedule[key]
+                for key in (
+                    "utc_datetime",
+                    "local_datetime",
+                    "timezone_name",
+                    "utc_offset",
+                    "display_timezone_derived",
+                )
+                if key in schedule
+            }
+        else:
+            schedule = None
+
+        items.append({
+            "booking_reference": row.get("booking_reference"),
+            "status": str(status_value) if status_value is not None else "unknown",
+            "booking_mode": row.get("booking_mode"),
+            "pickup_time": _iso(row.get("pickup_time")),
+            "pickup_schedule": schedule,
+            "pickup": {
+                "address": row.get("pickup_location_text") or "Pickup details unavailable",
+            },
+            "dropoff": {
+                "address": row.get("dropoff_location_text") or "Destination details unavailable",
+            },
+            "passenger_count": row.get("passenger_count"),
+            "fare_amount": _amount(fare_value),
+            "currency": str(currency_value) if currency_value is not None else None,
+            "payment_method": row.get("payment_method"),
+            "payment_status": str(_plain(row.get("payment_status")))
+            if row.get("payment_status") is not None else None,
+            "can_mark_no_show": bool(row.get("can_mark_no_show", False)),
+            "created_at": _iso(row.get("created_at")),
+            "completed_at": _iso(row.get("completed_at")),
+        })
+
+    return jsonify({
+        "success": True,
+        "data": {
+            "scope": scope,
+            "items": items,
+            "count": len(items),
+            "limit": limit,
+        },
+    }), 200
+
 
 
 @mobile_api_bp.post("/driver/trips/<string:booking_reference>/status")
@@ -2151,7 +3225,7 @@ def mobile_driver_earnings():
     from app.transport.models import Booking
     from app.utils.enums import BookingStatus, PaymentStatus
     from decimal import Decimal
-    from sqlalchemy import func
+    from sqlalchemy import and_, func, or_
     profile, error, status = _current_driver()
     if error:
         return jsonify(error), status
@@ -2161,10 +3235,22 @@ def mobile_driver_earnings():
     except (TypeError, ValueError):
         rate_pct = 15.0
     rate_pct = min(100.0, max(0.0, rate_pct))
+
+    # AssignmentService.release clears assigned_driver_id on completion.
+    # The canonical website earnings service therefore attributes completed
+    # work through either the live FK or the immutable completion profile
+    # recorded in booking_metadata. Keep native totals on that same contract.
+    driver_attribution = or_(
+        Booking.assigned_driver_id == profile.id,
+        and_(
+            Booking.booking_metadata.has_key("completed_by_driver_profile_id"),
+            Booking.booking_metadata["completed_by_driver_profile_id"].astext == str(profile.id),
+        ),
+    )
     rows = (
         db.session.query(Booking.currency, func.sum(Booking.final_price))
         .filter(
-            Booking.assigned_driver_id == profile.id,
+            driver_attribution,
             Booking.status == BookingStatus.COMPLETED,
             Booking.payment_status == PaymentStatus.CAPTURED,
             Booking.is_deleted.is_(False),
