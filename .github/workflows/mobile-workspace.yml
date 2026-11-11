@@ -394,9 +394,9 @@ jobs:
           retention-days: 90
 
   user-android-version-compatibility:
-    name: User authenticated journey — \${{ matrix.android-label }}
+    name: User authenticated journey — ${{ matrix.android-label }}
     needs: user-authenticated-journey
-    if: \${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' }}
+    if: ${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -440,8 +440,8 @@ jobs:
       AFCON360_E2E_USERNAME: native_e2e_user
       AFCON360_E2E_EMAIL: native-e2e@afcon360.test
       AFCON360_E2E_PASSWORD: NativeE2ePassword2026
-      AFCON360_E2E_EVIDENCE_DIR: android-compat-evidence/\${{ matrix.android-label }}
-      AFCON360_E2E_REQUEST_LOG: android-compat-evidence/\${{ matrix.android-label }}/backend-requests.tsv
+      AFCON360_E2E_EVIDENCE_DIR: android-compat-evidence/${{ matrix.android-label }}
+      AFCON360_E2E_REQUEST_LOG: android-compat-evidence/${{ matrix.android-label }}/backend-requests.tsv
       AFCON360_USER_E2E_APK: mobile-e2e-artifact/user-e2e.apk
     strategy:
       fail-fast: false
@@ -528,7 +528,7 @@ jobs:
           EXPECTED_SHA="$(awk 'NR == 1 { print $1 }' mobile-e2e-artifact/user-e2e-apk.sha256)"
           ACTUAL_SHA="$(sha256sum "$AFCON360_USER_E2E_APK" | awk '{ print $1 }')"
           test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA"
-          echo "Verified the same source APK ($ACTUAL_SHA) for \${{ matrix.android-label }}."
+          echo "Verified the same source APK ($ACTUAL_SHA) for ${{ matrix.android-label }}."
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -558,7 +558,7 @@ jobs:
           echo $! > "$AFCON360_E2E_EVIDENCE_DIR/backend.pid"
           for attempt in $(seq 1 60); do
             if curl --silent --show-error --fail http://127.0.0.1:5000/api/health/ping >/dev/null; then
-              echo "Isolated API is healthy for \${{ matrix.android-label }}."
+              echo "Isolated API is healthy for ${{ matrix.android-label }}."
               exit 0
             fi
             sleep 2
@@ -579,13 +579,13 @@ jobs:
           test -r /dev/kvm
           test -w /dev/kvm
 
-      - name: Run the complete User journey on \${{ matrix.android-label }}
+      - name: Run the complete User journey on ${{ matrix.android-label }}
         id: android_journey
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
-          api-level: \${{ matrix.api-level }}
-          system-image-api-level: \${{ matrix.system-image-api-level }}
-          target: \${{ matrix.target || 'google_apis' }}
+          api-level: ${{ matrix.api-level }}
+          system-image-api-level: ${{ matrix.system-image-api-level }}
+          target: ${{ matrix.target || 'google_apis' }}
           arch: x86_64
           profile: pixel_7
           ram-size: 4096M
@@ -596,14 +596,14 @@ jobs:
           script: python mobile/scripts/verify-user-authenticated-journey.py
 
       - name: Verify protected APIs and server-side logout for this Android version
-        if: \${{ steps.android_journey.outcome == 'success' }}
+        if: ${{ steps.android_journey.outcome == 'success' }}
         run: python mobile/scripts/mobile-user-e2e-backend.py assert
 
       - name: Upload full Android journey evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: afcon360-user-\${{ matrix.android-label }}-journey-evidence
-          path: android-compat-evidence/\${{ matrix.android-label }}/
+          name: afcon360-user-${{ matrix.android-label }}-journey-evidence
+          path: android-compat-evidence/${{ matrix.android-label }}/
           if-no-files-found: warn
           retention-days: 30
