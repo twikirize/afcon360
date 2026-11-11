@@ -355,7 +355,8 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      max-parallel: 4
+      # Android emulators are resource-heavy; avoid Pixel Launcher ANRs from over-parallelism.
+      max-parallel: 2
       matrix:
         app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
         # Android 14 through the latest Android 17 preview/current platform,
@@ -405,6 +406,31 @@ jobs:
           sudo chmod 0666 /dev/kvm
           test -r /dev/kvm
           test -w /dev/kvm
+
+      - name: Normalize Android 17 SDK platform package ID
+        if: matrix.api-level == 37
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          WRAPPER_DIR="$RUNNER_TEMP/afcon360-sdkmanager-wrapper"
+          mkdir -p "$WRAPPER_DIR"
+          cat > "$WRAPPER_DIR/sdkmanager" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          args=()
+          for arg in "$@"; do
+            if [[ "$arg" == "platforms;android-37" ]]; then
+              arg="platforms;android-37.0"
+            fi
+            args+=("$arg")
+          done
+          exec "$SDKMANAGER" "${args[@]}"
+          EOF
+          chmod +x "$WRAPPER_DIR/sdkmanager"
+          echo "$WRAPPER_DIR" >> "$GITHUB_PATH"
 
       - name: Install and launch on Android API ${{ matrix.api-level }}
         uses: reactivecircus/android-emulator-runner@v2.38.0
@@ -907,6 +933,30 @@ jobs:
           sudo chmod 0666 /dev/kvm
           test -r /dev/kvm
           test -w /dev/kvm
+
+      - name: Normalize Android 17 SDK platform package ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          WRAPPER_DIR="$RUNNER_TEMP/afcon360-sdkmanager-wrapper"
+          mkdir -p "$WRAPPER_DIR"
+          cat > "$WRAPPER_DIR/sdkmanager" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          args=()
+          for arg in "$@"; do
+            if [[ "$arg" == "platforms;android-37" ]]; then
+              arg="platforms;android-37.0"
+            fi
+            args+=("$arg")
+          done
+          exec "$SDKMANAGER" "${args[@]}"
+          EOF
+          chmod +x "$WRAPPER_DIR/sdkmanager"
+          echo "$WRAPPER_DIR" >> "$GITHUB_PATH"
 
       - name: Install, sign in, read Driver screens, restore session and sign out on Android
         uses: reactivecircus/android-emulator-runner@v2.38.0
