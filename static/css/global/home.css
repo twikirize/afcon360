@@ -741,3 +741,85 @@
   }
 }
 
+/* =============================================================
+   PAMOJA MOBILE SEARCH
+   Keep the full filter controls on desktop. On phones, retain the
+   search section directly beneath the hero and present one compact
+   text field instead of stacking three unexplained dropdowns.
+   ============================================================= */
+.mobile-only-search {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .top-search {
+    padding: 0.75rem 1rem 1rem;
+    background: transparent;
+    border-bottom: 0;
+  }
+
+  .search-inner {
+    display: flex;
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.4rem;
+    background: #fff;
+    padding: 0.4rem;
+    border: 1px solid #ddd;
+    border-radius: 11px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  }
+
+  .desktop-only-search {
+    display: none !important;
+  }
+
+  .mobile-only-search {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0 0.45rem;
+    background: transparent;
+    border: 0;
+  }
+
+  .mobile-only-search input {
+    display: block;
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    padding: 0.55rem 0.2rem;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #333;
+    font: inherit;
+    font-size: 0.85rem;
+    box-shadow: none;
+  }
+
+  .mobile-only-search input:focus {
+    outline: 0;
+    box-shadow: none;
+  }
+
+  .search-btn-group {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .search-btn {
+    min-height: 42px;
+    padding: 0.55rem 0.9rem;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+
+  .search-btn-arrow {
+    display: none;
+  }
+}
+
