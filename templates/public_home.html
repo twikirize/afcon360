@@ -16,6 +16,46 @@
 
 {% block content %}
 
+<!-- ── PAMOJA HERO & MOBILE SERVICE SHORTCUTS ───────────── -->
+<section class="pamoja-hero-section" aria-labelledby="pamoja-hero-title">
+  <div class="hero-content">
+    <h1 class="hero-title" id="pamoja-hero-title">Welcome to <span>Pamoja</span></h1>
+    <p class="hero-subtitle">Your gateway to matches, travel, tickets, and experiences across Africa and beyond.</p>
+
+    <div class="hero-actions">
+      <a href="{{ safe_url('events.list') }}" class="btn-hero-primary">Explore Featured Events</a>
+      <a href="{{ safe_url('accommodation.guest_search') }}"
+         class="btn-hero-ghost{% if not modules.get('accommodation') %} is-disabled{% endif %}"
+         {% if not modules.get('accommodation') %}aria-disabled="true" onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
+        Find Stays &amp; Hotels
+      </a>
+    </div>
+
+    <!-- Thumb-friendly horizontal shortcuts, shown on mobile only -->
+    <nav class="mobile-service-chips" aria-label="Pamoja service shortcuts">
+      <a href="{{ safe_url('events.list') }}" class="mobile-chip">🏟️ Events</a>
+      <a href="{{ safe_url('accommodation.guest_search') }}"
+         class="mobile-chip{% if not modules.get('accommodation') %} is-disabled{% endif %}"
+         {% if not modules.get('accommodation') %}aria-disabled="true" onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
+        🏨 Stays
+      </a>
+      <a href="{{ safe_url('transport.home') }}"
+         class="mobile-chip{% if not modules.get('transport') %} is-disabled{% endif %}"
+         {% if not modules.get('transport') %}aria-disabled="true" onclick="event.preventDefault(); flash('Transport module is currently disabled', 'warning');"{% endif %}>
+        🚌 Transport
+      </a>
+      <a href="{{ links.tourism_home }}"
+         class="mobile-chip{% if links.tourism_home == '#' %} is-disabled{% endif %}"
+         {% if links.tourism_home == '#' %}aria-disabled="true" onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
+        🌴 Tourism
+      </a>
+      <a href="{% if session.get('user_id') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ safe_url('wallet.wallet_home') }}{% endif %}" class="mobile-chip">
+        👛 Wallet
+      </a>
+    </nav>
+  </div>
+</section>
+
 <!-- ── SEARCH BAR ─────────────────────────────────────── -->
 <section class="top-search">
   <div class="search-inner">
