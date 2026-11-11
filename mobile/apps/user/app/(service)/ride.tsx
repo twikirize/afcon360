@@ -466,7 +466,9 @@ function Progress({ stage }: { stage: Stage }) {
 
 export default function RideScreen() {
   const router = useRouter();
-  const mapRef = useRef<WebView>(null);
+  // react-native-webview 14.0.1 defaults its generic to undefined in its
+  // cross-platform declaration; {} restores the intended WebViewProps type.
+  const mapRef = useRef<WebView<{}>>(null);
   const mapResolveSeq = useRef({ pickup: 0, dropoff: 0 });
   const [stage, setStage] = useState<Stage>("where");
   const [mapReady, setMapReady] = useState(false);
@@ -1008,7 +1010,7 @@ export default function RideScreen() {
             <SectionTitle>Choose pickup and destination on the map</SectionTitle>
             <Text style={styles.helperText}>Tap once to place pickup, then tap again for destination. Drag either pin to adjust it. When both pins are set, tapping near one moves that pin.</Text>
             <View style={styles.mapFrame}>
-              <WebView
+              <WebView<{}>
                 ref={mapRef}
                 source={{ html: MAP_HTML, baseUrl: "https://www.openstreetmap.org" }}
                 originWhitelist={["*"]}
