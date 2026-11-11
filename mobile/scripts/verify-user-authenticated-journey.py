@@ -281,10 +281,50 @@ def save_failure_diagnostics() -> None:
     capture("failure-ui-hierarchy.xml", "shell", "cat", UI_XML)
 
 
+
+def wait_for_android_package_manager(timeout: int = 120) -> None:
+    """Wait until Android's Package Manager Binder service can answer requests.
+
+    Some Android 17 CI emulator boots report sys.boot_completed before the
+    package service is usable. Do not mistake that emulator race for an APK
+    installation or application compatibility failure.
+    """
+    deadline = time.monotonic() + timeout
+    last_service = ""
+    last_packages = ""
+    while time.monotonic() < deadline:
+        last_service = run_adb("shell", "service", "check", "package", check=False)
+        last_packages = run_adb("shell", "pm", "list", "packages", check=False)
+        package_service_ready = "found" in last_service.lower()
+        package_list_ready = any(
+            line.strip().startswith("package:")
+            for line in last_packages.splitlines()
+        )
+        if package_service_ready and package_list_ready:
+            print("ANDROID_PACKAGE_MANAGER_READY: system package service is responding.", flush=True)
+            return
+        time.sleep(2)
+
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    (EVIDENCE / "package-manager-readiness.txt").write_text(
+        "service check output:\\n"
+        + last_service
+        + "\\npackage list output:\\n"
+        + last_packages
+        + "\\n",
+        encoding="utf-8",
+    )
+    raise RuntimeError(
+        "ANDROID_TEST_INFRA_FAILURE: Android reported boot completion but its "
+        f"Package Manager service did not become usable within {timeout} seconds."
+    )
+
+
 def main() -> None:
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     PROGRESS.write_text(json.dumps({"completed_stages": []}, indent=2) + "\n", encoding="utf-8")
     run_adb("wait-for-device")
+    wait_for_android_package_manager()
     run_adb("reverse", "tcp:5000", "tcp:5000")
     run_adb("install", "-r", "mobile-e2e-evidence/user-e2e.apk")
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
