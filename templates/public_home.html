@@ -57,10 +57,10 @@
 </section>
 
 <!-- ── SEARCH BAR ─────────────────────────────────────── -->
-<section class="top-search">
+<section class="top-search" role="search" aria-label="Search Pamoja">
   <div class="search-inner">
-    <div class="search-select-wrap">
-      <select>
+    <div class="search-select-wrap desktop-only-search">
+      <select aria-label="Filter by region">
         <option>All Regions</option>
         <option>Africa</option>
         <option>Asia</option>
@@ -68,8 +68,8 @@
         <option>North America</option>
       </select>
     </div>
-    <div class="search-select-wrap">
-      <select>
+    <div class="search-select-wrap desktop-only-search">
+      <select aria-label="Filter by event type">
         <option>Event Type</option>
         <option>Sports</option>
         <option>Music</option>
@@ -78,17 +78,30 @@
         <option>Cultural</option>
       </select>
     </div>
-    <div class="search-select-wrap">
-      <select>
+    <div class="search-select-wrap desktop-only-search">
+      <select aria-label="Filter by date">
         <option>Any Date</option>
         <option>This Week</option>
         <option>This Month</option>
         <option>This Year</option>
       </select>
     </div>
+
+    <!-- A single, touch-friendly search field replaces the filters on phones. -->
+    <label class="search-select-wrap mobile-only-search" for="home-mobile-search">
+      <span aria-hidden="true">🔍</span>
+      <input
+        id="home-mobile-search"
+        type="search"
+        placeholder="Search events and experiences…"
+        autocomplete="off"
+        aria-label="Search events and experiences"
+      >
+    </label>
+
     <div class="search-btn-group">
-      <button class="search-btn">🔍 Search</button>
-      <button class="search-btn-arrow">▼</button>
+      <button class="search-btn" type="button">🔍 Search</button>
+      <button class="search-btn-arrow" type="button" aria-label="More search options">▼</button>
     </div>
   </div>
   <div class="trending-tags">
