@@ -81,6 +81,16 @@ for (const [relative, snippet] of [...nativeInternalRoutes, ...nativeResetRoutes
   if (!source.includes(snippet)) throw new Error(`Required native route or password-recovery flow is missing or changed: ${relative}`);
 }
 
+const requiredWebsiteHandoffLabels = [
+  ["apps/user/app/(tabs)/index.tsx", "Tourism · website"],
+];
+for (const [relative, visibleLabel] of requiredWebsiteHandoffLabels) {
+  const source = fs.readFileSync(path.join(root, relative), "utf8");
+  if (!source.includes(visibleLabel)) {
+    throw new Error(`External website handoff must be visibly labelled: ${relative} — expected ${visibleLabel}`);
+  }
+}
+
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const full = path.join(directory, entry.name);
