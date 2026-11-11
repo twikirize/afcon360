@@ -417,9 +417,10 @@ jobs:
           test -n "$SDKMANAGER"
           WRAPPER_DIR="$RUNNER_TEMP/afcon360-sdkmanager-wrapper"
           mkdir -p "$WRAPPER_DIR"
-          cat > "$WRAPPER_DIR/sdkmanager" <<EOF
+          cat > "$WRAPPER_DIR/sdkmanager" <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
+          REAL_SDKMANAGER="${AFCON360_REAL_SDKMANAGER:?real sdkmanager path is required}"
           args=()
           for arg in "$@"; do
             if [[ "$arg" == "platforms;android-37" ]]; then
@@ -427,9 +428,10 @@ jobs:
             fi
             args+=("$arg")
           done
-          exec "$SDKMANAGER" "${args[@]}"
+          exec "$REAL_SDKMANAGER" "${args[@]}"
           EOF
           chmod +x "$WRAPPER_DIR/sdkmanager"
+          echo "AFCON360_REAL_SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
           echo "$WRAPPER_DIR" >> "$GITHUB_PATH"
 
       - name: Install and launch on Android API ${{ matrix.api-level }}
@@ -943,9 +945,10 @@ jobs:
           test -n "$SDKMANAGER"
           WRAPPER_DIR="$RUNNER_TEMP/afcon360-sdkmanager-wrapper"
           mkdir -p "$WRAPPER_DIR"
-          cat > "$WRAPPER_DIR/sdkmanager" <<EOF
+          cat > "$WRAPPER_DIR/sdkmanager" <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
+          REAL_SDKMANAGER="${AFCON360_REAL_SDKMANAGER:?real sdkmanager path is required}"
           args=()
           for arg in "$@"; do
             if [[ "$arg" == "platforms;android-37" ]]; then
@@ -953,9 +956,10 @@ jobs:
             fi
             args+=("$arg")
           done
-          exec "$SDKMANAGER" "${args[@]}"
+          exec "$REAL_SDKMANAGER" "${args[@]}"
           EOF
           chmod +x "$WRAPPER_DIR/sdkmanager"
+          echo "AFCON360_REAL_SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
           echo "$WRAPPER_DIR" >> "$GITHUB_PATH"
 
       - name: Install, sign in, read Driver screens, restore session and sign out on Android
