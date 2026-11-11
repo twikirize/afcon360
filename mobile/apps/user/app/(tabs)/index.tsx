@@ -470,12 +470,25 @@ export default function UserHome() {
             <Text style={styles.heroSecondaryText}>Book a ride</Text>
           </Pressable>
         </View>
+      </View>
+
+      <View style={styles.serviceChipsFloat}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.serviceChips}>
-          <Pressable style={styles.serviceChip} onPress={() => openService("events")}><Text style={styles.serviceChipIcon}>🏟️</Text><Text style={styles.serviceChipText}>Events</Text></Pressable>
-          <Pressable style={styles.serviceChip} onPress={() => openService("stays")}><Text style={styles.serviceChipIcon}>🏨</Text><Text style={styles.serviceChipText}>Stays</Text></Pressable>
-          <Pressable style={styles.serviceChip} onPress={() => openService("rides")}><Text style={styles.serviceChipIcon}>🚌</Text><Text style={styles.serviceChipText}>Transport</Text></Pressable>
-          <Pressable style={styles.serviceChip} onPress={() => openService("tourism")}><Text style={styles.serviceChipIcon}>🌴</Text><Text style={styles.serviceChipText}>Tourism · website</Text></Pressable>
-          <Pressable style={styles.serviceChip} onPress={() => openService("wallet")}><Text style={styles.serviceChipIcon}>👛</Text><Text style={styles.serviceChipText}>Wallet</Text></Pressable>
+          <Pressable style={[styles.serviceChip, styles.serviceChipActive]} onPress={() => openService("events")}>
+            <Text style={styles.serviceChipIcon}>🏟️</Text><Text style={[styles.serviceChipText, styles.serviceChipTextActive]}>Events</Text>
+          </Pressable>
+          <Pressable style={styles.serviceChip} onPress={() => openService("stays")}>
+            <Text style={styles.serviceChipIcon}>🏨</Text><Text style={styles.serviceChipText}>Stays</Text>
+          </Pressable>
+          <Pressable style={styles.serviceChip} onPress={() => openService("rides")}>
+            <Text style={styles.serviceChipIcon}>🚌</Text><Text style={styles.serviceChipText}>Transport</Text>
+          </Pressable>
+          <Pressable style={styles.serviceChip} onPress={() => openService("tourism")}>
+            <Text style={styles.serviceChipIcon}>🌴</Text><Text style={styles.serviceChipText}>Tourism</Text>
+          </Pressable>
+          <Pressable style={styles.serviceChip} onPress={() => openService("wallet")}>
+            <Text style={styles.serviceChipIcon}>👛</Text><Text style={styles.serviceChipText}>Wallet</Text>
+          </Pressable>
         </ScrollView>
       </View>
 
@@ -493,7 +506,7 @@ export default function UserHome() {
             onChangeText={setSearch}
             onSubmitEditing={submitSearch}
             returnKeyType="search"
-            placeholder="Search football, music, culture…"
+            placeholder="Search events, football, music, culture…"
             placeholderTextColor="#89958D"
             style={styles.searchInput}
             accessibilityLabel="Search events and experiences"
@@ -689,11 +702,14 @@ const styles = StyleSheet.create({
   heroPrimaryArrow: { color: "#16351F", fontSize: 22, lineHeight: 24, fontWeight: "700" },
   heroSecondaryButton: { minHeight: 46, paddingHorizontal: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.10)", borderWidth: 1, borderColor: "rgba(255,255,255,0.38)", borderRadius: 13 },
   heroSecondaryText: { color: WHITE, fontSize: 13, fontWeight: "800" },
-  serviceChips: { gap: 8, paddingRight: 18 },
-  serviceChip: { minHeight: 38, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "rgba(255,255,255,0.10)" },
+  serviceChipsFloat: { marginTop: -21, paddingHorizontal: 18, zIndex: 3, elevation: 3, marginBottom: -4 },
+  serviceChips: { gap: 8, paddingRight: 18, paddingVertical: 2 },
+  serviceChip: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 13, borderRadius: 99, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, shadowColor: "#173D28", shadowOpacity: 0.08, shadowRadius: 7, shadowOffset: { width: 0, height: 3 } },
+  serviceChipActive: { backgroundColor: BRAND_GOLD, borderColor: BRAND_GOLD },
   serviceChipIcon: { fontSize: 14 },
-  serviceChipText: { color: WHITE, fontSize: 11, fontWeight: "800" },
-  searchPanel: { marginHorizontal: 16, marginTop: 17, padding: 15, backgroundColor: WHITE, borderRadius: 18, borderWidth: 1, borderColor: BORDER, shadowColor: "#173D28", shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2, gap: 12 },
+  serviceChipText: { color: BRAND_DARK, fontSize: 11, fontWeight: "800" },
+  serviceChipTextActive: { color: BRAND_DARK },
+  searchPanel: { marginHorizontal: 16, marginTop: 10, padding: 15, backgroundColor: WHITE, borderRadius: 18, borderWidth: 1, borderColor: BORDER, shadowColor: "#173D28", shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2, gap: 12 },
   searchHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   searchTitle: { color: INK, fontSize: 15, fontWeight: "900" },
   searchSubtitle: { color: MUTED, fontSize: 11, marginTop: 3 },
