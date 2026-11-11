@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Pressable, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ActionButton, AppScreen, PageHeader, Panel, SectionTitle, StatusPill, palette } from "@afcon360/mobile-ui";
 import { authClient } from "../../src/services/api";
@@ -113,6 +113,22 @@ export default function RideScreen() {
     setPaymentMethods([]);
     setPaymentMethod("");
   };
+
+  async function openRouteInGoogleMaps() {
+    if (!pickup || !dropoff) return;
+    const url = new URL("https://www.google.com/maps/dir/");
+    url.searchParams.set("api", "1");
+    url.searchParams.set("origin", `${pickup.latitude},${pickup.longitude}`);
+    url.searchParams.set("destination", `${dropoff.latitude},${dropoff.longitude}`);
+    url.searchParams.set("travelmode", "driving");
+    try {
+      // HTTPS lets Android open Google Maps when installed or the secure
+      // Google Maps website in the user's browser when it is not.
+      await Linking.openURL(url.toString());
+    } catch {
+      Alert.alert("Could not open Google Maps", "Check that a browser or Google Maps is available on this device.");
+    }
+  }
 
   async function getQuotes() {
     if (!pickup || !dropoff) {
@@ -245,6 +261,8 @@ export default function RideScreen() {
         {pickup ? <StatusPill>Pickup selected</StatusPill> : null}
         <PlacePicker label="Destination" value={dropoffText} onValue={value => { setDropoffText(value); setDropoff(null); }} onSelect={selectDropoff} />
         {dropoff ? <StatusPill>Destination selected</StatusPill> : null}
+        <ActionButton label="Preview route in Google Maps" disabled={!pickup || !dropoff} onPress={() => void openRouteInGoogleMaps()} />
+        <Text style={styles.small}>Opens Google Maps securely over HTTPS, or its website in your browser if the app is not installed.</Text>
         <ActionButton label={loadingQuotes ? "Calculating fares…" : "Show fare options"} disabled={!pickup || !dropoff || loadingQuotes} onPress={getQuotes} />
       </Panel>
 
