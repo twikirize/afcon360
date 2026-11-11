@@ -77,6 +77,8 @@ jobs:
     name: User APK — login, protected journeys, restore and logout
     runs-on: ubuntu-24.04
     timeout-minutes: 100
+    outputs:
+      apk_ready: ${{ steps.stage_user_apk.outputs.ready }}
     services:
       postgres:
         image: postgres:15
@@ -325,6 +327,7 @@ jobs:
           path: mobile-e2e-cache/
           key: ${{ steps.user-apk-key.outputs.key }}
       - name: Stage and verify cached User APK for this journey
+        id: stage_user_apk
         shell: bash
         run: |
           set -euo pipefail
@@ -341,6 +344,17 @@ jobs:
           printf '%s  %s\n' "$ACTUAL_SHA" "user-e2e.apk" | tee mobile-e2e-evidence/user-e2e-apk.sha256
           echo "Verified reusable User APK (cache_hit=${{ steps.user-apk-cache.outputs['cache-hit'] }}): $ACTUAL_SHA"
           cat mobile-e2e-evidence/user-e2e-build-info.txt
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: Upload verified APK for independent Android compatibility matrix
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-platform-test-apk
+          path: |
+            mobile-e2e-evidence/user-e2e.apk
+            mobile-e2e-evidence/user-e2e-apk.sha256
+            mobile-e2e-evidence/user-e2e-build-info.txt
+          if-no-files-found: error
+          retention-days: 30
       - name: Enable KVM hardware acceleration
         shell: bash
         run: |
@@ -399,7 +413,7 @@ jobs:
   user-android-version-compatibility:
     name: User APK install and launch — ${{ matrix.android-label }}
     needs: user-authenticated-journey
-    if: ${{ needs.user-authenticated-journey.result == 'success' }}
+    if: ${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
@@ -472,7 +486,7 @@ jobs:
       - name: Download the exact APK tested in the authenticated User journey
         uses: actions/download-artifact@v8
         with:
-          name: afcon360-user-android-e2e-evidence
+          name: afcon360-user-platform-test-apk
           path: mobile-e2e-artifact
 
       - name: Verify APK provenance and checksum before platform tests
