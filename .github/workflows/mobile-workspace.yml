@@ -369,6 +369,65 @@ jobs:
           ls -l /dev/kvm
           test -r /dev/kvm
           test -w /dev/kvm
+      - name: Repair Android SDK command-line tools and validate Android 17 AVD metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          CLT="$SDK/cmdline-tools/latest"
+          test -x "$CLT/bin/sdkmanager"
+
+          CURRENT_VERSION="$("$CLT/bin/sdkmanager" --version | tail -n 1)"
+          echo "Preinstalled Android command-line tools: $CURRENT_VERSION"
+          if [ "$CURRENT_VERSION" != "22.0" ]; then
+            rm -rf "$SDK/cmdline-tools/latest-2"
+            # sdkmanager cannot overwrite its own preinstalled 'latest' folder.
+            # It installs the replacement beside it; move that replacement into
+            # the canonical path before android-emulator-runner invokes avdmanager.
+            set +o pipefail
+            yes | "$CLT/bin/sdkmanager" --install "cmdline-tools;latest" >/dev/null
+            set -o pipefail
+            if [ -d "$SDK/cmdline-tools/latest-2" ]; then
+              rm -rf "$CLT"
+              mv "$SDK/cmdline-tools/latest-2" "$CLT"
+            fi
+          fi
+
+          FINAL_VERSION="$("$CLT/bin/sdkmanager" --version | tail -n 1)"
+          echo "Android command-line tools after update: $FINAL_VERSION"
+          python3 - "$FINAL_VERSION" <<'PY'
+          import sys
+          version = tuple(int(part) for part in sys.argv[1].split(".")[:2])
+          if version < (20, 0):
+              raise SystemExit(
+                  f"Android command-line tools {sys.argv[1]} cannot parse "
+                  "Major.Minor platform versions such as android-37.0."
+              )
+          PY
+
+          echo "$CLT/bin" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          # Reproduce the exact Major.Minor package parsing used by the
+          # Android 17 emulator action and fail before launching a broken AVD.
+          IMAGE="system-images;android-37.0;default;x86_64"
+          "$CLT/bin/sdkmanager" --install "$IMAGE" >/dev/null
+          AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+          AVD_NAME="afcon360-api37-tools-check"
+          mkdir -p "$AVD_HOME"
+          "$CLT/bin/avdmanager" delete avd -n "$AVD_NAME" >/dev/null 2>&1 || true
+          echo no | "$CLT/bin/avdmanager" create avd --force -n "$AVD_NAME" --package "$IMAGE" --device pixel_7
+          AVD_INI="$AVD_HOME/$AVD_NAME.ini"
+          test -s "$AVD_INI"
+          if ! grep -Fxq "target=android-37.0" "$AVD_INI"; then
+            echo "::error::Android 17 AVD metadata is invalid; expected target=android-37.0."
+            cat "$AVD_INI"
+            exit 1
+          fi
+          echo "ANDROID_17_AVD_METADATA_PASS: $(grep '^target=' "$AVD_INI")"
+          "$CLT/bin/avdmanager" delete avd -n "$AVD_NAME" >/dev/null
+
       - name: Install, authenticate, test services, restore session and sign out
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
@@ -566,6 +625,66 @@ jobs:
           cat "$AFCON360_E2E_EVIDENCE_DIR/backend.log"
           echo "::error::The isolated API did not become healthy."
           exit 1
+
+      - name: Repair Android SDK command-line tools and validate Android 17 AVD metadata
+        if: matrix.android-label == 'android-17'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          CLT="$SDK/cmdline-tools/latest"
+          test -x "$CLT/bin/sdkmanager"
+
+          CURRENT_VERSION="$("$CLT/bin/sdkmanager" --version | tail -n 1)"
+          echo "Preinstalled Android command-line tools: $CURRENT_VERSION"
+          if [ "$CURRENT_VERSION" != "22.0" ]; then
+            rm -rf "$SDK/cmdline-tools/latest-2"
+            # sdkmanager cannot overwrite its own preinstalled 'latest' folder.
+            # It installs the replacement beside it; move that replacement into
+            # the canonical path before android-emulator-runner invokes avdmanager.
+            set +o pipefail
+            yes | "$CLT/bin/sdkmanager" --install "cmdline-tools;latest" >/dev/null
+            set -o pipefail
+            if [ -d "$SDK/cmdline-tools/latest-2" ]; then
+              rm -rf "$CLT"
+              mv "$SDK/cmdline-tools/latest-2" "$CLT"
+            fi
+          fi
+
+          FINAL_VERSION="$("$CLT/bin/sdkmanager" --version | tail -n 1)"
+          echo "Android command-line tools after update: $FINAL_VERSION"
+          python3 - "$FINAL_VERSION" <<'PY'
+          import sys
+          version = tuple(int(part) for part in sys.argv[1].split(".")[:2])
+          if version < (20, 0):
+              raise SystemExit(
+                  f"Android command-line tools {sys.argv[1]} cannot parse "
+                  "Major.Minor platform versions such as android-37.0."
+              )
+          PY
+
+          echo "$CLT/bin" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          # Reproduce the exact Major.Minor package parsing used by the
+          # Android 17 emulator action and fail before launching a broken AVD.
+          IMAGE="system-images;android-37.0;default;x86_64"
+          "$CLT/bin/sdkmanager" --install "$IMAGE" >/dev/null
+          AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+          AVD_NAME="afcon360-api37-tools-check"
+          mkdir -p "$AVD_HOME"
+          "$CLT/bin/avdmanager" delete avd -n "$AVD_NAME" >/dev/null 2>&1 || true
+          echo no | "$CLT/bin/avdmanager" create avd --force -n "$AVD_NAME" --package "$IMAGE" --device pixel_7
+          AVD_INI="$AVD_HOME/$AVD_NAME.ini"
+          test -s "$AVD_INI"
+          if ! grep -Fxq "target=android-37.0" "$AVD_INI"; then
+            echo "::error::Android 17 AVD metadata is invalid; expected target=android-37.0."
+            cat "$AVD_INI"
+            exit 1
+          fi
+          echo "ANDROID_17_AVD_METADATA_PASS: $(grep '^target=' "$AVD_INI")"
+          "$CLT/bin/avdmanager" delete avd -n "$AVD_NAME" >/dev/null
 
       - name: Enable hardware acceleration
         shell: bash
