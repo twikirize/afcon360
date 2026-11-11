@@ -484,7 +484,7 @@ export default function UserHome() {
             <Text style={styles.serviceChipIcon}>🚌</Text><Text style={styles.serviceChipText}>Transport</Text>
           </Pressable>
           <Pressable style={styles.serviceChip} onPress={() => openService("tourism")}>
-            <Text style={styles.serviceChipIcon}>🌴</Text><Text style={styles.serviceChipText}>Tourism</Text>
+            <Text style={styles.serviceChipIcon}>🌴</Text><Text style={styles.serviceChipText}>Tourism · website</Text>
           </Pressable>
           <Pressable style={styles.serviceChip} onPress={() => openService("wallet")}>
             <Text style={styles.serviceChipIcon}>👛</Text><Text style={styles.serviceChipText}>Wallet</Text>
