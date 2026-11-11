@@ -467,7 +467,7 @@ export default function UserHome() {
             <Text style={styles.heroPrimaryArrow}>›</Text>
           </Pressable>
           <Pressable accessibilityRole="button" onPress={() => openService("stays")} style={styles.heroSecondaryButton}>
-            <Text style={styles.heroSecondaryText}>Find Stays &amp; Hotels</Text>
+            <Text style={styles.heroSecondaryText}>Find Stays & Hotels</Text>
           </Pressable>
         </View>
       </View>
