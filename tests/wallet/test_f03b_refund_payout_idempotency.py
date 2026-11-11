@@ -582,6 +582,42 @@ class TestEscrowHumanAuthorization:
         assert "authorised" in error.lower()
         assert _count_transfers_for(held_booking, "payout") == 0
 
+    def test_native_bearer_user_can_authorize_own_policy_refund_without_web_session(
+        self, app, guest, platform, held_booking
+    ):
+        """A verified bearer actor can use this boundary without Flask-Login."""
+        _prepare_cancelled_booking_for_review(
+            app,
+            held_booking,
+            guest["user_id"],
+            workflow_state="screening",
+            refund_amount=Decimal("230.00"),
+        )
+        guest_before = _balance(guest["account_id"])
+        platform_before = _balance(platform["account_id"])
+
+        # Deliberately do not call _login_as(): native mobile has no cookie session.
+        ok, error = _guarded_call(
+            lambda: MarketplaceService.refund_guest(
+                held_booking,
+                Decimal("230.00"),
+                authorized_user_id=guest["user_id"],
+            )
+        )
+
+        assert ok, error
+        assert _count_transfers_for(held_booking, "refund") == 1
+        assert _balance(guest["account_id"]) == guest_before + Decimal("230.00")
+        assert _balance(platform["account_id"]) == platform_before - Decimal("230.00")
+        refund_tx = (
+            db.session.query(TransactionModel)
+            .filter_by(client_request_id=REFUND_KEY_TEMPLATE.format(booking_id=held_booking))
+            .first()
+        )
+        assert refund_tx is not None
+        assert refund_tx.tx_metadata["authorized_by_user_id"] == guest["user_id"]
+        assert refund_tx.tx_metadata["authorization_source"] == "booking_time_policy"
+
     def test_guest_policy_refund_is_automatic_without_wallet_pin(
         self, app, guest, platform, held_booking
     ):

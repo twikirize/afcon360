@@ -1,9 +1,23 @@
-# AFCON360 — Agent Directive
+# Pamoja — Agent Directive (AFCON360 Repository)
 
 **Every agent, every task, every session. No exceptions.**
 
-You are working on AFCON360. The system is built deliberately.
-Understanding comes before code. Proof comes before closure.
+You are working on **Pamoja** ([pamoja.space](https://www.pamoja.space/)) in the repository currently named `twikirize/afcon360`. Pamoja is the public-facing product brand. AFCON360 identifiers remain in parts of the codebase, database, and deployment configuration as technical history; do not bulk-rename them as part of unrelated work.
+
+The platform is built deliberately. Understanding comes before code. Proof comes before closure.
+
+## 0. Product Identity and Domain Boundaries
+
+- **Pamoja is the product.** Position new product-facing work around Pamoja's connected, multi-domain services—not as a tournament-only application.
+- **AFCON 2027 is an initial proving context, not the platform's scope.** The platform must remain useful for people, providers, organizations, events, and operations outside sports tournaments.
+- **Keep core domains domain-agnostic.** Accommodation, Transport, Wallet, Identity, KYC, and Tourism must not acquire sports brackets, team assumptions, or tournament-specific state unless an explicitly scoped integration requires it.
+- **Keep tournament behavior isolated.** Tournament formats, schedules, brackets, and sport-specific rules belong in `app/tournament` or a clearly bounded event/tournament integration. General event lifecycle belongs in `app/events`.
+- **Events are not a mandatory parent domain.** A normal accommodation, transport, wallet, identity, or provider workflow must work without an event context unless its own approved contract requires one.
+- **Enforce organization and tenant boundaries.** Resolve identity and organization context through canonical server-side services, then enforce roles and permissions on every operation. Never treat a client-supplied organization or tenant ID as authorization. Do not claim complete multi-tenant coverage without tracing and proving the relevant module paths.
+- **Preserve technical identifiers unless separately authorized.** The Pamoja brand change does not itself authorize renaming Python packages, database names, migration identifiers, environment variables, containers, deployment resources, or historical documents.
+
+---
+
 
 ---
 

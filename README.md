@@ -1,19 +1,49 @@
-# AFCON360 — Integrated Tournament Management Platform
+# Pamoja — Modular Multi-Domain Operations & Commerce Platform
 
-**Repository status:** Active development · **Updated:** 2026-11-06
+**Product:** [Pamoja](https://www.pamoja.space/) · **Repository:** [`twikirize/afcon360`](https://github.com/twikirize/afcon360) · **Status:** Active development · **README updated:** 2026-11-09
 
-AFCON360 is a modular Flask platform for tournament operations, accommodation,
-transport, events, identity/KYC, wallet transactions, notifications, media, and
-administration. This README describes the repository as it exists today; it is
-not a promise that every integration or production deployment is enabled in
-every environment.
+Pamoja is a connected platform for people, service providers, organizations, and operations teams. It brings together services that involve **movement, places to stay, experiences, payments, identity, and coordinated operations** in one ecosystem.
+
+Pamoja is not simply a booking website and is not limited to one tournament. Its purpose is to let people and organizations discover and use services, let providers manage the services they offer, and let authorized teams coordinate related work through shared identity, trusted records, and clearly owned domain capabilities.
+
+The source repository is currently named `afcon360`, and parts of the codebase, database, deployment configuration, and internal documentation still use AFCON360 identifiers. **Pamoja is the public-facing product brand.** Those existing technical identifiers are implementation history, not a reason to keep the product positioned as tournament-specific. Do not perform a broad package, database, deployment, or environment-variable rename as part of this documentation change.
+
+## Product direction
+
+Pamoja is being developed as a **modular, multi-domain platform** rather than a tournament wrapper. Its domains should remain useful independently and should also be able to compose into a joined-up customer or organizational journey.
+
+The platform direction includes:
+
+- **Mobility and transport:** people, drivers, vehicles, fleets, journeys, dispatch, and transport operations.
+- **Accommodation and property services:** properties, rooms, availability, reservations, hosts, and guest operations.
+- **Tourism and experiences:** tours, destinations, experience providers, and related services.
+- **Wallet and payments:** account balances, a canonical financial ledger, payment integrations, currency and FX workflows, payouts, and reconciliation.
+- **Identity and trust:** individual and organization identity, KYC/KYB workflows, roles, permissions, and secure access.
+- **Events and gatherings:** event lifecycle, registrations, ticketing, attendee coordination, and event-specific operations.
+- **Shared platform services:** notifications, media, administration, audit, compliance, reporting, and operational support.
+
+A user should be able to move between enabled Pamoja services through a coherent account and experience. A provider should operate the relevant part of their business without needing the event or tournament domain to be the source of truth for their property, fleet, payments, or identity. Organizations should use their authorized workspace and roles to coordinate the services and resources they control.
+
+### Initial market and proving context
+
+AFCON 2027 in East Africa is an **initial flagship use case and proving context** for Pamoja. It provides a demanding regional scenario for coordinating travel, stays, experiences, payments, identity, and event-related services across Kenya, Tanzania, and Uganda.
+
+That initial market does not define the platform's permanent scope. The same underlying capabilities should be reusable for other events, organizations, communities, service marketplaces, business operations, and regional or international contexts. Event and tournament functionality is one supported domain—not the mandatory parent of every transaction or workflow.
+
+### Product ambition versus verified capability
+
+The long-term direction is regional and international operation, including demanding traffic and cross-border workflows. That is an architectural and product objective, **not a claim that every domain, provider integration, country, or high-concurrency workload is already production-proven**.
+
+A module's presence in the repository does not by itself mean every feature is complete, enabled in every environment, or approved for production. Check the owning module's implementation, tests, configuration, backlog, and deployment evidence before describing a capability as live or production-ready. The Socket.IO section below records the current connection-mode decision and its documented capacity estimate; do not turn the platform ambition into an unsupported scale claim.
 
 ## Contents
 
+- [Product direction](#product-direction)
 - [Architecture](#architecture)
-- [Platform Time Architecture](docs/architecture/PLATFORM_TIME_ARCHITECTURE.md)
 - [Modules](#modules)
+- [Domain-agnostic development rules](#domain-agnostic-development-rules)
 - [Important invariants](#important-invariants)
+- [Platform Time Architecture](docs/architecture/PLATFORM_TIME_ARCHITECTURE.md)
 - [Technology](#technology)
 - [Local setup](#local-setup)
 - [Running services](#running-services)
@@ -23,120 +53,119 @@ every environment.
 - [Production database cutover and recovery](#production-database-cutover-and-recovery--25-october-2026)
 - [Documentation](#documentation)
 - [Adding or activating a database enum](#adding-or-activating-a-database-enum)
-- [Database migrations — architecture, how to use, and why](#database-migrations--architecture-how-to-use-and-why)
+- [Database migrations — architecture, time rules, and how to use](#database-migrations--architecture-time-rules-and-how-to-use)
+- [Socket.IO Async Mode Decision](#socketio-async-mode-decision)
 - [Known limitations](#known-limitations)
+- [License](#license)
 
 ## Architecture
 
-The application uses Flask's application-factory pattern in `app/__init__.py`.
-Blueprints are registered centrally while domain code remains grouped by
-module. SQLAlchemy/Flask-Migrate manage persistence and Redis is used for
-caching, sessions, rate limiting, and Celery transport where configured.
+The application uses Flask's application-factory pattern in `app/__init__.py`. Blueprints are registered centrally while domain code remains grouped by module. SQLAlchemy/Flask-Migrate manage persistence; PostgreSQL is the supported application database; and Redis supports caching, sessions, rate limiting, and Celery transport where configured.
+
+The intended architecture is organized around **shared platform foundations plus independently owned business domains**:
 
 ```text
-Browser / API clients
-        |
-        v
-Flask application factory
-        |
-        +-- Auth, identity, profile, KYC, RBAC
-        +-- Events, accommodation, event accommodation, transport, tourism
-        +-- Wallet APIs, payments, ledger, reconciliation
-        +-- Notifications and domain-event backbone
-        +-- Media, audit, compliance, admin, dashboards
-        |
-        +-- PostgreSQL (all application and test configurations)
-        +-- Redis -> Celery workers and scheduled tasks
+Pamoja customers / providers / organizations / operators
+                         |
+                         v
+              Web, API and supported clients
+                         |
+                         v
+           Authentication, identity and context
+                         |
+        +----------------+----------------+
+        |                |                |
+        v                v                v
+   Accommodation     Transport         Tourism
+   & properties     & mobility       & experiences
+        |                |                |
+        +----------------+----------------+
+                         |
+        +----------------+----------------+
+        |                |                |
+        v                v                v
+   Wallet &          Events &         Provider and
+   payments          gatherings       operations tools
+        |                |                |
+        +----------------+----------------+
+                         |
+          Notifications / media / audit /
+          compliance / administration
+                         |
+             PostgreSQL + Redis + Celery
 ```
 
-### Seamless cross-module guest experience
+Events and tournament operations are supported capabilities, but they are not the root of the platform. The `app/tournament` domain is the place for tournament-specific scheduling and brackets. The general `app/events` domain owns event lifecycle and attendee-related behavior. Accommodation, Transport, Wallet, Identity, KYC, and Tourism must not require a tournament record to perform their own domain work.
 
-AFCON360 is intentionally modular: each domain remains independently usable,
-with its own routes, services, data ownership, and operational rules. The
-modules also compose through shared identity, event context, booking
-references, notifications, and wallet/payment references, so a guest should
-not need to log out or create a separate account when moving between services.
+### Independent domains, composed journeys
 
-An event owner can use the event's attendee/guest context to coordinate the
-connected experience: identify registered guests, arrange accommodation or
-transport through the relevant module, and assign guests to rooms, properties,
-vehicles, routes, or other approved travel arrangements. The event module
-owns the event and attendee relationship; accommodation owns availability,
-reservations, rooms, and stay assignments; transport owns journeys, vehicles,
-drivers, and movement assignments; and wallet owns payment and ledger state.
-These boundaries must remain explicit even when the user journey feels like a
-single workflow.
+Each domain owns its own business rules, routes, services, data, and state transitions. A Pamoja journey can compose those capabilities through documented service boundaries, shared identity/context, public references, notifications, and wallet/payment references. Composition must not collapse domain ownership or create competing sources of truth.
 
-The intended flow is:
+For example:
 
-1. An event owner views authorized event attendees using public identifiers and
-   the event's access-control rules.
-2. The owner initiates or links accommodation and transport arrangements for
-   those guests through the appropriate domain workflows.
-3. The accommodation module confirms availability and records where each guest
-   will stay; the transport module records how each guest will move.
-4. Payment requests use the wallet/payment integration without allowing event,
-   accommodation, or transport code to create a competing ledger.
-5. Notifications and dashboards present the resulting itinerary and status in
-   one authenticated experience.
+1. An individual can discover and request an accommodation stay or a transport journey without first joining an event.
+2. A property or transport provider manages its own inventory, vehicles, availability, bookings, and operational records through the relevant domain.
+3. An organization can use its authorized workspace and roles to coordinate the resources and services it controls.
+4. When an event or gathering is involved, the Events domain can provide the event and attendee context and link participants to enabled Accommodation or Transport workflows.
+5. Payments and financial state remain with Wallet; notifications and dashboards present the resulting status without creating duplicate business or ledger records.
 
-Cross-module implementations must preserve ownership, authorization,
-idempotency, auditability, and failure isolation. A module must continue to
-function when an optional integration is unavailable, and partial failures
-must not silently create an accommodation, transport, or payment assignment.
-Consult the relevant module specification before changing these contracts,
-especially `app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md` for booking,
-guest-roster, payment, and event-assignment behavior.
+The intended experience is connected, but the module boundaries remain strict. Accommodation owns property availability, reservations, rooms, and stay assignments. Transport owns journeys, vehicles, drivers, bookings, dispatch, and movement assignments. Events owns the event and attendee relationship. Wallet owns financial transactions and ledger state. Optional integrations must not silently create cross-domain assignments when a dependency is unavailable.
 
-The formal Event Host guest-coordination contract is documented in
-`app/events/events.md`. It defines the assignment state transitions,
-event-scoped authority, public-reference API contract, capacity/eligibility
-invariants, and controlled behavior when Accommodation or Transport is disabled.
+The event-host guest-coordination contract remains documented in `app/events/events.md`. Event-linked accommodation behavior is further described in `app/accommodation/AFCON360_SEAMLESS_BOOKING_SPEC.md` and the `app/event_accommodation` integration. These are event-specific composition contracts; they do not make Events the owner of general accommodation inventory or booking state.
 
 ### Financial ownership
 
-The wallet is the canonical owner of money movement. Domain modules keep
-context and references such as `wallet_txn_id` or
-`wallet_transaction_id`; they must not create competing ledgers. Wallet changes
-are high risk and must preserve double-entry, idempotency, rollback, and audit
-requirements.
+Wallet is the canonical owner of money movement. Other domains may keep transaction references such as `wallet_txn_id` or `wallet_transaction_id`, but they must not create competing ledgers or decide financial settlement independently. Wallet changes are high risk and must preserve double-entry integrity, idempotency, rollback, and audit requirements.
 
-### Identity separation
+### Identity and organization context
 
-Internal database IDs (`id`) are for foreign keys and joins only. Public URLs,
-API responses, and sessions use `public_id`. Never expose a user's internal
-numeric ID.
+Identity and authorization are shared platform foundations. A person should not need a separate identity for each Pamoja service. Organizations, roles, and permissions determine which workspaces and resources an authenticated user may access.
+
+The application has a unified identity/context contract documented in `app/Documentation/UNIFIED_IDENTITY_CONTEXT_SPEC.md`. Organization context is not itself a permission grant: every operation must still enforce the user's effective role and permissions. Never trust a client-supplied organization or tenant identifier as proof of authorization, and do not claim that every module has complete tenant isolation until its actual read/write paths have been verified.
 
 ## Modules
 
-| Module | Responsibility |
-|---|---|
-| `app/auth` | Login, registration, OTP, onboarding, sessions, password policy |
-| `app/identity` | Users, organizations, roles, permissions, KYB and identity records |
-| `app/profile` | User profile and verification-facing profile workflows |
-| `app/kyc` | KYC tiers, documents, NIRA verification, upgrade workflows |
-| `app/events` | Event lifecycle, registrations, ticketing, assignments, metrics |
-| `app/accommodation` | Properties, rooms, availability, bookings, guest registration and reviews |
-| `app/event_accommodation` | Event-linked accommodation and trust/discovery flows |
-| `app/transport` | Drivers, vehicles, routes, incidents, bookings and analytics APIs |
-| `app/wallet` | Accounts, transactions, ledger, payments, webhooks, FX, payouts and reconciliation |
-| `app/notifications` | Email, SMS, push, in-app and webhook delivery plus event policies/outbox processing |
-| `app/media` | Upload validation, local/OCI storage, media administration and processing tasks |
-| `app/admin` | Owner/admin dashboards, moderation, support, compliance, settings and backups |
-| `app/audit` / `app/compliance` | Forensic audit trails, risk and regulatory workflows |
-| `app/tourism` / `app/tournament` | Tourism services and tournament scheduling/brackets |
-| `app/fan` / `app/user` / `app/dashboard` | Fan, user and role-specific dashboard experiences |
+The package names below describe the current repository organization. The capability labels describe how those packages fit into Pamoja; they are not a promise that every roadmap item is complete.
 
-Phone verification defaults to the account email as an OTP transport and can be
-switched by the owner to a configured SMS provider from Authentication Settings.
-The state machine, delivery boundary, and security invariants are defined in
-`app/Documentation/AUTH_SYSTEM_ARCHITECTURE.md` under
-“Temporary phone-verification transport contract”.
+| Module package | Pamoja capability | Current responsibility in the codebase |
+|---|---|---|
+| `app/auth` | Account access and authentication | Login, registration, OTP, onboarding, sessions, and password policy |
+| `app/identity` | Identity, organizations, roles, and access | Users, organizations, roles, permissions, KYB, and identity records |
+| `app/profile` | Personal profile | User profile and verification-facing profile workflows |
+| `app/kyc` | Identity verification and trust workflows | KYC tiers, documents, NIRA verification, and upgrade workflows |
+| `app/accommodation` | Property and stay operations | Properties, rooms, availability, bookings, guest registration, and reviews |
+| `app/transport` | Fleet and mobility operations | Drivers, vehicles, routes, incidents, bookings, and analytics APIs |
+| `app/wallet` | Financial ledger and payment orchestration | Accounts, transactions, ledger, payments, webhooks, FX, payouts, and reconciliation |
+| `app/tourism` | Tourism and experience services | Tourism-facing services and related workflows |
+| `app/events` | Events and gatherings | Event lifecycle, registrations, ticketing, assignments, and metrics |
+| `app/tournament` | Specialized tournament capability | Tournament scheduling, brackets, and tournament-specific rules |
+| `app/event_accommodation` | Event-to-accommodation integration | Event-linked accommodation and related trust/discovery flows |
+| `app/notifications` | Shared communications | Email, SMS, push, in-app, and webhook delivery plus event policies/outbox processing |
+| `app/media` | Shared media services | Upload validation, local/OCI storage, media administration, and processing tasks |
+| `app/admin` | Platform administration and operations | Owner/admin dashboards, moderation, support, compliance, settings, and backups |
+| `app/audit` / `app/compliance` | Audit, risk, and compliance | Forensic audit trails, risk, and regulatory workflows |
+| `app/fan` / `app/user` / `app/dashboard` | Customer and role-based experiences | Fan, user, and role-specific dashboard experiences |
+
+Phone verification defaults to the account email as an OTP transport and can be switched by the owner to a configured SMS provider from Authentication Settings. The state machine, delivery boundary, and security invariants are defined in `app/Documentation/AUTH_SYSTEM_ARCHITECTURE.md` under “Temporary phone-verification transport contract”.
+
+## Domain-agnostic development rules
+
+These rules apply when extending the platform:
+
+1. **Build reusable domain capabilities.** Accommodation, Transport, Wallet, Identity, KYC, and Tourism must remain useful outside a tournament or event workflow.
+2. **Keep tournament logic isolated.** Sports brackets, team rosters, competition formats, tournament schedules, and sport-specific terminology belong in `app/tournament` or an explicitly event-scoped integration. Do not hardcode them into core accommodation, transport, wallet, identity, or KYC modules.
+3. **Treat Events as optional context.** Event participation may connect people to other services, but a general booking, property, fleet, wallet, or identity workflow must not require an event unless that particular business rule explicitly calls for one.
+4. **Enforce organization and tenant boundaries.** Resolve the canonical identity and organization context on the server, verify the user's role and permissions, and scope reads and writes accordingly. A client-provided organization ID is data to validate, not authority. Verify the actual module implementation before asserting full multi-tenant coverage.
+5. **Preserve canonical ownership.** Use the owning domain's services and state transitions. Do not duplicate accommodation availability, transport assignment, identity authorization, or wallet ledger logic in another module.
+6. **Use adapters for external variation.** Country rules, currencies, payment providers, messaging providers, and other regional differences should be handled through explicit configuration, policy, or provider adapters—not hidden assumptions inside core domain logic.
+7. **Prove capability before marketing it.** A proposed architecture, package name, mock integration, or passing unit test is not by itself evidence of production readiness, provider coverage, or global scale.
 
 ## Important invariants
 
 - All new models inherit from `app.models.base.BaseModel` or an approved
   protected variant; do not change shared base classes without approval.
+- Keep core business domains reusable outside event and tournament workflows. Tournament-specific rules belong in `app/tournament` or an explicitly event-scoped integration, not in Accommodation, Transport, Wallet, Identity, or KYC.
+- Treat organization context as a scoping input, not an authorization grant. Enforce canonical identity, role, permission, and tenant boundaries on every protected read and write; verify module coverage before claiming complete multi-tenancy.
 - Use `BigInteger` internal foreign keys and UUID/string public identifiers.
 - Do not add PostgreSQL enum types; use validated strings and constraints.
 - Preserve soft-delete filtering and audit sensitive actions.
@@ -617,7 +646,7 @@ enum-reconciliation roadmap.
 
 ## Database migrations — architecture, time rules, and how to use
 
-AFCON360 uses one consolidated V1 baseline followed by ordinary incremental Alembic migrations. New installations do not replay the retired H3-A migration history.
+The platform uses one consolidated V1 baseline followed by ordinary incremental Alembic migrations. New installations do not replay the retired H3-A migration history.
 
 ### The architecture
 
@@ -631,7 +660,7 @@ A revision number alone does not prove schema parity. Verify the actual database
 
 ### Permanent timestamp rule: UTC
 
-**UTC is AFCON360's permanent database and application storage standard. Africa/Nairobi is not the permanent database timezone.**
+**UTC is the platform's permanent database and application storage standard. Africa/Nairobi is not the permanent database timezone.**
 
 - All timestamp columns use timezone-aware types (`DateTime(timezone=True)` / PostgreSQL `TIMESTAMPTZ`).
 - Store and compare aware UTC instants. Use `datetime.now(timezone.utc)`; never create naive application timestamps with `datetime.now()` or `datetime.utcnow()`.
@@ -723,7 +752,7 @@ For a migration release, use a disposable empty PostgreSQL database: install the
 **Decision:** `threading` (default, enforced via `SOCKETIO_ASYNC_MODE` env var)
 
 **Reasoning:**
-- AFCON360 is a synchronous codebase; no monkey-patching is performed
+- The current Flask application is synchronous; no monkey-patching is performed
 - `gevent`/`eventlet` require monkey-patching `socket` for Redis message queue to work
 - Without monkey-patching, `socketio.redis_manager.RedisManager.initialize()` raises `RuntimeError` and every `/socket.io/` connect returns 401
 - Silent failures under load: cross-worker push never arrives (measured 58 ms local vs absent after 42 s cross-worker)
@@ -752,4 +781,4 @@ Review those entries before release or operational changes.
 
 ## License
 
-Proprietary — AFCON360 Platform.
+Proprietary — Pamoja Platform.

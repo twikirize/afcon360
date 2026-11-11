@@ -1,7 +1,7 @@
 {
-  "name": "AFCON 360",
-  "short_name": "AFCON360",
-  "description": "Your gateway to matches, travel, tickets and more",
+  "name": "Pamoja",
+  "short_name": "Pamoja",
+  "description": "Discover and coordinate transport, accommodation, experiences, events and wallet services through Pamoja.",
   "start_url": "/user/dashboard",
   "scope": "/",
   "display": "standalone",
@@ -39,5 +39,5 @@
       "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
     }
   ],
-  "categories": ["sports", "travel", "entertainment"]
+  "categories": ["travel", "finance", "entertainment", "social"]
 }
