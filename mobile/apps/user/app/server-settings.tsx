@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Alert, Text, TextInput } from "react-native";
 import { useRouter } from "expo-router";
 import { AppScreen, ActionButton, PageHeader, Panel, palette } from "@afcon360/mobile-ui";
-import { SERVER_SELECTION_ENABLED, getSelectedApiBaseUrl } from "../src/services/api";
+import { SERVER_SELECTION_ENABLED, getSelectedApiBaseUrl, normalizePreviewApiBaseUrl } from "../src/services/api";
 import { useAuth } from "../src/auth/AuthProvider";
 
 const PUBLIC_PAMOJA_URL = "https://www.pamoja.space";
@@ -31,7 +31,29 @@ export default function ServerSettingsScreen() {
     if (busy) return;
     setBusy(true);
     try {
-      const result = await changeApiServer(value);
+      const nextBaseUrl = normalizePreviewApiBaseUrl(value);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      let healthResponse: Response;
+      try {
+        healthResponse = await fetch(nextBaseUrl + "/api/health/ping", {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          signal: controller.signal
+        });
+      } catch {
+        throw new Error(
+          "AFCON360 could not reach this server. Check the laptop IP, confirm the phone and laptop are on the same hotspot or Wi-Fi, and make sure the API and firewall allow port 5000."
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!healthResponse.ok) {
+        throw new Error(
+          `The server responded with HTTP ${healthResponse.status}, but its AFCON360 health check did not pass.`
+        );
+      }
+      const result = await changeApiServer(nextBaseUrl);
       setCurrentUrl(result.baseUrl);
       setDraftUrl(result.baseUrl);
       if (!result.changed) {
@@ -82,7 +104,7 @@ export default function ServerSettingsScreen() {
           editable={!busy}
           style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink, backgroundColor: palette.surface }}
         />
-        <ActionButton label={busy ? "Changing server…" : "Save server address"} disabled={busy || !draftUrl.trim()} onPress={() => void save()} />
+        <ActionButton label={busy ? "Checking server…" : "Test and save server"} disabled={busy || !draftUrl.trim()} onPress={() => void save()} />
       </Panel>
       <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>Security: public and remote servers must use HTTPS. Plain HTTP is allowed only for private-network preview testing on port 5000; it is not encrypted. Use it only on a trusted, isolated test network with test data. Never send production credentials or financial information over HTTP.</Text>
       <ActionButton label="Back" disabled={busy} onPress={() => router.back()} />
