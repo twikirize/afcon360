@@ -9,6 +9,7 @@ on:
   push:
     branches:
       - feat/native-driver-workspace-parity-20261109
+      - feat/native-driver-app-integration-20261108
     paths:
       - "mobile/apps/**"
       - "mobile/packages/**"
@@ -21,6 +22,7 @@ on:
   pull_request:
     branches:
       - feat/native-mobile-apps-20261104
+      - feat/native-driver-app-integration-20261108
     paths:
       - "mobile/apps/**"
       - "mobile/packages/**"
@@ -344,7 +346,9 @@ jobs:
       max-parallel: 4
       matrix:
         app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
-        api-level: [24, 29, 33, 36]
+        # Android 14 through the latest Android 17 preview/current platform,
+        # plus the original legacy API compatibility coverage.
+        api-level: [24, 29, 33, 34, 35, 36, 37]
     env:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
@@ -626,7 +630,7 @@ jobs:
       cancel-in-progress: false
     # Run the isolated authenticated journey on this Driver candidate's push or matching PR update.
     # Its app-input cache keeps test-harness-only corrections from recompiling the APK.
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/feat/native-driver-workspace-parity-20261109') || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/native-driver-workspace-parity-20261109') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/feat/native-driver-workspace-parity-20261109' || github.ref == 'refs/heads/feat/native-driver-app-integration-20261108')) || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/native-driver-workspace-parity-20261109') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     services:
@@ -894,7 +898,8 @@ jobs:
       - name: Install, sign in, read Driver screens, restore session and sign out on Android
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
-          api-level: 36
+          # Latest Android 17 API level; the same source-keyed cached APK is reused.
+          api-level: 37
           target: google_apis
           arch: x86_64
           profile: pixel_7
