@@ -15,6 +15,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 PACKAGE = "space.pamoja.afcon360.user.preview"
+APK_PATH = os.environ.get("AFCON360_USER_E2E_APK", "mobile-e2e-evidence/user-e2e.apk")
+
 USERNAME = os.environ.get("AFCON360_E2E_USERNAME", "native_e2e_user")
 PASSWORD = os.environ.get("AFCON360_E2E_PASSWORD", "NativeE2ePassword2026")
 EVIDENCE = Path(os.environ.get("AFCON360_E2E_EVIDENCE_DIR", "mobile-e2e-evidence"))
@@ -370,7 +372,7 @@ def main() -> None:
     run_adb("wait-for-device")
     wait_for_android_package_manager()
     run_adb("reverse", "tcp:5000", "tcp:5000")
-    install_user_apk_with_retries("mobile-e2e-evidence/user-e2e.apk")
+    install_user_apk_with_retries(APK_PATH)
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
 
     wait_for_text("AFCON360 User", "Sign in securely", label="native sign-in screen")
