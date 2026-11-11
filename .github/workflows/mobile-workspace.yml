@@ -381,23 +381,6 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 600
           script: python mobile/scripts/verify-user-authenticated-journey.py
-      - name: Run the complete User journey on Android 17
-        uses: reactivecircus/android-emulator-runner@v2.38.0
-        env:
-          AFCON360_E2E_EVIDENCE_DIR: mobile-e2e-evidence/android-17
-        with:
-          disable-linux-hw-accel: false
-          api-level: '37.0'
-          system-image-api-level: '37.0'
-          target: default
-          arch: x86_64
-          profile: pixel_7
-          ram-size: 4096M
-          disk-size: 12G
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
-          disable-animations: true
-          emulator-boot-timeout: 900
-          script: bash mobile/scripts/verify-user-authenticated-journey-android17.sh
       - name: Verify server-side logout and protected API evidence
         if: always()
         run: python mobile/scripts/mobile-user-e2e-backend.py assert
@@ -411,11 +394,55 @@ jobs:
           retention-days: 90
 
   user-android-version-compatibility:
-    name: User APK install and launch — ${{ matrix.android-label }}
+    name: User authenticated journey — \${{ matrix.android-label }}
     needs: user-authenticated-journey
-    if: ${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' }}
+    if: \${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: afcon360_mobile_e2e_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d afcon360_mobile_e2e_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      APP_ENV: local
+      FLASK_ENV: testing
+      SECRET_KEY: "ci-only-not-a-production-secret"
+      SECURITY_SALT: "ci-only-security-salt-value-long-enough-for-tests-2026"
+      ENCRYPTION_KEY: "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
+      REFUND_POLICY_SIGNING_KEY: "ci-only-refund-policy-signing-key-not-production"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_mobile_e2e_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_mobile_e2e_test
+      REDIS_URL: redis://localhost:6379/15
+      DISABLE_REDIS: "0"
+      SOCKETIO_ENABLED: "false"
+      ANALYTICS_ENABLED: "false"
+      EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
+      MAIL_SUPPRESS_SEND: "true"
+      AFCON360_E2E_USERNAME: native_e2e_user
+      AFCON360_E2E_EMAIL: native-e2e@afcon360.test
+      AFCON360_E2E_PASSWORD: NativeE2ePassword2026
+      AFCON360_E2E_EVIDENCE_DIR: android-compat-evidence/\${{ matrix.android-label }}
+      AFCON360_E2E_REQUEST_LOG: android-compat-evidence/\${{ matrix.android-label }}/backend-requests.tsv
+      AFCON360_USER_E2E_APK: mobile-e2e-artifact/user-e2e.apk
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -480,28 +507,65 @@ jobs:
             target: default
             expected-api: '37'
     steps:
-      - name: Check out User app verification script
+      - name: Check out User app and backend verification source
         uses: actions/checkout@v7
 
-      - name: Download the exact APK tested in the authenticated User journey
+      - name: Download the exact APK staged by the primary User journey
         uses: actions/download-artifact@v8
         with:
           name: afcon360-user-platform-test-apk
           path: mobile-e2e-artifact
 
-      - name: Verify APK provenance and checksum before platform tests
+      - name: Verify exact APK provenance and checksum
         shell: bash
         run: |
           set -euo pipefail
-          test -s mobile-e2e-artifact/user-e2e.apk
+          test -s "$AFCON360_USER_E2E_APK"
           test -s mobile-e2e-artifact/user-e2e-apk.sha256
           test -s mobile-e2e-artifact/user-e2e-build-info.txt
           grep -Fxq "app=user" mobile-e2e-artifact/user-e2e-build-info.txt
           grep -Fxq "package=space.pamoja.afcon360.user.preview" mobile-e2e-artifact/user-e2e-build-info.txt
           EXPECTED_SHA="$(awk 'NR == 1 { print $1 }' mobile-e2e-artifact/user-e2e-apk.sha256)"
-          ACTUAL_SHA="$(sha256sum mobile-e2e-artifact/user-e2e.apk | awk '{ print $1 }')"
+          ACTUAL_SHA="$(sha256sum "$AFCON360_USER_E2E_APK" | awk '{ print $1 }')"
           test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA"
-          echo "Verified the same authenticated-journey APK: $ACTUAL_SHA"
+          echo "Verified the same source APK ($ACTUAL_SHA) for \${{ matrix.android-label }}."
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install isolated Flask backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build a fresh isolated PostgreSQL schema
+        run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Seed one synthetic, non-MFA User for this Android version
+        run: python mobile/scripts/mobile-user-e2e-backend.py seed
+
+      - name: Start this version's isolated Flask API
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$AFCON360_E2E_EVIDENCE_DIR"
+          nohup python mobile/scripts/mobile-user-e2e-backend.py serve \
+            > "$AFCON360_E2E_EVIDENCE_DIR/backend.log" 2>&1 < /dev/null &
+          echo $! > "$AFCON360_E2E_EVIDENCE_DIR/backend.pid"
+          for attempt in $(seq 1 60); do
+            if curl --silent --show-error --fail http://127.0.0.1:5000/api/health/ping >/dev/null; then
+              echo "Isolated API is healthy for \${{ matrix.android-label }}."
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$AFCON360_E2E_EVIDENCE_DIR/backend.log"
+          echo "::error::The isolated API did not become healthy."
+          exit 1
 
       - name: Enable hardware acceleration
         shell: bash
@@ -515,12 +579,13 @@ jobs:
           test -r /dev/kvm
           test -w /dev/kvm
 
-      - name: Install and launch on ${{ matrix.android-label }}
+      - name: Run the complete User journey on \${{ matrix.android-label }}
+        id: android_journey
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
-          api-level: ${{ matrix.api-level }}
-          system-image-api-level: ${{ matrix.system-image-api-level }}
-          target: ${{ matrix.target || 'google_apis' }}
+          api-level: \${{ matrix.api-level }}
+          system-image-api-level: \${{ matrix.system-image-api-level }}
+          target: \${{ matrix.target || 'google_apis' }}
           arch: x86_64
           profile: pixel_7
           ram-size: 4096M
@@ -528,13 +593,17 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
           disable-animations: true
           emulator-boot-timeout: 900
-          script: bash mobile/scripts/verify-user-apk-platform-install.sh "${{ matrix.expected-api }}" "mobile-e2e-artifact/user-e2e.apk" "mobile-e2e-artifact/user-e2e-apk.sha256" "android-compat-evidence/${{ matrix.android-label }}"
+          script: python mobile/scripts/verify-user-authenticated-journey.py
 
-      - name: Upload platform installation evidence
+      - name: Verify protected APIs and server-side logout for this Android version
+        if: \${{ steps.android_journey.outcome == 'success' }}
+        run: python mobile/scripts/mobile-user-e2e-backend.py assert
+
+      - name: Upload full Android journey evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: afcon360-user-${{ matrix.android-label }}-install-evidence
-          path: android-compat-evidence/${{ matrix.android-label }}/
+          name: afcon360-user-\${{ matrix.android-label }}-journey-evidence
+          path: android-compat-evidence/\${{ matrix.android-label }}/
           if-no-files-found: warn
           retention-days: 30
