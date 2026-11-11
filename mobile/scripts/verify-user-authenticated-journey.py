@@ -270,8 +270,10 @@ def save_failure_diagnostics() -> None:
         )
 
     capture(
-        "failure-logcat-errors.txt", "logcat", "-d", "-t", "2500",
-        "AndroidRuntime:E", "ReactNativeJS:E", "ReactNative:E", "Expo:E", "*:S",
+        "failure-logcat-errors.txt", "logcat", "-d", "-t", "4000",
+        "AndroidRuntime:E", "ReactNativeJS:E", "ReactNative:E", "Expo:E",
+        "system_server:E", "PackageManager:E", "PackageManagerService:E",
+        "ActivityManager:E", "installd:E", "*:S",
     )
     capture("failure-foreground-activity.txt", "shell", "dumpsys", "activity", "activities")
     capture("failure-focused-window.txt", "shell", "dumpsys", "window", "windows")
@@ -326,7 +328,7 @@ def main() -> None:
     run_adb("wait-for-device")
     wait_for_android_package_manager()
     run_adb("reverse", "tcp:5000", "tcp:5000")
-    run_adb("install", "-r", "mobile-e2e-evidence/user-e2e.apk")
+    run_adb("install", "--no-streaming", "mobile-e2e-evidence/user-e2e.apk")
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
 
     wait_for_text("AFCON360 User", "Sign in securely", label="native sign-in screen")
