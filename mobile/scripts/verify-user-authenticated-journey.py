@@ -269,6 +269,7 @@ def save_failure_diagnostics() -> None:
             f"{type(error).__name__}: {error}\n", encoding="utf-8",
         )
 
+    capture("failure-logcat-full.txt", "logcat", "-b", "all", "-d", "-t", "4000")
     capture(
         "failure-logcat-errors.txt", "logcat", "-d", "-t", "4000",
         "AndroidRuntime:E", "ReactNativeJS:E", "ReactNative:E", "Expo:E",
@@ -284,16 +285,18 @@ def save_failure_diagnostics() -> None:
 
 
 
-def wait_for_android_package_manager(timeout: int = 120) -> None:
-    """Wait until Android's Package Manager Binder service can answer requests.
+def wait_for_android_package_manager(timeout: int = 120, stable_checks: int = 3) -> None:
+    """Wait for several consecutive successful Package Manager Binder checks.
 
     Some Android 17 CI emulator boots report sys.boot_completed before the
-    package service is usable. Do not mistake that emulator race for an APK
-    installation or application compatibility failure.
+    package service is usable, or briefly expose the service before it drops.
+    Requiring consecutive successful checks avoids treating one brief response
+    as proof that Android is ready to install an APK.
     """
     deadline = time.monotonic() + timeout
     last_service = ""
     last_packages = ""
+    consecutive_ready = 0
     while time.monotonic() < deadline:
         last_service = run_adb("shell", "service", "check", "package", check=False)
         last_packages = run_adb("shell", "pm", "list", "packages", check=False)
@@ -303,23 +306,62 @@ def wait_for_android_package_manager(timeout: int = 120) -> None:
             for line in last_packages.splitlines()
         )
         if package_service_ready and package_list_ready:
-            print("ANDROID_PACKAGE_MANAGER_READY: system package service is responding.", flush=True)
-            return
+            consecutive_ready += 1
+            if consecutive_ready >= stable_checks:
+                print(
+                    "ANDROID_PACKAGE_MANAGER_READY: system package service "
+                    f"responded successfully {stable_checks} consecutive times.",
+                    flush=True,
+                )
+                return
+        else:
+            consecutive_ready = 0
         time.sleep(2)
 
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     (EVIDENCE / "package-manager-readiness.txt").write_text(
-        "service check output:\\n"
+        "service check output:\n"
         + last_service
-        + "\\npackage list output:\\n"
+        + "\npackage list output:\n"
         + last_packages
-        + "\\n",
+        + "\n",
         encoding="utf-8",
     )
     raise RuntimeError(
         "ANDROID_TEST_INFRA_FAILURE: Android reported boot completion but its "
-        f"Package Manager service did not become usable within {timeout} seconds."
+        f"Package Manager service did not remain usable for {stable_checks} "
+        f"consecutive checks within {timeout} seconds."
     )
+
+
+def install_user_apk_with_retries(apk_path: str, attempts: int = 3) -> None:
+    """Retry only when Android's Package Manager Binder service has broken."""
+    for attempt in range(1, attempts + 1):
+        try:
+            run_adb("install", "--no-streaming", apk_path)
+            return
+        except RuntimeError as error:
+            message = str(error).lower()
+            transient_package_service_error = (
+                "failure calling service package" in message
+                or "broken pipe" in message
+            )
+            if not transient_package_service_error or attempt >= attempts:
+                raise
+
+            print(
+                "ANDROID_TEST_INFRA_RETRY: Package Manager Binder failed during "
+                f"APK install (attempt {attempt}/{attempts}); waiting for a "
+                "stable service before retrying.",
+                flush=True,
+            )
+            try:
+                wait_for_android_package_manager(timeout=60, stable_checks=5)
+            except RuntimeError as readiness_error:
+                raise RuntimeError(
+                    f"{error}; Package Manager did not recover: {readiness_error}"
+                ) from error
+            time.sleep(3)
 
 
 def main() -> None:
@@ -328,7 +370,7 @@ def main() -> None:
     run_adb("wait-for-device")
     wait_for_android_package_manager()
     run_adb("reverse", "tcp:5000", "tcp:5000")
-    run_adb("install", "--no-streaming", "mobile-e2e-evidence/user-e2e.apk")
+    install_user_apk_with_retries("mobile-e2e-evidence/user-e2e.apk")
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
 
     wait_for_text("AFCON360 User", "Sign in securely", label="native sign-in screen")
