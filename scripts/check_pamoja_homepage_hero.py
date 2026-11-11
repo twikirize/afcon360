@@ -30,7 +30,7 @@ def main() -> int:
     Environment().parse(template)
 
     hero_marker = '<section class="pamoja-hero-section"'
-    search_marker = '<section class="top-search">'
+    search_marker = '<section class="top-search'
     if template.count(hero_marker) != 1:
         fail("Expected exactly one Pamoja hero section.")
     if template.index(hero_marker) > template.index(search_marker):
