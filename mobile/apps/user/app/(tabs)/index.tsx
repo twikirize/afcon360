@@ -466,8 +466,8 @@ export default function UserHome() {
             <Text style={styles.heroPrimaryText}>Explore events</Text>
             <Text style={styles.heroPrimaryArrow}>›</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => openService("rides")} style={styles.heroSecondaryButton}>
-            <Text style={styles.heroSecondaryText}>Book a ride</Text>
+          <Pressable accessibilityRole="button" onPress={() => openService("stays")} style={styles.heroSecondaryButton}>
+            <Text style={styles.heroSecondaryText}>Find Stays &amp; Hotels</Text>
           </Pressable>
         </View>
       </View>
