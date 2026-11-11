@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Text, TextInput, View } from "react-native";
+import { Alert, Text, TextInput } from "react-native";
 import { useRouter } from "expo-router";
 import { AppScreen, ActionButton, PageHeader, Panel, palette } from "@afcon360/mobile-ui";
 import { SERVER_SELECTION_ENABLED, getSelectedApiBaseUrl } from "../src/services/api";
 import { useAuth } from "../src/auth/AuthProvider";
 
-const LAPTOP_STAGING_URL = "http://192.168.100.28:5000";
 const PUBLIC_PAMOJA_URL = "https://www.pamoja.space";
 
 export default function ServerSettingsScreen() {
@@ -58,15 +57,10 @@ export default function ServerSettingsScreen() {
 
   return (
     <AppScreen>
-      <PageHeader eyebrow="Preview connection" title="Choose your AFCON360 server." description="Select laptop staging for testing or the public Pamoja server. Switching servers clears this device's saved sign-in credentials." />
+      <PageHeader eyebrow="Preview connection" title="Choose your AFCON360 server." description="Choose public Pamoja or enter the server reachable on your current network. Switching servers clears this device's saved sign-in credentials." />
       <Panel>
         <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>CURRENT SERVER</Text>
         <Text selectable style={{ color: palette.ink, fontSize: 14, fontWeight: "700" }}>{currentUrl ?? "Loading saved server…"}</Text>
-      </Panel>
-      <Panel>
-        <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Laptop staging over Wi-Fi</Text>
-        <Text style={{ color: palette.muted, lineHeight: 20 }}>Use this while your phone and laptop are on the same Wi-Fi network and the staging API is running on the laptop.</Text>
-        <ActionButton label="Use laptop — 192.168.100.28" disabled={busy} onPress={() => { setDraftUrl(LAPTOP_STAGING_URL); void save(LAPTOP_STAGING_URL); }} />
       </Panel>
       <Panel>
         <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Public Pamoja</Text>
@@ -74,7 +68,8 @@ export default function ServerSettingsScreen() {
         <ActionButton label="Use public Pamoja" disabled={busy} onPress={() => { setDraftUrl(PUBLIC_PAMOJA_URL); void save(PUBLIC_PAMOJA_URL); }} />
       </Panel>
       <Panel>
-        <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Another trusted server</Text>
+        <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Laptop hotspot or another staging server</Text>
+        <Text style={{ color: palette.muted, lineHeight: 20 }}>For laptop testing, enter the laptop's current private IPv4 address on the Wi-Fi or hotspot adapter. The phone and laptop must be on the same local network. Example only: http://192.168.137.1:5000. Replace that address with the one shown by ipconfig on your laptop.</Text>
         <TextInput
           accessibilityLabel="API server address"
           autoCapitalize="none"
@@ -82,14 +77,14 @@ export default function ServerSettingsScreen() {
           keyboardType="url"
           value={draftUrl}
           onChangeText={setDraftUrl}
-          placeholder="https://your-server.example"
+          placeholder="http://192.168.x.x:5000 or https://staging.example"
           placeholderTextColor={palette.muted}
           editable={!busy}
           style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink, backgroundColor: palette.surface }}
         />
         <ActionButton label={busy ? "Changing server…" : "Save server address"} disabled={busy || !draftUrl.trim()} onPress={() => void save()} />
       </Panel>
-      <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>Security: public servers must use HTTPS. Plain HTTP is restricted to private IPv4 staging addresses on port 5000 in this preview app. Never select an untrusted server.</Text>
+      <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>Security: public and remote servers must use HTTPS. Plain HTTP is allowed only for private-network preview testing on port 5000; it is not encrypted. Use it only on a trusted, isolated test network with test data. Never send production credentials or financial information over HTTP.</Text>
       <ActionButton label="Back" disabled={busy} onPress={() => router.back()} />
     </AppScreen>
   );
