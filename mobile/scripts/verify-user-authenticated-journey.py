@@ -457,6 +457,10 @@ def main() -> None:
     save_screen("07a-pickup-destination-geo-search")
     mark_stage("pickup_and_destination_geo_search")
 
+    # The destination TextInput still owns Android's soft keyboard. Dismiss
+    # it before return_to_explore sends the separate navigation Back action.
+    run_adb("shell", "input", "keyevent", "4")
+    time.sleep(0.5)
     return_to_explore()
     save_screen("07b-explore-before-stays")
     mark_stage("explore_after_ride")
