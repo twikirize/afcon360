@@ -433,6 +433,9 @@ def main() -> None:
     )
     mark_stage("pickup_geo_search_empty_state")
 
+    # Dismiss Android's soft keyboard before targeting the second field. On
+    # compact emulators the keyboard can cover the destination input.
+    run_adb("shell", "input", "keyevent", "4")
     tap_edit_field("Destination")
     type_text("AFCON360E2ENoSuchDestination92746215")
     deadline = time.monotonic() + 30
