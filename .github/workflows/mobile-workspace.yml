@@ -375,7 +375,7 @@ jobs:
           disable-linux-hw-accel: false
           api-level: '37.0'
           system-image-api-level: '37.0'
-          target: ${{ matrix.target || 'google_apis' }}
+          target: default
           arch: x86_64
           profile: pixel_7
           ram-size: 4096M
@@ -463,6 +463,7 @@ jobs:
           - android-label: android-17
             api-level: '37.0'
             system-image-api-level: '37.0'
+            target: default
             expected-api: '37'
     steps:
       - name: Check out User app verification script
@@ -505,7 +506,7 @@ jobs:
         with:
           api-level: ${{ matrix.api-level }}
           system-image-api-level: ${{ matrix.system-image-api-level }}
-          target: google_apis
+          target: ${{ matrix.target || 'google_apis' }}
           arch: x86_64
           profile: pixel_7
           ram-size: 4096M
