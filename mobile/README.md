@@ -12,7 +12,7 @@ Both use Expo SDK 58, React Native 0.88.1, React 19.3 and TypeScript 6. Flask re
 - Separate Android application IDs and iOS bundle IDs.
 - Shared native UI, HTTPS API client and operating-system SecureStore.
 - Native password login, in-app email-code password recovery, TOTP/backup-code MFA, 10-minute access tokens, 30-day rotating refresh credentials and device logout/revocation. SMS MFA is intentionally unsupported until the existing Auth verifier supports it.
-- User ride flow: GEO search, signed fare quotes, Wallet-certified payment methods, request-first Transport creation, activity and tracking.
+- User ride flow: website-parity four-stage booking (Where → Choose → Confirm → Match), GEO place search, foreground GPS pickup, interactive OpenStreetMap pin placement/dragging, pickup/destination swap, service and scheduled-ride choices, signed fare quotes, explicit Wallet-certified payment selection, request-first Transport creation, activity and tracking.
 - Driver flow: go-live checklist, offer polling/accept/decline, trip progress, foreground driver-initiated GPS, cash receipt confirmation and currency-separated captured earnings.
 - In-app account closure and in-app password recovery. Password recovery currently requires an active account with a registered email address; accounts using the legacy no-email security-question recovery still need the existing website recovery process or support.
 - Website app/share page at `/apps`, EAS build profiles and a PR-safe compatibility workflow.
@@ -65,3 +65,8 @@ Read `docs/backend-contracts.md`, `docs/api-inventory.md`, `docs/store-submissio
 The PR-capable workflow has read-only GitHub permissions, uses no stable signing secrets and does not publish Releases. It uploads run-scoped Android APK and manifest-audit artifacts for validation. Do not treat these CI artifacts as a permanent tester download URL or a production-signed update.
 
 Never submit preview APKs to Google Play. iOS simulator builds are not distributable App Store/TestFlight packages.
+
+
+## Native User booking map runtime
+
+The User booking flow uses `expo-location` for user-initiated foreground pickup GPS and `react-native-webview` to render the interactive Leaflet/OpenStreetMap surface with draggable pickup and destination pins. These are native dependencies: the User app version/runtime is advanced to **1.0.1**, so the updated booking screen must be paired with one newly built and installed OTA-enabled User binary. Do not send this JavaScript update to the earlier 1.0.0 binary. Once the 1.0.1 OTA-enabled binary is installed, subsequent compatible booking UI, copy and workflow refinements can use Expo Updates without another APK rebuild. Location is requested only after the rider taps the pickup-location control; no background location tracking is enabled.

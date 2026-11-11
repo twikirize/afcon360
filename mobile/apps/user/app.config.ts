@@ -9,7 +9,7 @@ const config: ExpoConfig = {
   name: isPreview ? "AFCON360 Preview" : "AFCON360",
   slug: "afcon360-user",
   scheme: isPreview ? "afcon360-preview" : "afcon360",
-  version: "1.0.0",
+  version: "1.0.1",
   runtimeVersion: { policy: "appVersion" },
   updates: easProjectId
     ? {
@@ -38,7 +38,18 @@ const config: ExpoConfig = {
     ],
     adaptiveIcon: { backgroundColor: "#087A4B" }
   },
-  plugins: ["expo-router", "expo-secure-store", "expo-dev-client", "expo-updates"],
+  plugins: [
+    "expo-router",
+    "expo-secure-store",
+    "expo-dev-client",
+    "expo-updates",
+    [
+      "expo-location",
+      {
+        locationWhenInUsePermission: "AFCON360 uses your location only when you choose Use my current location to set your ride pickup."
+      }
+    ]
+  ],
   extra: {
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://www.pamoja.space",
     allowServerSelection: isPreview,
