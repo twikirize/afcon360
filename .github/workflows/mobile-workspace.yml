@@ -3,7 +3,7 @@ name: Mobile workspace CI
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main, feat/native-mobile-server-support-20261105, feat/native-mobile-apps-20261104]
+    branches: [main, feat/native-mobile-server-support-20261105, feat/native-mobile-apps-20261104, feat/native-driver-app-integration-20261108]
     paths:
       - "mobile/apps/**"
       - "mobile/packages/**"
