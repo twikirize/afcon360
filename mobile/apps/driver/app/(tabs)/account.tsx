@@ -411,6 +411,10 @@ export default function DriverAccount() {
           }}
         />
         <ActionButton
+          label="Contact AFCON360 support"
+          onPress={() => { void WebBrowser.openBrowserAsync("https://www.pamoja.space/support"); }}
+        />
+        <ActionButton
           label="Share AFCON360 Driver page"
           onPress={() => share("https://www.pamoja.space/apps", "AFCON360 Driver — official app information and downloads.")}
         />
