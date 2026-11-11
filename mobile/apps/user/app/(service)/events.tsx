@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
 import {
   ActionButton,
@@ -45,11 +46,13 @@ function registrationPrice(registration: NativeEventRegistration): string {
 }
 
 export default function Events() {
+  const params = useLocalSearchParams<{ query?: string }>();
+  const routeQuery = typeof params.query === "string" ? params.query : "";
   const [events, setEvents] = useState<NativeEventSummary[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<NativeEventDetail | null>(null);
   const [registrations, setRegistrations] = useState<NativeEventRegistration[]>([]);
   const [visibleTicket, setVisibleTicket] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(routeQuery);
   const [city, setCity] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -58,7 +61,7 @@ export default function Events() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const loadEvents = useCallback(async (search = query, destination = city) => {
+  const loadEvents = useCallback(async (search: string, destination: string) => {
     setLoading(true);
     setError(null);
     try {
@@ -74,7 +77,7 @@ export default function Events() {
     } finally {
       setLoading(false);
     }
-  }, [query, city]);
+  }, []);
 
   const loadRegistrations = useCallback(async () => {
     setRegistrationsLoading(true);
@@ -91,9 +94,10 @@ export default function Events() {
   }, []);
 
   useEffect(() => {
-    void loadEvents("", "");
+    setQuery(routeQuery);
+    void loadEvents(routeQuery, "");
     void loadRegistrations();
-  }, []);
+  }, [routeQuery, loadEvents, loadRegistrations]);
 
   const openEvent = async (event: NativeEventSummary) => {
     setBusy(true);
@@ -169,7 +173,7 @@ export default function Events() {
             style={{ backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink }}
           />
         </View>
-        <ActionButton label={loading ? "Searching events…" : "Search events"} disabled={loading || busy} onPress={() => void loadEvents()} />
+        <ActionButton label={loading ? "Searching events…" : "Search events"} disabled={loading || busy} onPress={() => void loadEvents(query, city)} />
         {loading ? (
           <ActivityIndicator color={palette.green} />
         ) : events.length ? (
