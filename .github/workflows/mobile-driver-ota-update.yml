@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - feat/native-driver-workspace-parity-20261109
+      - feat/native-driver-app-integration-20261108
       - main
     paths:
       - "mobile/apps/driver/**"
       - "mobile/packages/**"
       - "mobile/package.json"
+      - "mobile/pnpm-lock.yaml"
       - "mobile/pnpm-workspace.yaml"
       - "mobile/.npmrc"
       - ".github/workflows/mobile-driver-ota-update.yml"
