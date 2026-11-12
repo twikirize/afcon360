@@ -272,3 +272,96 @@ def test_native_booking_tracking_uses_authenticated_bearer_user(client, monkeypa
     assert response.get_json()["data"]["booking"]["booking_reference"] == "AF360-SCHEDULED-9805"
     assert captured["reference"] == "AF360-SCHEDULED-9805"
     assert captured["user"] is user
+
+def test_native_activity_combines_request_first_and_booking_first_trips(client, monkeypatch):
+    from datetime import datetime, timezone
+    from app.transport.models import Booking, RideRequest, SearchCycle
+    from app.transport.services import ride_request_service
+
+    user = SimpleNamespace(id=9806)
+    _authenticated_mobile_user(monkeypatch, user)
+    request_row = SimpleNamespace(
+        id=88,
+        public_id="RIDE-REQUEST-9806",
+        status="searching",
+        created_at=datetime(2026, 11, 12, 9, 0, tzinfo=timezone.utc),
+    )
+    cycle = SimpleNamespace(
+        cycle_number=1,
+        status="searching",
+        terminal_reason=None,
+    )
+    booking_row = SimpleNamespace(
+        user_id=user.id,
+        is_deleted=False,
+        ride_request_id=None,
+        booking_reference="AF360-SCHEDULED-9806",
+        status="pending_payment",
+        final_price=125000,
+        total_amount=125000,
+        base_price=125000,
+        currency=SimpleNamespace(value="UGX"),
+        booking_metadata={"booking_mode": "scheduled"},
+        pickup_mode="scheduled",
+        service_type=SimpleNamespace(value="airport_departure"),
+        assigned_driver_id=None,
+        created_at=datetime(2026, 11, 12, 8, 0, tzinfo=timezone.utc),
+    )
+
+    class FakeQuery:
+        def __init__(self, rows):
+            self.rows = rows
+            self.first_calls = 0
+            self.limit_value = None
+
+        def filter_by(self, **kwargs):
+            return self
+
+        def filter(self, *criteria):
+            assert criteria
+            return self
+
+        def order_by(self, *criteria):
+            return self
+
+        def limit(self, value):
+            self.limit_value = value
+            return self
+
+        def all(self):
+            return self.rows
+
+        def first(self):
+            self.first_calls += 1
+            return self.rows[0] if self.rows else None
+
+    monkeypatch.setattr(RideRequest, "query", FakeQuery([request_row]))
+    monkeypatch.setattr(SearchCycle, "query", FakeQuery([cycle]))
+    monkeypatch.setattr(Booking, "query", FakeQuery([booking_row]))
+    monkeypatch.setattr(
+        ride_request_service,
+        "serialize_request",
+        lambda _request, _cycle: {
+            "request_id": "RIDE-REQUEST-9806",
+            "status": "searching",
+            "created_at": request_row.created_at.isoformat(),
+            "fare_estimate": {"amount": 42.5, "currency": "USD"},
+        },
+    )
+
+    response = client.get(
+        "/api/mobile/v1/activity",
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 200
+    items = response.get_json()["data"]["items"]
+    assert [item["kind"] for item in items] == ["request", "booking"]
+    assert items[0]["booking_reference"] == "RIDE-REQUEST-9806"
+    assert items[1]["request_id"] == "AF360-SCHEDULED-9806"
+    assert items[1]["booking_reference"] == "AF360-SCHEDULED-9806"
+    assert items[1]["status"] == "pending_payment"
+    assert items[1]["booking_mode"] == "scheduled"
+    assert items[1]["service_type"] == "airport_departure"
+    assert items[1]["fare_estimate"] == {"amount": 125000.0, "currency": "UGX"}
+    assert "booking_id" not in items[1]
