@@ -1,0 +1,231 @@
+from types import SimpleNamespace
+
+
+def _authenticated_mobile_user(monkeypatch, user):
+    from app.auth import mobile_api
+
+    monkeypatch.setattr(
+        mobile_api,
+        "require_mobile_context",
+        lambda expected_client=None: ({"user": user}, None),
+    )
+
+
+def _booking_payload(*, service_type="airport_departure", booking_mode="scheduled"):
+    return {
+        "idempotency_key": "native-booking-parity-0001",
+        "pickup": {
+            "latitude": 0.3136,
+            "longitude": 32.5811,
+            "address": "Kampala City",
+        },
+        "dropoff": {
+            "latitude": 0.0464,
+            "longitude": 32.4435,
+            "address": "Entebbe Airport",
+        },
+        "pickup_source": "search",
+        "dropoff_source": "search",
+        "pickup_geocode": {
+            "label": "Kampala City",
+            "latitude": 0.3136,
+            "longitude": 32.5811,
+            "provider": "nominatim",
+            "osm_type": "relation",
+            "osm_id": 123,
+        },
+        "dropoff_geocode": {
+            "label": "Entebbe Airport",
+            "latitude": 0.0464,
+            "longitude": 32.4435,
+            "provider": "nominatim",
+            "osm_type": "relation",
+            "osm_id": 456,
+        },
+        "service_type": service_type,
+        "vehicle_class": "comfort",
+        "passenger_count": 1,
+        "booking_mode": booking_mode,
+        "pickup_time": "2026-12-20T10:30",
+        "payment_method": "cash",
+        "currency": "USD",
+        "fare_quote_token": "signed-fare-quote",
+        "confirmed_fare_amount": "45.00",
+    }
+
+
+def _prepare_booking_gate(monkeypatch, user):
+    from app.profile import models as profile_models
+    from app.auth import kyc_compliance
+    from app.transport.services import payment_methods
+
+    _authenticated_mobile_user(monkeypatch, user)
+    monkeypatch.setattr(
+        profile_models,
+        "get_profile_by_user",
+        lambda authenticated_user: SimpleNamespace(profile_completed=True)
+        if authenticated_user is user else None,
+    )
+    monkeypatch.setattr(
+        kyc_compliance,
+        "calculate_kyc_tier",
+        lambda user_id: {"tier": 2, "missing_requirements": []},
+    )
+    monkeypatch.setattr(
+        payment_methods,
+        "get_available_transport_payment_methods",
+        lambda user_id: [{
+            "code": "cash",
+            "label": "Cash",
+            "enabled": True,
+            "status": "ready",
+        }],
+    )
+
+
+def test_native_scheduled_airport_booking_uses_booking_service_without_early_dispatch(
+    client, monkeypatch
+):
+    from app.transport.services import booking_service
+
+    user = SimpleNamespace(id=9801)
+    _prepare_booking_gate(monkeypatch, user)
+    captured = {}
+    service_calls = {"transition": 0}
+
+    class FakeBookingService:
+        def create_booking(self, owner_id, payload):
+            captured["owner_id"] = owner_id
+            captured["payload"] = payload
+            return {
+                "success": True,
+                "data": {
+                    "booking_id": 771,
+                    "booking_reference": "AF360-SCHEDULED-9801",
+                    "booking_mode": "scheduled",
+                    "pickup_time": "2026-12-20T07:30:00+00:00",
+                    "status": "pending_payment",
+                },
+            }
+
+        def transition_status(self, *args, **kwargs):
+            service_calls["transition"] += 1
+            raise AssertionError("Scheduled rides must not be confirmed/dispatched immediately")
+
+    monkeypatch.setattr(booking_service, "get_booking_service", lambda: FakeBookingService())
+
+    response = client.post(
+        "/api/mobile/v1/transport/bookings",
+        json=_booking_payload(service_type="airport_departure", booking_mode="scheduled"),
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["booking_kind"] == "booking"
+    assert body["booking_reference"] == "AF360-SCHEDULED-9801"
+    assert body["data"]["booking_mode"] == "scheduled"
+    assert body["dispatch_pending"] is False
+    assert captured["owner_id"] == user.id
+    assert captured["payload"]["service_type"] == "airport_departure"
+    assert captured["payload"]["booking_mode"] == "scheduled"
+    assert captured["payload"]["pickup_time"] == "2026-12-20T10:30"
+    assert captured["payload"]["pickup_latitude"] == 0.3136
+    assert captured["payload"]["dropoff_longitude"] == 32.4435
+    assert captured["payload"]["pickup_geocode"]["provider"] == "nominatim"
+    assert service_calls["transition"] == 0
+
+
+def test_native_instant_airport_booking_uses_website_cash_dispatch_path(
+    client, monkeypatch
+):
+    from app.transport.models import BookingStatus
+    from app.transport.services import booking_service
+    from app.transport.services.matching_service import MatchingService
+
+    user = SimpleNamespace(id=9802)
+    _prepare_booking_gate(monkeypatch, user)
+    service_calls = {}
+    matching_calls = []
+
+    class FakeBookingService:
+        def create_booking(self, owner_id, payload):
+            return {
+                "success": True,
+                "data": {
+                    "booking_id": 772,
+                    "booking_reference": "AF360-AIRPORT-9802",
+                    "booking_mode": "instant",
+                    "pickup_time": "2026-11-12T10:00:00+00:00",
+                    "status": "pending_payment",
+                },
+            }
+
+        def transition_status(self, booking_id, status, **kwargs):
+            service_calls.update(
+                booking_id=booking_id,
+                status=status,
+                reason=kwargs.get("reason"),
+                initiated_by=kwargs.get("initiated_by"),
+                actor=kwargs.get("actor"),
+            )
+
+    monkeypatch.setattr(booking_service, "get_booking_service", lambda: FakeBookingService())
+    monkeypatch.setattr(
+        MatchingService,
+        "discover_and_offer",
+        lambda booking_id: matching_calls.append(booking_id) or {"offers_created": 1},
+    )
+
+    response = client.post(
+        "/api/mobile/v1/transport/bookings",
+        json=_booking_payload(service_type="airport_departure", booking_mode="instant"),
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["booking_reference"] == "AF360-AIRPORT-9802"
+    assert service_calls["booking_id"] == 772
+    assert service_calls["status"] == BookingStatus.CONFIRMED
+    assert service_calls["reason"] == "cash_confirm"
+    assert service_calls["initiated_by"] == "rider"
+    assert service_calls["actor"] is user
+    assert matching_calls == [772]
+
+
+def test_native_instant_on_demand_booking_endpoint_rejects_wrong_lifecycle(client, monkeypatch):
+    from app.transport.services import booking_service
+
+    user = SimpleNamespace(id=9803)
+    _prepare_booking_gate(monkeypatch, user)
+    monkeypatch.setattr(
+        booking_service,
+        "get_booking_service",
+        lambda: (_ for _ in ()).throw(AssertionError("Wrong service for instant Quick Ride")),
+    )
+
+    response = client.post(
+        "/api/mobile/v1/transport/bookings",
+        json=_booking_payload(service_type="on_demand", booking_mode="instant"),
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "use_ride_request"
+
+
+def test_native_scheduled_booking_requires_pickup_time(client, monkeypatch):
+    user = SimpleNamespace(id=9804)
+    _prepare_booking_gate(monkeypatch, user)
+    payload = _booking_payload(service_type="on_demand", booking_mode="scheduled")
+    payload["pickup_time"] = None
+
+    response = client.post(
+        "/api/mobile/v1/transport/bookings",
+        json=payload,
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "scheduled_pickup_time_required"
