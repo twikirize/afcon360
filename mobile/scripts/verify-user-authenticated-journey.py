@@ -102,35 +102,86 @@ def bounds_center(value: str) -> tuple[int, int] | None:
     if not match:
         return None
     left, top, right, bottom = map(int, match.groups())
+    if right <= left or bottom <= top:
+        return None
     return ((left + right) // 2, (top + bottom) // 2)
 
 
 def tap_text(value: str, *, last: bool = False, timeout: int = 12) -> None:
+    """Tap a visible text target through its real clickable ancestor when needed.
+
+    Android versions differ in how UIAutomator reports bounds for nested
+    React Native Text nodes. Some return [0,0][0,0] for a visible tab label;
+    tapping that Text node would silently tap screen coordinate (0,0). Walk
+    up the native hierarchy and prefer the nearest enabled clickable parent.
+    """
     deadline = time.monotonic() + timeout
     last_diagnostics = []
     while time.monotonic() < deadline:
         try:
             root = dump_tree()
+            parents = {
+                child: parent
+                for parent in root.iter("node")
+                for child in parent
+            }
             matches = []
             for node in root.iter("node"):
                 text_value = node.attrib.get("text", "").strip()
                 description = node.attrib.get("content-desc", "").strip()
-                if text_value == value or description == value:
-                    bounds = node.attrib.get("bounds", "")
-                    center = bounds_center(bounds)
-                    if center:
-                        matches.append({
+                if text_value != value and description != value:
+                    continue
+
+                matched = {
+                    "class": node.attrib.get("class", ""),
+                    "clickable": node.attrib.get("clickable", ""),
+                    "enabled": node.attrib.get("enabled", ""),
+                    "bounds": node.attrib.get("bounds", ""),
+                    "text": text_value,
+                    "content_desc": description,
+                }
+
+                ancestor = node
+                nearest_visible = None
+                clickable_target = None
+                depth = 0
+                while ancestor is not None:
+                    center = bounds_center(ancestor.attrib.get("bounds", ""))
+                    if center is not None:
+                        candidate = {
                             "center": center,
-                            "bounds": bounds,
-                            "class": node.attrib.get("class", ""),
-                            "clickable": node.attrib.get("clickable", ""),
-                            "enabled": node.attrib.get("enabled", ""),
-                            "text": text_value,
-                            "content_desc": description,
-                        })
+                            "bounds": ancestor.attrib.get("bounds", ""),
+                            "class": ancestor.attrib.get("class", ""),
+                            "clickable": ancestor.attrib.get("clickable", ""),
+                            "enabled": ancestor.attrib.get("enabled", ""),
+                            "depth": depth,
+                        }
+                        if nearest_visible is None:
+                            nearest_visible = candidate
+                        if (
+                            candidate["clickable"] == "true"
+                            and candidate["enabled"] != "false"
+                        ):
+                            clickable_target = candidate
+                            break
+                    ancestor = parents.get(ancestor)
+                    depth += 1
+
+                target = clickable_target or nearest_visible
+                if target is not None:
+                    matches.append({
+                        "matched_node": matched,
+                        "target_node": target,
+                        "target_source": (
+                            "nearest-clickable-ancestor"
+                            if clickable_target is not None
+                            else "nearest-visible-ancestor"
+                        ),
+                    })
+
             if matches:
                 chosen = matches[-1] if last else matches[0]
-                x, y = chosen["center"]
+                x, y = chosen["target_node"]["center"]
                 print(
                     "ANDROID_TAP_TARGET: "
                     + json.dumps({
@@ -144,7 +195,9 @@ def tap_text(value: str, *, last: bool = False, timeout: int = 12) -> None:
                 run_adb("shell", "input", "tap", str(x), str(y))
                 time.sleep(0.7)
                 return
-            last_diagnostics = []
+            last_diagnostics = [
+                f"matching text {value!r} was found without any usable bounds"
+            ]
         except Exception as error:
             last_diagnostics = [f"{type(error).__name__}: {error}"]
         time.sleep(0.5)
