@@ -273,7 +273,7 @@ def test_native_booking_tracking_uses_authenticated_bearer_user(client, monkeypa
     assert captured["reference"] == "AF360-SCHEDULED-9805"
     assert captured["user"] is user
 
-def test_native_activity_combines_request_first_and_booking_first_trips(client, monkeypatch):
+def test_native_activity_combines_request_first_and_booking_first_trips(app, client, monkeypatch):
     from datetime import datetime, timezone
     from app.transport.models import Booking, RideRequest, SearchCycle
     from app.transport.services import ride_request_service
@@ -335,9 +335,10 @@ def test_native_activity_combines_request_first_and_booking_first_trips(client, 
             self.first_calls += 1
             return self.rows[0] if self.rows else None
 
-    monkeypatch.setattr(RideRequest, "query", FakeQuery([request_row]))
-    monkeypatch.setattr(SearchCycle, "query", FakeQuery([cycle]))
-    monkeypatch.setattr(Booking, "query", FakeQuery([booking_row]))
+    with app.app_context():
+        monkeypatch.setattr(RideRequest, "query", FakeQuery([request_row]))
+        monkeypatch.setattr(SearchCycle, "query", FakeQuery([cycle]))
+        monkeypatch.setattr(Booking, "query", FakeQuery([booking_row]))
     monkeypatch.setattr(
         ride_request_service,
         "serialize_request",
