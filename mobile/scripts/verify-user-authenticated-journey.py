@@ -165,7 +165,7 @@ def tap_text_scrolling(value: str, *, max_swipes: int = 6) -> None:
     for attempt in range(max_swipes + 1):
         try:
             tap_text(value, timeout=2)
-            print(f"PASS: tapped after {attempt} Explore scroll(s): {value}", flush=True)
+            print(f"PASS: tapped after {attempt} scroll(s): {value}", flush=True)
             return
         except AssertionError as error:
             last_error = error
@@ -406,7 +406,7 @@ def main() -> None:
     mark_stage("wallet_screen")
 
     tap_text("Account", last=True)
-    wait_for_text("Your AFCON360 identity.", "Sign out", timeout=25, label="authenticated account")
+    wait_for_text("Your AFCON360 identity.", timeout=25, label="authenticated account")
     account_text = visible_text()
     if USERNAME not in account_text and os.environ.get("AFCON360_E2E_EMAIL", "native-e2e@afcon360.test") not in account_text:
         raise AssertionError("The authenticated account screen did not display the synthetic user's identity.")
@@ -495,7 +495,8 @@ def main() -> None:
     mark_stage("session_restored")
 
     tap_text("Account", last=True)
-    wait_for_text("Your AFCON360 identity.", "Sign out", label="account before logout")
+    wait_for_text("Your AFCON360 identity.", label="account before logout")
+    tap_text_scrolling("Sign out")
     tap_text("Sign out")
     wait_for_text("Sign out of AFCON360 on this device?", timeout=12, label="logout confirmation")
     mark_stage("logout_started")
