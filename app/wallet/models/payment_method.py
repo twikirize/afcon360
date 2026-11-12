@@ -102,6 +102,27 @@ class PaymentMethodConfig(BaseModel):
     def calculate_fee(self, amount):
         return float(amount) * float(self.transaction_fee or 0)
 
+    def to_audit_dict(self) -> dict:
+        """Return allowlisted fields for audit logging."""
+        # AUDIT_FIELDS - explicit allowlist for audit snapshots
+        audit_fields = (
+            'provider_name', 'method_type', 'country_code',
+            'is_enabled', 'is_active', 'requires_phone',
+            'supported_currencies', 'allowed_timings',
+            'min_amount', 'max_amount', 'transaction_fee',
+            'use_sandbox', 'marketplace_collection_implemented',
+        )
+        snapshot = {f: getattr(self, f) for f in audit_fields}
+        # Credential presence indicators only - never the actual values
+        snapshot['api_key_configured'] = bool(self.api_key)
+        snapshot['api_secret_configured'] = bool(self.api_secret)
+        snapshot['webhook_configured'] = bool(self.config_json.get('webhook_url') if isinstance(self.config_json, dict) else False)
+        snapshot['sandbox_configured'] = bool(self.sandbox_url)
+        snapshot['production_configured'] = bool(self.production_url)
+        # config_json is sanitized by the audit service as SENSITIVE_MARKER_KEYS
+        snapshot['config_json_present'] = bool(self.config_json)
+        return snapshot
+
     @classmethod
     def get_available_methods(cls, currency=None):
         query = cls.query.filter(cls.is_enabled == True, cls.is_active == True)

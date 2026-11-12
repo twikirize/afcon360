@@ -419,6 +419,9 @@ def add_payment_gateway():
     """Add additional payment gateway (Owner only)"""
     try:
         from flask_login import current_user
+        from app.wallet.services.admin_audit_service import AdminAuditService
+        from app.wallet.models.config import PaymentProviderConfig
+        from app.wallet.enums import PaymentProvider
         
         if request.method == 'POST':
             # Get form data
@@ -427,25 +430,76 @@ def add_payment_gateway():
             api_key = request.form.get('api_key')
             api_secret = request.form.get('api_secret')
             webhook_url = request.form.get('webhook_url')
+            environment = request.form.get('environment', 'sandbox')
+            operations = request.form.getlist('operations[]')
+            description = request.form.get('description', '')
+            enabled = request.form.get('enabled') == 'on'
             
-            # Log the action
-            from app.wallet.services.admin_audit_service import AdminAuditService
-            AdminAuditService.log_action(
-                admin_id=current_user.id,
-                admin_name=current_user.username,
-                admin_role='owner',
-                action_type='create',
-                action_category='payment_gateway',
-                target_type='payment_gateway',
-                target_name=gateway_name,
-                new_value={
-                    'gateway_name': gateway_name,
-                    'gateway_type': gateway_type,
-                    'api_key': api_key,
-                    'webhook_url': webhook_url
-                },
-                reason=f'Added payment gateway: {gateway_name}'
-            )
+            # Map form gateway_type to provider enum - reject unsupported types
+            provider_map = {
+                'visa_direct': PaymentProvider.VISA,
+                'mastercard_send': PaymentProvider.MASTERCARD,
+                'bank_transfer': PaymentProvider.BANK_TRANSFER,
+                'flutterwave': PaymentProvider.FLUTTERWAVE,
+                'paystack': PaymentProvider.PAYSTACK,
+                'mtn_momo': PaymentProvider.MTN_MOMO,
+                'airtel_money': PaymentProvider.AIRTEL_MONEY,
+                'mpesa': PaymentProvider.MPESA,
+            }
+            provider = provider_map.get(gateway_type)
+            
+            if not provider:
+                flash('Unsupported gateway type', 'danger')
+                return redirect(url_for('admin.owner.add_payment_gateway'))
+            
+            is_sandbox = (environment == 'sandbox')
+            
+            with AdminAuditService.audited_change():
+                # Create or update PaymentProviderConfig (canonical credential store)
+                provider_config = PaymentProviderConfig.query.filter_by(
+                    provider_name=provider.value,
+                    is_sandbox=is_sandbox
+                ).first()
+                
+                if not provider_config:
+                    provider_config = PaymentProviderConfig(
+                        provider_name=provider.value,
+                        display_name=gateway_name,
+                        is_sandbox=is_sandbox
+                    )
+                    db.session.add(provider_config)
+                
+                # Update all fields - credentials will be encrypted by model
+                provider_config.display_name = gateway_name
+                provider_config.secret_key = api_secret  # Will be encrypted by setter
+                provider_config.public_key = api_key     # Will be encrypted by setter
+                provider_config.webhook_url = webhook_url
+                provider_config.config_json = {
+                    'supported_currencies': ['UGX', 'USD', 'KES', 'NGN'],  # Default, could be from form
+                    'supported_methods': operations or ['card', 'bank_transfer', 'mobile_money'],
+                    'base_url': '',  # Will be set by provider
+                    'description': description,
+                }
+                provider_config.is_sandbox = is_sandbox
+                provider_config.is_enabled = enabled
+                provider_config.is_active = enabled
+                provider_config.updated_by = current_user.id
+                
+                db.session.flush()  # Get ID for audit
+                
+                # Log the action
+                AdminAuditService.log_action(
+                    admin_id=current_user.id,
+                    admin_name=current_user.username,
+                    admin_role='owner',
+                    action_type='create',
+                    action_category='payment_gateway',
+                    target_type='payment_gateway',
+                    target_id=str(provider_config.id),
+                    target_name=gateway_name,
+                    new_value=provider_config.to_dict(include_secrets=False),
+                    reason=f'Added payment gateway: {gateway_name}'
+                )
             
             flash(f'Payment gateway {gateway_name} added successfully', 'success')
             return redirect(url_for('admin.owner.add_payment_gateway'))
@@ -522,11 +576,13 @@ def toggle_payment_method(method_id):
         if old_value == new_value:
             return jsonify({'success': True, 'message': 'No change', 'value': new_value})
         
-        setattr(method, field, new_value)
-        db.session.commit()
+        # Capture old audit snapshot before change
+        old_snapshot = method.to_audit_dict()
         
-        # Audit log
-        try:
+        with AdminAuditService.audited_change():
+            setattr(method, field, new_value)
+            
+            # Log the action with audit snapshots
             AdminAuditService.log_action(
                 admin_id=current_user.id,
                 admin_name=current_user.username,
@@ -536,18 +592,15 @@ def toggle_payment_method(method_id):
                 target_type='payment_method',
                 target_id=str(method.id),
                 target_name=method.method_id,
-                old_value={field: old_value},
-                new_value={field: new_value},
+                old_value=old_snapshot,
+                new_value=method.to_audit_dict(),
                 reason=f'Toggled payment method {method.method_id} {field} to {new_value}'
             )
-        except Exception as audit_e:
-            current_app.logger.error(f"Audit log error: {audit_e}")
         
         return jsonify({'success': True, 'value': new_value, 'message': f'{field} set to {new_value}'})
     except Exception as e:
-        db.session.rollback()
         current_app.logger.error(f"Toggle payment method error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Change not saved — audit record could not be created. No configuration was modified.'}), 409
 
 
 @owner_bp.route('/settings/payment-methods/<int:method_id>', methods=['PUT'])
@@ -573,10 +626,11 @@ def update_payment_method(method_id):
             'config_json'
         ]
         
-        old_values = {}
+        # Capture old audit snapshot before change
+        old_snapshot = method.to_audit_dict()
+        
         for field in updatable_fields:
             if field in data:
-                old_values[field] = getattr(method, field)
                 new_value = data[field]
                 
                 # Type conversion for numeric fields
@@ -587,10 +641,8 @@ def update_payment_method(method_id):
                 
                 setattr(method, field, new_value)
         
-        db.session.commit()
-        
-        # Audit log
-        try:
+        with AdminAuditService.audited_change():
+            # Log the action with audit snapshots
             AdminAuditService.log_action(
                 admin_id=current_user.id,
                 admin_name=current_user.username,
@@ -600,18 +652,15 @@ def update_payment_method(method_id):
                 target_type='payment_method',
                 target_id=str(method.id),
                 target_name=method.method_id,
-                old_value=old_values,
-                new_value={k: data[k] for k in old_values},
+                old_value=old_snapshot,
+                new_value=method.to_audit_dict(),
                 reason=f'Updated payment method {method.method_id} configuration'
             )
-        except Exception as audit_e:
-            current_app.logger.error(f"Audit log error: {audit_e}")
         
         return jsonify({'success': True, 'message': 'Payment method updated successfully'})
     except Exception as e:
-        db.session.rollback()
         current_app.logger.error(f"Update payment method error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Change not saved — audit record could not be created. No configuration was modified.'}), 409
 
 
 # ============================================================================

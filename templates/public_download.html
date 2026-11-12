@@ -1,12 +1,8 @@
 {% extends "base.html" %}
 
-{% block head %}
-  {{ super() }}
-  <meta name="description" content="Get the AFCON360 fan and driver apps. Your East African football journey starts here — across Kenya, Tanzania and Uganda.">
-  <meta property="og:title" content="Get AFCON360 | Your journey. Your game.">
-  <meta property="og:description" content="One region. Three nations. One connected fan experience. Explore AFCON360 for fans and drivers.">
-  <meta property="og:type" content="website">
-{% endblock %}
+{% block meta_description %}Explore Pamoja’s connected User and Driver experiences for transport, accommodation, events and services across East Africa.{% endblock %}
+{% block og_title %}Pamoja Apps | One platform, every journey{% endblock %}
+{% block og_description %}Explore Pamoja’s User and Driver experiences, connecting mobility, stays, events and services in one platform.{% endblock %}
 
 {% block styles %}
   {{ super() }}

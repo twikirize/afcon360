@@ -3,9 +3,9 @@ Travel Rule Compliance Service
 FATF Travel Rule implementation for crypto/fiat transfers
 """
 
-import uuid
-from typing import Dict, Any, Optional, List
-from flask import current_app
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+from decimal import Decimal
 
 from app.extensions import db
 from app.wallet.models.travel_rule import TravelRuleConfig, TravelRuleTransfer
@@ -13,12 +13,7 @@ from app.wallet.services.admin_audit_service import AdminAuditService
 
 
 class TravelRuleService:
-    """Service for managing FATF Travel Rule compliance"""
-    
-    @staticmethod
-    def get_config() -> Optional[TravelRuleConfig]:
-        """Get current travel rule configuration"""
-        return TravelRuleConfig.query.first()
+    """Service for managing Travel Rule compliance"""
     
     @staticmethod
     def update_config(
@@ -28,7 +23,7 @@ class TravelRuleService:
         **updates
     ) -> TravelRuleConfig:
         """
-        Update travel rule configuration
+        Update Travel Rule configuration
         
         Args:
             admin_id: ID of admin making changes
@@ -43,38 +38,35 @@ class TravelRuleService:
             config = TravelRuleConfig.query.first()
             
             if not config:
-                # Create default config if none exists
                 config = TravelRuleConfig()
                 db.session.add(config)
+                db.session.flush()  # Get ID for audit
             
             # Store old value for audit
-            old_value = config.to_dict()
+            old_snapshot = config.to_audit_dict()
             
             # Update fields
             for key, value in updates.items():
                 if hasattr(config, key):
                     setattr(config, key, value)
             
-            db.session.commit()
-            
-            # Log the action
-            AdminAuditService.log_action(
-                admin_id=admin_id,
-                admin_name=admin_name,
-                admin_role=admin_role,
-                action_type='modify',
-                action_category='travel_rule',
-                target_type='travel_rule_config',
-                target_id=str(config.id),
-                target_name='Travel Rule Configuration',
-                old_value=str(old_value),
-                new_value=config.to_dict(),
-                reason='Travel rule configuration updated'
-            )
+            with AdminAuditService.audited_change():
+                AdminAuditService.log_action(
+                    admin_id=admin_id,
+                    admin_name=admin_name,
+                    admin_role=admin_role,
+                    action_type='modify',
+                    action_category='travel_rule',
+                    target_type='travel_rule_config',
+                    target_id=str(config.id),
+                    target_name='Travel Rule Configuration',
+                    old_value=old_snapshot,
+                    new_value=config.to_audit_dict(),
+                    reason='Travel rule configuration updated'
+                )
             
             return config
         except Exception as e:
-            db.session.rollback()
             raise e
     
     @staticmethod
@@ -127,38 +119,41 @@ class TravelRuleService:
             }
         except Exception as e:
             current_app.logger.error(f"Travel rule check error: {e}")
-            # Fail open - proceed if check fails
             return {
                 'required': False,
-                'reason': 'Check error - proceed',
+                'reason': 'Travel rule check failed',
                 'action': 'proceed'
             }
     
     @staticmethod
-    def create_travel_rule_record(
-        transaction_id: uuid.UUID,
+    def create_travel_rule_transfer(
+        transaction_id: str,
         originator_info: Dict[str, Any],
         beneficiary_info: Dict[str, Any],
         amount: int,
         currency: str,
-        transaction_purpose: Optional[str] = None
+        transaction_purpose: Optional[str] = None,
+        originator_vasp: Optional[Dict[str, str]] = None,
+        beneficiary_vasp: Optional[Dict[str, str]] = None
     ) -> TravelRuleTransfer:
         """
-        Create a travel rule transfer record
+        Create a Travel Rule transfer record for compliance tracking
         
         Args:
-            transaction_id: Transaction ID
-            originator_info: Originator information
-            beneficiary_info: Beneficiary information
-            amount: Transaction amount
+            transaction_id: Associated transaction UUID
+            originator_info: Originator details (name, account, address, dob, id_number, nationality)
+            beneficiary_info: Beneficiary details
+            amount: Transaction amount in smallest currency unit
             currency: Currency code
             transaction_purpose: Purpose of transaction
+            originator_vasp: Originator VASP details (name, address)
+            beneficiary_vasp: Beneficiary VASP details (name, address)
             
         Returns:
-            Created travel rule transfer record
+            Created TravelRuleTransfer record
         """
         try:
-            travel_rule_transfer = TravelRuleTransfer(
+            transfer = TravelRuleTransfer(
                 transaction_id=transaction_id,
                 originator_name=originator_info.get('name'),
                 originator_account_number=originator_info.get('account_number'),
@@ -175,129 +170,161 @@ class TravelRuleService:
                 amount=amount,
                 currency=currency,
                 transaction_purpose=transaction_purpose,
+                originator_vasp_name=originator_vasp.get('name') if originator_vasp else None,
+                originator_vasp_address=originator_vasp.get('address') if originator_vasp else None,
+                beneficiary_vasp_name=beneficiary_vasp.get('name') if beneficiary_vasp else None,
+                beneficiary_vasp_address=beneficiary_vasp.get('address') if beneficiary_vasp else None,
                 status='pending'
             )
             
-            db.session.add(travel_rule_transfer)
+            db.session.add(transfer)
             db.session.commit()
             
-            return travel_rule_transfer
+            return transfer
         except Exception as e:
             db.session.rollback()
             raise e
     
     @staticmethod
-    def verify_travel_rule_record(
-        record_id: int,
+    def verify_travel_rule_transfer(
+        transfer_id: int,
         verification_score: int,
-        status: str,
+        admin_id: int,
+        admin_name: str,
+        admin_role: str,
+        status: str = 'verified',
         rejection_reason: Optional[str] = None
     ) -> TravelRuleTransfer:
         """
-        Verify a travel rule transfer record
+        Verify or reject a Travel Rule transfer
         
         Args:
-            record_id: Travel rule record ID
+            transfer_id: ID of transfer to verify
             verification_score: Verification score (0-100)
-            status: Status (verified, rejected)
+            admin_id: ID of admin performing verification
+            admin_name: Name of admin
+            admin_role: Role of admin
+            status: 'verified' or 'rejected'
             rejection_reason: Reason for rejection (if rejected)
             
         Returns:
-            Updated travel rule transfer record
+            Updated TravelRuleTransfer record
         """
         try:
-            travel_rule_transfer = db.session.get(TravelRuleTransfer, record_id)
-            if not travel_rule_transfer:
-                raise ValueError(f"Travel rule record {record_id} not found")
+            transfer = db.session.get(TravelRuleTransfer, transfer_id)
+            if not transfer:
+                raise ValueError(f"Travel rule transfer {transfer_id} not found")
             
-            travel_rule_transfer.verification_score = verification_score
-            travel_rule_transfer.status = status
-            if rejection_reason:
-                travel_rule_transfer.rejection_reason = rejection_reason
+            old_snapshot = transfer.to_dict() if hasattr(transfer, 'to_dict') else {
+                'status': transfer.status,
+                'verification_score': transfer.verification_score,
+                'rejection_reason': transfer.rejection_reason
+            }
+            
+            transfer.verification_score = verification_score
+            transfer.status = status
+            transfer.rejection_reason = rejection_reason
+            
+            if status == 'verified':
+                transfer.reported_to_vasp = True
+                transfer.vasp_reported_at = datetime.now(timezone.utc)
             
             db.session.commit()
             
-            return travel_rule_transfer
+            # Log audit
+            AdminAuditService.log_action(
+                admin_id=admin_id,
+                admin_name=admin_name,
+                admin_role=admin_role,
+                action_type='verify',
+                action_category='travel_rule',
+                target_type='travel_rule_transfer',
+                target_id=str(transfer.id),
+                target_name=f'Travel Rule Transfer {transfer.id}',
+                old_value=old_snapshot,
+                new_value=transfer.to_dict() if hasattr(transfer, 'to_dict') else {
+                    'status': transfer.status,
+                    'verification_score': transfer.verification_score,
+                    'rejection_reason': transfer.rejection_reason
+                },
+                reason=f'Travel rule transfer {status}: {rejection_reason or "verified"}'
+            )
+            
+            return transfer
         except Exception as e:
             db.session.rollback()
             raise e
     
     @staticmethod
-    def get_travel_rule_transfers(
-        status: Optional[str] = None,
-        limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    def report_to_vasp(
+        transfer_id: int,
+        vasp_response: str,
+        admin_id: int,
+        admin_name: str,
+        admin_role: str
+    ) -> TravelRuleTransfer:
         """
-        Get travel rule transfers
+        Mark transfer as reported to VASP
         
         Args:
-            status: Filter by status
-            limit: Maximum number of results
+            transfer_id: ID of transfer
+            vasp_response: VASP response
+            admin_id: ID of admin
+            admin_name: Name of admin
+            admin_role: Role of admin
             
         Returns:
-            List of travel rule transfer dictionaries
+            Updated TravelRuleTransfer record
         """
         try:
-            query = TravelRuleTransfer.query
+            transfer = db.session.get(TravelRuleTransfer, transfer_id)
+            if not transfer:
+                raise ValueError(f"Travel rule transfer {transfer_id} not found")
             
-            if status:
-                query = query.filter(TravelRuleTransfer.status == status)
+            old_snapshot = transfer.to_dict() if hasattr(transfer, 'to_dict') else {
+                'reported_to_vasp': transfer.reported_to_vasp,
+                'vasp_response': transfer.vasp_response,
+                'vasp_reported_at': transfer.vasp_reported_at
+            }
             
-            query = query.order_by(TravelRuleTransfer.created_at.desc())
-            query = query.limit(limit)
-            
-            transfers = query.all()
-            return [transfer.to_dict() for transfer in transfers]
-        except Exception as e:
-            raise e
-    
-    @staticmethod
-    def report_to_vasp(record_id: int) -> Dict[str, Any]:
-        """
-        Report travel rule information to VASP
-        
-        Args:
-            record_id: Travel rule record ID
-            
-        Returns:
-            Dictionary with reporting result
-        """
-        try:
-            config = TravelRuleConfig.query.first()
-            travel_rule_transfer = db.session.get(TravelRuleTransfer, record_id)
-            
-            if not config or not config.auto_report_to_vasp:
-                return {
-                    'success': False,
-                    'reason': 'Auto-reporting disabled'
-                }
-            
-            if not travel_rule_transfer:
-                return {
-                    'success': False,
-                    'reason': 'Record not found'
-                }
-            
-            # Placeholder for actual VASP API call
-            # In real implementation, this would make HTTP request to VASP endpoint
-            
-            # Mark as reported
-            travel_rule_transfer.reported_to_vasp = True
-            travel_rule_transfer.vasp_reported_at = datetime.now(timezone.utc)
-            travel_rule_transfer.vasp_response = 'Success: Information transmitted to VASP'
+            transfer.reported_to_vasp = True
+            transfer.vasp_response = vasp_response
+            transfer.vasp_reported_at = datetime.now(timezone.utc)
             
             db.session.commit()
             
-            return {
-                'success': True,
-                'reason': 'Successfully reported to VASP',
-                'vasp_response': travel_rule_transfer.vasp_response
-            }
+            # Log audit
+            AdminAuditService.log_action(
+                admin_id=admin_id,
+                admin_name=admin_name,
+                admin_role=admin_role,
+                action_type='report_to_vasp',
+                action_category='travel_rule',
+                target_type='travel_rule_transfer',
+                target_id=str(transfer.id),
+                target_name=f'Travel Rule Transfer {transfer.id}',
+                old_value=old_snapshot,
+                new_value=transfer.to_dict() if hasattr(transfer, 'to_dict') else {
+                    'reported_to_vasp': transfer.reported_to_vasp,
+                    'vasp_response': transfer.vasp_response,
+                    'vasp_reported_at': transfer.vasp_reported_at
+                },
+                reason=f'Reported travel rule transfer to VASP'
+            )
+            
+            return transfer
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"VASP reporting error: {e}")
-            return {
-                'success': False,
-                'reason': str(e)
-            }
-
+            raise e
+    
+    @staticmethod
+    def get_config() -> Optional[TravelRuleConfig]:
+        """Get current Travel Rule configuration"""
+        return TravelRuleConfig.query.first()
+    
+    @staticmethod
+    def get_pending_transfers(limit: int = 100) -> List[TravelRuleTransfer]:
+        """Get pending Travel Rule transfers requiring verification"""
+        return TravelRuleTransfer.query.filter_by(
+            status='pending'
+        ).order_by(TravelRuleTransfer.created_at.asc()).limit(limit).all()
