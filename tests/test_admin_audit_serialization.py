@@ -164,8 +164,8 @@ class TestAdminAuditSerialization:
             log = AdminAuditLog.query.first()
             old_parsed = json.loads(log.old_value)
             new_parsed = json.loads(log.new_value)
-            assert old_parsed['amount'] == 100.50
-            assert new_parsed['amount'] == 200.75
+            assert old_parsed['amount'] == '100.50'
+            assert new_parsed['amount'] == '200.75'
 
     def test_datetime_serialized(self, app):
         """Date and datetime values are serialized in ISO format"""
@@ -498,7 +498,7 @@ class TestAdminAuditCallers:
 
             assert log is not None
             assert log.id is not None
-            assert log.admin_id == 1
+            assert log.admin_id == app.config['AUDIT_TEST_ADMIN_IDS'][0]
             assert log.admin_name == 'test_admin'
             assert log.action_type == 'create'
             assert log.reason == 'Test audit creation'
