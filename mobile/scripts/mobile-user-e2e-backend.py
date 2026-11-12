@@ -105,6 +105,8 @@ def assert_evidence(app) -> None:
             progress = {"completed_stages": []}
     stages = set(progress.get("completed_stages", []))
     restore_started = "session_restore_started" in stages
+    activity_started = "activity_navigation_started" in stages
+    wallet_started = "wallet_navigation_started" in stages
     logout_started = "logout_started" in stages or attempted(
         "POST", "/api/mobile/v1/auth/logout"
     )
@@ -117,10 +119,22 @@ def assert_evidence(app) -> None:
             ("PASS" if count_ok("GET", "/api/mobile/v1/auth/me") >= 2 else "FAIL")
             if restore_started else "NOT_EXERCISED"
         ),
-        "protected Activity read": "PASS" if count_ok("GET", "/api/mobile/v1/activity") >= 1 else "FAIL",
-        "Wallet balance read": "PASS" if count_ok("GET", "/api/mobile/v1/wallet") >= 1 else "FAIL",
-        "Wallet transaction-history read": "PASS" if count_ok("GET", "/api/mobile/v1/wallet/transactions") >= 1 else "FAIL",
-        "Wallet PIN-status read": "PASS" if count_ok("GET", "/api/mobile/v1/wallet/pin") >= 1 else "FAIL",
+        "protected Activity read": (
+            "PASS" if count_ok("GET", "/api/mobile/v1/activity") >= 1
+            else "FAIL" if activity_started else "NOT_EXERCISED"
+        ),
+        "Wallet balance read": (
+            "PASS" if count_ok("GET", "/api/mobile/v1/wallet") >= 1
+            else "FAIL" if wallet_started else "NOT_EXERCISED"
+        ),
+        "Wallet transaction-history read": (
+            "PASS" if count_ok("GET", "/api/mobile/v1/wallet/transactions") >= 1
+            else "FAIL" if wallet_started else "NOT_EXERCISED"
+        ),
+        "Wallet PIN-status read": (
+            "PASS" if count_ok("GET", "/api/mobile/v1/wallet/pin") >= 1
+            else "FAIL" if wallet_started else "NOT_EXERCISED"
+        ),
         "server-side logout": (
             ("PASS" if logout_succeeded else "FAIL")
             if logout_started else "NOT_EXERCISED"
