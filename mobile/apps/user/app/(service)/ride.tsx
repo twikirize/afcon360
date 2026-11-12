@@ -767,15 +767,19 @@ export default function RideScreen() {
       setLocationMessage("Enter a valid local pickup date and time before confirming.");
       return;
     }
+    const usesRequestFirstFlow = serviceType === "on_demand" && schedule === "now";
     setStage("match");
     setSubmitting(true);
     setRequestError(null);
     try {
+      const endpoint = usesRequestFirstFlow
+        ? "/api/mobile/v1/transport/ride-requests"
+        : "/api/mobile/v1/transport/bookings";
       const response = await authClient.request<{
         success: boolean;
         booking_reference?: string;
-        data?: { request_id?: string };
-      }>("/api/mobile/v1/transport/ride-requests", {
+        data?: { request_id?: string; booking_reference?: string };
+      }>(endpoint, {
         method: "POST",
         body: {
           idempotency_key: idempotencyKey,
@@ -810,16 +814,24 @@ export default function RideScreen() {
           confirmed_fare_amount: String(selectedQuote.fare_total)
         }
       });
-      const reference = response.booking_reference ?? response.data?.request_id;
+      const reference = response.booking_reference ??
+        response.data?.request_id ??
+        response.data?.booking_reference;
       if (!reference) {
-        throw new Error("The ride request was accepted but no tracking reference was returned. Reopen Activity before trying again.");
+        throw new Error("The ride was accepted but no tracking reference was returned. Reopen Activity before trying again.");
       }
       router.replace({
         pathname: "/(service)/ride-status/[reference]",
-        params: { reference }
+        params: {
+          reference,
+          kind: usesRequestFirstFlow ? "request" : "booking"
+        }
       } as never);
     } catch (error) {
-      setRequestError(friendlyError(error, "AFCON360 could not create the ride request. Your Wallet has not been charged."));
+      setRequestError(friendlyError(
+        error,
+        "AFCON360 could not create the ride booking. Your Wallet has not been charged."
+      ));
     } finally {
       setSubmitting(false);
     }
