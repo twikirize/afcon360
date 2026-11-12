@@ -126,6 +126,7 @@ def test_native_scheduled_airport_booking_uses_booking_service_without_early_dis
     assert body["booking_kind"] == "booking"
     assert body["booking_reference"] == "AF360-SCHEDULED-9801"
     assert body["data"]["booking_mode"] == "scheduled"
+    assert "booking_id" not in body["data"]
     assert body["dispatch_pending"] is False
     assert captured["owner_id"] == user.id
     assert captured["payload"]["service_type"] == "airport_departure"
