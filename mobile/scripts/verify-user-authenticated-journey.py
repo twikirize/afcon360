@@ -54,17 +54,50 @@ def run_adb(*args: str, check: bool = True, capture: bool = True) -> str:
     return output
 
 
-def dump_tree() -> ET.Element:
-    # Never reuse an old UI tree when Android fails to produce a fresh snapshot.
-    run_adb("shell", "rm", "-f", UI_XML, check=False)
-    result = run_adb("shell", "uiautomator", "dump", UI_XML, check=False)
-    if "dumped to:" not in result.lower():
-        raise RuntimeError(f"Android did not create a fresh UI hierarchy: {result[-1000:]}")
-    raw = run_adb("shell", "cat", UI_XML, check=False)
-    start = raw.find("<?xml")
-    if start < 0:
-        raise RuntimeError(f"Fresh Android UI hierarchy was not readable: {raw[-1000:]}")
-    return ET.fromstring(raw[start:])
+def dump_tree(retries: int = 4) -> ET.Element:
+    """Read a fresh UI hierarchy, retrying transient Android UIAutomator bridge failures.
+
+    Older emulator images can briefly return "null root node" even while the
+    app's Activity is visible and rendering. Retry those snapshot failures, but
+    still fail the test if no valid hierarchy can be obtained after the bounded
+    retry window. Never reuse an old UI tree.
+    """
+    last_error = "Android did not return a UI hierarchy."
+    for attempt in range(1, retries + 1):
+        run_adb("shell", "rm", "-f", UI_XML, check=False)
+        result = run_adb("shell", "uiautomator", "dump", UI_XML, check=False)
+        if "dumped to:" not in result.lower():
+            last_error = (
+                "Android did not create a fresh UI hierarchy: "
+                + result[-1000:]
+            )
+        else:
+            raw = run_adb("shell", "cat", UI_XML, check=False)
+            start = raw.find("<?xml")
+            if start < 0:
+                last_error = (
+                    "Fresh Android UI hierarchy was not readable: "
+                    + raw[-1000:]
+                )
+            else:
+                try:
+                    return ET.fromstring(raw[start:])
+                except ET.ParseError as error:
+                    last_error = f"Fresh Android UI hierarchy was not valid XML: {error}"
+
+        if attempt < retries:
+            print(
+                "ANDROID_UI_TREE_RETRY: "
+                f"snapshot attempt {attempt}/{retries} failed; retrying: "
+                + last_error.replace("\\n", " ")[:500],
+                flush=True,
+            )
+            time.sleep(min(0.5 * attempt, 1.5))
+
+    raise RuntimeError(
+        f"Android could not produce a fresh UI hierarchy after {retries} attempts: "
+        + last_error[-1000:]
+    )
 
 
 def node_value(node: ET.Element) -> str:
@@ -270,8 +303,10 @@ def save_screen(name: str) -> None:
         ["adb", "exec-out", "screencap", "-p"],
         check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     ).stdout
-    root = dump_tree()
+    # Preserve the visual checkpoint even if Android's accessibility bridge
+    # transiently fails to provide a hierarchy snapshot.
     (EVIDENCE / f"{name}.png").write_bytes(data)
+    root = dump_tree()
     (EVIDENCE / f"{name}.xml").write_bytes(ET.tostring(root, encoding="utf-8"))
     (EVIDENCE / f"{name}.txt").write_text(
         "\n".join(filter(None, (node_value(node) for node in root.iter("node")))),
