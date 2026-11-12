@@ -144,11 +144,53 @@ jobs:
       - name: Calculate User APK cache key before prebuild
         id: user-apk-key
         env:
-          USER_APK_SOURCE_KEY: afcon360-user-e2e-apk-v2-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc', '.github/workflows/mobile-workspace.yml') }}
+          USER_APK_SOURCE_KEY: afcon360-user-e2e-apk-v2-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
         run: echo "key=$USER_APK_SOURCE_KEY" >> "$GITHUB_OUTPUT"
       - name: Restore source-keyed User E2E APK
         id: user-apk-cache
         uses: actions/cache/restore@v4
+        with:
+          path: mobile-e2e-cache/
+          key: ${{ steps.user-apk-key.outputs.key }}
+          restore-keys: |
+            afcon360-user-e2e-apk-v2-1988c0098f079cb6af616af1df3c7d7fdd162b6673c7244378497c428549b5a8
+
+      - name: Validate cached User APK against current native source
+        id: validate-user-apk
+        shell: bash
+        env:
+          USER_APK_CACHE_MATCHED_KEY: ${{ steps.user-apk-cache.outputs.cache-matched-key }}
+        run: |
+          set -euo pipefail
+          echo "reusable=false" >> "$GITHUB_OUTPUT"
+          if [ -z "$USER_APK_CACHE_MATCHED_KEY" ]; then
+            echo "No cached User E2E APK was restored."
+            exit 0
+          fi
+
+          APK="mobile-e2e-cache/user-e2e.apk"
+          INFO="mobile-e2e-cache/build-info.txt"
+          test -s "$APK" || exit 0
+          test -s "$INFO" || exit 0
+          EXPECTED_SHA="$(sed -n 's/^apk_sha256=//p' "$INFO" | head -n 1)"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA" || exit 0
+
+          SOURCE_COMMIT="$(sed -n 's/^source_commit=//p' "$INFO" | head -n 1)"
+          test -n "$SOURCE_COMMIT" || exit 0
+          git fetch --no-tags --depth=1 origin "$SOURCE_COMMIT"
+          if git diff --quiet "$SOURCE_COMMIT" "$GITHUB_SHA" -- \
+            mobile/apps/user mobile/packages mobile/package.json \
+            mobile/pnpm-lock.yaml mobile/pnpm-workspace.yaml mobile/.npmrc; then
+            echo "Verified cached APK against unchanged native User app source at $SOURCE_COMMIT."
+            echo "reusable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Cached APK source differs from current User app files; a fresh disposable CI APK is required."
+          fi
+
+      - name: Save validated User APK under current source key
+        if: steps.validate-user-apk.outputs.reusable == 'true' && steps.validate-user-apk.outputs.reusable != 'true'
+        uses: actions/cache/save@v4
         with:
           path: mobile-e2e-cache/
           key: ${{ steps.user-apk-key.outputs.key }}
@@ -205,32 +247,32 @@ jobs:
           echo "::error::Disposable AFCON360 API did not become healthy."
           exit 1
       - name: Set up Node.js
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
       - name: Set up pnpm
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 10.12.4
           run_install: false
       - name: Set up Java
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
       - name: Install User app workspace dependencies
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
         run: pnpm install --no-frozen-lockfile
       - name: Check User app Expo dependency compatibility
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
         run: pnpm --filter "@afcon360/user-app" exec expo install --check
       - name: Install Android platform and build tools
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -251,14 +293,14 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
       - name: Generate a fresh User APK pointing only to the disposable local API
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
         env:
           AFCON360_PREVIEW_BUILD: "true"
           EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: pnpm --filter "@afcon360/user-app" exec expo prebuild --platform android --no-install --clean
       - name: Allow private-network HTTP only in this disposable preview APK
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -288,7 +330,7 @@ jobs:
           print("HTTP enabled only in this disposable preview APK; runtime API validation restricts selected HTTP servers to loopback or private IPv4.")
           PY
       - name: Configure ephemeral release signing
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
         run: |
           node <<'NODE'
@@ -317,7 +359,7 @@ jobs:
           fs.writeFileSync(path, source);
           NODE
       - name: Build isolated User release APK
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile/apps/user/android
         env:
           # Re-evaluate the dynamic Expo config during Metro/Gradle bundling too,
@@ -326,7 +368,7 @@ jobs:
           EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: ./gradlew --no-daemon --stacktrace assembleRelease
       - name: Save fresh APK under the source-keyed cache key
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         shell: bash
         env:
           USER_APK_CACHE_KEY: ${{ steps.user-apk-key.outputs.key }}
@@ -356,7 +398,7 @@ jobs:
           apk_sha256=$APK_SHA256
           EOF
       - name: Persist fresh User APK immediately
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         uses: actions/cache/save@v4
         with:
           path: mobile-e2e-cache/
