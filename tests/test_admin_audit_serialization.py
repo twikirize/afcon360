@@ -209,6 +209,32 @@ class TestAdminAuditSerialization:
             assert log.old_value == json_str
             assert log.new_value == json_str
 
+    def test_json_string_with_leading_whitespace_redacts_secrets(self, app):
+        """Sensitive values are redacted even when JSON strings start with whitespace."""
+        with app.app_context():
+            json_str = '  \n  {"api_key": "must-not-persist", "label": "gateway"}'
+
+            AdminAuditService.log_action(
+                admin_id=1,
+                admin_name='test_admin',
+                admin_role='owner',
+                action_type='modify',
+                action_category='payment_gateway',
+                target_type='gateway',
+                target_id='1',
+                target_name='Gateway',
+                old_value=json_str,
+                new_value=json_str,
+                reason='Test whitespace-prefixed JSON redaction'
+            )
+
+            log = AdminAuditLog.query.first()
+            for serialized in (log.old_value, log.new_value):
+                parsed = json.loads(serialized)
+                assert parsed['api_key'] == '[REDACTED]'
+                assert parsed['label'] == 'gateway'
+                assert 'must-not-persist' not in serialized
+
 
 @pytest.mark.usefixtures("app")
 class TestAdminAuditRedaction:
