@@ -905,9 +905,15 @@ def mobile_payment_method_options():
 @mobile_api_bp.get("/activity")
 @_bearer_required("user")
 def mobile_user_activity():
+    """Return one chronological rider feed for request-first and Booking-first trips."""
     from app.transport.models import Booking, RideRequest, SearchCycle
     from app.transport.services.ride_request_service import serialize_request
+
     user = g._afcon360_mobile_auth_context["user"]
+    items = []
+
+    # Request-first rides (instant Quick Ride) keep their durable request id and
+    # search-cycle state until the driver accepts and a Booking is formed.
     rows = (
         RideRequest.query
         .filter_by(user_id=user.id, is_deleted=False)
@@ -915,7 +921,6 @@ def mobile_user_activity():
         .limit(30)
         .all()
     )
-    items = []
     for ride_request in rows:
         cycle = (
             SearchCycle.query
@@ -927,6 +932,7 @@ def mobile_user_activity():
             continue
         item = serialize_request(ride_request, cycle)
         item["booking_reference"] = ride_request.public_id
+        item["kind"] = "request"
         item["converted"] = ride_request.status == "converted"
         item["terminal_reason"] = cycle.terminal_reason
         if item["converted"]:
@@ -935,7 +941,9 @@ def mobile_user_activity():
                 is_deleted=False,
             ).first()
             if booking is not None:
-                item["booking_status"] = str(getattr(booking.status, "value", booking.status))
+                item["booking_status"] = str(
+                    getattr(booking.status, "value", booking.status)
+                )
                 driver = booking.driver
                 driver_user = getattr(driver, "user", None) if driver else None
                 item["driver"] = ({
@@ -950,10 +958,294 @@ def mobile_user_activity():
                 } if vehicle else None)
                 item["payment"] = {
                     "method": booking.payment_method,
-                    "status": str(getattr(booking.payment_status, "value", booking.payment_status)),
+                    "status": str(
+                        getattr(booking.payment_status, "value", booking.payment_status)
+                    ),
                 }
         items.append(item)
-    return jsonify({"success": True, "data": {"items": items}}), 200
+
+    # Booking-first rides (scheduled pickups and non-on-demand services such
+    # as Airport Transfer) have no RideRequest row. Exclude converted
+    # request-first bookings above so the rider sees each trip exactly once.
+    booking_rows = (
+        Booking.query
+        .filter_by(user_id=user.id, is_deleted=False)
+        .filter(Booking.ride_request_id.is_(None))
+        .order_by(Booking.created_at.desc())
+        .limit(30)
+        .all()
+    )
+    for booking in booking_rows:
+        reference = str(getattr(booking, "booking_reference", "") or "").strip()
+        if not reference:
+            continue
+        status = str(getattr(booking.status, "value", booking.status))
+        amount = (
+            getattr(booking, "final_price", None)
+            if getattr(booking, "final_price", None) is not None
+            else getattr(booking, "total_amount", None)
+        )
+        if amount is None:
+            amount = getattr(booking, "base_price", None)
+        currency = getattr(booking, "currency", None)
+        currency = getattr(currency, "value", currency)
+        metadata = getattr(booking, "booking_metadata", None) or {}
+        booking_mode = (
+            getattr(booking, "pickup_mode", None)
+            or (metadata.get("booking_mode") if isinstance(metadata, dict) else None)
+        )
+        items.append({
+            # Preserve the existing Activity screen identifier contract while
+            # keeping the type explicit for status-screen resource routing.
+            "request_id": reference,
+            "booking_reference": reference,
+            "kind": "booking",
+            "status": status,
+            "booking_status": status,
+            "converted": bool(getattr(booking, "assigned_driver_id", None)),
+            "created_at": (
+                booking.created_at.isoformat()
+                if getattr(booking, "created_at", None) else None
+            ),
+            "booking_mode": str(getattr(booking_mode, "value", booking_mode) or ""),
+            "service_type": str(
+                getattr(booking.service_type, "value", booking.service_type) or ""
+            ),
+            "fare_estimate": {
+                "amount": float(amount) if amount is not None else None,
+                "currency": str(currency) if currency is not None else None,
+            },
+        })
+
+    # Each source is queried newest-first; merge and sort on the server so
+    # Activity presents a single consistent rider timeline.
+    items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    return jsonify({"success": True, "data": {"items": items[:30]}}), 200
+
+
+@mobile_api_bp.post("/transport/bookings")
+@limiter.limit("5 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_create_transport_booking():
+    """Create legacy Booking-first rides through the same service as the website.
+
+    The request-first lifecycle is reserved for instant on-demand rides.
+    Scheduled pickups and non-on-demand services (for example airport
+    transfers) use BookingService, matching transport.book_transport.
+    """
+    from app.profile.models import get_profile_by_user
+    from app.auth.kyc_compliance import calculate_kyc_tier
+    from app.transport.services.payment_methods import (
+        get_available_transport_payment_methods,
+    )
+    from app.transport.services.booking_service import get_booking_service
+    from app.transport.models import BookingStatus
+    from app.utils.exceptions import ValidationError, ServiceUnavailableError
+
+    user = g._afcon360_mobile_auth_context["user"]
+    data = request.get_json(silent=True) or {}
+    pickup = data.get("pickup")
+    dropoff = data.get("dropoff")
+    if not isinstance(pickup, dict) or not isinstance(dropoff, dict):
+        return _error(
+            "booking_locations_incomplete",
+            "A resolved pickup and destination are required.",
+            400,
+        )
+
+    service_type = str(data.get("service_type") or "").strip().lower()
+    booking_mode = str(data.get("booking_mode") or "").strip().lower()
+    if service_type == "on_demand" and booking_mode == "instant":
+        return _error(
+            "use_ride_request",
+            "Instant Quick Rides must use the ride-request matching flow.",
+            409,
+        )
+    if not service_type or booking_mode not in {"instant", "scheduled"}:
+        return _error(
+            "booking_details_incomplete",
+            "A valid service type and booking mode are required.",
+            400,
+        )
+    if booking_mode == "scheduled" and not data.get("pickup_time"):
+        return _error(
+            "scheduled_pickup_time_required",
+            "Choose a pickup date and time for a scheduled ride.",
+            400,
+        )
+
+    # Apply the same profile and Tier-2 KYC gates as the website booking route.
+    try:
+        profile = get_profile_by_user(user)
+        if profile is None or not bool(getattr(profile, "profile_completed", False)):
+            return _error(
+                "profile_completion_required",
+                "Complete your AFCON360 profile before booking transport.",
+                403,
+            )
+        kyc_info = calculate_kyc_tier(user.id)
+        if int(kyc_info.get("tier", 0)) < 2:
+            return jsonify({
+                "success": False,
+                "code": "kyc_upgrade_required",
+                "message": "Complete the required identity verification before booking transport.",
+                "data": {
+                    "required_tier": 2,
+                    "current_tier": int(kyc_info.get("tier", 0)),
+                    "missing_requirements": kyc_info.get("missing_requirements", []),
+                },
+            }), 403
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native Booking-first transport eligibility check failed")
+        return _error(
+            "booking_gate_unavailable",
+            "AFCON360 could not verify booking eligibility.",
+            503,
+        )
+
+    selected_payment_method = str(data.get("payment_method") or "").strip().lower()
+    try:
+        available_methods = get_available_transport_payment_methods(user.id)
+    except Exception:
+        logger.exception("Could not resolve native transport payment choices")
+        return _error(
+            "payment_methods_unavailable",
+            "AFCON360 could not load available payment methods.",
+            503,
+        )
+    selected_method_info = next(
+        (
+            method for method in available_methods
+            if str(method.get("code") or "").strip().lower() == selected_payment_method
+            and method.get("enabled", True)
+        ),
+        None,
+    )
+    if not selected_payment_method or selected_method_info is None:
+        return _error(
+            "payment_method_unavailable",
+            "Choose an available payment method before requesting the ride.",
+            400,
+        )
+    if str(selected_method_info.get("status") or "").strip().lower() != "ready":
+        return _error(
+            "payment_method_not_ready",
+            "The selected payment method is not ready. Complete its setup or choose another method.",
+            409,
+        )
+
+    # Adapt the native resolved-place contract to BookingService's existing
+    # website form contract. BookingService remains the validation, pricing,
+    # timezone, persistence and idempotency authority.
+    booking_data = {
+        "provider_type": "individual_driver",
+        "service_type": service_type,
+        "currency": str(data.get("currency") or "USD").strip().upper(),
+        "idempotency_key": data.get("idempotency_key"),
+        "passenger_count": data.get("passenger_count") or 1,
+        "luggage_count": data.get("luggage_count") or 0,
+        "pickup_location": str(
+            pickup.get("address") or pickup.get("label") or ""
+        ).strip(),
+        "dropoff_location": str(
+            dropoff.get("address") or dropoff.get("label") or ""
+        ).strip(),
+        # BookingService fingerprints the normalized address fields as part
+        # of its website idempotency contract. Supply both these fields and
+        # the website-compatible location fields used for canonical snapshots.
+        "pickup_address": str(
+            pickup.get("address") or pickup.get("label") or ""
+        ).strip(),
+        "dropoff_address": str(
+            dropoff.get("address") or dropoff.get("label") or ""
+        ).strip(),
+        "pickup_latitude": pickup.get("latitude"),
+        "pickup_longitude": pickup.get("longitude"),
+        "dropoff_latitude": dropoff.get("latitude"),
+        "dropoff_longitude": dropoff.get("longitude"),
+        "pickup_source": data.get("pickup_source"),
+        "dropoff_source": data.get("dropoff_source"),
+        "pickup_geocode": data.get("pickup_geocode"),
+        "dropoff_geocode": data.get("dropoff_geocode"),
+        "vehicle_class": data.get("vehicle_class") or "comfort",
+        "booking_mode": booking_mode,
+        "pickup_time": data.get("pickup_time") if booking_mode == "scheduled" else "",
+        "payment_method": selected_payment_method,
+        "fare_quote_token": data.get("fare_quote_token"),
+        "confirmed_fare_amount": data.get("confirmed_fare_amount"),
+    }
+
+    try:
+        result = get_booking_service().create_booking(user.id, booking_data)
+    except ValidationError as exc:
+        return _error("booking_rejected", exc.message, 400)
+    except ServiceUnavailableError:
+        return _error(
+            "booking_unavailable",
+            "Transport booking is temporarily unavailable. Your payment has not been taken.",
+            503,
+        )
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native Booking-first transport creation failed")
+        return _error(
+            "booking_unavailable",
+            "Transport booking is temporarily unavailable. Your payment has not been taken.",
+            503,
+        )
+
+    booking_result = result.get("data") or {}
+    reference = booking_result.get("booking_reference")
+    booking_id = booking_result.get("booking_id")
+    if not reference or not booking_id:
+        logger.error("BookingService returned an incomplete native booking result")
+        return _error(
+            "booking_reference_unavailable",
+            "AFCON360 could not confirm the booking reference. Check Activity before retrying.",
+            503,
+        )
+
+    # Mirror transport.book_transport: immediate cash rides are confirmed and
+    # offered to matching now; scheduled rides are held for the scheduled
+    # release worker, and Wallet-backed rides wait for their payment lifecycle.
+    dispatch_pending = False
+    if selected_payment_method == "cash" and booking_mode != "scheduled":
+        try:
+            get_booking_service().transition_status(
+                booking_id,
+                BookingStatus.CONFIRMED,
+                reason="cash_confirm",
+                initiated_by="rider",
+                actor=user,
+            )
+            from app.transport.services.matching_service import MatchingService
+            MatchingService.discover_and_offer(booking_id)
+        except Exception:
+            dispatch_pending = True
+            db.session.rollback()
+            logger.exception(
+                "Native Booking-first ride %s persisted; matching was deferred",
+                reference,
+            )
+
+    status_value = booking_result.get("status")
+    status_value = getattr(status_value, "value", status_value)
+    return jsonify({
+        "success": True,
+        "data": {
+            # Internal Booking primary keys stay server-side; the rider tracks
+            # this resource exclusively by its public booking reference.
+            "booking_reference": reference,
+            "booking_mode": booking_mode,
+            "pickup_time": booking_result.get("pickup_time"),
+            "status": str(status_value) if status_value is not None else None,
+            "idempotent_replay": bool(booking_result.get("idempotent_replay")),
+        },
+        "booking_reference": reference,
+        "booking_kind": "booking",
+        "dispatch_pending": dispatch_pending,
+    }), (200 if booking_result.get("idempotent_replay") else 201)
 
 
 @mobile_api_bp.post("/transport/ride-requests")

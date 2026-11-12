@@ -1,13 +1,9 @@
 import os
 import sys
-import time
 import logging
 
-print("APP_ENV =", os.getenv("APP_ENV"))
-print("FLASK_ENV =", os.getenv("FLASK_ENV"))
-#print("DATABASE_URL =", os.getenv("DATABASE_URL"))
-print("REDIS_URL set:", bool(os.getenv("REDIS_URL")))
-
+# Environment information is printed by create_app() after configuration
+# resolution, so it reflects what the application actually loaded.
 
 # Setup logging to show errors in console
 logging.basicConfig(
@@ -25,16 +21,13 @@ if os.getenv('SHOW_PATH_DEBUG', 'false').lower() == 'true':
     logger.info(f"sys.path: {sys.path}")
     logger.info(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'not set')}")
     try:
-        import app
+        import app as afcon_app
 
-        logger.info(f"app.__file__: {getattr(app, '__file__', 'NO FILE')}")
-        logger.info(f"has create_app: {hasattr(app, 'create_app')}")
+        logger.info(f"app.__file__: {getattr(afcon_app, '__file__', 'NO FILE')}")
+        logger.info(f"has create_app: {hasattr(afcon_app, 'create_app')}")
     except Exception as e:
         logger.error(f"import app failed: {e}")
     logger.info("=== End Debug Info ===")
-
-# Always show startup time
-logger.info(f"App starting at: {time.time()}")
 
 from app import create_app
 from app.config import Config
@@ -46,6 +39,8 @@ try:
 except Exception as e:
     logger.error(f"Failed to create app: {e}", exc_info=True)
     raise
+
+logger.info("Application ready")
 
 app.config['REQUIRE_EMAIL_VERIFICATION'] = Config.REQUIRE_EMAIL_VERIFICATION
 
@@ -72,7 +67,7 @@ if __name__ == "__main__":
 
     # --- Local-development TLS: FLASK_SSL = none | selfsigned | cert | devca ---
     # See dev_tls.py. Production TLS termination is out of scope (BACKLOG.md).
-    from dev_tls import resolve_ssl_mode
+    from dev_tls import resolve_ssl_mode, detect_lan_ipv4s
 
     try:
         ssl_mode = resolve_ssl_mode(os.getenv('FLASK_SSL', 'none'))
@@ -83,7 +78,7 @@ if __name__ == "__main__":
     ssl_run_kwargs = {}
 
     if ssl_enabled:
-        from dev_tls import build_ssl_context, detect_lan_ipv4s, ensure_devca, ensure_selfsigned
+        from dev_tls import build_ssl_context, ensure_devca, ensure_selfsigned
 
         if ssl_mode == 'selfsigned':
             ssl_cert, ssl_key = ensure_selfsigned()
@@ -116,24 +111,30 @@ if __name__ == "__main__":
             f"Set FLASK_HOST=0.0.0.0 (or unset it)."
         )
 
-    # Log environment info
-    logger.info(f"Environment: {os.getenv('FLASK_ENV', 'production')}")
-    logger.info(f"Debug mode: {debug_mode}")
-    logger.info(f"Host: {host}")
-    logger.info(f"Port: {port}")
+    # Server binding. Environment, database and extension information is
+    # printed by create_app(); this block reports the reachable listening URLs.
     if ssl_enabled:
         logger.info(f"TLS mode: {ssl_mode}")
         urls = [f"https://localhost:{port}/"]
         urls += [f"https://{ip}:{port}/" for ip in detect_lan_ipv4s()]
+        logger.info("Server listening:")
+        for url in urls:
+            logger.info(f"  {url}")
         if ssl_mode == 'devca':
             logger.info(
-                "→ Open on your phone (install certs/dev-ca-cert.pem as a trusted CA once): "
-                + "  ".join(urls)
+                "→ On your phone: install certs/dev-ca-cert.pem as a trusted CA once."
             )
         else:
-            logger.info("→ Open on your phone (accept the self-signed warning): " + "  ".join(urls))
+            logger.info("→ On your phone: accept the self-signed warning.")
     else:
-        logger.info(f"→ Open your browser at http://{host}:{port}/")
+        if host in ('0.0.0.0', '::'):
+            urls = [f"http://127.0.0.1:{port}/"]
+            urls += [f"http://{ip}:{port}/" for ip in detect_lan_ipv4s()]
+        else:
+            urls = [f"http://{host}:{port}/"]
+        logger.info("Server listening:")
+        for url in urls:
+            logger.info(f"  {url}")
 
     try:
         socketio.run(

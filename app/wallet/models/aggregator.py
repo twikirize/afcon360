@@ -123,6 +123,30 @@ class Aggregator(db.Model):
 
         return data
 
+    def to_audit_dict(self) -> dict:
+        """Return allowlisted fields for audit logging."""
+        # AUDIT_FIELDS - explicit allowlist for audit snapshots
+        audit_fields = (
+            'name', 'display_name', 'description', 'status',
+            'mode', 'tier',
+            'rate_limit_per_minute', 'rate_limit_per_hour', 'rate_limit_per_day',
+            'max_single_transaction', 'max_daily_volume',
+            'allow_bulk_deposits', 'allow_bulk_withdrawals', 'allow_bulk_transfers',
+            'require_ip_whitelist',
+            'contact_email', 'contact_phone', 'company_name',
+        )
+        snapshot = {f: getattr(self, f) for f in audit_fields}
+        # Credential presence indicators only - never the actual values
+        snapshot['api_key_configured'] = bool(self.api_key)
+        snapshot['api_secret_configured'] = bool(self.api_secret)
+        snapshot['sandbox_api_key_configured'] = bool(self.sandbox_api_key)
+        snapshot['sandbox_api_secret_configured'] = bool(self.sandbox_api_secret)
+        snapshot['live_api_key_configured'] = bool(self.live_api_key)
+        snapshot['live_api_secret_configured'] = bool(self.live_api_secret)
+        snapshot['webhook_configured'] = bool(self.webhook_url)
+        snapshot['webhook_secret_configured'] = bool(self.webhook_secret)
+        snapshot['ip_whitelist_configured'] = bool(self.ip_whitelist)
+        return snapshot
+
     def __repr__(self):
         return f"<Aggregator {self.id}: {self.display_name} ({self.status})>"
-
