@@ -386,15 +386,17 @@ def main() -> None:
     run_adb("shell", "input", "keyevent", "4")
     tap_text("Sign in securely")
 
-    wait_for_text("Your journey, together.", "Signed in securely", timeout=45, label="authenticated User home")
+    wait_for_text("Welcome to Pamoja", f"Good to see you, {USERNAME}.", timeout=45, label="authenticated User home")
     save_screen("02-home")
     mark_stage("authenticated_home")
 
+    mark_stage("activity_navigation_started")
     tap_text("Activity", last=True)
     wait_for_text("Your rides and bookings.", "No rides yet", timeout=35, label="authenticated ride activity")
     save_screen("03-activity")
     mark_stage("activity_screen")
 
+    mark_stage("wallet_navigation_started")
     tap_text("Wallet", last=True)
     wait_for_text(
         "Your money, clearly managed.", "Wallet accounts", "No Wallet account is active yet.",
@@ -488,7 +490,7 @@ def main() -> None:
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
-    wait_for_text("Your journey, together.", "Signed in securely", timeout=45, label="restored authenticated session")
+    wait_for_text("Welcome to Pamoja", f"Good to see you, {USERNAME}.", timeout=45, label="restored authenticated session")
     save_screen("10-session-restored")
     mark_stage("session_restored")
 
