@@ -748,6 +748,25 @@ jobs:
         working-directory: backend-candidate
         run: python -m flask --app 'app:create_app()' db upgrade
 
+      - name: Ensure current SystemConfig model exists in the disposable Driver E2E schema
+        working-directory: backend-candidate
+        run: |
+          python - <<'PY'
+          from app import create_app
+          from app.extensions import db
+          from app.models.system_config import SystemConfig
+
+          app = create_app()
+          with app.app_context():
+              existed = db.inspect(db.engine).has_table(SystemConfig.__tablename__)
+              SystemConfig.__table__.create(bind=db.engine, checkfirst=True)
+              created = SystemConfig.initialize_defaults()
+              print(
+                  "Driver E2E SystemConfig schema ready: "
+                  f"table_preexisting={existed}, defaults_created={created}"
+              )
+          PY
+
       - name: Seed a synthetic pending Driver and a customer-only identity
         run: python mobile/scripts/mobile-driver-e2e-backend.py seed
 
