@@ -133,6 +133,8 @@ def test_native_scheduled_airport_booking_uses_booking_service_without_early_dis
     assert captured["payload"]["pickup_time"] == "2026-12-20T10:30"
     assert captured["payload"]["pickup_latitude"] == 0.3136
     assert captured["payload"]["dropoff_longitude"] == 32.4435
+    assert captured["payload"]["pickup_address"] == "Kampala City"
+    assert captured["payload"]["dropoff_address"] == "Entebbe Airport"
     assert captured["payload"]["pickup_geocode"]["provider"] == "nominatim"
     assert service_calls["transition"] == 0
 
