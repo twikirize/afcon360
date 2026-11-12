@@ -1167,7 +1167,8 @@ def mobile_create_transport_booking():
     return jsonify({
         "success": True,
         "data": {
-            "booking_id": booking_id,
+            # Internal Booking primary keys stay server-side; the rider tracks
+            # this resource exclusively by its public booking reference.
             "booking_reference": reference,
             "booking_mode": booking_mode,
             "pickup_time": booking_result.get("pickup_time"),
