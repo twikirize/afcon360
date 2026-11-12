@@ -189,7 +189,7 @@ jobs:
           fi
 
       - name: Save validated User APK under current source key
-        if: steps.validate-user-apk.outputs.reusable == 'true' && steps.validate-user-apk.outputs.reusable != 'true'
+        if: steps.validate-user-apk.outputs.reusable == 'true' && steps.user-apk-cache.outputs['cache-hit'] != 'true'
         uses: actions/cache/save@v4
         with:
           path: mobile-e2e-cache/
