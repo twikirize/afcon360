@@ -30,6 +30,111 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # LAYERED ENV LOADING
 # ============================================================================
+#
+# HISTORY / WHY THIS CHANGED
+# ----------------------------------------------------------------------------
+# Original design (see _load_env_OLD_OVERRIDE_TRUE below, kept for reference):
+#   Layer 2 (.env.{APP_ENV}) used load_dotenv(..., override=True).
+#   Intent: ".env.local should always beat .env" — i.e. later layer wins.
+#
+# The bug this caused (found 2026-11-12):
+#   load_dotenv's `override` flag can only see "is this key already in
+#   os.environ" — it cannot tell WHY it's there. That means override=True
+#   on layer 2 beat not just layer-1-file values, but ALSO beat values that
+#   were set explicitly from OUTSIDE any .env file: a manual shell export
+#   ($env:FLASK_ENV = "testing"), a CI pipeline variable, or
+#   tests/conftest.py's `os.environ['FLASK_ENV'] = 'testing'` set before
+#   app.config was ever imported.
+#
+#   Concretely: running `$env:FLASK_ENV = "testing"` then `flask shell`
+#   would print FLASK_ENV: development, because .env.local's
+#   FLASK_ENV=development silently overwrote the shell's explicit value.
+#   This didn't break pytest (TestingConfig.SQLALCHEMY_DATABASE_URI is
+#   hardcoded, not FLASK_ENV-dependent) but it broke manual debugging via
+#   flask shell/flask db upgrade, and silently falsified FLASK_ENV for any
+#   code that reads it directly (e.g. app/__init__.py's
+#   `os.getenv('FLASK_ENV') == 'testing'` fallback check).
+#
+# The fix (current, active function below):
+#   Snapshot os.environ BEFORE either file layer runs. Layer 2 still beats
+#   layer 1 (original intent preserved), but layer 2 can never beat a key
+#   that was already present before _load_env() was called at all — i.e.
+#   a real external export always wins over both files.
+#
+# KNOWN TRADE-OFF OF THE FIX (read before reverting):
+#   If your deployment sets env vars directly at the container/process
+#   level (Docker `environment:` block, OCI container config, systemd
+#   `Environment=` lines) AND the matching .env.{APP_ENV} file defines the
+#   same key with a different value — the OLD code made the FILE always
+#   win (masking a stale container-level value). The NEW code makes the
+#   CONTAINER-level value win (the file no longer rescues it). If you are
+#   relying on .env.prod/.env.docker to override stale values baked into
+#   a container spec, you must either stop setting those vars at the
+#   container level, or update the container spec to match the file —
+#   the file will not silently override it anymore.
+#
+# WHEN TO USE WHICH:
+#   - Use the NEW function (default, active) if: you want explicit shell/
+#     CI/container exports to always be authoritative, and you treat
+#     .env files as the fallback/default layer beneath them. This is the
+#     safer default for most teams and fixes real debugging footguns.
+#   - Use the OLD function (commented out below) ONLY if: your deployment
+#     strategy genuinely requires .env.{APP_ENV} files to be the final
+#     authority no matter what's already in the process environment —
+#     e.g. you deliberately pre-seed os.environ with stale/placeholder
+#     values upstream and always want the checked-in file to win. This is
+#     unusual and should be a deliberate, documented choice, not a default.
+#   - To revert: comment out the active _load_env() below, uncomment
+#     _load_env_OLD_OVERRIDE_TRUE, and rename it back to _load_env().
+# ============================================================================
+
+
+# ----------------------------------------------------------------------------
+# OLD VERSION — kept for reference only. NOT CALLED. See trade-off notes above
+# before reactivating.
+# ----------------------------------------------------------------------------
+# def _load_env_OLD_OVERRIDE_TRUE():
+#     """
+#     Load environment in two layers:
+#       1. Base .env  (shared defaults, no secrets, no DB URLs)
+#       2. .env.{APP_ENV}  (environment-specific overrides)
+#
+#     Searches from current working directory upward so this works
+#     whether you run from the project root or the app/ subdirectory.
+#     """
+#     cwd = Path.cwd()
+#     candidates = [cwd, cwd.parent, cwd.parent.parent]
+#     root = next((p for p in candidates if (p / ".env").exists()), cwd)
+#
+#     # Layer 1: base defaults
+#     base_env = root / ".env"
+#     if base_env.exists():
+#         load_dotenv(base_env, override=False)
+#         logger.debug(f"Loaded base env: {base_env}")
+#     else:
+#         logger.warning(f".env not found at {root}")
+#
+#     # Layer 2: environment-specific overrides
+#     # NOTE: override=True here beats EVERYTHING already in os.environ,
+#     # including values set by the shell/CI/test runner before this ran.
+#     # That's the exact behavior that caused the FLASK_ENV bug — see the
+#     # HISTORY comment block above before reusing this.
+#     app_env = os.getenv("APP_ENV", "local")
+#     specific_env = root / f".env.{app_env}"
+#     if specific_env.exists():
+#         load_dotenv(specific_env, override=True)
+#         logger.debug(f"Loaded {specific_env.name} (overrides applied)")
+#     else:
+#         logger.warning(
+#             f".env.{app_env} not found at {root}. "
+#             f"Only base .env values are active. "
+#             f"Set APP_ENV correctly or create .env.{app_env}"
+#         )
+
+
+# ----------------------------------------------------------------------------
+# ACTIVE VERSION — fixes the override=True footgun. See HISTORY above.
+# ----------------------------------------------------------------------------
 def _load_env():
     """
     Load environment in two layers:
@@ -38,13 +143,34 @@ def _load_env():
 
     Searches from current working directory upward so this works
     whether you run from the project root or the app/ subdirectory.
+
+    Precedence (highest to lowest):
+      1. Anything already in os.environ before this function runs
+         (shell export, CI variable, Docker/OCI container env, a test
+         runner's os.environ assignment) — ALWAYS wins, untouched.
+      2. .env.{APP_ENV}  (e.g. .env.local, .env.docker, .env.prod)
+      3. .env             (shared base defaults)
+
+    See the module-level HISTORY comment above this function for why
+    this replaced a simpler override=True version, and the trade-off
+    to check before reverting.
     """
     # Find project root (where .env lives)
     cwd = Path.cwd()
     candidates = [cwd, cwd.parent, cwd.parent.parent]
     root = next((p for p in candidates if (p / ".env").exists()), cwd)
 
-    # Layer 1: base defaults
+    # --- Step 0: snapshot real external env BEFORE either file layer runs.
+    # This is what lets us tell "the shell/CI/container set this on purpose"
+    # apart from "a .env file set this a moment ago" — load_dotenv's own
+    # override flag cannot make that distinction on its own.
+    preexisting = set(os.environ.keys())
+    logger.debug(
+        f"_load_env: {len(preexisting)} vars already present externally "
+        f"before file loading; these will never be overridden by .env files."
+    )
+
+    # --- Step 1: base defaults (.env). Never overrides anything already set.
     base_env = root / ".env"
     if base_env.exists():
         load_dotenv(base_env, override=False)
@@ -52,12 +178,27 @@ def _load_env():
     else:
         logger.warning(f".env not found at {root}")
 
-    # Layer 2: environment-specific overrides
+    # --- Step 2: environment-specific file (.env.{APP_ENV}).
+    # Beats layer 1's file-sourced values (preserves original intent: later
+    # layer wins), but SKIPS any key that was in `preexisting` — i.e. a real
+    # external export is never clobbered by a file, no matter which file.
     app_env = os.getenv("APP_ENV", "local")
     specific_env = root / f".env.{app_env}"
     if specific_env.exists():
-        load_dotenv(specific_env, override=True)
-        logger.debug(f"Loaded {specific_env.name} (overrides applied)")
+        from dotenv import dotenv_values
+        applied, skipped = [], []
+        for key, value in dotenv_values(specific_env).items():
+            if key in preexisting:
+                skipped.append(key)
+                continue
+            if value is not None:
+                os.environ[key] = value
+                applied.append(key)
+        logger.debug(
+            f"Loaded {specific_env.name}: applied {len(applied)} override(s) "
+            f"({', '.join(applied) or 'none'}); skipped {len(skipped)} "
+            f"key(s) already set externally ({', '.join(skipped) or 'none'})."
+        )
     else:
         logger.warning(
             f".env.{app_env} not found at {root}. "
@@ -615,15 +756,16 @@ class TestingConfig(Config):
 # CONFIG REGISTRY  — used by app factory
 # ============================================================================
 config_map = {
-    "local":       Config,
-    "docker":      Config,
-    "prod":        Config,
-    "testing":     TestingConfig,
-    "development": Config,   # fallback alias
-    "production":  Config,   # fallback alias
+    "local":          Config,
+    "phone-preview":  Config,   # TEMPORARY: phone preview env — remove before deployment
+    "docker":         Config,
+    "prod":           Config,
+    "testing":        TestingConfig,
+    "development":    Config,   # fallback alias
+    "production":     Config,   # fallback alias
 }
 
-def get_config(app_env: str = None) -> Config:
+def get_config(app_env: str | None = None) -> Config:
     """
     Return the correct config class for the current environment.
 
