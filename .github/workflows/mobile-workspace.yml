@@ -687,10 +687,11 @@ jobs:
           ANDROID_CLI="$CLT/bin/android"
           AVDMANAGER="$CLT/bin/avdmanager"
 
-          # Google has deprecated sdkmanager/avdmanager in favor of Android CLI.
-          # Use the supported Android CLI package installer; do not try to update
-          # "cmdline-tools;latest" because that now resolves to Android CLI and its
-          # 1.x version number is not the legacy sdkmanager version format.
+          # Google has deprecated sdkmanager in favor of Android CLI.
+          # Use the supported package installer; do not update "cmdline-tools;latest"
+          # and then parse Android CLI's 1.x version as a legacy sdkmanager version.
+          # Keep avdmanager here only to validate the AVD metadata format still used
+          # by the current android-emulator-runner action.
           if [ ! -x "$ANDROID_CLI" ]; then
             ANDROID_CLI="$(command -v android || true)"
           fi
