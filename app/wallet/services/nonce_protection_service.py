@@ -48,34 +48,30 @@ class NonceProtectionService:
                 config = NonceProtectionConfig()
                 db.session.add(config)
             
-            # Store old value for audit
-            old_value = config.to_dict()
+            old_snapshot = config.to_audit_dict()
             
             # Update fields
             for key, value in updates.items():
                 if hasattr(config, key):
                     setattr(config, key, value)
             
-            db.session.commit()
-            
-            # Log the action
-            AdminAuditService.log_action(
-                admin_id=admin_id,
-                admin_name=admin_name,
-                admin_role=admin_role,
-                action_type='modify',
-                action_category='nonce_protection',
-                target_type='nonce_config',
-                target_id=str(config.id),
-                target_name='Nonce Protection Configuration',
-                old_value=str(old_value),
-                new_value=config.to_dict(),
-                reason='Nonce protection configuration updated'
-            )
+            with AdminAuditService.audited_change():
+                AdminAuditService.log_action(
+                    admin_id=admin_id,
+                    admin_name=admin_name,
+                    admin_role=admin_role,
+                    action_type='modify',
+                    action_category='nonce_protection',
+                    target_type='nonce_config',
+                    target_id=str(config.id),
+                    target_name='Nonce Protection Configuration',
+                    old_value=old_snapshot,
+                    new_value=config.to_audit_dict(),
+                    reason='Nonce protection configuration updated'
+                )
             
             return config
         except Exception as e:
-            db.session.rollback()
             raise e
     
     @staticmethod

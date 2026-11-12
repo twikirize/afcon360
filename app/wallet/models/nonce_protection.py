@@ -13,37 +13,37 @@ class UserNonce(db.Model):
     User-specific nonce counter for replay protection
     """
     __tablename__ = 'user_nonces'
-    
+
     __table_args__ = (
         Index('ix_user_nonces_user_id', 'user_id'),
         Index('ix_user_nonces_nonce', 'nonce'),
         Index('ix_user_nonces_created_at', 'created_at'),
     )
-    
+
     id = Column(BigInteger, primary_key=True)
-    
+
     # User identification
     user_id = Column(BigInteger, nullable=False)
     user_type = Column(String(20), default='user')  # user, aggregator, admin
-    
+
     # Nonce information
     nonce = Column(String(255), nullable=False, unique=True)
     nonce_type = Column(String(50), default='transaction')  # transaction, api_call, webhook
-    
+
     # Transaction details
     transaction_type = Column(String(50), nullable=True)  # deposit, withdraw, transfer
     amount = Column(Integer, nullable=True)  # Amount in smallest currency unit
     currency = Column(String(10), nullable=True)
-    
+
     # Status
     used = Column(Boolean, default=False)
     voided = Column(Boolean, default=False)
-    
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used_at = Column(DateTime(timezone=True), nullable=True)
-    
+
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
         return {
@@ -61,7 +61,7 @@ class UserNonce(db.Model):
             'expires_at': self.expires_at.isoformat() if self.expires_at else None,
             'used_at': self.used_at.isoformat() if self.used_at else None
         }
-    
+
     def __repr__(self):
         return f"<UserNonce {self.id}: {self.nonce} (user={self.user_id}, used={self.used})>"
 
@@ -71,34 +71,34 @@ class NonceProtectionConfig(db.Model):
     Configuration for nonce replay protection settings
     """
     __tablename__ = 'nonce_protection_config'
-    
+
     id = Column(BigInteger, primary_key=True)
-    
+
     # General settings
     enabled = Column(Boolean, default=True)
-    
+
     # Expiration settings
     nonce_ttl_minutes = Column(Integer, default=15)  # How long nonces are valid
     cleanup_interval_hours = Column(Integer, default=1)  # How often to clean up expired nonces
-    
+
     # Rate limiting
     max_nonces_per_user_per_hour = Column(Integer, default=1000)
     max_nonces_per_aggregator_per_hour = Column(Integer, default=10000)
-    
+
     # Security settings
     require_nonce_for_all_transactions = Column(Boolean, default=True)
     allow_nonce_reuse_same_amount = Column(Boolean, default=False)
     strict_ip_binding = Column(Boolean, default=False)
-    
+
     # Monitoring
     alert_on_suspicious_nonce_usage = Column(Boolean, default=True)
     alert_threshold_per_hour = Column(Integer, default=100)
-    
+
     # Metadata
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    
+
     def to_dict(self):
         """Convert to dictionary for JSON serialization"""
         return {
@@ -117,7 +117,21 @@ class NonceProtectionConfig(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
-    
+
+    def to_audit_dict(self) -> dict:
+        """Return allowlisted fields for audit logging."""
+        # AUDIT_FIELDS - explicit allowlist for audit snapshots
+        audit_fields = (
+            'enabled',
+            'nonce_ttl_minutes', 'cleanup_interval_hours',
+            'max_nonces_per_user_per_hour', 'max_nonces_per_aggregator_per_hour',
+            'require_nonce_for_all_transactions', 'allow_nonce_reuse_same_amount',
+            'strict_ip_binding',
+            'alert_on_suspicious_nonce_usage', 'alert_threshold_per_hour',
+            'description',
+        )
+        snapshot = {f: getattr(self, f) for f in audit_fields}
+        return snapshot
+
     def __repr__(self):
         return f"<NonceProtectionConfig {self.id}: enabled={self.enabled}>"
-
