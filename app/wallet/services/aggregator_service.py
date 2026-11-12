@@ -27,9 +27,9 @@ class AggregatorService:
         sandbox_api_secret: Optional[str] = None,
         live_api_key: Optional[str] = None,
         live_api_secret: Optional[str] = None,
-        admin_id: Optional[int] = None,
-        admin_name: Optional[str] = None,
-        admin_role: Optional[str] = None
+        admin_id: int = None,
+        admin_name: str = None,
+        admin_role: str = None
     ) -> Aggregator:
         """
         Create a new aggregator
@@ -46,13 +46,19 @@ class AggregatorService:
             sandbox_api_secret: Sandbox API secret
             live_api_key: Live API key
             live_api_secret: Live API secret
-            admin_id: ID of admin creating aggregator
-            admin_name: Name of admin
-            admin_role: Role of admin
+            admin_id: ID of admin creating aggregator (REQUIRED for audit)
+            admin_name: Name of admin (REQUIRED for audit)
+            admin_role: Role of admin (REQUIRED for audit)
             
         Returns:
             Aggregator object
+            
+        Raises:
+            ValueError: If admin_id or admin_name not provided
         """
+        if not admin_id or not admin_name:
+            raise ValueError("admin_id and admin_name are required for aggregator creation audit trail")
+        
         try:
             aggregator = Aggregator(
                 name=name,
@@ -70,26 +76,25 @@ class AggregatorService:
             )
             
             db.session.add(aggregator)
-            db.session.commit()
+            db.session.flush()  # Get ID for audit
             
-            # Log the action
-            if admin_id and admin_name:
+            # Log the action with audit
+            with AdminAuditService.audited_change():
                 AdminAuditService.log_action(
                     admin_id=admin_id,
                     admin_name=admin_name,
-                    admin_role=admin_role,
+                    admin_role=admin_role or 'system',
                     action_type='create',
                     action_category='aggregator',
                     target_type='aggregator',
                     target_id=str(aggregator.id),
                     target_name=display_name,
-                    new_value=aggregator.to_dict(exclude_secret=False),
+                    new_value=aggregator.to_audit_dict(),
                     reason='New aggregator created'
                 )
             
             return aggregator
         except Exception as e:
-            db.session.rollback()
             raise e
     
     @staticmethod
@@ -132,33 +137,30 @@ class AggregatorService:
                 raise ValueError(f"Aggregator {aggregator_id} not found")
             
             # Store old value for audit
-            old_value = aggregator.to_dict(exclude_secret=False)
+            old_snapshot = aggregator.to_audit_dict()
             
             # Update fields
             for key, value in updates.items():
                 if hasattr(aggregator, key):
                     setattr(aggregator, key, value)
             
-            db.session.commit()
-            
-            # Log the action
-            AdminAuditService.log_action(
-                admin_id=admin_id,
-                admin_name=admin_name,
-                admin_role=admin_role,
-                action_type='modify',
-                action_category='aggregator',
-                target_type='aggregator',
-                target_id=str(aggregator.id),
-                target_name=aggregator.display_name,
-                old_value=str(old_value),
-                new_value=aggregator.to_dict(exclude_secret=False),
-                reason='Aggregator configuration updated'
-            )
+            with AdminAuditService.audited_change():
+                AdminAuditService.log_action(
+                    admin_id=admin_id,
+                    admin_name=admin_name,
+                    admin_role=admin_role,
+                    action_type='modify',
+                    action_category='aggregator',
+                    target_type='aggregator',
+                    target_id=str(aggregator.id),
+                    target_name=aggregator.display_name,
+                    old_value=old_snapshot,
+                    new_value=aggregator.to_audit_dict(),
+                    reason='Aggregator configuration updated'
+                )
             
             return aggregator
         except Exception as e:
-            db.session.rollback()
             raise e
     
     @staticmethod
@@ -175,25 +177,26 @@ class AggregatorService:
             if not aggregator:
                 raise ValueError(f"Aggregator {aggregator_id} not found")
             
+            old_snapshot = aggregator.to_audit_dict()
             aggregator.status = 'suspended'
-            db.session.commit()
             
-            # Log the action
-            AdminAuditService.log_action(
-                admin_id=admin_id,
-                admin_name=admin_name,
-                admin_role=admin_role,
-                action_type='suspend',
-                action_category='aggregator',
-                target_type='aggregator',
-                target_id=str(aggregator.id),
-                target_name=aggregator.display_name,
-                reason=reason
-            )
+            with AdminAuditService.audited_change():
+                AdminAuditService.log_action(
+                    admin_id=admin_id,
+                    admin_name=admin_name,
+                    admin_role=admin_role,
+                    action_type='suspend',
+                    action_category='aggregator',
+                    target_type='aggregator',
+                    target_id=str(aggregator.id),
+                    target_name=aggregator.display_name,
+                    old_value=old_snapshot,
+                    new_value=aggregator.to_audit_dict(),
+                    reason=reason
+                )
             
             return aggregator
         except Exception as e:
-            db.session.rollback()
             raise e
     
     @staticmethod
@@ -210,25 +213,26 @@ class AggregatorService:
             if not aggregator:
                 raise ValueError(f"Aggregator {aggregator_id} not found")
             
+            old_snapshot = aggregator.to_audit_dict()
             aggregator.status = 'active'
-            db.session.commit()
             
-            # Log the action
-            AdminAuditService.log_action(
-                admin_id=admin_id,
-                admin_name=admin_name,
-                admin_role=admin_role,
-                action_type='activate',
-                action_category='aggregator',
-                target_type='aggregator',
-                target_id=str(aggregator.id),
-                target_name=aggregator.display_name,
-                reason=reason
-            )
+            with AdminAuditService.audited_change():
+                AdminAuditService.log_action(
+                    admin_id=admin_id,
+                    admin_name=admin_name,
+                    admin_role=admin_role,
+                    action_type='activate',
+                    action_category='aggregator',
+                    target_type='aggregator',
+                    target_id=str(aggregator.id),
+                    target_name=aggregator.display_name,
+                    old_value=old_snapshot,
+                    new_value=aggregator.to_audit_dict(),
+                    reason=reason
+                )
             
             return aggregator
         except Exception as e:
-            db.session.rollback()
             raise e
 
     @staticmethod
@@ -249,6 +253,7 @@ class AggregatorService:
             if not aggregator:
                 raise ValueError(f"Aggregator {aggregator_id} not found")
             
+            old_snapshot = aggregator.to_audit_dict()
             old_mode = aggregator.mode
             aggregator.mode = mode
             
@@ -257,25 +262,21 @@ class AggregatorService:
                 aggregator.live_api_key = aggregator.api_key
                 aggregator.live_api_secret = aggregator.api_secret
             
-            db.session.commit()
-            
-            # Log the action
-            AdminAuditService.log_action(
-                admin_id=admin_id,
-                admin_name=admin_name,
-                admin_role=admin_role,
-                action_type='set_mode',
-                action_category='aggregator',
-                target_type='aggregator',
-                target_id=str(aggregator.id),
-                target_name=aggregator.display_name,
-                old_value=old_mode,
-                new_value=mode,
-                reason=reason
-            )
+            with AdminAuditService.audited_change():
+                AdminAuditService.log_action(
+                    admin_id=admin_id,
+                    admin_name=admin_name,
+                    admin_role=admin_role,
+                    action_type='set_mode',
+                    action_category='aggregator',
+                    target_type='aggregator',
+                    target_id=str(aggregator.id),
+                    target_name=aggregator.display_name,
+                    old_value=old_snapshot,
+                    new_value=aggregator.to_audit_dict(),
+                    reason=reason
+                )
             
             return aggregator
         except Exception as e:
-            db.session.rollback()
             raise e
-
