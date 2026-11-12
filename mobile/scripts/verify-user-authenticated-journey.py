@@ -42,12 +42,28 @@ def mark_stage(stage: str) -> None:
     )
 
 
-def run_adb(*args: str, check: bool = True, capture: bool = True) -> str:
-    result = subprocess.run(
-        ["adb", *args], check=False, text=True,
-        stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.STDOUT if capture else None,
-    )
+def run_adb(
+    *args: str,
+    check: bool = True,
+    capture: bool = True,
+    timeout: int = 120,
+) -> str:
+    try:
+        result = subprocess.run(
+            ["adb", *args], check=False, text=True,
+            stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.STDOUT if capture else None,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        output = error.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"adb {' '.join(args[:4])} timed out after {timeout}s: "
+            f"{str(output)[-2000:]}"
+        ) from error
+
     output = result.stdout or ""
     if check and result.returncode:
         raise RuntimeError(f"adb {' '.join(args[:4])} failed ({result.returncode}): {output[-2000:]}")
@@ -65,14 +81,14 @@ def dump_tree(retries: int = 4) -> ET.Element:
     last_error = "Android did not return a UI hierarchy."
     for attempt in range(1, retries + 1):
         run_adb("shell", "rm", "-f", UI_XML, check=False)
-        result = run_adb("shell", "uiautomator", "dump", UI_XML, check=False)
+        result = run_adb("shell", "uiautomator", "dump", UI_XML, check=False, timeout=15)
         if "dumped to:" not in result.lower():
             last_error = (
                 "Android did not create a fresh UI hierarchy: "
                 + result[-1000:]
             )
         else:
-            raw = run_adb("shell", "cat", UI_XML, check=False)
+            raw = run_adb("shell", "cat", UI_XML, check=False, timeout=15)
             start = raw.find("<?xml")
             if start < 0:
                 last_error = (
