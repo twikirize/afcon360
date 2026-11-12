@@ -5,6 +5,8 @@ Configuration and scoring for ML-based fraud detection
 
 from typing import List, Dict, Any, Optional
 
+from flask import current_app
+
 from app.extensions import db
 from app.wallet.models.fraud_detection import FraudDetectionConfig
 from app.wallet.services.admin_audit_service import AdminAuditService
@@ -171,6 +173,16 @@ class FraudDetectionService:
                 'action': 'allow'
             }
     
+    @staticmethod
+    def should_block_transaction(score_result: Dict[str, Any]) -> bool:
+        """Determine whether a transaction should be blocked."""
+        return score_result.get('action') == 'block'
+
+    @staticmethod
+    def should_review_transaction(score_result: Dict[str, Any]) -> bool:
+        """Determine whether a transaction requires manual review."""
+        return score_result.get('action') == 'review'
+
     @staticmethod
     def get_config() -> Optional[FraudDetectionConfig]:
         """Get current fraud detection configuration"""
