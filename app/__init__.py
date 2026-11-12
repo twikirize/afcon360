@@ -16,6 +16,7 @@
 """
 
 import os
+import sys
 import logging
 import time
 import threading
@@ -100,7 +101,7 @@ from app.utils.module_toggle_service import ModuleToggleService
 
 # Module-level stable callbacks for SQLAlchemy timing (registered once per engine)
 from sqlalchemy import event
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from flask import g, has_request_context
 
 
@@ -431,6 +432,91 @@ def _redis_queue_allowed(async_mode=None) -> bool:
     return True
 
 
+def _database_name_for_display(uri):
+    """Return only the database name; never expose credentials or host details."""
+    if not uri:
+        return "not configured"
+    try:
+        return make_url(uri).database or "not specified"
+    except Exception:
+        return "unparseable connection URL"
+
+
+def _resolve_startup_binding(app):
+    """Resolve debug/host/port the same way app.py's server entry point does."""
+    flask_env = str(app.config.get("FLASK_ENV") or os.getenv("FLASK_ENV", "production")).lower()
+    debug = os.getenv("FLASK_DEBUG", "true").lower() in ("true", "1", "yes")
+    if debug and flask_env == "production":
+        debug = False
+
+    ssl_raw = os.getenv("FLASK_SSL", "").strip().lower()
+    ssl_enabled = ssl_raw not in ("", "none", "off", "false", "0")
+
+    host = os.getenv("FLASK_HOST", "").strip()
+    if not host:
+        allow_lan_debug = os.getenv("ALLOW_LAN_DEBUG", "").strip().lower() in ("1", "true", "yes")
+        if debug and not allow_lan_debug:
+            host = "127.0.0.1"
+        else:
+            host = "0.0.0.0" if ssl_enabled else "127.0.0.1"
+
+    try:
+        port = int(os.getenv("FLASK_PORT", "5000"))
+    except ValueError:
+        port = 5000
+
+    return debug, host, port
+
+
+def _startup_console():
+    """Logger that writes the startup banner to stdout so consoles show it in white."""
+    startup_logger = logging.getLogger("afcon360.startup")
+    if not startup_logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] app: %(message)s")
+        )
+        startup_logger.addHandler(handler)
+        startup_logger.setLevel(logging.INFO)
+        startup_logger.propagate = False
+    return startup_logger
+
+
+def _log_startup_configuration(app, project_root, redis_url, redis_ready):
+    """Print the resolved environment before extension initialization begins."""
+    startup_log = _startup_console()
+    app_env = app.config.get("APP_ENV") or os.getenv("APP_ENV") or "local"
+    flask_env = app.config.get("FLASK_ENV") or os.getenv("FLASK_ENV", "development")
+    env_file = os.path.join(project_root, f".env.{app_env}")
+    env_file_label = os.path.basename(env_file) if os.path.exists(env_file) else ".env (base only)"
+
+    if not REDIS_AVAILABLE:
+        redis_label = "Unavailable (client not installed or disabled)"
+    elif redis_url and redis_ready:
+        redis_label = "Configured"
+    elif redis_url:
+        redis_label = "Configured (unreachable; local fallback active)"
+    else:
+        redis_label = "Not configured"
+
+    debug, host, port = _resolve_startup_binding(app)
+
+    startup_log.info("=" * 70)
+    startup_log.info("AFCON360 STARTUP")
+    startup_log.info("=" * 70)
+    startup_log.info("Environment selection")
+    startup_log.info(f"  APP_ENV:       {app_env}")
+    startup_log.info(f"  FLASK_ENV:     {flask_env}")
+    startup_log.info(f"  Configuration: {env_file_label}")
+    startup_log.info("Resolved configuration")
+    startup_log.info(f"  Database:      {_database_name_for_display(app.config.get('SQLALCHEMY_DATABASE_URI'))}")
+    startup_log.info(f"  Redis:         {redis_label}")
+    startup_log.info(f"  Debug:         {debug}")
+    startup_log.info(f"  Host:          {host}")
+    startup_log.info(f"  Port:          {port}")
+    startup_log.info("-" * 70)
+
+
 def create_app(config_object=None) -> Flask:
     """
     Application factory pattern.
@@ -664,6 +750,16 @@ def create_app(config_object=None) -> Flask:
         raise RuntimeError(
             "Flask-Session is required for deployed AFCON360 server-side Redis sessions."
         )
+
+    # Configuration is fully resolved at this point; report it before the
+    # remaining extension/module/route initialization produces its own logs.
+    _log_startup_configuration(
+        app,
+        project_root,
+        redis_url=app.config.get("REDIS_URL") or redis_url,
+        redis_ready=bool(redis_runtime_client),
+    )
+    logger.info("Initializing extensions...")
 
     # ============================================================
     # SENTRY INITIALIZATION (guarded by feature flag)
@@ -1087,6 +1183,7 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     # CRITICAL: Register ALL models before SQLAlchemy initialization
     # ------------------------------------------------------------------
+    logger.info("Registering application modules...")
     _boot_t0 = time.time()
     from app.core.model_registry import register_all_models
     register_all_models()
@@ -1546,6 +1643,7 @@ def create_app(config_object=None) -> Flask:
     # ------------------------------------------------------------------
     # Lazy Imports - Blueprints & Models
     # ------------------------------------------------------------------
+    logger.info("Registering routes...")
     _boot_t3 = time.time()
     from app.identity import models as identity_models
     from app.profile import models as profile_models
