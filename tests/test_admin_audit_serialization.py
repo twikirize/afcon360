@@ -14,6 +14,35 @@ from app.wallet.models.admin_audit import AdminAuditLog
 from app.wallet.services.admin_audit_service import AdminAuditService
 
 
+@pytest.fixture(autouse=True)
+def _create_audit_test_admins(app):
+    """Create real FK-backed admin actors for each audit serialization test."""
+    from app.extensions import db
+    from app.identity.models.user import User, UserRole
+    from app.identity.models.roles_permission import get_or_create_role
+
+    with app.app_context():
+        owner_role = get_or_create_role("owner", level=1)
+        admin_ids = []
+
+        for _ in range(2):
+            uid = uuid4().hex[:10]
+            admin = User(
+                username=f"audit_admin_{uid}",
+                email=f"audit_admin_{uid}@test.example.com",
+                is_verified=True,
+                is_active=True,
+            )
+            admin.set_password("TestPass123!")
+            db.session.add(admin)
+            db.session.flush()
+            db.session.add(UserRole(user_id=admin.id, role_id=owner_role.id))
+            admin_ids.append(admin.id)
+
+        db.session.commit()
+        app.config["AUDIT_TEST_ADMIN_IDS"] = tuple(admin_ids)
+
+
 @pytest.mark.usefixtures("app")
 class TestAdminAuditSerialization:
     """Test audit value serialization"""
@@ -22,7 +51,7 @@ class TestAdminAuditSerialization:
         """Dictionary audit value is saved successfully"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -52,7 +81,7 @@ class TestAdminAuditSerialization:
         """List audit value is saved successfully"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -77,7 +106,7 @@ class TestAdminAuditSerialization:
         """Plain string values remain compatible"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -98,7 +127,7 @@ class TestAdminAuditSerialization:
         """None values remain compatible"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='create',
@@ -119,7 +148,7 @@ class TestAdminAuditSerialization:
         """Decimal values are serialized without failure"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -135,8 +164,8 @@ class TestAdminAuditSerialization:
             log = AdminAuditLog.query.first()
             old_parsed = json.loads(log.old_value)
             new_parsed = json.loads(log.new_value)
-            assert old_parsed['amount'] == 100.50
-            assert new_parsed['amount'] == 200.75
+            assert old_parsed['amount'] == '100.50'
+            assert new_parsed['amount'] == '200.75'
 
     def test_datetime_serialized(self, app):
         """Date and datetime values are serialized in ISO format"""
@@ -145,7 +174,7 @@ class TestAdminAuditSerialization:
             d = datetime(2026, 1, 15).date()
 
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -169,7 +198,7 @@ class TestAdminAuditSerialization:
             test_uuid = uuid4()
 
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -192,7 +221,7 @@ class TestAdminAuditSerialization:
             json_str = '{"key": "value", "number": 42}'
 
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -209,6 +238,32 @@ class TestAdminAuditSerialization:
             assert log.old_value == json_str
             assert log.new_value == json_str
 
+    def test_json_string_with_leading_whitespace_redacts_secrets(self, app):
+        """Sensitive values are redacted even when JSON strings start with whitespace."""
+        with app.app_context():
+            json_str = '  \n  {"api_key": "must-not-persist", "label": "gateway"}'
+
+            AdminAuditService.log_action(
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
+                admin_name='test_admin',
+                admin_role='owner',
+                action_type='modify',
+                action_category='payment_gateway',
+                target_type='gateway',
+                target_id='1',
+                target_name='Gateway',
+                old_value=json_str,
+                new_value=json_str,
+                reason='Test whitespace-prefixed JSON redaction'
+            )
+
+            log = AdminAuditLog.query.first()
+            for serialized in (log.old_value, log.new_value):
+                parsed = json.loads(serialized)
+                assert parsed['api_key'] == '[REDACTED]'
+                assert parsed['label'] == 'gateway'
+                assert 'must-not-persist' not in serialized
+
 
 @pytest.mark.usefixtures("app")
 class TestAdminAuditRedaction:
@@ -218,7 +273,7 @@ class TestAdminAuditRedaction:
         """API keys are redacted in audit logs"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -243,7 +298,7 @@ class TestAdminAuditRedaction:
         """API secrets are redacted"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -264,7 +319,7 @@ class TestAdminAuditRedaction:
         """Sensitive fields in nested dicts are redacted"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -300,7 +355,7 @@ class TestAdminAuditRedaction:
         """config_json field is sanitized when it contains sensitive data"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -336,7 +391,7 @@ class TestAdminAuditRedaction:
         """Payment gateway API keys and secrets never appear in audit"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='create',
@@ -374,7 +429,7 @@ class TestAdminAuditRedaction:
             }
 
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -401,7 +456,7 @@ class TestAdminAuditRedaction:
         """Travel rule VASP API key is redacted"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='modify',
@@ -430,7 +485,7 @@ class TestAdminAuditCallers:
         """Basic audit log entry is created successfully"""
         with app.app_context():
             log = AdminAuditService.log_action(
-                admin_id=1,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                 admin_name='test_admin',
                 admin_role='owner',
                 action_type='create',
@@ -443,7 +498,7 @@ class TestAdminAuditCallers:
 
             assert log is not None
             assert log.id is not None
-            assert log.admin_id == 1
+            assert log.admin_id == app.config['AUDIT_TEST_ADMIN_IDS'][0]
             assert log.admin_name == 'test_admin'
             assert log.action_type == 'create'
             assert log.reason == 'Test audit creation'
@@ -452,7 +507,7 @@ class TestAdminAuditCallers:
         """Audit log with all optional fields works"""
         with app.app_context():
             log = AdminAuditService.log_action(
-                admin_id=2,
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][1],
                 admin_name='another_admin',
                 admin_role='super_admin',
                 action_type='delete',
@@ -485,7 +540,7 @@ class TestAdminAuditRetrieval:
             # Create multiple audit entries
             for i in range(3):
                 AdminAuditService.log_action(
-                    admin_id=1,
+                    admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0],
                     admin_name='test_admin',
                     admin_role='owner',
                     action_type='modify' if i > 0 else 'create',
@@ -508,16 +563,16 @@ class TestAdminAuditRetrieval:
         """get_audit_logs with filters works"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1, admin_name='a1', admin_role='owner',
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0], admin_name='a1', admin_role='owner',
                 action_type='create', action_category='cat1', target_type='t1', target_id='1', target_name='t1'
             )
             AdminAuditService.log_action(
-                admin_id=2, admin_name='a2', admin_role='owner',
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][1], admin_name='a2', admin_role='owner',
                 action_type='modify', action_category='cat2', target_type='t2', target_id='2', target_name='t2'
             )
 
             # Filter by admin_id
-            logs = AdminAuditService.get_audit_logs(admin_id=1)
+            logs = AdminAuditService.get_audit_logs(admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0])
             assert len(logs) == 1
             assert logs[0]['admin_name'] == 'a1'
 
@@ -535,15 +590,15 @@ class TestAdminAuditRetrieval:
         """get_audit_summary returns correct statistics"""
         with app.app_context():
             AdminAuditService.log_action(
-                admin_id=1, admin_name='a1', admin_role='owner',
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0], admin_name='a1', admin_role='owner',
                 action_type='create', action_category='cat1', target_type='t1', target_id='1', target_name='t1'
             )
             AdminAuditService.log_action(
-                admin_id=1, admin_name='a1', admin_role='owner',
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][0], admin_name='a1', admin_role='owner',
                 action_type='modify', action_category='cat1', target_type='t1', target_id='2', target_name='t2'
             )
             AdminAuditService.log_action(
-                admin_id=2, admin_name='a2', admin_role='owner',
+                admin_id=app.config['AUDIT_TEST_ADMIN_IDS'][1], admin_name='a2', admin_role='owner',
                 action_type='delete', action_category='cat2', target_type='t2', target_id='3', target_name='t3'
             )
 
