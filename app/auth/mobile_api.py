@@ -1084,6 +1084,15 @@ def mobile_create_transport_booking():
         "dropoff_location": str(
             dropoff.get("address") or dropoff.get("label") or ""
         ).strip(),
+        # BookingService fingerprints the normalized address fields as part
+        # of its website idempotency contract. Supply both these fields and
+        # the website-compatible location fields used for canonical snapshots.
+        "pickup_address": str(
+            pickup.get("address") or pickup.get("label") or ""
+        ).strip(),
+        "dropoff_address": str(
+            dropoff.get("address") or dropoff.get("label") or ""
+        ).strip(),
         "pickup_latitude": pickup.get("latitude"),
         "pickup_longitude": pickup.get("longitude"),
         "dropoff_latitude": dropoff.get("latitude"),
