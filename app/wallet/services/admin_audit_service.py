@@ -75,6 +75,27 @@ class AdminAuditService:
         return any(pattern == key_lower for pattern in AdminAuditService.SENSITIVE_KEYS)
 
     @staticmethod
+    def _sanitize_json_string(value: str, path: str = "") -> str:
+        """Sanitize JSON object/array strings without needlessly reformatting safe values."""
+        candidate = value.lstrip()
+        if not candidate.startswith(("{", "[")):
+            return value
+
+        try:
+            parsed = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            return value
+
+        if not isinstance(parsed, (dict, list)):
+            return value
+
+        sanitized = AdminAuditService._sanitize_value(parsed, path)
+        if sanitized == parsed:
+            return value
+
+        return json.dumps(sanitized, separators=(",", ":"), allow_nan=False)
+
+    @staticmethod
     def _sanitize_value(value: Any, path: str = "") -> Any:
         """
         Recursively sanitize a value for audit logging.
@@ -122,25 +143,9 @@ class AdminAuditService:
                 raise TypeError(f"Non-finite float value not allowed in audit: {value}")
             return value
 
-        # Handle string that might be JSON-encoded config
-        if isinstance(value, str) and path.endswith('config_json'):
-            # Try to parse and sanitize JSON string
-            try:
-                parsed = json.loads(value)
-                if isinstance(parsed, dict):
-                    return json.dumps(AdminAuditService._sanitize_value(parsed, path))
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        # Handle string that might be JSON object/array - parse and sanitize
+        # Handle JSON-encoded values, including strings with leading whitespace.
         if isinstance(value, str):
-            if value.startswith(('{', '[')):
-                try:
-                    parsed = json.loads(value)
-                    if isinstance(parsed, (dict, list)):
-                        return json.dumps(AdminAuditService._sanitize_value(parsed, path))
-                except (json.JSONDecodeError, TypeError):
-                    pass
+            return AdminAuditService._sanitize_json_string(value, path)
 
         # Reject unsupported types explicitly
         if not isinstance(value, (str, int, bool, type(None))):
@@ -162,16 +167,11 @@ class AdminAuditService:
         if value is None:
             return None
 
-        # If it's already a string, parse and sanitize if it's JSON
+        # Preserve already-valid JSON strings when no redaction is needed.
+        # Parse with leading-whitespace tolerance so secrets cannot bypass
+        # sanitization by prefixing an otherwise valid JSON document with spaces.
         if isinstance(value, str):
-            if value.startswith(('{', '[')):
-                try:
-                    parsed = json.loads(value)
-                    sanitized = AdminAuditService._sanitize_value(parsed)
-                    return json.dumps(sanitized, separators=(',', ':'), allow_nan=False)
-                except json.JSONDecodeError:
-                    pass
-            return value  # Plain string, store as-is
+            return AdminAuditService._sanitize_json_string(value)
 
         # Sanitize and serialize structured values
         sanitized = AdminAuditService._sanitize_value(value)
