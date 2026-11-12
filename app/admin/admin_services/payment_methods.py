@@ -7,6 +7,7 @@ from flask_login import login_required, current_user
 from app.extensions import db
 from app.wallet import PaymentMethodConfig, EventPaymentPreference
 from app.admin.decorators import admin_required
+from app.wallet.services.admin_audit_service import AdminAuditService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,13 @@ def get_payment_methods():
                 'last_tested_at': method.last_tested_at.isoformat() if method.last_tested_at else None,
                 'last_test_result': method.last_test_result,
                 'last_error_message': method.last_error_message,
-                'icon': _get_method_icon(method.method_type)
+                'icon': _get_method_icon(method.method_type),
+                # Credential presence indicators only - never the actual values
+                'api_key_configured': bool(method.api_key),
+                'api_secret_configured': bool(method.api_secret),
+                'sandbox_configured': bool(method.sandbox_url),
+                'production_configured': bool(method.production_url),
+                'config_json_present': bool(method.config_json),
             }
             method_data.append(method_dict)
         
@@ -103,11 +110,12 @@ def get_payment_method(method_id):
             'max_amount': float(method.max_amount),
             'transaction_fee': float(method.transaction_fee),
             'use_sandbox': method.use_sandbox,
-            'api_key': method.api_key,
-            'api_secret': method.api_secret,
-            'sandbox_url': method.sandbox_url,
-            'production_url': method.production_url,
-            'config_json': method.config_json
+            # Credential presence indicators only - never the actual values
+            'api_key_configured': bool(method.api_key),
+            'api_secret_configured': bool(method.api_secret),
+            'sandbox_configured': bool(method.sandbox_url),
+            'production_configured': bool(method.production_url),
+            'config_json_present': bool(method.config_json),
         }
         
         return jsonify({'success': True, 'method': method_dict})
@@ -125,7 +133,13 @@ def update_payment_method(method_id):
     try:
         method = PaymentMethodConfig.query.get_or_404(method_id)
         
+        # Capture old audit snapshot before change
+        old_snapshot = method.to_audit_dict()
+        
         data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'Invalid JSON payload'}), 400
         
         # Update basic fields
         method.display_name = data.get('display_name', method.display_name)
@@ -138,26 +152,93 @@ def update_payment_method(method_id):
         method.min_amount = data.get('min_amount', method.min_amount)
         method.max_amount = data.get('max_amount', method.max_amount)
         
-        # Update API keys if provided
-        if data.get('api_key'):
-            method.api_key = data['api_key']
-        if data.get('api_secret'):
-            method.api_secret = data['api_secret']
-        
-        # Update additional config
-        if 'config_json' in data:
-            method.config_json = data['config_json']
+        # Update URLs
+        if 'sandbox_url' in data:
+            method.sandbox_url = data['sandbox_url']
+        if 'production_url' in data:
+            method.production_url = data['production_url']
+        if 'use_sandbox' in data:
+            method.use_sandbox = bool(data['use_sandbox'])
         
         method.updated_by = current_user.id
         
-        db.session.commit()
+        with AdminAuditService.audited_change():
+            # Log the action with audit snapshots
+            AdminAuditService.log_action(
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='admin',
+                action_type='update',
+                action_category='payment_method_config',
+                target_type='payment_method',
+                target_id=str(method.id),
+                target_name=method.method_id,
+                old_value=old_snapshot,
+                new_value=method.to_audit_dict(),
+                reason=f'Updated payment method {method.method_id} configuration'
+            )
         
         return jsonify({'success': True, 'message': 'Payment method updated successfully'})
         
     except Exception as e:
-        db.session.rollback()
         logger.error(f"Error updating payment method {method_id}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Change not saved — audit record could not be created. No configuration was modified.'}), 409
+
+
+@payment_methods_bp.route('/<int:method_id>/rotate-credentials', methods=['POST'])
+@login_required
+@admin_required
+def rotate_credentials(method_id):
+    """Rotate payment method credentials (write-only operation)"""
+    try:
+        method = PaymentMethodConfig.query.get_or_404(method_id)
+        
+        data = request.get_json() or {}
+        
+        if not any(k in data for k in ('api_key', 'api_secret', 'webhook_secret')):
+            return jsonify({'success': False, 'error': 'No credentials provided for rotation'}), 400
+        
+        # Capture old audit snapshot before change
+        old_snapshot = method.to_audit_dict()
+        
+        # Rotate credentials - only update if provided
+        if 'api_key' in data:
+            method.api_key = data['api_key']
+        if 'api_secret' in data:
+            method.api_secret = data['api_secret']
+        if 'webhook_secret' in data:
+            config = dict(method.config_json or {})
+            config['webhook_secret'] = data['webhook_secret']
+            method.config_json = config
+        
+        method.updated_by = current_user.id
+        
+        with AdminAuditService.audited_change():
+            # Log the action with audit snapshots - never include actual credential values
+            AdminAuditService.log_action(
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='admin',
+                action_type='rotate_credentials',
+                action_category='payment_method_config',
+                target_type='payment_method',
+                target_id=str(method.id),
+                target_name=method.method_id,
+                old_value=old_snapshot,
+                new_value=method.to_audit_dict(),
+                reason=f'Rotated credentials for payment method {method.method_id}'
+            )
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Credentials rotated successfully',
+            'api_key_configured': bool(method.api_key),
+            'api_secret_configured': bool(method.api_secret),
+        })
+        
+    except Exception as e:
+        logger.error(f"Error rotating credentials for payment method {method_id}: {e}")
+        return jsonify({'success': False, 'error': 'Change not saved — audit record could not be created. No configuration was modified.'}), 409
 
 
 @payment_methods_bp.route('/<int:method_id>/toggle', methods=['POST'])
@@ -167,21 +248,41 @@ def toggle_payment_method(method_id):
     """Toggle payment method enabled/disabled status"""
     try:
         method = PaymentMethodConfig.query.get_or_404(method_id)
+        
+        # Capture old audit snapshot before change
+        old_snapshot = method.to_audit_dict()
+        
         data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'Invalid JSON payload'}), 400
         
         enable = data.get('enabled', False)
         method.is_enabled = enable
         method.updated_by = current_user.id
         
-        db.session.commit()
+        with AdminAuditService.audited_change():
+            # Log the action with audit snapshots
+            AdminAuditService.log_action(
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='admin',
+                action_type='toggle',
+                action_category='payment_method_config',
+                target_type='payment_method',
+                target_id=str(method.id),
+                target_name=method.method_id,
+                old_value=old_snapshot,
+                new_value=method.to_audit_dict(),
+                reason=f'Toggled payment method {method.method_id} enabled={enable}'
+            )
         
         action = "enabled" if enable else "disabled"
         return jsonify({'success': True, 'message': f'Payment method {action} successfully'})
         
     except Exception as e:
-        db.session.rollback()
         logger.error(f"Error toggling payment method {method_id}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Change not saved — audit record could not be created. No configuration was modified.'}), 409
 
 
 @payment_methods_bp.route('/<int:method_id>/test', methods=['POST'])
@@ -193,7 +294,10 @@ def test_payment_method(method_id):
         method = PaymentMethodConfig.query.get_or_404(method_id)
         
         if method.method_type != 'mobile_money':
-            return jsonify({'success': False, 'error': 'Only mobile money methods can be tested'})
+            return jsonify({'success': False, 'error': 'Only mobile money methods can be tested'}), 400
+        
+        # Capture old audit snapshot before change
+        old_snapshot = method.to_audit_dict()
         
         # Test connection logic here
         # For now, simulate a test
@@ -209,7 +313,22 @@ def test_payment_method(method_id):
             method.last_error_message = 'API credentials not configured'
         
         method.updated_by = current_user.id
-        db.session.commit()
+        
+        with AdminAuditService.audited_change():
+            # Log the action with audit snapshots
+            AdminAuditService.log_action(
+                admin_id=current_user.id,
+                admin_name=current_user.username,
+                admin_role='admin',
+                action_type='test',
+                action_category='payment_method_config',
+                target_type='payment_method',
+                target_id=str(method.id),
+                target_name=method.method_id,
+                old_value=old_snapshot,
+                new_value=method.to_audit_dict(),
+                reason=f'Tested payment method {method.method_id}: {method.last_test_result}'
+            )
         
         if method.last_test_result == 'success':
             return jsonify({'success': True, 'message': 'Connection test successful'})
@@ -217,9 +336,8 @@ def test_payment_method(method_id):
             return jsonify({'success': False, 'error': method.last_error_message})
         
     except Exception as e:
-        db.session.rollback()
         logger.error(f"Error testing payment method {method_id}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Change not saved — audit record could not be created. No configuration was modified.'}), 409
 
 
 @payment_methods_bp.route('/event-preferences/<int:event_id>', methods=['GET'])
@@ -231,7 +349,7 @@ def get_event_payment_preferences(event_id):
         preference = EventPaymentPreference.query.filter_by(event_id=event_id).first()
         
         if not preference:
-            return jsonify({'success': False, 'error': 'No payment preferences found for this event'})
+            return jsonify({'success': False, 'error': 'No payment preferences found for this event'}), 404
         
         preference_dict = {
             'id': preference.id,
@@ -260,9 +378,12 @@ def update_event_payment_preferences(event_id):
         preference = EventPaymentPreference.query.filter_by(event_id=event_id).first()
         
         if not preference:
-            return jsonify({'success': False, 'error': 'No payment preferences found for this event'})
+            return jsonify({'success': False, 'error': 'No payment preferences found for this event'}), 404
         
         data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'error': 'Invalid JSON payload'}), 400
         
         # Update preferences
         if 'accepted_methods' in data:
@@ -299,4 +420,3 @@ def _get_method_icon(method_type):
         "bank_transfer": "🏦"
     }
     return icon_map.get(method_type, "💳")
-
