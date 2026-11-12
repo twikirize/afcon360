@@ -176,7 +176,7 @@ jobs:
 
           app = create_app()
           with app.app_context():
-              existed = SystemConfig.__table__.exists(bind=db.engine)
+              existed = db.inspect(db.engine).has_table(SystemConfig.__tablename__)
               SystemConfig.__table__.create(bind=db.engine, checkfirst=True)
               created = SystemConfig.initialize_defaults()
               print(
@@ -604,7 +604,7 @@ jobs:
 
           app = create_app()
           with app.app_context():
-              existed = SystemConfig.__table__.exists(bind=db.engine)
+              existed = db.inspect(db.engine).has_table(SystemConfig.__tablename__)
               SystemConfig.__table__.create(bind=db.engine, checkfirst=True)
               created = SystemConfig.initialize_defaults()
               print(
