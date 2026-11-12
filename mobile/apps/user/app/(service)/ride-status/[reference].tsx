@@ -38,7 +38,7 @@ type RequestData = {
   fare_estimate?: { amount?: number | string | null; currency?: string | null };
   payment_method?: string;
   created_at?: string | null;
-  driver?: { display_name?: string; rating?: number | null } | null;
+  driver?: { display_name?: string; phone?: string | null; rating?: number | null } | null;
   vehicle?: VehicleData;
   payment?: { method?: string; status?: string; amount?: number | string; currency?: string };
 };
@@ -109,7 +109,7 @@ export default function RideStatusScreen() {
         const bookingStatus = String(bookingData.status ?? "pending");
         const pickupLocation = bookingData.pickup_location;
         const dropoffLocation = bookingData.dropoff_location;
-        const locationLabel = (value: LocationData): string | null => {
+        const locationLabel = (value: LocationData | undefined): string | null => {
           if (typeof value === "string") return value;
           return value?.address ?? value?.display_name ?? value?.label ?? null;
         };
