@@ -18,25 +18,8 @@ from app.extensions import db, redis_client
 from app.wallet.exceptions import PaymentError, InsufficientFundsError
 from app.wallet.models.transaction import TransactionModel, TransactionStatus, TransactionType
 from app.wallet.services.wallet_service import WalletService
-
-
-class PaymentProvider(Enum):
-    FLUTTERWAVE = "flutterwave"
-    PAYSTACK = "paystack"
-    MTN_MOMO = "mtn_momo"
-    AIRTEL_MONEY = "airtel_money"
-    VISA = "visa"
-    MASTERCARD = "mastercard"
-    UNIONPAY = "unionpay"
-    BANK_TRANSFER = "bank_transfer"
-
-
-class PaymentMethod(Enum):
-    CARD = "card"
-    BANK_TRANSFER = "bank_transfer"
-    MOBILE_MONEY = "mobile_money"
-    USSD = "ussd"
-    QR_CODE = "qr_code"
+from app.wallet.services.provider_config_resolver import ProviderConfigResolver
+from app.wallet.enums import PaymentProvider, PaymentMethod
 
 
 @dataclass
@@ -100,8 +83,16 @@ class BasePaymentGateway(ABC):
     
     def __init__(self, provider: PaymentProvider):
         self.provider = provider
-        self.config = current_app.config.get(f'{provider.value.upper()}_CONFIG', {})
-        self.is_sandbox = current_app.config.get('PAYMENT_SANDBOX', True)
+        # Use resolver to get configuration (DB first, then app.config fallback)
+        self.config = ProviderConfigResolver.get(provider) or {}
+        self.is_sandbox = self.config.get('IS_SANDBOX', current_app.config.get('PAYMENT_SANDBOX', True))
+        
+        # Validate required config
+        if not self.config:
+            raise PaymentError(f"Payment provider {provider.value} not configured")
+        
+        if not self.config.get('SECRET_KEY'):
+            raise PaymentError(f"Secret key not configured for {provider.value}")
     
     @abstractmethod
     def initiate_payment(self, request: PaymentRequest) -> PaymentResponse:
@@ -154,10 +145,10 @@ class FlutterwaveGateway(BasePaymentGateway):
     
     def __init__(self):
         super().__init__(PaymentProvider.FLUTTERWAVE)
-        self.secret_key = self.config.get('SECRET_KEY') or current_app.config.get('FLUTTERWAVE_SECRET_KEY')
-        self.public_key = self.config.get('PUBLIC_KEY') or current_app.config.get('FLUTTERWAVE_PUBLIC_KEY')
-        self.encryption_key = self.config.get('ENCRYPTION_KEY') or current_app.config.get('FLUTTERWAVE_ENCRYPTION_KEY')
-        self.base_url = "https://api.flutterwave.com/v3" if not self.is_sandbox else "https://api.flutterwave.com/v3"
+        self.secret_key = self.config.get('SECRET_KEY')
+        self.public_key = self.config.get('PUBLIC_KEY')
+        self.encryption_key = self.config.get('ENCRYPTION_KEY')
+        self.base_url = self.config.get('BASE_URL', "https://api.flutterwave.com/v3")
         
         if not self.secret_key:
             raise PaymentError("Flutterwave secret key not configured")
@@ -490,9 +481,9 @@ class PaystackGateway(BasePaymentGateway):
     
     def __init__(self):
         super().__init__(PaymentProvider.PAYSTACK)
-        self.secret_key = self.config.get('SECRET_KEY') or current_app.config.get('PAYSTACK_SECRET_KEY')
-        self.public_key = self.config.get('PUBLIC_KEY') or current_app.config.get('PAYSTACK_PUBLIC_KEY')
-        self.base_url = "https://api.paystack.co"
+        self.secret_key = self.config.get('SECRET_KEY')
+        self.public_key = self.config.get('PUBLIC_KEY')
+        self.base_url = self.config.get('BASE_URL', "https://api.paystack.co")
         
         if not self.secret_key:
             raise PaymentError("Paystack secret key not configured")
@@ -955,8 +946,8 @@ def deposit_with_bank_transfer(user_id: int, amount: float, currency: str,
 
 
 def withdraw_to_bank(user_id: int, amount: float, currency: str,
-                     recipient_name: str, account_number: str, bank_code: str,
-                     reason: str = None, provider: PaymentProvider = PaymentProvider.FLUTTERWAVE) -> PayoutResponse:
+                      recipient_name: str, account_number: str, bank_code: str,
+                      reason: str = None, provider: PaymentProvider = PaymentProvider.FLUTTERWAVE) -> PayoutResponse:
     """Withdraw to bank account"""
     request = PayoutRequest(
         amount=amount,
@@ -1018,19 +1009,12 @@ def get_recommended_providers(country_code: str) -> list:
 
 def is_provider_available(provider: PaymentProvider) -> bool:
     """Check if a payment provider is configured and available"""
-    try:
-        gateway = PaymentGatewayFactory.get_gateway(provider)
-        return gateway.secret_key is not None
-    except:
-        return False
+    return ProviderConfigResolver.is_provider_available(provider)
 
 
 def get_provider_status() -> Dict[str, bool]:
     """Get status of all payment providers"""
-    return {
-        provider.value: is_provider_available(provider)
-        for provider in PaymentProvider
-    }
+    return ProviderConfigResolver.get_provider_status()
 
 
 __all__ = [
@@ -1042,5 +1026,6 @@ __all__ = [
     'withdraw_to_bank', 'withdraw_to_mobile_money',
     'verify_payment', 'verify_payout',
     'handle_provider_webhook',
-    'get_recommended_providers', 'is_provider_available', 'get_provider_status'
+    'get_recommended_providers', 'is_provider_available', 'get_provider_status',
+    'ProviderConfigResolver'
 ]

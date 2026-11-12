@@ -4,7 +4,7 @@ Stores API keys and settings securely in database with encryption
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, BigInteger
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, BigInteger, UniqueConstraint, Index
 from app.extensions import db
 from app.models.base import BaseModel
 from cryptography.fernet import Fernet
@@ -18,10 +18,17 @@ class PaymentProviderConfig(BaseModel):
     """
     __tablename__ = 'payment_provider_configs'
     
+    __table_args__ = (
+        # Composite unique constraint: one row per (provider, environment)
+        UniqueConstraint('provider_name', 'is_sandbox', name='uq_payment_provider_configs_provider_env'),
+        # Plain index on provider_name for lookup performance
+        Index('ix_payment_provider_configs_provider_name', 'provider_name'),
+    )
+    
     id = Column(BigInteger, primary_key=True)
     
     # Provider identification
-    provider_name = Column(String(50), nullable=False, unique=True, index=True)
+    provider_name = Column(String(50), nullable=False, index=True)  # unique removed; enforced by composite constraint
     display_name = Column(String(100), nullable=False)
     
     # Environment (sandbox/production)
@@ -156,6 +163,7 @@ class PaymentProviderConfig(BaseModel):
             "last_test_result": self.last_test_result,
             "has_secret_key": bool(self._secret_key),
             "has_public_key": bool(self._public_key),
+            "has_encryption_key": bool(self._encryption_key),
         }
         
         if include_secrets:
@@ -182,10 +190,11 @@ class PaymentProviderConfig(BaseModel):
         return True, "Configuration valid"
     
     @classmethod
-    def get_active_config(cls, provider_name):
-        """Get active configuration for a provider"""
+    def get_active_config(cls, provider_name, is_sandbox=True):
+        """Get active configuration for a provider and environment"""
         return cls.query.filter_by(
             provider_name=provider_name,
+            is_sandbox=is_sandbox,
             is_active=True,
             is_enabled=True
         ).first()
@@ -198,7 +207,7 @@ class PaymentProviderConfig(BaseModel):
     @classmethod
     def initialize_defaults(cls, commit=True):
         """Initialize default provider configurations.
-
+        
         Returns the number of configurations created. When ``commit`` is
         ``False`` the caller owns transaction control (used by
         ``flask init-wallet-config`` so both initializers commit together).
@@ -244,16 +253,23 @@ class PaymentProviderConfig(BaseModel):
                 }
             }
         ]
-
+        
         created = 0
         for config_data in defaults:
-            existing = cls.query.filter_by(provider_name=config_data["provider_name"]).first()
+            existing = cls.query.filter_by(
+                provider_name=config_data["provider_name"],
+                is_sandbox=config_data.get("is_sandbox", True)
+            ).first()
             if not existing:
-                config = cls(config_data["provider_name"], config_data["display_name"], config_data.get("is_sandbox", True))
+                config = cls(
+                    config_data["provider_name"],
+                    config_data["display_name"],
+                    config_data.get("is_sandbox", True)
+                )
                 config.config_json = config_data["config_json"]
                 db.session.add(config)
                 created += 1
-
+        
         if commit:
             db.session.commit()
         return created
@@ -300,7 +316,7 @@ class WalletSystemConfig(BaseModel):
     require_kyc_for_deposits = Column(Boolean, default=False)
     require_kyc_for_withdrawals = Column(Boolean, default=True)
     require_kyc_for_transfers = Column(Boolean, default=False)
-
+    
     # AML/KYC Screening settings
     aml_screening_enabled = Column(Boolean, default=True, nullable=False)
     sanctions_screening = Column(Boolean, default=True, nullable=False)
@@ -312,7 +328,7 @@ class WalletSystemConfig(BaseModel):
     # not become a competing threshold. Do not wire it into transaction logic.
     aml_threshold = Column(BigInteger, default=10000, nullable=False)
     kyc_tier_required = Column(String(20), default='tier_2', nullable=False)
-
+    
     # Audit
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     updated_by = Column(BigInteger, nullable=True)
@@ -320,7 +336,7 @@ class WalletSystemConfig(BaseModel):
     @classmethod
     def get_config(cls):
         """Get the configuration without breaking a caller-owned transaction.
-
+        
         Wallet operations call this getter while an explicit SQLAlchemy
         transaction is active. Committing here would close that transaction
         before ledger entries and audit rows can be written. Flush the
@@ -332,7 +348,7 @@ class WalletSystemConfig(BaseModel):
         if config is None:
             config = cls()
             db.session.add(config)
-
+            
             session = db.session()
             transaction = session.get_transaction()
             origin = getattr(getattr(transaction, "origin", None), "name", None)
@@ -378,4 +394,3 @@ class WalletSystemConfig(BaseModel):
 
 
 __all__ = ['PaymentProviderConfig', 'WalletSystemConfig']
-

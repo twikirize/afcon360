@@ -3,10 +3,9 @@ Nonce Replay Protection Service
 Manages user-specific nonce counters to prevent transaction replay attacks
 """
 
-import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional
-from flask import current_app
+from typing import List, Dict, Any, Optional
+import uuid
 
 from app.extensions import db
 from app.wallet.models.nonce_protection import UserNonce, NonceProtectionConfig
@@ -15,11 +14,6 @@ from app.wallet.services.admin_audit_service import AdminAuditService
 
 class NonceProtectionService:
     """Service for managing nonce replay protection"""
-    
-    @staticmethod
-    def get_config() -> Optional[NonceProtectionConfig]:
-        """Get current nonce protection configuration"""
-        return NonceProtectionConfig.query.first()
     
     @staticmethod
     def update_config(
@@ -44,10 +38,11 @@ class NonceProtectionService:
             config = NonceProtectionConfig.query.first()
             
             if not config:
-                # Create default config if none exists
                 config = NonceProtectionConfig()
                 db.session.add(config)
+                db.session.flush()  # Get ID for audit
             
+            # Store old value for audit
             old_snapshot = config.to_audit_dict()
             
             # Update fields
@@ -82,7 +77,7 @@ class NonceProtectionService:
         transaction_type: Optional[str] = None,
         amount: Optional[int] = None,
         currency: Optional[str] = None
-    ) -> str:
+    ) -> Optional[str]:
         """
         Generate a new nonce for a user
         
@@ -95,7 +90,7 @@ class NonceProtectionService:
             currency: Currency code
             
         Returns:
-            Generated nonce string
+            Generated nonce string or None if disabled
         """
         try:
             config = NonceProtectionConfig.query.first()
@@ -130,183 +125,134 @@ class NonceProtectionService:
             return nonce
         except Exception as e:
             db.session.rollback()
-            raise e
+            current_app.logger.error(f"Nonce generation error: {e}")
+            return None
     
     @staticmethod
     def validate_nonce(
         nonce: str,
         user_id: int,
+        user_type: str = 'user',
         transaction_type: Optional[str] = None,
         amount: Optional[int] = None,
         currency: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> bool:
         """
-        Validate a nonce for transaction
+        Validate and consume a nonce
         
         Args:
             nonce: Nonce string to validate
             user_id: User ID
+            user_type: Type of user
             transaction_type: Type of transaction
             amount: Transaction amount
             currency: Currency code
             
         Returns:
-            Dictionary with validation result
+            True if nonce is valid and consumed, False otherwise
         """
         try:
             config = NonceProtectionConfig.query.first()
             
             if not config or not config.enabled:
-                return {
-                    'valid': True,
-                    'reason': 'Nonce protection disabled',
-                    'action': 'allow'
-                }
+                return True  # Nonce validation disabled
             
-            # Find the nonce
+            # Find the nonce record
             user_nonce = UserNonce.query.filter_by(
                 nonce=nonce,
-                user_id=user_id
+                user_id=user_id,
+                user_type=user_type
             ).first()
             
             if not user_nonce:
-                return {
-                    'valid': False,
-                    'reason': 'Nonce not found',
-                    'action': 'reject'
-                }
+                return False
+            
+            # Check expiration
+            if user_nonce.expires_at < datetime.now(timezone.utc):
+                return False
             
             # Check if already used
             if user_nonce.used:
-                return {
-                    'valid': False,
-                    'reason': 'Nonce already used',
-                    'action': 'reject'
-                }
+                return False
             
             # Check if voided
             if user_nonce.voided:
-                return {
-                    'valid': False,
-                    'reason': 'Nonce voided',
-                    'action': 'reject'
-                }
+                return False
             
-            # Check expiration
-            if datetime.now(timezone.utc) > user_nonce.expires_at:
-                return {
-                    'valid': False,
-                    'reason': 'Nonce expired',
-                    'action': 'reject'
-                }
+            # Validate transaction type if specified
+            if transaction_type and user_nonce.transaction_type != transaction_type:
+                return False
             
-            # Check transaction type match (if specified)
-            if transaction_type and user_nonce.transaction_type and user_nonce.transaction_type != transaction_type:
-                return {
-                    'valid': False,
-                    'reason': 'Transaction type mismatch',
-                    'action': 'reject'
-                }
+            # Validate amount if specified
+            if amount is not None and user_nonce.amount != amount:
+                if not config.allow_nonce_reuse_same_amount:
+                    return False
             
-            # Check amount reuse (if not allowed)
-            if not config.allow_nonce_reuse_same_amount and amount and user_nonce.amount and user_nonce.amount != amount:
-                return {
-                    'valid': False,
-                    'reason': 'Amount mismatch',
-                    'action': 'reject'
-                }
+            # Validate currency if specified
+            if currency and user_nonce.currency != currency:
+                return False
             
-            # Mark nonce as used
+            # Mark as used
             user_nonce.used = True
             user_nonce.used_at = datetime.now(timezone.utc)
             db.session.commit()
             
-            return {
-                'valid': True,
-                'reason': 'Nonce valid',
-                'action': 'allow'
-            }
-        except Exception as e:
-            current_app.logger.error(f"Nonce validation error: {e}")
-            # Fail open - allow transaction if validation fails
-            return {
-                'valid': True,
-                'reason': 'Validation error - allowed',
-                'action': 'allow'
-            }
-    
-    @staticmethod
-    def void_nonce(nonce: str, reason: str = 'Manual void') -> bool:
-        """
-        Void a nonce (mark as invalid)
-        
-        Args:
-            nonce: Nonce to void
-            reason: Reason for voiding
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            user_nonce = UserNonce.query.filter_by(nonce=nonce).first()
-            
-            if user_nonce and not user_nonce.used:
-                user_nonce.voided = True
-                db.session.commit()
-                return True
-            
-            return False
+            return True
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Nonce void error: {e}")
+            current_app.logger.error(f"Nonce validation error: {e}")
             return False
     
     @staticmethod
-    def cleanup_expired_nonces() -> int:
-        """
-        Clean up expired nonces
+    def _check_rate_limits(user_id: int, user_type: str, config: NonceProtectionConfig):
+        """Check nonce generation rate limits"""
+        from datetime import datetime, timezone, timedelta
         
-        Returns:
-            Number of nonces cleaned up
-        """
+        hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+        
+        if user_type == 'aggregator':
+            limit = config.max_nonces_per_aggregator_per_hour
+        else:
+            limit = config.max_nonces_per_user_per_hour
+        
+        count = UserNonce.query.filter(
+            UserNonce.user_id == user_id,
+            UserNonce.user_type == user_type,
+            UserNonce.created_at >= hour_ago
+        ).count()
+        
+        if count >= limit:
+            raise Exception(f"Rate limit exceeded: max {limit} nonces per hour for {user_type}")
+    
+    @staticmethod
+    def cleanup_expired_nonces():
+        """Clean up expired nonces (should be run periodically)"""
         try:
-            expired_count = UserNonce.query.filter(
-                UserNonce.expires_at < datetime.now(timezone.utc)
-            ).count()
+            config = NonceProtectionConfig.query.first()
             
-            UserNonce.query.filter(
+            if not config or not config.enabled:
+                return 0
+            
+            expired = UserNonce.query.filter(
                 UserNonce.expires_at < datetime.now(timezone.utc)
             ).delete()
             
             db.session.commit()
-            
-            return expired_count
+            return expired
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Nonce cleanup error: {e}")
             return 0
     
     @staticmethod
-    def _check_rate_limits(user_id: int, user_type: str, config: NonceProtectionConfig) -> None:
-        """Check if user has exceeded rate limits"""
-        try:
-            one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
-            
-            # Get appropriate rate limit based on user type
-            if user_type == 'aggregator':
-                max_nonces = config.max_nonces_per_aggregator_per_hour
-            else:
-                max_nonces = config.max_nonces_per_user_per_hour
-            
-            # Count nonces in last hour
-            nonce_count = UserNonce.query.filter(
-                UserNonce.user_id == user_id,
-                UserNonce.user_type == user_type,
-                UserNonce.created_at >= one_hour_ago
-            ).count()
-            
-            if nonce_count >= max_nonces:
-                raise ValueError(f"Rate limit exceeded: {nonce_count}/{max_nonces} nonces per hour")
-        except Exception as e:
-            raise e
-
+    def get_user_nonces(user_id: int, user_type: str = 'user', limit: int = 100) -> List[UserNonce]:
+        """Get recent nonces for a user"""
+        return UserNonce.query.filter_by(
+            user_id=user_id,
+            user_type=user_type
+        ).order_by(UserNonce.created_at.desc()).limit(limit).all()
+    
+    @staticmethod
+    def get_config() -> Optional[NonceProtectionConfig]:
+        """Get current nonce protection configuration"""
+        return NonceProtectionConfig.query.first()
