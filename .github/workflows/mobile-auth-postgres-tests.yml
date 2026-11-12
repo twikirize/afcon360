@@ -17,6 +17,7 @@ on:
       - "app/accommodation/routes.py"
       - "app/wallet/services/wallet_service.py"
       - "tests/auth/test_mobile_accommodation_api.py"
+      - "tests/auth/test_mobile_transport_booking_parity_api.py"
       - "tests/test_accommodation_booking.py"
       - "tests/wallet/test_f01_balance_boundary.py"
       - "tests/wallet/test_f02_cancellation_refund.py"
@@ -229,6 +230,7 @@ jobs:
           tests/auth/test_mobile_wallet_api.py
           tests/auth/test_mobile_events_api.py
           tests/auth/test_mobile_accommodation_api.py
+          tests/auth/test_mobile_transport_booking_parity_api.py
           tests/wallet/test_f01_balance_boundary.py
           tests/wallet/test_f02_cancellation_refund.py
           tests/auth/test_pending_registration_expiry.py
