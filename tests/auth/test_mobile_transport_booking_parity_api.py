@@ -231,3 +231,43 @@ def test_native_scheduled_booking_requires_pickup_time(client, monkeypatch):
 
     assert response.status_code == 400
     assert response.get_json()["code"] == "scheduled_pickup_time_required"
+
+def test_native_booking_tracking_uses_authenticated_bearer_user(client, monkeypatch):
+    from flask import jsonify
+    from flask_login import current_user
+    from app.transport.api import booking_routes
+
+    user = SimpleNamespace(id=9805)
+    _authenticated_mobile_user(monkeypatch, user)
+    captured = {}
+
+    class FakeBookingDetailResource:
+        def get(self, booking_reference):
+            captured["reference"] = booking_reference
+            captured["user"] = current_user._get_current_object()
+            return jsonify({
+                "success": True,
+                "data": {
+                    "booking": {
+                        "booking_reference": booking_reference,
+                        "status": "pending_payment",
+                    },
+                    "driver_display": None,
+                },
+            }), 200
+
+    monkeypatch.setattr(
+        booking_routes,
+        "BookingDetailResource",
+        FakeBookingDetailResource,
+    )
+
+    response = client.get(
+        "/api/mobile/v1/transport/bookings/AF360-SCHEDULED-9805",
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["booking"]["booking_reference"] == "AF360-SCHEDULED-9805"
+    assert captured["reference"] == "AF360-SCHEDULED-9805"
+    assert captured["user"] is user
