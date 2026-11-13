@@ -1,6 +1,11 @@
 name: Android 17 User journey retest
 
 on:
+  push:
+    branches:
+      - fix/user-e2e-ci-integration-20261112
+    paths:
+      - ".github/workflows/android17-user-retest.yml"
   pull_request:
     types: [opened, synchronize, reopened]
     branches:
