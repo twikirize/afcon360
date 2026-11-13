@@ -159,28 +159,57 @@ def tap_text(value: str, *, last: bool = False, timeout: int = 15) -> None:
     raise AssertionError(f"Could not find tappable Android UI text: {value!r}")
 
 
+def _edit_text_node(root: ET.Element, label: str) -> ET.Element | None:
+    """Return only the actual labelled native EditText, never its wrapper or label."""
+    for node in root.iter("node"):
+        if (
+            "EditText" in node.attrib.get("class", "")
+            and node.attrib.get("content-desc", "").strip() == label
+        ):
+            if bounds_center(node.attrib.get("bounds", "")):
+                return node
+    return None
+
+
 def tap_edit_field(label: str) -> None:
     root = dump_tree()
-    candidates = []
-    for node in root.iter("node"):
-        description = node.attrib.get("content-desc", "").strip()
-        text_value = node.attrib.get("text", "").strip()
-        klass = node.attrib.get("class", "")
-        if (description == label or text_value == label) and "EditText" in klass:
-            center = bounds_center(node.attrib.get("bounds", ""))
-            if center:
-                candidates.append(center)
-    if not candidates:
-        for node in root.iter("node"):
-            if node.attrib.get("content-desc", "").strip() == label:
-                center = bounds_center(node.attrib.get("bounds", ""))
-                if center:
-                    candidates.append(center)
-    if not candidates:
-        raise AssertionError(f"Could not locate native input field {label!r}")
-    x, y = candidates[0]
+    node = _edit_text_node(root, label)
+    if node is None:
+        # Report only class names and node counts. Do not dump text, content
+        # descriptions, typed identifiers, passwords or any user-entered value.
+        edit_nodes = [
+            item for item in root.iter("node")
+            if "EditText" in item.attrib.get("class", "")
+        ]
+        classes = sorted({item.attrib.get("class", "unknown") for item in edit_nodes})
+        raise AssertionError(
+            f"Could not locate the actual labelled EditText for {label!r}; "
+            f"visible_edit_text_count={len(edit_nodes)}, classes={classes!r}. "
+            "Refusing to tap a generic wrapper or submit an unintended account."
+        )
+    center = bounds_center(node.attrib.get("bounds", ""))
+    if center is None:
+        raise AssertionError(f"The labelled EditText for {label!r} has no usable bounds.")
+    x, y = center
     run_adb("shell", "input", "tap", str(x), str(y))
     time.sleep(0.4)
+
+
+def assert_edit_text_value(label: str, expected: str, *, timeout: int = 8) -> None:
+    """Prove that Android placed the intended text in the intended input field."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        root = dump_tree()
+        node = _edit_text_node(root, label)
+        if node is not None and node.attrib.get("text", "") == expected:
+            print(f"PASS: intended value is present in the {label!r} input", flush=True)
+            return
+        time.sleep(0.4)
+    # Do not echo actual or expected field contents into CI logs.
+    raise AssertionError(
+        f"The {label!r} input did not contain the expected CI value after typing. "
+        "The test stopped before submitting a login request."
+    )
 
 
 def type_text(value: str) -> None:
@@ -269,6 +298,7 @@ def main() -> None:
 
     tap_edit_field("Username or email")
     type_text(USERNAME)
+    assert_edit_text_value("Username or email", USERNAME)
     tap_edit_field("Password")
     type_text(PASSWORD)
     run_adb("shell", "input", "keyevent", "4")
