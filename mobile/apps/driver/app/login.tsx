@@ -85,6 +85,7 @@ export default function LoginScreen() {
           ) : (
             <>
               <AuthField
+                testID="driver-login-username"
                 label="Username or email"
                 value={identifier}
                 onChangeText={setIdentifier}
@@ -95,6 +96,7 @@ export default function LoginScreen() {
                 returnKeyType="next"
               />
               <AuthPasswordField
+                testID="driver-login-password"
                 label="Password"
                 value={password}
                 onChangeText={setPassword}
