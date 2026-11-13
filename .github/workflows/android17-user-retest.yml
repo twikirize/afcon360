@@ -1,0 +1,320 @@
+name: Android 17 User journey retest
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - feat/native-user-app-integration-20261108
+    paths:
+      - ".github/workflows/android17-user-retest.yml"
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Completed CI run containing the verified User APK artifact"
+        required: true
+        default: "43440541728"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  android-17-user-journey:
+    name: User authenticated journey — android-17 (targeted)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: afcon360_mobile_e2e_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d afcon360_mobile_e2e_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+
+    env:
+      APP_ENV: local
+      FLASK_ENV: testing
+      SECRET_KEY: "ci-only-not-a-production-secret"
+      SECURITY_SALT: "ci-only-security-salt-value-long-enough-for-tests-2026"
+      ENCRYPTION_KEY: "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
+      REFUND_POLICY_SIGNING_KEY: "ci-only-refund-policy-signing-key-not-production"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_mobile_e2e_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/afcon360_mobile_e2e_test
+      REDIS_URL: redis://localhost:6379/15
+      DISABLE_REDIS: "0"
+      SOCKETIO_ENABLED: "false"
+      ANALYTICS_ENABLED: "false"
+      EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
+      MAIL_SUPPRESS_SEND: "true"
+      AFCON360_E2E_BACKEND_ROOT: ${{ github.workspace }}/backend-main
+      AFCON360_E2E_USERNAME: native_e2e_user
+      AFCON360_E2E_EMAIL: native-e2e@afcon360.test
+      AFCON360_E2E_PASSWORD: NativeE2ePassword2026
+      AFCON360_E2E_EVIDENCE_DIR: android17-targeted-evidence
+      AFCON360_E2E_REQUEST_LOG: android17-targeted-evidence/backend-requests.tsv
+      AFCON360_USER_E2E_APK: mobile-e2e-artifact/user-e2e.apk
+
+    steps:
+      - name: Check out exact User source under review
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Check out backend main for the isolated compatibility API
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: backend-main
+
+      - name: Record tested source revisions
+        shell: bash
+        run: |
+          echo "User source revision: $(git rev-parse HEAD)"
+          echo "Backend API revision: $(git -C backend-main rev-parse HEAD)"
+          echo "Source APK run: ${{ inputs.source_run_id || '43440541728' }}"
+
+      - name: Download the exact verified User APK from the successful source run
+        uses: actions/download-artifact@v8
+        with:
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id || '43440541728' }}
+          github-token: ${{ github.token }}
+          artifact-ids: "14046062129"
+          path: mobile-e2e-artifact
+
+      - name: Verify User APK provenance and SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$AFCON360_USER_E2E_APK"
+          test -s mobile-e2e-artifact/user-e2e-apk.sha256
+          test -s mobile-e2e-artifact/user-e2e-build-info.txt
+          grep -Fxq "app=user" mobile-e2e-artifact/user-e2e-build-info.txt
+          grep -Fxq "package=space.pamoja.afcon360.user.preview" mobile-e2e-artifact/user-e2e-build-info.txt
+          EXPECTED_SHA="$(awk 'NR == 1 { print $1 }' mobile-e2e-artifact/user-e2e-apk.sha256)"
+          ACTUAL_SHA="$(sha256sum "$AFCON360_USER_E2E_APK" | awk '{ print $1 }')"
+          test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA"
+          echo "Verified source User APK: $ACTUAL_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend-main/requirements.txt
+
+      - name: Install isolated Flask backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend-main/requirements.txt
+
+      - name: Build isolated PostgreSQL schema from backend main
+        working-directory: backend-main
+        run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Ensure SystemConfig model exists in the disposable E2E schema
+        working-directory: backend-main
+        run: |
+          python - <<'PY'
+          from app import create_app
+          from app.extensions import db
+          from app.models.system_config import SystemConfig
+
+          app = create_app()
+          with app.app_context():
+              existed = db.inspect(db.engine).has_table(SystemConfig.__tablename__)
+              SystemConfig.__table__.create(bind=db.engine, checkfirst=True)
+              created = SystemConfig.initialize_defaults()
+              print(
+                  "E2E SystemConfig schema ready: "
+                  f"table_preexisting={existed}, defaults_created={created}"
+              )
+          PY
+
+      - name: Seed one synthetic non-MFA User
+        run: python mobile/scripts/mobile-user-e2e-backend.py seed
+
+      - name: Start isolated Flask API
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$AFCON360_E2E_EVIDENCE_DIR"
+          nohup python mobile/scripts/mobile-user-e2e-backend.py serve \
+            > "$AFCON360_E2E_EVIDENCE_DIR/backend.log" 2>&1 < /dev/null &
+          echo $! > "$AFCON360_E2E_EVIDENCE_DIR/backend.pid"
+          for attempt in $(seq 1 60); do
+            if curl --silent --show-error --fail http://127.0.0.1:5000/api/health/ping >/dev/null; then
+              echo "Isolated API is healthy for Android 17."
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$AFCON360_E2E_EVIDENCE_DIR/backend.log"
+          echo "::error::The isolated API did not become healthy."
+          exit 1
+
+      - name: Install compatible Android SDK tools and validate Android 17 AVD
+        id: android17_sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          CLT_ROOT="$SDK/cmdline-tools"
+          CLT="$CLT_ROOT/latest"
+          SDKMANAGER="$CLT/bin/sdkmanager"
+          AVDMANAGER="$CLT/bin/avdmanager"
+          ANDROID_CLI="$CLT/bin/android"
+
+          test -x "$SDKMANAGER"
+          test -x "$AVDMANAGER"
+
+          cmdline_tools_revision() {
+            local properties_file="$1/source.properties"
+            test -s "$properties_file" || return 1
+            awk -F= '$1 == "Pkg.Revision" { gsub(/[[:space:]]/, "", $2); print $2; exit }' "$properties_file"
+          }
+
+          CURRENT_VERSION="$(cmdline_tools_revision "$CLT")"
+          CURRENT_MAJOR="${CURRENT_VERSION%%.*}"
+          echo "Pre-update Android SDK command-line tools revision: ${CURRENT_VERSION:-unknown}"
+          if ! [[ "$CURRENT_MAJOR" =~ ^[0-9]+$ ]] || [ "$CURRENT_MAJOR" -lt 20 ]; then
+            set +o pipefail
+            yes 2>/dev/null | "$SDKMANAGER" --install "cmdline-tools;latest" >/dev/null
+            set -o pipefail
+
+            UPDATED_CLT="$(find "$CLT_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'latest-*' -printf '%f\n' | sort -V | tail -n 1)"
+            if [ -z "$UPDATED_CLT" ]; then
+              echo "::error::Updated Android command-line tools were not installed."
+              exit 1
+            fi
+            rm -rf "$CLT_ROOT/latest"
+            mv "$CLT_ROOT/$UPDATED_CLT" "$CLT_ROOT/latest"
+          fi
+
+          CLT="$CLT_ROOT/latest"
+          SDKMANAGER="$CLT/bin/sdkmanager"
+          AVDMANAGER="$CLT/bin/avdmanager"
+          ANDROID_CLI="$CLT/bin/android"
+          test -x "$SDKMANAGER"
+          test -x "$AVDMANAGER"
+          test -x "$ANDROID_CLI"
+
+          UPDATED_VERSION="$(cmdline_tools_revision "$CLT")"
+          UPDATED_MAJOR="${UPDATED_VERSION%%.*}"
+          if ! [[ "$UPDATED_MAJOR" =~ ^[0-9]+$ ]] || [ "$UPDATED_MAJOR" -lt 20 ]; then
+            echo "::error::Expected command-line tools 20.0 or newer; found ${UPDATED_VERSION:-unknown}."
+            exit 1
+          fi
+          echo "Updated Android SDK command-line tools revision: $UPDATED_VERSION"
+          "$ANDROID_CLI" --version
+
+          "$ANDROID_CLI" sdk install emulator
+          "$ANDROID_CLI" sdk install "system-images/android-37.0/default/x86_64"
+
+          IMAGE="system-images;android-37.0;default;x86_64"
+          IMAGE_DIR="$SDK/system-images/android-37.0/default/x86_64"
+          test -s "$IMAGE_DIR/system.img"
+
+          AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+          AVD_NAME="afcon360-api37-targeted-check"
+          mkdir -p "$AVD_HOME"
+          "$AVDMANAGER" delete avd -n "$AVD_NAME" >/dev/null 2>&1 || true
+
+          DEVICE_IDS="$("$AVDMANAGER" list device -c | tr -d '\r')"
+          echo "Available Android AVD hardware profile IDs:"
+          printf '%s\n' "$DEVICE_IDS"
+
+          AVD_PROFILE=""
+          for candidate in pixel_7 pixel_7_pro pixel_6 pixel_5 pixel_4 pixel "Nexus 5X"; do
+            if grep -Fxq -- "$candidate" <<< "$DEVICE_IDS"; then
+              AVD_PROFILE="$candidate"
+              break
+            fi
+          done
+          if [ -z "$AVD_PROFILE" ]; then
+            echo "::error::No supported Pixel/Nexus phone profile was found."
+            exit 1
+          fi
+          echo "Selected Android 17 phone profile: $AVD_PROFILE"
+          echo "avd_profile=$AVD_PROFILE" >> "$GITHUB_OUTPUT"
+
+          AVD_LOG="$RUNNER_TEMP/afcon360-api37-avd-create.log"
+          set +e
+          # Match android-emulator-runner's non-interactive AVD creation:
+          # it pipes "no" to avdmanager to decline a custom hardware profile.
+          printf 'no\n' | "$AVDMANAGER" --verbose create avd -f -n "$AVD_NAME" -k "$IMAGE" -d "$AVD_PROFILE" > "$AVD_LOG" 2>&1
+          CREATE_STATUS=$?
+          set -e
+          cat "$AVD_LOG"
+          if [ "$CREATE_STATUS" -ne 0 ]; then
+            echo "::error::Android 17 AVD metadata creation failed (exit $CREATE_STATUS)."
+            exit "$CREATE_STATUS"
+          fi
+
+          AVD_INI="$AVD_HOME/$AVD_NAME.ini"
+          test -s "$AVD_INI"
+          if ! grep -Fxq "target=android-37.0" "$AVD_INI"; then
+            echo "::error::Android 17 AVD metadata is invalid."
+            cat "$AVD_INI"
+            exit 1
+          fi
+          echo "ANDROID_17_AVD_METADATA_PASS: $(grep '^target=' "$AVD_INI")"
+          "$AVDMANAGER" delete avd -n "$AVD_NAME" >/dev/null
+
+      - name: Enable KVM hardware acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+
+      - name: Run the complete User journey on Android 17 only
+        id: android17_journey
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: "37.0"
+          system-image-api-level: "37.0"
+          target: default
+          arch: x86_64
+          profile: ${{ steps.android17_sdk.outputs.avd_profile || 'pixel_7' }}
+          ram-size: 4096M
+          disk-size: 12G
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: python mobile/scripts/verify-user-authenticated-journey.py
+
+      - name: Verify protected APIs and server-side logout
+        if: ${{ steps.android17_journey.outcome == 'success' }}
+        run: python mobile/scripts/mobile-user-e2e-backend.py assert
+
+      - name: Upload Android 17 targeted journey evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-android-17-targeted-evidence
+          path: android17-targeted-evidence/
+          if-no-files-found: warn
+          retention-days: 30
