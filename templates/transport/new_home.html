@@ -3,6 +3,7 @@
 
 {% block styles %}
 {{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/mobile-booking.css') }}">
 <style nonce="{{ csp_nonce }}">
 /* ============================================================
    AFCON360 Transport — Rider Booking Flow
@@ -865,7 +866,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="bolt">
+<div class="bolt t3-booking t3-container">
 
 <form method="POST"
       action="{{ safe_url('transport.book_transport') }}"
@@ -909,8 +910,8 @@
      ======================================================== #}
   <section class="bolt-state is-active" data-state="a">
 
-    <header class="bolt-hero" aria-label="AFCON360 transport hero">
-      <svg class="bolt-hero-art" viewBox="0 0 1440 320"
+    <header class="bolt-hero t3-hero" aria-label="AFCON360 transport hero">
+      <svg class="bolt-hero-art t3-hero-art" viewBox="0 0 1440 320"
            preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <linearGradient id="hSky" x1="0" y1="0" x2="0" y2="1">
@@ -975,27 +976,29 @@
         <use href="#bolt-car" x="620" y="240" width="180" height="76" style="color:#FFFFFF"/>
         <use href="#bolt-car" x="1080" y="248" width="160" height="66" style="color:#2C3136"/>
       </svg>
-      <div class="bolt-hero-scrim" aria-hidden="true"></div>
-      <h1 class="bolt-hero-title">Your Ride, <span>Your Game!</span></h1>
-      <p class="bolt-hero-sub">Book a ride in under 30 seconds.</p>
+      <div class="bolt-hero-scrim t3-hero-scrim" aria-hidden="true"></div>
+      <div class="t3-hero-content">
+        <h1 class="bolt-hero-title t3-hero-title">Your Ride, <span>Your Game!</span></h1>
+        <p class="bolt-hero-sub t3-hero-sub">Book a ride in under 30 seconds.</p>
+      </div>
     </header>
 
     {# ---------- Progress strip ---------- #}
-    <div class="bolt-progress" id="progressBar" aria-hidden="true">
-      <div class="bolt-progress-step is-active" data-step="a">
-        <span class="bolt-progress-num">1</span><span>Where</span>
+    <div class="bolt-progress t3-progress" id="progressBar" aria-hidden="true">
+      <div class="bolt-progress-step t3-progress-step is-active" data-step="a">
+        <span class="bolt-progress-num t3-progress-num">1</span><span>Where</span>
       </div>
-      <div class="bolt-progress-line"></div>
-      <div class="bolt-progress-step" data-step="b">
-        <span class="bolt-progress-num">2</span><span>Choose</span>
+      <div class="bolt-progress-line t3-progress-line"></div>
+      <div class="bolt-progress-step t3-progress-step" data-step="b">
+        <span class="bolt-progress-num t3-progress-num">2</span><span>Choose</span>
       </div>
-      <div class="bolt-progress-line"></div>
-      <div class="bolt-progress-step" data-step="c">
-        <span class="bolt-progress-num">3</span><span>Confirm</span>
+      <div class="bolt-progress-line t3-progress-line"></div>
+      <div class="bolt-progress-step t3-progress-step" data-step="c">
+        <span class="bolt-progress-num t3-progress-num">3</span><span>Confirm</span>
       </div>
-      <div class="bolt-progress-line"></div>
-      <div class="bolt-progress-step" data-step="d">
-        <span class="bolt-progress-num">4</span><span>Match</span>
+      <div class="bolt-progress-line t3-progress-line"></div>
+      <div class="bolt-progress-step t3-progress-step" data-step="d">
+        <span class="bolt-progress-num t3-progress-num">4</span><span>Match</span>
       </div>
     </div>
 
@@ -1032,17 +1035,17 @@
     <div class="bolt-grid">
 
       {# ---------- LEFT: booking card ---------- #}
-      <div class="bolt-card">
-        <div class="bolt-route-box">
-          <div class="bolt-route-fields">
+      <div class="bolt-card t3-card">
+        <div class="bolt-route-box t3-route-box">
+          <div class="bolt-route-fields t3-route-fields">
             <div class="bolt-pickup-wrap">
-              <label class="bolt-field bolt-field-pickup">
-                <span class="dot dot-pickup"><i class="bi bi-geo-alt"></i></span>
+              <label class="bolt-field bolt-field-pickup t3-field">
+                <span class="dot dot-pickup t3-field-icon pickup"><i class="bi bi-geo-alt"></i></span>
                 <input id="inputPickup" type="text"
                        placeholder="Current Location"
                        autocomplete="off" enterkeyhint="go">
-                <span class="bolt-field-hint" id="pickupHint">Use my location</span>
-                <span class="field-icon" id="btnLocate"
+                <span class="bolt-field-hint t3-field-hint" id="pickupHint">Use my location</span>
+                <span class="field-icon t3-field-action" id="btnLocate"
                       title="Use my current location" role="button"
                       aria-label="Use my current location">
                   <i class="bi bi-crosshair"></i>
@@ -1060,8 +1063,8 @@
                      role="status" aria-live="polite" hidden></div>
               </div>
             </div>
-            <label class="bolt-field bolt-field-dest">
-              <span class="dot dot-dest"><i class="bi bi-flag"></i></span>
+            <label class="bolt-field bolt-field-dest t3-field">
+              <span class="dot dot-dest t3-field-icon dest"><i class="bi bi-flag"></i></span>
               <input id="inputDest" type="text"
                      placeholder="Enter Destination"
                      autocomplete="off" enterkeyhint="next">
@@ -1078,85 +1081,85 @@
                    role="status" aria-live="polite" hidden></div>
             </div>
           </div>
-          <button type="button" class="bolt-swap" id="btnSwap"
+          <button type="button" class="bolt-swap t3-swap" id="btnSwap"
                   aria-label="Swap pickup and destination">
             <i class="bi bi-arrow-down-up"></i>
           </button>
         </div>
 
-        <div class="bolt-chips" id="destChips" aria-label="Popular destinations">
-          <button type="button" class="bolt-chip"
+        <div class="bolt-chips t3-chips" id="destChips" aria-label="Popular destinations">
+          <button type="button" class="bolt-chip t3-chip"
                   data-dest="Mandela National Stadium, Namboole"
                   title="Sets destination text only (coordinates must be selected on map)">
             <i class="bi bi-geo-fill"></i> Namboole Stadium
           </button>
-          <button type="button" class="bolt-chip"
+          <button type="button" class="bolt-chip t3-chip"
                   data-dest="Lugogo Cricket Oval, Kampala"
                   title="Sets destination text only (coordinates must be selected on map)">
             <i class="bi bi-geo-fill"></i> Lugogo Oval
           </button>
-          <button type="button" class="bolt-chip"
+          <button type="button" class="bolt-chip t3-chip"
                   data-dest="Nile Independence Stadium"
                   title="Sets destination text only (coordinates must be selected on map)">
             <i class="bi bi-geo-fill"></i> Nile Independence
           </button>
         </div>
 
-        <div class="bolt-svcbar" role="group" aria-label="Service type">
-          <button type="button" class="bolt-svc is-active"
+        <div class="bolt-svcbar t3-svcbar" role="group" aria-label="Service type">
+          <button type="button" class="bolt-svc t3-svc is-active"
                   data-service="on_demand">
-            <i class="bi bi-stopwatch"></i>
-            <span class="svc-label">Quick Ride</span>
+            <i class="bi bi-stopwatch t3-svc-icon"></i>
+            <span class="svc-label t3-svc-label">Quick Ride</span>
           </button>
-          <button type="button" class="bolt-svc"
+          <button type="button" class="bolt-svc t3-svc"
                   data-service="airport_departure">
-            <i class="bi bi-airplane"></i>
-            <span class="svc-label">Airport Transfer</span>
+            <i class="bi bi-airplane t3-svc-icon"></i>
+            <span class="svc-label t3-svc-label">Airport Transfer</span>
           </button>
-          <button type="button" class="bolt-svc"
+          <button type="button" class="bolt-svc t3-svc"
                   data-service="on_demand" data-vip="1">
-            <i class="bi bi-star-fill"></i>
-            <span class="svc-label">VIP Service</span>
+            <i class="bi bi-star-fill t3-svc-icon"></i>
+            <span class="svc-label t3-svc-label">VIP Service</span>
           </button>
         </div>
 
-        <div class="bolt-sched" role="group" aria-label="When">
+        <div class="bolt-sched t3-sched" role="group" aria-label="When">
           <div class="bolt-sched-toggle">
-            <button type="button" class="bolt-sched-opt is-active"
+            <button type="button" class="bolt-sched-opt t3-sched-opt is-active"
                     id="schedNowBtn" aria-pressed="true">
               <i class="bi bi-lightning-charge"></i> Now
             </button>
-            <button type="button" class="bolt-sched-opt"
+            <button type="button" class="bolt-sched-opt t3-sched-opt"
                     id="schedLaterBtn" aria-pressed="false">
               <i class="bi bi-calendar-event"></i> Later
             </button>
           </div>
           <input type="datetime-local" id="schedAt"
-                 class="bolt-sched-at" step="60"
+                 class="bolt-sched-at t3-sched-at" step="60"
                  aria-label="Schedule pickup time">
         </div>
 
-        <div class="bolt-cta-wrap">
-          <button type="button" class="bolt-cta"  
+        <div class="bolt-cta-wrap t3-cta-wrap">
+          <button type="button" class="bolt-cta t3-cta"  
                   id="btnContinue" disabled
                   aria-describedby="continueDisabledReason">
             <span>See Ride Options</span>
-            <span class="bolt-cta-hint"><i class="bi bi-arrow-right"></i></span>
+            <span class="bolt-cta-hint t3-cta-hint"><i class="bi bi-arrow-right"></i></span>
           </button>
           <span id="continueDisabledReason" class="bolt-cta-reason" aria-live="polite"></span>
         </div>
 
         {% if is_authenticated and recent_rides %}
-        <div class="bolt-recents">
-          <div class="bolt-recents-label">Recent rides</div>
+        <div class="bolt-recents t3-recents">
+          <div class="bolt-recents-label t3-recents-label">Recent rides</div>
           {% for r in recent_rides[:3] %}
-          <a class="bolt-recent"
+          <a class="bolt-recent t3-recent"
              href="{{ safe_url('transport.bookings_index') }}"
              data-ride-ref="{{ r.booking_reference }}">
-            <span class="bolt-recent-icon"><i class="bi bi-clock-history"></i></span>
-            <span class="bolt-recent-body">
-              <span class="bolt-recent-name">{{ r.dropoff_location }}</span>
-              <span class="bolt-recent-sub">
+            <span class="bolt-recent-icon t3-recent-icon"><i class="bi bi-clock-history"></i></span>
+            <span class="bolt-recent-body t3-recent-body">
+              <span class="bolt-recent-name t3-recent-name">{{ r.dropoff_location }}</span>
+              <span class="bolt-recent-sub t3-recent-sub">
                 <i class="bi bi-arrow-return-right"></i>
                 from {{ r.pickup_location }} ·
                 {{ r.status|replace('_',' ')|title }}
@@ -1168,26 +1171,36 @@
         {% endif %}
 
         {% if is_authenticated %}
-        <div class="bolt-driver-actions" aria-label="Driver options">
+        <div class="bolt-driver-actions t3-driver-actions" aria-label="Driver options">
           <a class="btn btn-outline-success btn-sm" href="{{ safe_url('transport.become_driver') }}">
-            Become a driver
+            <i class="bi bi-person-badge"></i> Become a driver
           </a>
           <a class="btn btn-outline-secondary btn-sm" href="{{ safe_url('transport.register_vehicle') }}">
-            Add a vehicle
+            <i class="bi bi-car-front"></i> Add a vehicle
           </a>
         </div>
         {% endif %}
       </div>
 
       {# ---------- RIGHT: map panel ---------- #}
-      <div class="bolt-map-panel" aria-label="Live map">
+      <div class="bolt-map-panel t3-map-panel" aria-label="Live map">
         <div class="map-target-indicator" id="mapTargetIndicator" aria-live="polite" aria-atomic="true"></div>
         <div id="pickMap"></div>
+        <div class="t3-map-controls">
+          <div class="t3-map-search">
+            <i class="bi bi-search"></i>
+            <input type="text" placeholder="Pick up on the map" readonly>
+          </div>
+          <div class="t3-map-zoom">
+            <button type="button" aria-label="Zoom in"><i class="bi bi-plus"></i></button>
+            <button type="button" aria-label="Zoom out"><i class="bi bi-dash"></i></button>
+          </div>
+        </div>
       </div>
 
     </div>
 
-    <p class="bolt-map-hint">
+    <p class="bolt-map-hint t3-map-hint">
       <i class="bi bi-info-circle"></i>
       Tap the map to place your pickup and destination pins.
       Distance is a straight-line estimate.
@@ -1199,21 +1212,21 @@
      STATE B — Select Your Ride
      ======================================================== #}
   <section class="bolt-state" data-state="b">
-    <div class="bolt-progress">
-      <div class="bolt-progress-step is-done" data-step="a">
-        <span class="bolt-progress-num">1</span><span>Where</span>
+    <div class="bolt-progress t3-progress">
+      <div class="bolt-progress-step t3-progress-step is-done" data-step="a">
+        <span class="bolt-progress-num t3-progress-num">1</span><span>Where</span>
       </div>
-      <div class="bolt-progress-line is-done"></div>
-      <div class="bolt-progress-step is-active" data-step="b">
-        <span class="bolt-progress-num">2</span><span>Choose</span>
+      <div class="bolt-progress-line t3-progress-line is-done"></div>
+      <div class="bolt-progress-step t3-progress-step is-active" data-step="b">
+        <span class="bolt-progress-num t3-progress-num">2</span><span>Choose</span>
       </div>
-      <div class="bolt-progress-line"></div>
-      <div class="bolt-progress-step" data-step="c">
-        <span class="bolt-progress-num">3</span><span>Confirm</span>
+      <div class="bolt-progress-line t3-progress-line"></div>
+      <div class="bolt-progress-step t3-progress-step" data-step="c">
+        <span class="bolt-progress-num t3-progress-num">3</span><span>Confirm</span>
       </div>
-      <div class="bolt-progress-line"></div>
-      <div class="bolt-progress-step" data-step="d">
-        <span class="bolt-progress-num">4</span><span>Match</span>
+      <div class="bolt-progress-line t3-progress-line"></div>
+      <div class="bolt-progress-step t3-progress-step" data-step="d">
+        <span class="bolt-progress-num t3-progress-num">4</span><span>Match</span>
       </div>
     </div>
 
@@ -1224,7 +1237,7 @@
       <div class="bolt-options" id="optionsBox" aria-live="polite"></div>
       <p class="bolt-sub">These prices are quotes, not driver availability or a reservation. You will review and accept the amount before we contact drivers.</p>
 
-      <div class="bolt-fare" id="farePanel" aria-live="polite">
+      <div class="bolt-fare t3-fare" id="farePanel" aria-live="polite">
         <div class="bolt-fare-row">
           <span class="k"><i class="bi bi-play-circle"></i> Base fare</span>
           <span id="fbBase">—</span>
