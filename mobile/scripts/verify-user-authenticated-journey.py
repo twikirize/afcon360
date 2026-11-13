@@ -156,7 +156,13 @@ def bounds_center(value: str) -> tuple[int, int] | None:
     return ((left + right) // 2, (top + bottom) // 2)
 
 
-def tap_text(value: str, *, last: bool = False, timeout: int = 12) -> None:
+def tap_text(
+    value: str,
+    *,
+    last: bool = False,
+    timeout: int = 12,
+    require_enabled: bool = False,
+) -> None:
     """Tap a visible text target through its real clickable ancestor when needed.
 
     Android versions differ in how UIAutomator reports bounds for nested
@@ -193,6 +199,7 @@ def tap_text(value: str, *, last: bool = False, timeout: int = 12) -> None:
                 ancestor = node
                 nearest_visible = None
                 clickable_target = None
+                disabled_clickable_ancestor = False
                 depth = 0
                 while ancestor is not None:
                     center = bounds_center(ancestor.attrib.get("bounds", ""))
@@ -207,17 +214,26 @@ def tap_text(value: str, *, last: bool = False, timeout: int = 12) -> None:
                         }
                         if nearest_visible is None:
                             nearest_visible = candidate
-                        if (
-                            candidate["clickable"] == "true"
-                            and candidate["enabled"] != "false"
-                        ):
-                            clickable_target = candidate
-                            break
+                        if candidate["clickable"] == "true":
+                            if candidate["enabled"] == "false":
+                                disabled_clickable_ancestor = True
+                            else:
+                                clickable_target = candidate
+                                break
                     ancestor = parents.get(ancestor)
                     depth += 1
 
                 target = clickable_target or nearest_visible
-                if target is not None:
+                if (
+                    target is not None
+                    and not (
+                        require_enabled
+                        and (
+                            target["enabled"] == "false"
+                            or disabled_clickable_ancestor
+                        )
+                    )
+                ):
                     matches.append({
                         "matched_node": matched,
                         "target_node": target,
@@ -282,28 +298,54 @@ def tap_text_scrolling(value: str, *, max_swipes: int = 6) -> None:
     ) from last_error
 
 
-def tap_edit_field(label: str) -> None:
-    root = dump_tree()
-    candidates = []
-    for node in root.iter("node"):
-        description = node.attrib.get("content-desc", "").strip()
-        text_value = node.attrib.get("text", "").strip()
-        klass = node.attrib.get("class", "")
-        if (description == label or text_value == label) and "EditText" in klass:
-            center = bounds_center(node.attrib.get("bounds", ""))
-            if center:
-                candidates.append(center)
-    if not candidates:
+def tap_edit_field(label: str, attempts: int = 3) -> None:
+    """Tap a freshly located text field and verify Android actually focused it.
+
+    The keyboard can resize the scroll view after the first field is entered.
+    Never reuse the previous field's coordinates: take a new UI hierarchy for
+    each field and confirm the requested EditText owns input focus before
+    sending any characters.
+    """
+    last_state = "field was not found"
+    for attempt in range(1, attempts + 1):
+        root = dump_tree()
+        candidates = []
         for node in root.iter("node"):
-            if node.attrib.get("content-desc", "").strip() == label:
+            description = node.attrib.get("content-desc", "").strip()
+            text_value = node.attrib.get("text", "").strip()
+            klass = node.attrib.get("class", "")
+            if (description == label or text_value == label) and "EditText" in klass:
                 center = bounds_center(node.attrib.get("bounds", ""))
                 if center:
-                    candidates.append(center)
-    if not candidates:
-        raise AssertionError(f"Could not locate native input field {label!r}")
-    x, y = candidates[0]
-    run_adb("shell", "input", "tap", str(x), str(y))
-    time.sleep(0.3)
+                    candidates.append((center, node.attrib.get("bounds", "")))
+        if not candidates:
+            raise AssertionError(f"Could not locate native input field {label!r}")
+
+        (x, y), bounds = candidates[0]
+        print(
+            f"ANDROID_EDIT_FIELD_TARGET: label={label!r}, bounds={bounds}, center=({x},{y})",
+            flush=True,
+        )
+        run_adb("shell", "input", "tap", str(x), str(y))
+
+        focus_deadline = time.monotonic() + 3
+        while time.monotonic() < focus_deadline:
+            focused_tree = dump_tree()
+            for node in focused_tree.iter("node"):
+                description = node.attrib.get("content-desc", "").strip()
+                text_value = node.attrib.get("text", "").strip()
+                klass = node.attrib.get("class", "")
+                if (
+                    "EditText" in klass
+                    and (description == label or text_value == label)
+                    and node.attrib.get("focused", "").lower() == "true"
+                ):
+                    print(f"ANDROID_EDIT_FIELD_FOCUSED: {label}", flush=True)
+                    return
+            time.sleep(0.25)
+        last_state = f"field {label!r} did not become focused on attempt {attempt}/{attempts}"
+
+    raise AssertionError(f"Android input focus verification failed: {last_state}")
 
 
 def type_text(value: str) -> None:
@@ -524,11 +566,19 @@ def main() -> None:
 
     tap_edit_field("Username or email")
     type_text(USERNAME)
+    dismiss_aosp_keyboard_contacts_prompt(timeout=2)
+
+    # Close the keyboard before measuring Password. On some AOSP/Gboard
+    # versions the form resizes when the IME appears; using pre-resize bounds
+    # can tap a keyboard key instead of the Password input.
+    run_adb("shell", "input", "keyevent", "4")
+    time.sleep(0.5)
     tap_edit_field("Password")
     type_text(PASSWORD)
-    dismiss_aosp_keyboard_contacts_prompt()
+    dismiss_aosp_keyboard_contacts_prompt(timeout=2)
     run_adb("shell", "input", "keyevent", "4")
-    tap_text("Sign in securely")
+    time.sleep(0.5)
+    tap_text("Sign in securely", require_enabled=True)
 
     wait_for_text("Welcome to Pamoja", f"Good to see you, {USERNAME}.", timeout=45, label="authenticated User home")
     save_screen("02-home")
