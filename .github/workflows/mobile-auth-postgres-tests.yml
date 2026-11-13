@@ -16,6 +16,10 @@ on:
       - "app/accommodation/services/payment_processors/wallet_processor.py"
       - "app/accommodation/routes.py"
       - "app/wallet/services/wallet_service.py"
+      - "app/wallet/services/native_withdrawal_service.py"
+      - "app/wallet/services/payment_gateway.py"
+      - "app/tasks/webhook_processor.py"
+      - "tests/auth/test_native_wallet_withdrawals.py"
       - "tests/auth/test_mobile_accommodation_api.py"
       - "tests/auth/test_mobile_transport_booking_parity_api.py"
       - "tests/test_accommodation_booking.py"
@@ -46,6 +50,10 @@ on:
       - "app/transport/routes.py"
       - "tests/auth/test_mobile_wallet_api.py"
       - "app/wallet/services/wallet_service.py"
+      - "app/wallet/services/native_withdrawal_service.py"
+      - "app/wallet/services/payment_gateway.py"
+      - "app/tasks/webhook_processor.py"
+      - "tests/auth/test_native_wallet_withdrawals.py"
       - "tests/auth/test_mobile_token_redis.py"
       - "tests/auth/test_mobile_password_reset_redis.py"
       - "tests/auth/test_pending_registration_expiry.py"
@@ -68,6 +76,10 @@ on:
       - "app/accommodation/services/payment_processors/wallet_processor.py"
       - "app/accommodation/routes.py"
       - "app/wallet/services/wallet_service.py"
+      - "app/wallet/services/native_withdrawal_service.py"
+      - "app/wallet/services/payment_gateway.py"
+      - "app/tasks/webhook_processor.py"
+      - "tests/auth/test_native_wallet_withdrawals.py"
       - "tests/auth/test_mobile_accommodation_api.py"
       - "tests/test_accommodation_booking.py"
       - "tests/wallet/test_f01_balance_boundary.py"
@@ -178,6 +190,9 @@ jobs:
             app/accommodation/services/booking_service.py \
             app/accommodation/services/payment_processors/wallet_processor.py \
             app/wallet/services/wallet_service.py \
+            app/wallet/services/native_withdrawal_service.py \
+            app/wallet/services/payment_gateway.py \
+            app/tasks/webhook_processor.py \
             app/auth/account_deletion_service.py \
             app/auth/mobile_tokens.py \
             app/auth/mobile_password_reset.py \
@@ -228,6 +243,7 @@ jobs:
           tests/auth/test_mobile_driver_trip_history_api.py
           tests/auth/test_mobile_driver_demand_api.py
           tests/auth/test_mobile_wallet_api.py
+          tests/auth/test_native_wallet_withdrawals.py
           tests/auth/test_mobile_events_api.py
           tests/auth/test_mobile_accommodation_api.py
           tests/auth/test_mobile_transport_booking_parity_api.py
