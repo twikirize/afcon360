@@ -553,3 +553,273 @@
   min-width: 200px;
   max-width: 260px;
 }
+
+/* =============================================================
+   PAMOJA HERO BANNER & MOBILE SERVICE CHIPS
+   Keeps the existing homepage structure while giving Pamoja a
+   clear, touch-friendly welcome area on smaller screens.
+   Optional future image: set --pamoja-hero-image: url("...");
+   ============================================================= */
+.pamoja-hero-section {
+  background-color: #1a3a1a;
+  background-image:
+    linear-gradient(135deg, rgba(26,58,26,0.94) 0%, rgba(45,90,45,0.88) 60%, rgba(58,107,58,0.9) 100%),
+    var(--pamoja-hero-image, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  color: #fff;
+  padding: 3rem 2rem;
+  border-radius: 12px;
+  margin: 0 auto 1.5rem;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.pamoja-hero-section .hero-content {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.pamoja-hero-section .hero-title {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800;
+  font-size: clamp(1.65rem, 3vw, 2.3rem);
+  line-height: 1.15;
+  color: #fff;
+  margin: 0 0 0.55rem;
+}
+
+.pamoja-hero-section .hero-title span {
+  color: #ffcc00;
+}
+
+.pamoja-hero-section .hero-subtitle {
+  font-size: 1rem;
+  color: rgba(255,255,255,0.9);
+  max-width: 650px;
+  margin: 0 auto 1.5rem;
+  line-height: 1.5;
+}
+
+.pamoja-hero-section .hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pamoja-hero-section .btn-hero-primary,
+.pamoja-hero-section .btn-hero-ghost {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 1.35rem;
+  border-radius: 7px;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-decoration: none;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.2s;
+}
+
+.pamoja-hero-section .btn-hero-primary {
+  background: #ffcc00;
+  color: #1a3a1a;
+  border: 2px solid #ffcc00;
+}
+
+.pamoja-hero-section .btn-hero-primary:hover {
+  background: #e6b800;
+  border-color: #e6b800;
+  color: #1a3a1a;
+  transform: translateY(-1px);
+}
+
+.pamoja-hero-section .btn-hero-ghost {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  border: 2px solid rgba(255,255,255,0.42);
+}
+
+.pamoja-hero-section .btn-hero-ghost:hover {
+  background: #ffcc00;
+  color: #1a3a1a;
+  border-color: #ffcc00;
+}
+
+.pamoja-hero-section a:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+.pamoja-hero-section .is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mobile-service-chips {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .pamoja-hero-section {
+    padding: 1.75rem 1rem 1.1rem;
+    border-radius: 0;
+    margin-bottom: 1rem;
+  }
+
+  .pamoja-hero-section .hero-title {
+    font-size: 1.55rem;
+  }
+
+  .pamoja-hero-section .hero-subtitle {
+    font-size: 0.9rem;
+    line-height: 1.45;
+    margin-bottom: 1.1rem;
+  }
+
+  .pamoja-hero-section .hero-actions {
+    gap: 0.55rem;
+  }
+
+  .pamoja-hero-section .btn-hero-primary,
+  .pamoja-hero-section .btn-hero-ghost {
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .mobile-service-chips {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 1rem 0.1rem 0.5rem;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .mobile-service-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-chip {
+    flex: 0 0 auto;
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+    background: rgba(255,255,255,0.13);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    padding: 0.5rem 0.9rem;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .mobile-chip:hover,
+  .mobile-chip:focus-visible {
+    background: #ffcc00;
+    color: #1a3a1a;
+    border-color: #ffcc00;
+  }
+
+  .mobile-chip.is-disabled {
+    opacity: 0.48;
+    pointer-events: none;
+  }
+}
+
+/* =============================================================
+   PAMOJA MOBILE SEARCH
+   Keep the full filter controls on desktop. On phones, retain the
+   search section directly beneath the hero and present one compact
+   text field instead of stacking three unexplained dropdowns.
+   ============================================================= */
+.mobile-only-search {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .top-search {
+    padding: 0.75rem 1rem 1rem;
+    background: transparent;
+    border-bottom: 0;
+  }
+
+  .search-inner {
+    display: flex;
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.4rem;
+    background: #fff;
+    padding: 0.4rem;
+    border: 1px solid #ddd;
+    border-radius: 11px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  }
+
+  .desktop-only-search {
+    display: none !important;
+  }
+
+  .mobile-only-search {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0 0.45rem;
+    background: transparent;
+    border: 0;
+  }
+
+  .mobile-only-search input {
+    display: block;
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    padding: 0.55rem 0.2rem;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #333;
+    font: inherit;
+    font-size: 0.85rem;
+    box-shadow: none;
+  }
+
+  .mobile-only-search input:focus {
+    outline: 0;
+    box-shadow: none;
+  }
+
+  .search-btn-group {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .search-btn {
+    min-height: 42px;
+    padding: 0.55rem 0.9rem;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+
+  .search-btn-arrow {
+    display: none;
+  }
+}
+

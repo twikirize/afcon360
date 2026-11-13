@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Contact AFCON360{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/public-info-pages.css') }}">
+{% endblock %}
+{% block content %}
+<article class="public-page-wrap">
+  <header class="public-page-hero">
+    <p class="public-page-kicker">We are here to help</p>
+    <h1>Contact Us</h1>
+    <p class="public-page-intro">Questions about your account, a booking, a payment or working with AFCON360? Choose the most relevant contact below.</p>
+  </header>
+
+  <div class="public-draft-note">
+    <strong>Contact details to confirm before public launch</strong>
+    The email addresses below are recorded in AFCON360 project documentation. Please verify that each mailbox is active, monitored and assigned to the correct team before treating it as a published support channel.
+  </div>
+
+  <div class="public-page-content">
+    <section>
+      <h2>Contact the right team</h2>
+      <div class="public-contact-grid">
+        <div class="public-contact-card">
+          <strong>General support</strong>
+          <p>Accounts, bookings, transport, accommodation, wallet questions and general help.</p>
+          <a href="mailto:support@afcon360.com?subject=AFCON360%20Support">support@afcon360.com</a>
+        </div>
+        <div class="public-contact-card">
+          <strong>Privacy and compliance</strong>
+          <p>Privacy questions, personal-data requests and compliance enquiries.</p>
+          <a href="mailto:compliance@afcon360.com?subject=Privacy%20or%20Data%20Request">compliance@afcon360.com</a>
+        </div>
+        <div class="public-contact-card">
+          <strong>Security concerns</strong>
+          <p>Report suspected account compromise, security vulnerabilities or suspicious activity.</p>
+          <a href="mailto:security@afcon360.com?subject=Security%20Concern">security@afcon360.com</a>
+        </div>
+        <div class="public-contact-card">
+          <strong>Providers and partnerships</strong>
+          <p>For transport operators, accommodation hosts, tour providers, event partners and organisations interested in working with AFCON360.</p>
+          <a href="mailto:support@afcon360.com?subject=Provider%20or%20Partnership%20Enquiry">Send a partnership enquiry</a>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>When contacting us</h2>
+      <p>Please include a short description of the issue and, where relevant, your booking reference or transaction reference. Do not email passwords, one-time passcodes, full payment-card details or wallet PINs.</p>
+      <p>For a privacy request, tell us what you would like to access, correct or have reviewed. We may need to verify your identity before responding to protect your information.</p>
+    </section>
+
+    <section>
+      <h2>Urgent safety matters</h2>
+      <p>AFCON360 is not an emergency-response service. If someone is in immediate danger or needs urgent medical, police or fire assistance, contact the relevant local emergency service first. You can then notify AFCON360 about a related platform or provider issue.</p>
+    </section>
+
+    <section>
+      <h2>Useful pages</h2>
+      <p><a href="{{ url_for('public_pages.faqs') }}">Read the FAQs</a> · <a href="{{ url_for('public_pages.refunds_and_cancellations') }}">Refunds and cancellations</a> · <a href="{{ url_for('public_pages.privacy_policy') }}">Privacy policy</a></p>
+    </section>
+    <p class="public-page-meta">Contact page draft · No contact form is presented until a monitored form-submission process is configured.</p>
+  </div>
+</article>
+{% endblock %}
