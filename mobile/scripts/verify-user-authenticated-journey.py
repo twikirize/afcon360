@@ -313,6 +313,45 @@ def type_text(value: str) -> None:
     time.sleep(0.25)
 
 
+def dismiss_aosp_keyboard_contacts_prompt(timeout: int = 5) -> bool:
+    """Deny the optional AOSP keyboard contacts prompt used by older AVD images.
+
+    Android 7.x default system images can surface this OS permission sheet the
+    first time Android Keyboard (AOSP) receives text input. It overlays the
+    app's sign-in button and makes the background button appear to UIAutomator
+    without usable bounds. AFCON360's login flow does not require keyboard
+    contacts access, so deny only this known prompt and verify it closes.
+    """
+    deadline = time.monotonic() + timeout
+    prompt = "Allow Android Keyboard (AOSP) to access your contacts?"
+    while time.monotonic() < deadline:
+        root = dump_tree()
+        visible = " ".join(
+            value for value in (node_value(node) for node in root.iter("node")) if value
+        )
+        if prompt in visible:
+            tap_text("DENY", timeout=8)
+            verify_deadline = time.monotonic() + 8
+            while time.monotonic() < verify_deadline:
+                root = dump_tree()
+                visible = " ".join(
+                    value for value in (node_value(node) for node in root.iter("node")) if value
+                )
+                if prompt not in visible:
+                    print(
+                        "ANDROID_SYSTEM_PERMISSION_HANDLED: denied optional "
+                        "AOSP keyboard contacts access.",
+                        flush=True,
+                    )
+                    return True
+                time.sleep(0.4)
+            raise AssertionError(
+                "The AOSP keyboard contacts permission dialog remained visible after DENY."
+            )
+        time.sleep(0.4)
+    return False
+
+
 def save_screen(name: str) -> None:
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     data = subprocess.run(
@@ -487,6 +526,7 @@ def main() -> None:
     type_text(USERNAME)
     tap_edit_field("Password")
     type_text(PASSWORD)
+    dismiss_aosp_keyboard_contacts_prompt()
     run_adb("shell", "input", "keyevent", "4")
     tap_text("Sign in securely")
 
