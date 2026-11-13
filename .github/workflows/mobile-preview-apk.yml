@@ -952,12 +952,19 @@ jobs:
           test -s "$SDK_ROOT/platforms/android-37.0/android.jar"
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
           test -n "$SDKMANAGER"
-          WRAPPER_DIR="$RUNNER_TEMP/afcon360-sdkmanager-wrapper"
-          mkdir -p "$WRAPPER_DIR"
-          cat > "$WRAPPER_DIR/sdkmanager" <<'EOF'
+          # The emulator action invokes cmdline-tools' SDK Manager directly,
+          # so a PATH-only shim is bypassed. Wrap that exact executable instead.
+          # Keep the real script beside the wrapper so it still resolves its own lib/ directory.
+          REAL_SDKMANAGER="${SDKMANAGER}.afcon360-real"
+          if [ -e "$REAL_SDKMANAGER" ]; then
+            echo "::error::The real SDK Manager backup already exists; refusing to overwrite it."
+            exit 1
+          fi
+          mv "$SDKMANAGER" "$REAL_SDKMANAGER"
+          cat > "$SDKMANAGER" <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
-          REAL_SDKMANAGER="${AFCON360_REAL_SDKMANAGER:?real sdkmanager path is required}"
+          REAL_SDKMANAGER="${0}.afcon360-real"
           args=()
           for arg in "$@"; do
             if [[ "$arg" == "platforms;android-37" ]]; then
@@ -967,9 +974,7 @@ jobs:
           done
           exec "$REAL_SDKMANAGER" "${args[@]}"
           EOF
-          chmod +x "$WRAPPER_DIR/sdkmanager"
-          echo "AFCON360_REAL_SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-          echo "$WRAPPER_DIR" >> "$GITHUB_PATH"
+          chmod +x "$SDKMANAGER"
 
       - name: Install, sign in, read Driver screens, restore session and sign out on Android
         uses: reactivecircus/android-emulator-runner@v2.38.0
