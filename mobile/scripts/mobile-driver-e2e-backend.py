@@ -245,9 +245,13 @@ def seed_test_accounts(app) -> None:
 
 def verify_driver_only_login_guard(app) -> None:
     """A normal customer account must not be able to sign in as Driver."""
+    # This is an intentional negative backend preflight, not an APK request.
+    # Keep it out of the authenticated-client request audit.
+    headers = {"User-Agent": BACKEND_PREFLIGHT_USER_AGENT}
     with app.test_client() as client:
         response = client.post(
             "/api/mobile/v1/auth/login",
+            headers=headers,
             json={
                 "identifier": NON_DRIVER_USERNAME,
                 "password": NON_DRIVER_PASSWORD,
@@ -257,11 +261,21 @@ def verify_driver_only_login_guard(app) -> None:
             },
         )
         payload = response.get_json(silent=True) or {}
-        if response.status_code != 403 or payload.get("code") != "driver_profile_required":
+        denied = response.status_code == 403 and payload.get("code") == "driver_profile_required"
+        if not denied:
             raise AssertionError(
                 "A non-driver account was not rejected by the authoritative Driver login guard: "
                 f"HTTP {response.status_code}, code={payload.get('code')!r}."
             )
+        # Non-identifying evidence only; never persist the customer username or password.
+        (EVIDENCE / "driver-login-boundary-summary.json").write_text(
+            json.dumps({
+                "http_status": response.status_code,
+                "error_code": payload.get("code"),
+                "customer_rejected": True,
+            }, indent=2) + "\\n",
+            encoding="utf-8",
+        )
         print("PASS: customer-only identity rejected by Driver sign-in guard", flush=True)
 
 
@@ -352,9 +366,15 @@ def assert_evidence(app) -> None:
             for status, actual_method, actual_path in records
         )
 
-    customer_login_rejected = any(
-        status == 403 and method == "POST" and path == "/api/mobile/v1/auth/login"
-        for status, method, path in records
+    boundary_summary_path = EVIDENCE / "driver-login-boundary-summary.json"
+    boundary_summary = (
+        json.loads(boundary_summary_path.read_text(encoding="utf-8"))
+        if boundary_summary_path.is_file() else {}
+    )
+    customer_login_rejected = (
+        boundary_summary.get("customer_rejected") is True
+        and boundary_summary.get("http_status") == 403
+        and boundary_summary.get("error_code") == "driver_profile_required"
     )
     driver_summary_path = EVIDENCE / "driver-profile-summary.json"
     offers_summary_path = EVIDENCE / "driver-offers-summary.json"
