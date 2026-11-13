@@ -612,7 +612,10 @@ jobs:
           print(candidates[0])
           ')"
 
-          # Start simulator migration while Xcode compiles for a generic iOS Simulator destination.
+          # Boot the exact simulator selected above, then target it directly.
+          # A generic iOS Simulator destination makes Xcode compile every simulator
+          # architecture (both x86_64 and arm64 on this runner), greatly extending
+          # React Native / CocoaPods builds without improving this install-and-launch check.
           xcrun simctl boot "$SIMULATOR_UDID"
 
           DERIVED_DATA="$RUNNER_TEMP/afcon360-$APP-ios-derived-data"
@@ -620,7 +623,7 @@ jobs:
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
             -configuration Debug \
-            -destination "generic/platform=iOS Simulator" \
+            -destination "id=$SIMULATOR_UDID" \
             -derivedDataPath "$DERIVED_DATA" \
             CODE_SIGNING_ALLOWED=NO \
             build
