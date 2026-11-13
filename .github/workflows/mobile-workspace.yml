@@ -716,7 +716,7 @@ jobs:
             yes 2>/dev/null | "$SDKMANAGER" --install "cmdline-tools;latest" >/dev/null
             set -o pipefail
 
-            UPDATED_CLT="$(find "$CLT_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'latest-*' -printf '%f\\n' | sort -V | tail -n 1)"
+            UPDATED_CLT="$(find "$CLT_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'latest-*' -printf '%f\n' | sort -V | tail -n 1)"
             if [ -z "$UPDATED_CLT" ]; then
               echo "::error::Updated Android command-line tools were not installed."
               exit 1
@@ -752,9 +752,9 @@ jobs:
           IMAGE_DIR="$SDK/system-images/android-37.0/default/x86_64"
           test -s "$IMAGE_DIR/system.img"
 
-          DEVICE_IDS="$("$AVDMANAGER" list device -c | tr -d '\\r')"
+          DEVICE_IDS="$("$AVDMANAGER" list device -c | tr -d '\r')"
           echo "Available Android AVD hardware profile IDs:"
-          printf '%s\\n' "$DEVICE_IDS"
+          printf '%s\n' "$DEVICE_IDS"
 
           AVD_PROFILE=""
           for candidate in pixel_7 pixel_7_pro pixel_6 pixel_5 pixel_4 pixel "Nexus 5X"; do
