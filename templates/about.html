@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}About AFCON360{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/public-info-pages.css') }}">
+{% endblock %}
+{% block content %}
+<article class="public-page-wrap">
+  <header class="public-page-hero">
+    <p class="public-page-kicker">Company</p>
+    <h1>About AFCON360</h1>
+    <p class="public-page-intro">One connected place to help fans and travellers discover, plan and coordinate the experiences around major events in East Africa.</p>
+  </header>
+
+  <div class="public-page-content">
+    <section>
+      <h2>What we are building</h2>
+      <p>AFCON360 is a digital fan-support and services marketplace designed to make event travel easier to organise. We bring useful information and service discovery closer together, so people can explore transport, accommodation, tours, local experiences and event-related services without having to begin every part of a trip from scratch.</p>
+      <p>Our work is particularly focused on the East African region, including Uganda, Kenya and Tanzania, and on helping visitors and local communities connect around major events such as the Africa Cup of Nations 2027.</p>
+    </section>
+
+    <section>
+      <h2>More than a booking page</h2>
+      <p>Travel is made up of many connected decisions. A fan may need to understand an event, find a place to stay, arrange a ride, discover something to do and manage payments. AFCON360 is being developed to bring those journeys into a more connected experience.</p>
+      <div class="public-card-grid">
+        <div class="public-info-card"><strong>Discover</strong><span>Explore events, destinations, activities and services.</span></div>
+        <div class="public-info-card"><strong>Move and stay</strong><span>Find transport and accommodation options from participating providers.</span></div>
+        <div class="public-info-card"><strong>Experience</strong><span>Explore tours, places and experiences across the region.</span></div>
+        <div class="public-info-card"><strong>Manage payments</strong><span>Use supported payment and wallet features, with applicable amounts and charges shown during the transaction.</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>How we work</h2>
+      <p>We aim to make service information easier to understand, give local providers a way to reach travellers, and make the steps between discovery and a confirmed service clearer. Availability, fulfilment and service quality may depend on the independent provider or event organiser involved.</p>
+      <p>We are committed to improving the experience through clear information, responsible handling of personal data, accessible support and practical tools for fans, travellers and service partners.</p>
+    </section>
+
+    <section>
+      <h2>Our relationship with tournaments and organisers</h2>
+      <p>AFCON360 is a platform for fan support and related services. Unless a formal relationship is expressly announced by the relevant rights holder or organiser, AFCON360 should not be understood as the tournament organiser, a football governing body, an immigration authority or an official ticket issuer. Always check official event, travel and entry requirements with the responsible authorities.</p>
+    </section>
+
+    <section>
+      <h2>Get in touch</h2>
+      <p>Are you a traveller, service provider, event organiser or potential partner? We welcome questions and practical feedback.</p>
+      <p><a href="{{ url_for('public_pages.contact') }}">Contact the AFCON360 team</a> or read our <a href="{{ url_for('public_pages.faqs') }}">frequently asked questions</a>.</p>
+    </section>
+    <p class="public-page-meta">Company information draft · Prepared 9 November 2026</p>
+  </div>
+</article>
+{% endblock %}
