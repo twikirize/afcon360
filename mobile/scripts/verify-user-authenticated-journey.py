@@ -42,29 +42,78 @@ def mark_stage(stage: str) -> None:
     )
 
 
-def run_adb(*args: str, check: bool = True, capture: bool = True) -> str:
-    result = subprocess.run(
-        ["adb", *args], check=False, text=True,
-        stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.STDOUT if capture else None,
-    )
+def run_adb(
+    *args: str,
+    check: bool = True,
+    capture: bool = True,
+    timeout: int = 120,
+) -> str:
+    try:
+        result = subprocess.run(
+            ["adb", *args], check=False, text=True,
+            stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.STDOUT if capture else None,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        output = error.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"adb {' '.join(args[:4])} timed out after {timeout}s: "
+            f"{str(output)[-2000:]}"
+        ) from error
+
     output = result.stdout or ""
     if check and result.returncode:
         raise RuntimeError(f"adb {' '.join(args[:4])} failed ({result.returncode}): {output[-2000:]}")
     return output
 
 
-def dump_tree() -> ET.Element:
-    # Never reuse an old UI tree when Android fails to produce a fresh snapshot.
-    run_adb("shell", "rm", "-f", UI_XML, check=False)
-    result = run_adb("shell", "uiautomator", "dump", UI_XML, check=False)
-    if "dumped to:" not in result.lower():
-        raise RuntimeError(f"Android did not create a fresh UI hierarchy: {result[-1000:]}")
-    raw = run_adb("shell", "cat", UI_XML, check=False)
-    start = raw.find("<?xml")
-    if start < 0:
-        raise RuntimeError(f"Fresh Android UI hierarchy was not readable: {raw[-1000:]}")
-    return ET.fromstring(raw[start:])
+def dump_tree(retries: int = 4) -> ET.Element:
+    """Read a fresh UI hierarchy, retrying transient Android UIAutomator bridge failures.
+
+    Older emulator images can briefly return "null root node" even while the
+    app's Activity is visible and rendering. Retry those snapshot failures, but
+    still fail the test if no valid hierarchy can be obtained after the bounded
+    retry window. Never reuse an old UI tree.
+    """
+    last_error = "Android did not return a UI hierarchy."
+    for attempt in range(1, retries + 1):
+        run_adb("shell", "rm", "-f", UI_XML, check=False)
+        result = run_adb("shell", "uiautomator", "dump", UI_XML, check=False, timeout=15)
+        if "dumped to:" not in result.lower():
+            last_error = (
+                "Android did not create a fresh UI hierarchy: "
+                + result[-1000:]
+            )
+        else:
+            raw = run_adb("shell", "cat", UI_XML, check=False, timeout=15)
+            start = raw.find("<?xml")
+            if start < 0:
+                last_error = (
+                    "Fresh Android UI hierarchy was not readable: "
+                    + raw[-1000:]
+                )
+            else:
+                try:
+                    return ET.fromstring(raw[start:])
+                except ET.ParseError as error:
+                    last_error = f"Fresh Android UI hierarchy was not valid XML: {error}"
+
+        if attempt < retries:
+            print(
+                "ANDROID_UI_TREE_RETRY: "
+                f"snapshot attempt {attempt}/{retries} failed; retrying: "
+                + last_error.replace("\\n", " ")[:500],
+                flush=True,
+            )
+            time.sleep(min(0.5 * attempt, 1.5))
+
+    raise RuntimeError(
+        f"Android could not produce a fresh UI hierarchy after {retries} attempts: "
+        + last_error[-1000:]
+    )
 
 
 def node_value(node: ET.Element) -> str:
@@ -102,35 +151,102 @@ def bounds_center(value: str) -> tuple[int, int] | None:
     if not match:
         return None
     left, top, right, bottom = map(int, match.groups())
+    if right <= left or bottom <= top:
+        return None
     return ((left + right) // 2, (top + bottom) // 2)
 
 
-def tap_text(value: str, *, last: bool = False, timeout: int = 12) -> None:
+def tap_text(
+    value: str,
+    *,
+    last: bool = False,
+    timeout: int = 12,
+    require_enabled: bool = False,
+) -> None:
+    """Tap a visible text target through its real clickable ancestor when needed.
+
+    Android versions differ in how UIAutomator reports bounds for nested
+    React Native Text nodes. Some return [0,0][0,0] for a visible tab label;
+    tapping that Text node would silently tap screen coordinate (0,0). Walk
+    up the native hierarchy and prefer the nearest enabled clickable parent.
+    """
     deadline = time.monotonic() + timeout
     last_diagnostics = []
     while time.monotonic() < deadline:
         try:
             root = dump_tree()
+            parents = {
+                child: parent
+                for parent in root.iter("node")
+                for child in parent
+            }
             matches = []
             for node in root.iter("node"):
                 text_value = node.attrib.get("text", "").strip()
                 description = node.attrib.get("content-desc", "").strip()
-                if text_value == value or description == value:
-                    bounds = node.attrib.get("bounds", "")
-                    center = bounds_center(bounds)
-                    if center:
-                        matches.append({
+                if text_value != value and description != value:
+                    continue
+
+                matched = {
+                    "class": node.attrib.get("class", ""),
+                    "clickable": node.attrib.get("clickable", ""),
+                    "enabled": node.attrib.get("enabled", ""),
+                    "bounds": node.attrib.get("bounds", ""),
+                    "text": text_value,
+                    "content_desc": description,
+                }
+
+                ancestor = node
+                nearest_visible = None
+                clickable_target = None
+                disabled_clickable_ancestor = False
+                depth = 0
+                while ancestor is not None:
+                    center = bounds_center(ancestor.attrib.get("bounds", ""))
+                    if center is not None:
+                        candidate = {
                             "center": center,
-                            "bounds": bounds,
-                            "class": node.attrib.get("class", ""),
-                            "clickable": node.attrib.get("clickable", ""),
-                            "enabled": node.attrib.get("enabled", ""),
-                            "text": text_value,
-                            "content_desc": description,
-                        })
+                            "bounds": ancestor.attrib.get("bounds", ""),
+                            "class": ancestor.attrib.get("class", ""),
+                            "clickable": ancestor.attrib.get("clickable", ""),
+                            "enabled": ancestor.attrib.get("enabled", ""),
+                            "depth": depth,
+                        }
+                        if nearest_visible is None:
+                            nearest_visible = candidate
+                        if candidate["clickable"] == "true":
+                            if candidate["enabled"] == "false":
+                                disabled_clickable_ancestor = True
+                            else:
+                                clickable_target = candidate
+                                break
+                    ancestor = parents.get(ancestor)
+                    depth += 1
+
+                target = clickable_target or nearest_visible
+                if (
+                    target is not None
+                    and not (
+                        require_enabled
+                        and (
+                            target["enabled"] == "false"
+                            or disabled_clickable_ancestor
+                        )
+                    )
+                ):
+                    matches.append({
+                        "matched_node": matched,
+                        "target_node": target,
+                        "target_source": (
+                            "nearest-clickable-ancestor"
+                            if clickable_target is not None
+                            else "nearest-visible-ancestor"
+                        ),
+                    })
+
             if matches:
                 chosen = matches[-1] if last else matches[0]
-                x, y = chosen["center"]
+                x, y = chosen["target_node"]["center"]
                 print(
                     "ANDROID_TAP_TARGET: "
                     + json.dumps({
@@ -144,7 +260,9 @@ def tap_text(value: str, *, last: bool = False, timeout: int = 12) -> None:
                 run_adb("shell", "input", "tap", str(x), str(y))
                 time.sleep(0.7)
                 return
-            last_diagnostics = []
+            last_diagnostics = [
+                f"matching text {value!r} was found without any usable bounds"
+            ]
         except Exception as error:
             last_diagnostics = [f"{type(error).__name__}: {error}"]
         time.sleep(0.5)
@@ -165,7 +283,7 @@ def tap_text_scrolling(value: str, *, max_swipes: int = 6) -> None:
     for attempt in range(max_swipes + 1):
         try:
             tap_text(value, timeout=2)
-            print(f"PASS: tapped after {attempt} Explore scroll(s): {value}", flush=True)
+            print(f"PASS: tapped after {attempt} scroll(s): {value}", flush=True)
             return
         except AssertionError as error:
             last_error = error
@@ -180,28 +298,54 @@ def tap_text_scrolling(value: str, *, max_swipes: int = 6) -> None:
     ) from last_error
 
 
-def tap_edit_field(label: str) -> None:
-    root = dump_tree()
-    candidates = []
-    for node in root.iter("node"):
-        description = node.attrib.get("content-desc", "").strip()
-        text_value = node.attrib.get("text", "").strip()
-        klass = node.attrib.get("class", "")
-        if (description == label or text_value == label) and "EditText" in klass:
-            center = bounds_center(node.attrib.get("bounds", ""))
-            if center:
-                candidates.append(center)
-    if not candidates:
+def tap_edit_field(label: str, attempts: int = 3) -> None:
+    """Tap a freshly located text field and verify Android actually focused it.
+
+    The keyboard can resize the scroll view after the first field is entered.
+    Never reuse the previous field's coordinates: take a new UI hierarchy for
+    each field and confirm the requested EditText owns input focus before
+    sending any characters.
+    """
+    last_state = "field was not found"
+    for attempt in range(1, attempts + 1):
+        root = dump_tree()
+        candidates = []
         for node in root.iter("node"):
-            if node.attrib.get("content-desc", "").strip() == label:
+            description = node.attrib.get("content-desc", "").strip()
+            text_value = node.attrib.get("text", "").strip()
+            klass = node.attrib.get("class", "")
+            if (description == label or text_value == label) and "EditText" in klass:
                 center = bounds_center(node.attrib.get("bounds", ""))
                 if center:
-                    candidates.append(center)
-    if not candidates:
-        raise AssertionError(f"Could not locate native input field {label!r}")
-    x, y = candidates[0]
-    run_adb("shell", "input", "tap", str(x), str(y))
-    time.sleep(0.3)
+                    candidates.append((center, node.attrib.get("bounds", "")))
+        if not candidates:
+            raise AssertionError(f"Could not locate native input field {label!r}")
+
+        (x, y), bounds = candidates[0]
+        print(
+            f"ANDROID_EDIT_FIELD_TARGET: label={label!r}, bounds={bounds}, center=({x},{y})",
+            flush=True,
+        )
+        run_adb("shell", "input", "tap", str(x), str(y))
+
+        focus_deadline = time.monotonic() + 3
+        while time.monotonic() < focus_deadline:
+            focused_tree = dump_tree()
+            for node in focused_tree.iter("node"):
+                description = node.attrib.get("content-desc", "").strip()
+                text_value = node.attrib.get("text", "").strip()
+                klass = node.attrib.get("class", "")
+                if (
+                    "EditText" in klass
+                    and (description == label or text_value == label)
+                    and node.attrib.get("focused", "").lower() == "true"
+                ):
+                    print(f"ANDROID_EDIT_FIELD_FOCUSED: {label}", flush=True)
+                    return
+            time.sleep(0.25)
+        last_state = f"field {label!r} did not become focused on attempt {attempt}/{attempts}"
+
+    raise AssertionError(f"Android input focus verification failed: {last_state}")
 
 
 def type_text(value: str) -> None:
@@ -211,14 +355,55 @@ def type_text(value: str) -> None:
     time.sleep(0.25)
 
 
+def dismiss_aosp_keyboard_contacts_prompt(timeout: int = 5) -> bool:
+    """Deny the optional AOSP keyboard contacts prompt used by older AVD images.
+
+    Android 7.x default system images can surface this OS permission sheet the
+    first time Android Keyboard (AOSP) receives text input. It overlays the
+    app's sign-in button and makes the background button appear to UIAutomator
+    without usable bounds. AFCON360's login flow does not require keyboard
+    contacts access, so deny only this known prompt and verify it closes.
+    """
+    deadline = time.monotonic() + timeout
+    prompt = "Allow Android Keyboard (AOSP) to access your contacts?"
+    while time.monotonic() < deadline:
+        root = dump_tree()
+        visible = " ".join(
+            value for value in (node_value(node) for node in root.iter("node")) if value
+        )
+        if prompt in visible:
+            tap_text("DENY", timeout=8)
+            verify_deadline = time.monotonic() + 8
+            while time.monotonic() < verify_deadline:
+                root = dump_tree()
+                visible = " ".join(
+                    value for value in (node_value(node) for node in root.iter("node")) if value
+                )
+                if prompt not in visible:
+                    print(
+                        "ANDROID_SYSTEM_PERMISSION_HANDLED: denied optional "
+                        "AOSP keyboard contacts access.",
+                        flush=True,
+                    )
+                    return True
+                time.sleep(0.4)
+            raise AssertionError(
+                "The AOSP keyboard contacts permission dialog remained visible after DENY."
+            )
+        time.sleep(0.4)
+    return False
+
+
 def save_screen(name: str) -> None:
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     data = subprocess.run(
         ["adb", "exec-out", "screencap", "-p"],
         check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     ).stdout
-    root = dump_tree()
+    # Preserve the visual checkpoint even if Android's accessibility bridge
+    # transiently fails to provide a hierarchy snapshot.
     (EVIDENCE / f"{name}.png").write_bytes(data)
+    root = dump_tree()
     (EVIDENCE / f"{name}.xml").write_bytes(ET.tostring(root, encoding="utf-8"))
     (EVIDENCE / f"{name}.txt").write_text(
         "\n".join(filter(None, (node_value(node) for node in root.iter("node")))),
@@ -381,20 +566,31 @@ def main() -> None:
 
     tap_edit_field("Username or email")
     type_text(USERNAME)
+    dismiss_aosp_keyboard_contacts_prompt(timeout=2)
+
+    # Close the keyboard before measuring Password. On some AOSP/Gboard
+    # versions the form resizes when the IME appears; using pre-resize bounds
+    # can tap a keyboard key instead of the Password input.
+    run_adb("shell", "input", "keyevent", "4")
+    time.sleep(0.5)
     tap_edit_field("Password")
     type_text(PASSWORD)
+    dismiss_aosp_keyboard_contacts_prompt(timeout=2)
     run_adb("shell", "input", "keyevent", "4")
-    tap_text("Sign in securely")
+    time.sleep(0.5)
+    tap_text("Sign in securely", require_enabled=True)
 
-    wait_for_text("Your journey, together.", "Signed in securely", timeout=45, label="authenticated User home")
+    wait_for_text("Welcome to Pamoja", f"Good to see you, {USERNAME}.", timeout=45, label="authenticated User home")
     save_screen("02-home")
     mark_stage("authenticated_home")
 
+    mark_stage("activity_navigation_started")
     tap_text("Activity", last=True)
     wait_for_text("Your rides and bookings.", "No rides yet", timeout=35, label="authenticated ride activity")
     save_screen("03-activity")
     mark_stage("activity_screen")
 
+    mark_stage("wallet_navigation_started")
     tap_text("Wallet", last=True)
     wait_for_text(
         "Your money, clearly managed.", "Wallet accounts", "No Wallet account is active yet.",
@@ -404,7 +600,7 @@ def main() -> None:
     mark_stage("wallet_screen")
 
     tap_text("Account", last=True)
-    wait_for_text("Your AFCON360 identity.", "Sign out", timeout=25, label="authenticated account")
+    wait_for_text("Your AFCON360 identity.", timeout=25, label="authenticated account")
     account_text = visible_text()
     if USERNAME not in account_text and os.environ.get("AFCON360_E2E_EMAIL", "native-e2e@afcon360.test") not in account_text:
         raise AssertionError("The authenticated account screen did not display the synthetic user's identity.")
@@ -488,12 +684,13 @@ def main() -> None:
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
-    wait_for_text("Your journey, together.", "Signed in securely", timeout=45, label="restored authenticated session")
+    wait_for_text("Welcome to Pamoja", f"Good to see you, {USERNAME}.", timeout=45, label="restored authenticated session")
     save_screen("10-session-restored")
     mark_stage("session_restored")
 
     tap_text("Account", last=True)
-    wait_for_text("Your AFCON360 identity.", "Sign out", label="account before logout")
+    wait_for_text("Your AFCON360 identity.", label="account before logout")
+    tap_text_scrolling("Sign out")
     tap_text("Sign out")
     wait_for_text("Sign out of AFCON360 on this device?", timeout=12, label="logout confirmation")
     mark_stage("logout_started")

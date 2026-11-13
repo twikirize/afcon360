@@ -117,6 +117,7 @@ jobs:
       ANALYTICS_ENABLED: "false"
       EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
       MAIL_SUPPRESS_SEND: "true"
+      AFCON360_E2E_BACKEND_ROOT: ${{ github.workspace }}/backend-main
       AFCON360_E2E_USERNAME: native_e2e_user
       AFCON360_E2E_EMAIL: native-e2e@afcon360.test
       AFCON360_E2E_PASSWORD: NativeE2ePassword2026
@@ -125,16 +126,71 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+
+      - name: Check out backend main for the test API
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: backend-main
+
+      - name: Record backend main revision
+        working-directory: backend-main
+        run: |
+          echo "Backend test source: $(git rev-parse HEAD)"
+          echo "Backend branch: $(git branch --show-current)"
+
       - name: Prepare User APK cache directory
         run: mkdir -p mobile-e2e-cache
       - name: Calculate User APK cache key before prebuild
         id: user-apk-key
         env:
-          USER_APK_SOURCE_KEY: afcon360-user-e2e-apk-v2-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc', '.github/workflows/mobile-workspace.yml') }}
+          USER_APK_SOURCE_KEY: afcon360-user-e2e-apk-v2-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
         run: echo "key=$USER_APK_SOURCE_KEY" >> "$GITHUB_OUTPUT"
       - name: Restore source-keyed User E2E APK
         id: user-apk-cache
         uses: actions/cache/restore@v4
+        with:
+          path: mobile-e2e-cache/
+          key: ${{ steps.user-apk-key.outputs.key }}
+          restore-keys: |
+            afcon360-user-e2e-apk-v2-1988c0098f079cb6af616af1df3c7d7fdd162b6673c7244378497c428549b5a8
+
+      - name: Validate cached User APK against current native source
+        id: validate-user-apk
+        shell: bash
+        env:
+          USER_APK_CACHE_MATCHED_KEY: ${{ steps.user-apk-cache.outputs.cache-matched-key }}
+        run: |
+          set -euo pipefail
+          echo "reusable=false" >> "$GITHUB_OUTPUT"
+          if [ -z "$USER_APK_CACHE_MATCHED_KEY" ]; then
+            echo "No cached User E2E APK was restored."
+            exit 0
+          fi
+
+          APK="mobile-e2e-cache/user-e2e.apk"
+          INFO="mobile-e2e-cache/build-info.txt"
+          test -s "$APK" || exit 0
+          test -s "$INFO" || exit 0
+          EXPECTED_SHA="$(sed -n 's/^apk_sha256=//p' "$INFO" | head -n 1)"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA" || exit 0
+
+          SOURCE_COMMIT="$(sed -n 's/^source_commit=//p' "$INFO" | head -n 1)"
+          test -n "$SOURCE_COMMIT" || exit 0
+          git fetch --no-tags --depth=1 origin "$SOURCE_COMMIT"
+          if git diff --quiet "$SOURCE_COMMIT" "$GITHUB_SHA" -- \
+            mobile/apps/user mobile/packages mobile/package.json \
+            mobile/pnpm-lock.yaml mobile/pnpm-workspace.yaml mobile/.npmrc; then
+            echo "Verified cached APK against unchanged native User app source at $SOURCE_COMMIT."
+            echo "reusable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Cached APK source differs from current User app files; a fresh disposable CI APK is required."
+          fi
+
+      - name: Save validated User APK under current source key
+        if: steps.validate-user-apk.outputs.reusable == 'true' && steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        uses: actions/cache/save@v4
         with:
           path: mobile-e2e-cache/
           key: ${{ steps.user-apk-key.outputs.key }}
@@ -143,13 +199,34 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: backend-main/requirements.txt
       - name: Install Flask backend dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-      - name: Build a fresh disposable PostgreSQL schema
+          python -m pip install -r backend-main/requirements.txt
+      - name: Build a fresh disposable PostgreSQL schema from backend main
+        working-directory: backend-main
         run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Ensure current SystemConfig model exists in disposable E2E schema
+        working-directory: backend-main
+        run: |
+          python - <<'PY'
+          from app import create_app
+          from app.extensions import db
+          from app.models.system_config import SystemConfig
+
+          app = create_app()
+          with app.app_context():
+              existed = db.inspect(db.engine).has_table(SystemConfig.__tablename__)
+              SystemConfig.__table__.create(bind=db.engine, checkfirst=True)
+              created = SystemConfig.initialize_defaults()
+              print(
+                  "E2E SystemConfig schema ready: "
+                  f"table_preexisting={existed}, defaults_created={created}"
+              )
+          PY
+
       - name: Seed one synthetic, non-MFA AFCON360 User
         run: python mobile/scripts/mobile-user-e2e-backend.py seed
       - name: Start isolated Flask API and wait for health
@@ -170,32 +247,32 @@ jobs:
           echo "::error::Disposable AFCON360 API did not become healthy."
           exit 1
       - name: Set up Node.js
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         uses: actions/setup-node@v7
         with:
           node-version: "22.13.1"
       - name: Set up pnpm
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         uses: pnpm/action-setup@v6
         with:
           version: 10.12.4
           run_install: false
       - name: Set up Java
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
       - name: Install User app workspace dependencies
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
         run: pnpm install --no-frozen-lockfile
       - name: Check User app Expo dependency compatibility
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
         run: pnpm --filter "@afcon360/user-app" exec expo install --check
       - name: Install Android platform and build tools
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -216,14 +293,14 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
       - name: Generate a fresh User APK pointing only to the disposable local API
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
         env:
           AFCON360_PREVIEW_BUILD: "true"
           EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: pnpm --filter "@afcon360/user-app" exec expo prebuild --platform android --no-install --clean
       - name: Allow private-network HTTP only in this disposable preview APK
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -253,7 +330,7 @@ jobs:
           print("HTTP enabled only in this disposable preview APK; runtime API validation restricts selected HTTP servers to loopback or private IPv4.")
           PY
       - name: Configure ephemeral release signing
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
         run: |
           node <<'NODE'
@@ -282,7 +359,7 @@ jobs:
           fs.writeFileSync(path, source);
           NODE
       - name: Build isolated User release APK
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile/apps/user/android
         env:
           # Re-evaluate the dynamic Expo config during Metro/Gradle bundling too,
@@ -291,7 +368,7 @@ jobs:
           EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: ./gradlew --no-daemon --stacktrace assembleRelease
       - name: Save fresh APK under the source-keyed cache key
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         shell: bash
         env:
           USER_APK_CACHE_KEY: ${{ steps.user-apk-key.outputs.key }}
@@ -321,7 +398,7 @@ jobs:
           apk_sha256=$APK_SHA256
           EOF
       - name: Persist fresh User APK immediately
-        if: steps.user-apk-cache.outputs['cache-hit'] != 'true'
+        if: steps.validate-user-apk.outputs.reusable != 'true'
         uses: actions/cache/save@v4
         with:
           path: mobile-e2e-cache/
@@ -437,6 +514,7 @@ jobs:
       ANALYTICS_ENABLED: "false"
       EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
       MAIL_SUPPRESS_SEND: "true"
+      AFCON360_E2E_BACKEND_ROOT: ${{ github.workspace }}/backend-main
       AFCON360_E2E_USERNAME: native_e2e_user
       AFCON360_E2E_EMAIL: native-e2e@afcon360.test
       AFCON360_E2E_PASSWORD: NativeE2ePassword2026
@@ -452,10 +530,16 @@ jobs:
             api-level: '24'
             system-image-api-level: '24'
             expected-api: '24'
+            target: default
+            profile: Nexus 5X
+            ram-size: 2048M
           - android-label: android-7.1
             api-level: '25'
             system-image-api-level: '25'
             expected-api: '25'
+            target: default
+            profile: Nexus 5X
+            ram-size: 2048M
           - android-label: android-8.0
             api-level: '26'
             system-image-api-level: '26'
@@ -493,6 +577,9 @@ jobs:
             api-level: '34'
             system-image-api-level: '34'
             expected-api: '34'
+            target: default
+            profile: Nexus 5X
+            ram-size: 3072M
           - android-label: android-15
             api-level: '35'
             system-image-api-level: '35'
@@ -509,6 +596,18 @@ jobs:
     steps:
       - name: Check out User app and backend verification source
         uses: actions/checkout@v7
+
+      - name: Check out backend main for the compatibility API
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: backend-main
+
+      - name: Record backend main revision
+        working-directory: backend-main
+        run: |
+          echo "Backend test source: $(git rev-parse HEAD)"
+          echo "Backend branch: $(git branch --show-current)"
 
       - name: Download the exact APK staged by the primary User journey
         uses: actions/download-artifact@v8
@@ -535,15 +634,35 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: backend-main/requirements.txt
 
       - name: Install isolated Flask backend dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install -r backend-main/requirements.txt
 
-      - name: Build a fresh isolated PostgreSQL schema
+      - name: Build a fresh isolated PostgreSQL schema from backend main
+        working-directory: backend-main
         run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Ensure current SystemConfig model exists in disposable E2E schema
+        working-directory: backend-main
+        run: |
+          python - <<'PY'
+          from app import create_app
+          from app.extensions import db
+          from app.models.system_config import SystemConfig
+
+          app = create_app()
+          with app.app_context():
+              existed = db.inspect(db.engine).has_table(SystemConfig.__tablename__)
+              SystemConfig.__table__.create(bind=db.engine, checkfirst=True)
+              created = SystemConfig.initialize_defaults()
+              print(
+                  "E2E SystemConfig schema ready: "
+                  f"table_preexisting={existed}, defaults_created={created}"
+              )
+          PY
 
       - name: Seed one synthetic, non-MFA User for this Android version
         run: python mobile/scripts/mobile-user-e2e-backend.py seed
@@ -567,65 +686,91 @@ jobs:
           echo "::error::The isolated API did not become healthy."
           exit 1
 
-      - name: Repair Android SDK command-line tools and validate Android 17 AVD metadata
+      - name: Install compatible Android SDK tools and prepare Android 17 AVD profile
+        id: android17_sdk
         if: matrix.android-label == 'android-17'
         shell: bash
         run: |
           set -euo pipefail
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          CLT="$SDK/cmdline-tools/latest"
-          test -x "$CLT/bin/sdkmanager"
+          CLT_ROOT="$SDK/cmdline-tools"
+          CLT="$CLT_ROOT/latest"
+          SDKMANAGER="$CLT/bin/sdkmanager"
+          AVDMANAGER="$CLT/bin/avdmanager"
+          ANDROID_CLI="$CLT/bin/android"
 
-          CURRENT_VERSION="$("$CLT/bin/sdkmanager" --version | tail -n 1)"
-          echo "Preinstalled Android command-line tools: $CURRENT_VERSION"
-          if [ "$CURRENT_VERSION" != "22.0" ]; then
-            rm -rf "$SDK/cmdline-tools/latest-2"
-            # sdkmanager cannot overwrite its own preinstalled 'latest' folder.
-            # It installs the replacement beside it; move that replacement into
-            # the canonical path before android-emulator-runner invokes avdmanager.
+          test -x "$SDKMANAGER"
+          test -x "$AVDMANAGER"
+
+          cmdline_tools_revision() {
+            local properties_file="$1/source.properties"
+            test -s "$properties_file" || return 1
+            awk -F= '$1 == "Pkg.Revision" { gsub(/[[:space:]]/, "", $2); print $2; exit }' "$properties_file"
+          }
+
+          CURRENT_VERSION="$(cmdline_tools_revision "$CLT")"
+          CURRENT_MAJOR="${CURRENT_VERSION%%.*}"
+          echo "Pre-update Android SDK command-line tools revision: ${CURRENT_VERSION:-unknown}"
+          if ! [[ "$CURRENT_MAJOR" =~ ^[0-9]+$ ]] || [ "$CURRENT_MAJOR" -lt 20 ]; then
             set +o pipefail
-            yes | "$CLT/bin/sdkmanager" --install "cmdline-tools;latest" >/dev/null
+            yes 2>/dev/null | "$SDKMANAGER" --install "cmdline-tools;latest" >/dev/null
             set -o pipefail
-            if [ -d "$SDK/cmdline-tools/latest-2" ]; then
-              rm -rf "$CLT"
-              mv "$SDK/cmdline-tools/latest-2" "$CLT"
+
+            UPDATED_CLT="$(find "$CLT_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'latest-*' -printf '%f\n' | sort -V | tail -n 1)"
+            if [ -z "$UPDATED_CLT" ]; then
+              echo "::error::Updated Android command-line tools were not installed."
+              exit 1
             fi
+            rm -rf "$CLT_ROOT/latest"
+            mv "$CLT_ROOT/$UPDATED_CLT" "$CLT_ROOT/latest"
           fi
 
-          FINAL_VERSION="$("$CLT/bin/sdkmanager" --version | tail -n 1)"
-          echo "Android command-line tools after update: $FINAL_VERSION"
-          python3 - "$FINAL_VERSION" <<'PY'
-          import sys
-          version = tuple(int(part) for part in sys.argv[1].split(".")[:2])
-          if version < (20, 0):
-              raise SystemExit(
-                  f"Android command-line tools {sys.argv[1]} cannot parse "
-                  "Major.Minor platform versions such as android-37.0."
-              )
-          PY
+          CLT="$CLT_ROOT/latest"
+          SDKMANAGER="$CLT/bin/sdkmanager"
+          AVDMANAGER="$CLT/bin/avdmanager"
+          ANDROID_CLI="$CLT/bin/android"
+          test -x "$SDKMANAGER"
+          test -x "$AVDMANAGER"
+          test -x "$ANDROID_CLI"
 
-          echo "$CLT/bin" >> "$GITHUB_PATH"
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-
-          # Reproduce the exact Major.Minor package parsing used by the
-          # Android 17 emulator action and fail before launching a broken AVD.
-          IMAGE="system-images;android-37.0;default;x86_64"
-          "$CLT/bin/sdkmanager" --install "$IMAGE" >/dev/null
-          AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
-          AVD_NAME="afcon360-api37-tools-check"
-          mkdir -p "$AVD_HOME"
-          "$CLT/bin/avdmanager" delete avd -n "$AVD_NAME" >/dev/null 2>&1 || true
-          echo no | "$CLT/bin/avdmanager" create avd --force -n "$AVD_NAME" --package "$IMAGE" --device pixel_7
-          AVD_INI="$AVD_HOME/$AVD_NAME.ini"
-          test -s "$AVD_INI"
-          if ! grep -Fxq "target=android-37.0" "$AVD_INI"; then
-            echo "::error::Android 17 AVD metadata is invalid; expected target=android-37.0."
-            cat "$AVD_INI"
+          UPDATED_VERSION="$(cmdline_tools_revision "$CLT")"
+          UPDATED_MAJOR="${UPDATED_VERSION%%.*}"
+          if ! [[ "$UPDATED_MAJOR" =~ ^[0-9]+$ ]] || [ "$UPDATED_MAJOR" -lt 20 ]; then
+            echo "::error::Expected command-line tools 20.0 or newer; found ${UPDATED_VERSION:-unknown}."
             exit 1
           fi
-          echo "ANDROID_17_AVD_METADATA_PASS: $(grep '^target=' "$AVD_INI")"
-          "$CLT/bin/avdmanager" delete avd -n "$AVD_NAME" >/dev/null
+          echo "Updated Android SDK command-line tools revision: $UPDATED_VERSION"
+          "$ANDROID_CLI" --version
+
+          # Install the Android 17 system image and the emulator runtime.
+          # Do not manually create a throwaway AVD here: the emulator runner
+          # below owns AVD creation and launch, using its supported invocation.
+          "$ANDROID_CLI" sdk install emulator
+          "$ANDROID_CLI" sdk install "system-images/android-37.0/default/x86_64"
+
+          IMAGE="system-images;android-37.0;default;x86_64"
+          IMAGE_DIR="$SDK/system-images/android-37.0/default/x86_64"
+          test -s "$IMAGE_DIR/system.img"
+
+          DEVICE_IDS="$("$AVDMANAGER" list device -c | tr -d '\r')"
+          echo "Available Android AVD hardware profile IDs:"
+          printf '%s\n' "$DEVICE_IDS"
+
+          AVD_PROFILE=""
+          for candidate in pixel_7 pixel_7_pro pixel_6 pixel_5 pixel_4 pixel "Nexus 5X"; do
+            if grep -Fxq -- "$candidate" <<< "$DEVICE_IDS"; then
+              AVD_PROFILE="$candidate"
+              break
+            fi
+          done
+          if [ -z "$AVD_PROFILE" ]; then
+            echo "::error::No supported Pixel/Nexus phone profile was found."
+            exit 1
+          fi
+          echo "Selected Android 17 phone profile: $AVD_PROFILE"
+          echo "avd_profile=$AVD_PROFILE" >> "$GITHUB_OUTPUT"
+          echo "ANDROID_17_SDK_IMAGE_READY: $IMAGE"
+          echo "ANDROID_17_AVD_PROFILE_READY: $AVD_PROFILE"
 
       - name: Enable hardware acceleration
         shell: bash
@@ -646,10 +791,10 @@ jobs:
           api-level: ${{ matrix.api-level }}
           system-image-api-level: ${{ matrix.system-image-api-level }}
           target: ${{ matrix.target || 'google_apis' }}
-          arch: x86_64
-          profile: pixel_7
-          ram-size: 4096M
-          disk-size: 12G
+          arch: ${{ matrix.arch || 'x86_64' }}
+          profile: ${{ steps.android17_sdk.outputs.avd_profile || matrix.profile || 'pixel_7' }}
+          ram-size: ${{ matrix.ram-size || '4096M' }}
+          disk-size: ${{ matrix.disk-size || '12G' }}
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
           disable-animations: true
           emulator-boot-timeout: 900
