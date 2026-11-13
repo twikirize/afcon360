@@ -81,42 +81,57 @@ fi
 # "Pixel Launcher isn't responding" dialog during first boot. This is not an
 # AFCON360 app failure. Detect only that exact system dialog and press Wait,
 # then continue requiring the real AFCON360 sign-in UI.
-dismiss_pixel_launcher_anr() {
+dismiss_known_emulator_system_dialog() {
   adb shell uiautomator dump "$UI_DUMP_PATH" >/dev/null 2>&1 || return 0
-  local hierarchy coords
+  local hierarchy button_id button_label
   hierarchy="$(adb shell cat "$UI_DUMP_PATH" 2>/dev/null | tr -d '\r' || true)"
-  [[ "$hierarchy" == *"Pixel Launcher isn't responding"* ]] || return 0
 
-  coords="$(printf '%s' "$hierarchy" | python3 -c '
+  # Android 24's Google APIs image can display a crash dialog for its bundled
+  # Messenger app during first boot. This is not AFCON360. Close only a
+  # background-system-app dialog; never dismiss an AFCON360 app crash.
+  if [[ "$hierarchy" == *"Pixel Launcher isn't responding"* ]]; then
+    button_id="android:id/aerr_wait"
+    button_label="Wait"
+  elif [[ "$hierarchy" == *" has stopped"* ]] &&
+       [[ "$hierarchy" != *"$EXPECTED_APP_LABEL has stopped"* ]]; then
+    button_id="android:id/aerr_close"
+    button_label="Close app"
+  else
+    return 0
+  fi
+
+  local coords
+  coords="$(printf '%s' "$hierarchy" | BUTTON_ID="$button_id" BUTTON_LABEL="$button_label" python3 -c '
+import os
+import re
 import sys
 import xml.etree.ElementTree as ET
-raw = sys.stdin.read()
 try:
-    root = ET.fromstring(raw)
+    root = ET.fromstring(sys.stdin.read())
 except ET.ParseError:
     raise SystemExit(1)
+wanted_id = os.environ["BUTTON_ID"]
+wanted_text = os.environ["BUTTON_LABEL"]
 for node in root.iter("node"):
-    if node.attrib.get("resource-id") == "android:id/aerr_wait" or node.attrib.get("text") == "Wait":
-        bounds = node.attrib.get("bounds", "")
-        import re
-        match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+    if node.attrib.get("resource-id") == wanted_id or node.attrib.get("text") == wanted_text:
+        match = re.fullmatch(r"\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]", node.attrib.get("bounds", ""))
         if match:
             left, top, right, bottom = map(int, match.groups())
             print((left + right) // 2, (top + bottom) // 2)
             raise SystemExit(0)
 raise SystemExit(1)
 ' 2>/dev/null)" || true
+
   if [[ -n "$coords" ]]; then
     read -r x y <<< "$coords"
-    echo "::warning::Emulator displayed a Pixel Launcher ANR; selecting Wait and rechecking the AFCON360 screen."
+    echo "::warning::Emulator displayed an unrelated system dialog; applying its safe system action and rechecking AFCON360."
     adb shell input tap "$x" "$y"
     sleep 3
   fi
 }
-
 screen_rendered=0
 for attempt in {1..20}; do
-  dismiss_pixel_launcher_anr
+  dismiss_known_emulator_system_dialog
   if adb shell uiautomator dump "$UI_DUMP_PATH" >"$UI_DUMP_LOG" 2>&1; then
     screen_xml="$(adb shell cat "$UI_DUMP_PATH" 2>/dev/null | tr -d '\r\n' || true)"
     if [[ "$screen_xml" == *"$EXPECTED_APP_LABEL"* ]] &&
