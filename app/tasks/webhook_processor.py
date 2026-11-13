@@ -264,11 +264,22 @@ def _handle_flutterwave(event, payload, db):
                 db=db
             )
 
-    elif event_type == "transfer.completed":
-        reference = payload.get("data", {}).get("reference")
-        logger.info(f"Flutterwave transfer completed: {reference}")
-        # Payout confirmed - update payout record if you have one
-        _mark_payout_complete(reference, "flutterwave", db)
+    elif event_type in {"transfer.completed", "transfer.disburse"}:
+        data = payload.get("data", {}) or {}
+        reference = data.get("reference")
+        status = str(data.get("status") or "").strip().lower()
+        # The public webhook route verifies Flutterwave's verif-hash over the
+        # raw request body before enqueueing. Require the stored signature too,
+        # so manually inserted/unsigned queue rows cannot settle a withdrawal.
+        if not event.signature:
+            raise ValueError("Flutterwave transfer webhook is missing its verified signature")
+        if status in {"successful", "success", "completed"}:
+            _mark_payout_complete(reference, "flutterwave", db, provider_payload=data)
+        elif status in {"failed", "failure"}:
+            reason = data.get("complete_message") or "Flutterwave reported a failed transfer"
+            _mark_payout_failed(reference, "flutterwave", reason, db, provider_payload=data)
+        else:
+            logger.info("Flutterwave payout remains pending: ref=%s status=%s", reference, status)
 
 
 def _handle_paystack(event, payload, db):
@@ -559,30 +570,51 @@ def _alert_owner_dead_letter(event):
         logger.exception("Unexpected error while alerting owner for dead_letter event %s", event.id)
 
 
-def _mark_payout_complete(reference: str, provider: str, db):
-    """Mark a payout transaction as completed."""
+def _mark_payout_complete(reference: str, provider: str, db, provider_payload=None):
+    """Complete a provider payout only after validating any native withdrawal."""
     if not reference:
         return
     from app.wallet.models.transaction import TransactionModel, TransactionStatus, TransactionType
-    tx = TransactionModel.query.filter_by(
-        client_request_id=reference,
-    ).first()
+
+    tx = TransactionModel.query.filter_by(client_request_id=reference).first()
     if tx and tx.tx_type == TransactionType.WITHDRAW:
-        tx.status = TransactionStatus.COMPLETED
-        db.session.commit()
-        logger.info(f"Payout completed: {provider} ref={reference}")
+        if (tx.tx_metadata or {}).get("native_withdrawal_version") == 1:
+            from app.wallet.services.native_withdrawal_service import NativeWithdrawalService
+            NativeWithdrawalService.handle_provider_event(
+                reference,
+                provider,
+                provider_payload or {},
+            )
+        else:
+            # Preserve the existing agent/legacy withdrawal callback path.
+            tx.status = TransactionStatus.COMPLETED
+            db.session.commit()
+        logger.info("Payout completed: %s ref=%s", provider, reference)
 
 
-def _mark_payout_failed(reference: str, provider: str, reason: str, db):
-    """Mark a payout transaction as failed."""
+def _mark_payout_failed(reference: str, provider: str, reason: str, db, provider_payload=None):
+    """Fail provider payout; native customer reservations are reversed once."""
     if not reference:
         return
     from app.wallet.models.transaction import TransactionModel, TransactionStatus, TransactionType
-    tx = TransactionModel.query.filter_by(
-        client_request_id=reference,
-    ).first()
+
+    tx = TransactionModel.query.filter_by(client_request_id=reference).first()
     if tx and tx.tx_type == TransactionType.WITHDRAW:
-        tx.status = TransactionStatus.FAILED
-        db.session.commit()
-        logger.error(f"Payout failed: {provider} ref={reference} reason={reason}")
+        if (tx.tx_metadata or {}).get("native_withdrawal_version") == 1:
+            from app.wallet.services.native_withdrawal_service import NativeWithdrawalService
+            data = dict(provider_payload or {})
+            data.setdefault("reference", reference)
+            data.setdefault("complete_message", reason)
+            NativeWithdrawalService.handle_provider_event(
+                reference,
+                provider,
+                data,
+            )
+        else:
+            # Preserve existing legacy payout handling. New native customer
+            # withdrawals use an explicit, idempotent ledger reversal.
+            tx.status = TransactionStatus.FAILED
+            tx.failure_reason = str(reason)[:500]
+            db.session.commit()
+        logger.error("Payout failed: %s ref=%s reason=%s", provider, reference, reason)
 
