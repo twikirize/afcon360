@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Refunds & Cancellations | AFCON360{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/public-info-pages.css') }}">
+{% endblock %}
+{% block content %}
+<article class="public-page-wrap">
+  <header class="public-page-hero">
+    <p class="public-page-kicker">Customer information · Working draft</p>
+    <h1>Refunds &amp; Cancellations</h1>
+    <p class="public-page-intro">A guide to changing a booking, cancelling a service or asking AFCON360 to review a payment.</p>
+  </header>
+
+  <div class="public-draft-note">
+    <strong>WORKING DRAFT — SERVICE RULES MUST BE CONFIRMED</strong>
+    Cancellation windows, fees, refund eligibility and processing times can differ by service and provider. The final policy must match the rules actually shown in the booking and payment flows and any mandatory consumer protections.
+  </div>
+
+  <div class="public-page-content">
+    <section>
+      <h2>1. Check the terms before confirming</h2>
+      <p>Before you pay or confirm a booking, review the cancellation deadline, any applicable cancellation charge, refund conditions and provider rules shown for that service. Keep a copy of the booking confirmation and payment reference.</p>
+      <p>Where a service has a separate organiser or provider policy, that policy may determine whether a change or refund is available, subject to applicable law.</p>
+    </section>
+
+    <section>
+      <h2>2. How to cancel</h2>
+      <ol>
+        <li>Open the booking or service request in your AFCON360 account, where cancellation is available.</li>
+        <li>Review the cancellation summary, including any fee or amount that may be returned.</li>
+        <li>Submit the cancellation request and keep the confirmation.</li>
+        <li>If the option is not available or the details appear incorrect, contact AFCON360 Support with your booking reference.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>3. Transport bookings</h2>
+      <p>Transport requests may move through quote, matching, driver assignment and trip stages. The cancellation rules that apply can depend on the booking stage and how much notice is given. Any applicable charge should be displayed or made available in the booking flow before you confirm.</p>
+      <p>If a driver does not arrive, a trip is not provided, or the trip details materially differ from the confirmed request, report the issue through the Platform or Support so it can be reviewed.</p>
+    </section>
+
+    <section>
+      <h2>4. Accommodation, tours and experiences</h2>
+      <p>Refunds and changes may depend on the host or provider's stated policy, the date of the service, availability and whether the service has started. Some discounted, timed or customised services may have more restrictive conditions. Those conditions should be visible before payment.</p>
+    </section>
+
+    <section>
+      <h2>5. Event tickets and organiser services</h2>
+      <p>Event tickets and organiser-controlled services may be subject to the event organiser's or ticket issuer's conditions. A ticket may be non-refundable or non-transferable except where the organiser's rules or applicable law provide otherwise. Check the event-specific terms before purchasing.</p>
+    </section>
+
+    <section>
+      <h2>6. When a refund is approved</h2>
+      <p>Where a refund is approved, it may be returned to the original payment method or to an AFCON360 wallet where that option is supported and lawful. The method will depend on the payment route, transaction and applicable rules.</p>
+      <p>Bank, card, mobile-money and payment-provider processing times can vary. AFCON360 may show a refund status or reference, but cannot guarantee the time another financial institution takes to post the funds.</p>
+    </section>
+
+    <section>
+      <h2>7. Payment problems and disputes</h2>
+      <p>If you were charged more than once, paid but did not receive a confirmation, see an unexpected amount or believe a refund is missing, contact Support. Include the transaction reference, date, amount and currency. Do not send full card details, passwords, passcodes or wallet PINs.</p>
+      <p>We may review relevant booking, wallet, provider and payment-provider records to investigate the issue. A payment-provider or bank dispute process may also be available.</p>
+    </section>
+
+    <section>
+      <h2>8. Contact us</h2>
+      <p>Use the <a href="{{ url_for('public_pages.contact') }}">Contact Us</a> page and include your booking or transaction reference. This helps us direct the request to the right team.</p>
+    </section>
+
+    <p class="public-page-meta">Working draft prepared 9 November 2026 · Transaction-specific terms take precedence where lawfully applicable.</p>
+  </div>
+</article>
+{% endblock %}

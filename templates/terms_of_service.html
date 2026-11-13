@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Terms of Service | AFCON360{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/public-info-pages.css') }}">
+{% endblock %}
+{% block content %}
+<article class="public-page-wrap">
+  <header class="public-page-hero">
+    <p class="public-page-kicker">Legal · Working draft</p>
+    <h1>Terms of Service</h1>
+    <p class="public-page-intro">A starting point for the rules that apply when visitors, users and service partners access AFCON360.</p>
+  </header>
+
+  <div class="public-draft-note">
+    <strong>WORKING DRAFT — FOR LAWYER AND BUSINESS REVIEW</strong>
+    Complete the operator's legal details, applicable law, dispute process, provider contracts, wallet terms and service-specific schedules before adopting these terms. Mandatory consumer rights are not excluded by this draft.
+  </div>
+
+  <div class="public-page-content">
+    <section>
+      <h2>1. About these terms</h2>
+      <p>These draft terms describe use of the AFCON360 website, applications and related digital services (“Platform”). AFCON360 is operated by <strong>[INSERT FULL REGISTERED LEGAL ENTITY NAME AND ADDRESS]</strong> (“AFCON360”, “we”, “us” or “our”). By accessing or using the Platform, you agree to follow the terms that apply to the features you use, together with any service-specific terms shown during a transaction.</p>
+    </section>
+
+    <section>
+      <h2>2. What AFCON360 provides</h2>
+      <p>AFCON360 is a digital platform intended to help people discover and coordinate event information and related services, which may include transport, accommodation, tours, experiences, event-related services and supported wallet or payment functions.</p>
+      <p>Some services are supplied by independent providers or event organisers. Unless we expressly say otherwise, AFCON360 is not the transport operator, accommodation owner, tour guide, event organiser, immigration authority or official ticket issuer for a third-party service.</p>
+    </section>
+
+    <section>
+      <h2>3. Accounts and account security</h2>
+      <p>You must provide information that is accurate and keep it reasonably up to date. You are responsible for protecting your sign-in credentials, device and verification codes. Do not share passwords, one-time passcodes or wallet PINs. Tell us promptly if you suspect unauthorised access.</p>
+      <p>We may ask for additional verification where necessary for account security, provider onboarding, payment protection or legal requirements. We may restrict or suspend an account where we reasonably believe it is being used unlawfully, fraudulently or in a way that threatens people or the Platform, subject to applicable law.</p>
+    </section>
+
+    <section>
+      <h2>4. Listings, quotes and bookings</h2>
+      <p>Listings, prices, availability and service descriptions may be supplied by AFCON360, an independent provider or an event organiser. We aim to present information clearly, but availability and fulfilment can change. A quote or request is not necessarily a confirmed booking.</p>
+      <p>A service is confirmed only when the relevant confirmation step shown in the Platform has been completed. For transport, a request or fare quote should not be treated as a confirmed ride until the required driver and vehicle assignment has been made and the Platform issues the relevant booking confirmation or reference. Accommodation, tours and event services may have their own provider or organiser confirmation steps.</p>
+      <p>Check the service description, dates, location, passenger or guest details, provider conditions and final price before confirming.</p>
+    </section>
+
+    <section>
+      <h2>5. Payments and wallet features</h2>
+      <p>Payment options, supported currencies, wallet functions and applicable transaction charges may vary by country, provider and service. Any currency conversion, exchange rate, fee or amount relevant to a transaction should be displayed in the applicable payment flow before you authorise it.</p>
+      <p>Unless a separate agreement says otherwise, a platform wallet is a service feature and should not be understood as a bank account or deposit-taking service. Wallet balances and transactions are subject to applicable verification, payment-provider, safeguarding, withdrawal and regulatory requirements. The detailed wallet terms and transaction-specific disclosures also apply.</p>
+    </section>
+
+    <section>
+      <h2>6. Cancellations and refunds</h2>
+      <p>Cancellation deadlines, charges and refund eligibility depend on the service, provider, event organiser and applicable law. The terms shown before you confirm a booking or payment form part of that transaction. Please read the <a href="{{ url_for('public_pages.refunds_and_cancellations') }}">Refunds and Cancellations Policy</a> and the specific conditions shown at checkout.</p>
+    </section>
+
+    <section>
+      <h2>7. Your responsibilities</h2>
+      <ul>
+        <li>Use the Platform lawfully and provide accurate information.</li>
+        <li>Respect providers, other users, local communities and property.</li>
+        <li>Do not misuse accounts, payment functions, promotions or booking flows.</li>
+        <li>Do not upload malicious code, attempt unauthorised access or interfere with the Platform.</li>
+        <li>Follow applicable travel, visa, health, safety, venue and event requirements.</li>
+        <li>Keep your booking and payment confirmations and report problems promptly.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>8. Third-party services and links</h2>
+      <p>Third-party providers may have separate terms, house rules, cancellation conditions, safety requirements and privacy notices. You are responsible for reviewing those terms before purchasing or using their services. AFCON360 does not control every aspect of a third party's service and cannot guarantee a provider's performance.</p>
+    </section>
+
+    <section>
+      <h2>9. Platform availability and intellectual property</h2>
+      <p>We may change, improve, suspend or discontinue a feature for operational, security, legal or commercial reasons. We will take reasonable steps to communicate material changes where appropriate. Platform software, design, branding and content are protected by applicable intellectual-property laws. You may use the Platform for its intended purpose but may not copy, misuse or commercially exploit protected material without permission.</p>
+    </section>
+
+    <section>
+      <h2>10. Responsibility and liability</h2>
+      <p>Nothing in these terms is intended to exclude liability or consumer rights that cannot lawfully be excluded. To the extent permitted by applicable law, AFCON360 is not responsible for losses caused by a third-party provider's independent acts, inaccurate information supplied by a provider, events outside reasonable control or a user's failure to follow applicable instructions. The final allocation of responsibility must be reviewed and stated in the provider and consumer contracts.</p>
+    </section>
+
+    <section>
+      <h2>11. Suspension and termination</h2>
+      <p>You may stop using the Platform and may request account closure through the available account process. We may suspend or restrict access where necessary for security, suspected fraud, legal compliance or a material breach of these terms. Financial, booking, safety and legal records may need to be retained where required by law or for legitimate dispute-resolution purposes.</p>
+    </section>
+
+    <section>
+      <h2>12. Governing law and disputes</h2>
+      <p><strong>[INSERT THE APPROVED GOVERNING LAW, COURTS OR DISPUTE-RESOLUTION PROCESS AFTER LEGAL REVIEW.]</strong> Mandatory rights that apply in the country where a consumer resides or receives a service remain unaffected.</p>
+    </section>
+
+    <section>
+      <h2>13. Contact and updates</h2>
+      <p>For questions about these terms, contact <a href="{{ url_for('public_pages.contact') }}">AFCON360 Support</a>. We may update the terms as the Platform changes. The published version should show the effective date and explain material changes.</p>
+    </section>
+
+    <p class="public-page-meta">Working draft prepared 9 November 2026 · Effective date: [INSERT AFTER LEGAL APPROVAL] · Version: 0.1</p>
+  </div>
+</article>
+{% endblock %}

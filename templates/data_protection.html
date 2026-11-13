@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Data Protection & Security | AFCON360{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/public-info-pages.css') }}">
+{% endblock %}
+{% block content %}
+<article class="public-page-wrap">
+  <header class="public-page-hero">
+    <p class="public-page-kicker">Trust and safety · Working draft</p>
+    <h1>Data Protection</h1>
+    <p class="public-page-intro">How AFCON360 intends to handle personal information responsibly across accounts, bookings, providers, payments and support.</p>
+  </header>
+
+  <div class="public-draft-note">
+    <strong>WORKING DRAFT — OPERATIONAL AND LEGAL REVIEW REQUIRED</strong>
+    This page is a plain-language summary, not a certification or guarantee. Retain only statements that match AFCON360's actual policies, technical controls, contracts and operating practices.
+  </div>
+
+  <div class="public-page-content">
+    <section>
+      <h2>Our approach</h2>
+      <p>People should be able to understand why information is requested, how it supports a service and who may receive it. AFCON360 aims to collect information for clear purposes, limit access to people and systems that need it, keep it only as long as necessary and respond responsibly to questions or concerns.</p>
+    </section>
+
+    <section>
+      <h2>Practical data-protection principles</h2>
+      <div class="public-card-grid">
+        <div class="public-info-card"><strong>Purpose and transparency</strong><span>Explain what is collected and why, using clear notices at the point where information is requested.</span></div>
+        <div class="public-info-card"><strong>Data minimisation</strong><span>Ask for information that is relevant to the feature or transaction, not information that is merely convenient to collect.</span></div>
+        <div class="public-info-card"><strong>Access control</strong><span>Limit staff, provider and system access according to their responsibilities and legitimate need.</span></div>
+        <div class="public-info-card"><strong>Retention and disposal</strong><span>Use approved retention periods and securely dispose of information when it is no longer required.</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Information that needs special care</h2>
+      <p>Account credentials, identity-verification material, precise location, booking details and transaction records can be sensitive in context. Access and sharing should be restricted to the purpose for which the information is needed. Never send passwords, one-time passcodes, wallet PINs or full payment-card details to AFCON360 support by email.</p>
+    </section>
+
+    <section>
+      <h2>Providers and technology partners</h2>
+      <p>Some services require information to be shared with a provider or technology partner. For example, a transport provider may need pickup and trip details to fulfil a ride, while a payment provider may need transaction information to complete a payment. AFCON360 should use appropriate agreements, access limits and supplier reviews for these relationships.</p>
+    </section>
+
+    <section>
+      <h2>Security measures</h2>
+      <p>Depending on the system and risk, safeguards may include role-based access, authentication controls, secure communications, security logging, monitoring, backups, software maintenance and incident-response procedures. This summary does not claim that AFCON360 holds a particular security certification or that every safeguard applies to every provider.</p>
+    </section>
+
+    <section>
+      <h2>Requests and concerns</h2>
+      <p>For questions about information held by AFCON360, or to ask for access, correction or deletion where available under applicable law, contact <a href="mailto:compliance@afcon360.com?subject=Data%20Protection%20Enquiry">compliance@afcon360.com</a>. We may ask for reasonable identity verification before disclosing or changing personal information.</p>
+      <p>For suspected account compromise or a security vulnerability, use <a href="mailto:security@afcon360.com?subject=Security%20Report">security@afcon360.com</a>. Do not include passwords, live access tokens or other secrets in your report.</p>
+    </section>
+
+    <section>
+      <h2>Related information</h2>
+      <p>Read the full <a href="{{ url_for('public_pages.privacy_policy') }}">Privacy Policy</a> or <a href="{{ url_for('public_pages.contact') }}">Contact Us</a>.</p>
+    </section>
+
+    <p class="public-page-meta">Working draft prepared 9 November 2026 · Review against the deployed security controls before publication.</p>
+  </div>
+</article>
+{% endblock %}
