@@ -286,6 +286,8 @@ class WalletSystemConfig(BaseModel):
     # Feature flags
     deposits_enabled = Column(Boolean, default=True, nullable=False)
     withdrawals_enabled = Column(Boolean, default=True, nullable=False)
+    # Separate kill switch for the new native customer payout flow; legacy withdrawals remain independent.
+    native_withdrawals_enabled = Column(Boolean, default=False, server_default="false", nullable=False)
     transfers_enabled = Column(Boolean, default=True, nullable=False)
     fx_enabled = Column(Boolean, default=True, nullable=False)
     agents_enabled = Column(Boolean, default=False, nullable=False)  # Mobile banking agents service
