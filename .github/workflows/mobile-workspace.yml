@@ -687,6 +687,7 @@ jobs:
           exit 1
 
       - name: Update Android SDK command-line tools and validate Android 17 AVD metadata
+        id: android17_sdk
         if: matrix.android-label == 'android-17'
         shell: bash
         run: |
@@ -772,12 +773,43 @@ jobs:
           AVD_NAME="afcon360-api37-tools-check"
           mkdir -p "$AVD_HOME"
           "$AVDMANAGER" delete avd -n "$AVD_NAME" >/dev/null 2>&1 || true
-          # Use the documented minimal AVD command. Let avdmanager infer the
-          # sole ABI in this x86_64 system image; no device-profile catalogue
-          # is required for validating the API 37 target metadata.
-          # Match the emulator runner profile explicitly; without -d, avdmanager
-          # prompts to create a custom hardware profile and exits in non-interactive CI.
-          "$AVDMANAGER" --verbose create avd -f -n "$AVD_NAME" -k "$IMAGE" -d pixel_7
+
+          # Resolve a phone profile from the runner's installed catalogue.
+          # Device IDs are not guaranteed to be identical across SDK tool revisions.
+          DEVICE_IDS="$("$AVDMANAGER" list device -c | tr -d '\r')"
+          if [ -z "$DEVICE_IDS" ]; then
+            echo "::error::avdmanager returned no installed hardware device profiles."
+            exit 1
+          fi
+          echo "Available Android AVD hardware profile IDs:"
+          printf '%s\n' "$DEVICE_IDS"
+
+          AVD_PROFILE=""
+          for candidate in pixel_7 pixel_7_pro pixel_6 pixel_5 pixel_4 pixel "Nexus 5X"; do
+            if grep -Fxq -- "$candidate" <<< "$DEVICE_IDS"; then
+              AVD_PROFILE="$candidate"
+              break
+            fi
+          done
+          if [ -z "$AVD_PROFILE" ]; then
+            echo "::error::No supported Pixel/Nexus phone profile was found in the Android SDK catalogue."
+            exit 1
+          fi
+          echo "Selected Android 17 phone profile: $AVD_PROFILE"
+          echo "avd_profile=$AVD_PROFILE" >> "$GITHUB_OUTPUT"
+
+          # Capture verbose output and preserve the avdmanager exit status.
+          set +e
+          "$AVDMANAGER" --verbose create avd -f -n "$AVD_NAME" -k "$IMAGE" -d "$AVD_PROFILE" 2>&1 |
+            tee "$RUNNER_TEMP/afcon360-api37-avd-create.log"
+          CREATE_STATUS="${PIPESTATUS[0]}"
+          set -e
+          if [ "$CREATE_STATUS" -ne 0 ]; then
+            echo "::error::avdmanager failed to create the Android 17 validation AVD (exit $CREATE_STATUS)."
+            cat "$RUNNER_TEMP/afcon360-api37-avd-create.log"
+            exit "$CREATE_STATUS"
+          fi
+
           AVD_INI="$AVD_HOME/$AVD_NAME.ini"
           test -s "$AVD_INI"
           if ! grep -Fxq "target=android-37.0" "$AVD_INI"; then
@@ -807,7 +839,7 @@ jobs:
           system-image-api-level: ${{ matrix.system-image-api-level }}
           target: ${{ matrix.target || 'google_apis' }}
           arch: ${{ matrix.arch || 'x86_64' }}
-          profile: ${{ matrix.profile || 'pixel_7' }}
+          profile: ${{ steps.android17_sdk.outputs.avd_profile || matrix.profile || 'pixel_7' }}
           ram-size: ${{ matrix.ram-size || '4096M' }}
           disk-size: ${{ matrix.disk-size || '12G' }}
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
