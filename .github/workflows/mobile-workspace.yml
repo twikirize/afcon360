@@ -772,7 +772,9 @@ jobs:
           # Use the documented minimal AVD command. Let avdmanager infer the
           # sole ABI in this x86_64 system image; no device-profile catalogue
           # is required for validating the API 37 target metadata.
-          echo no | "$AVDMANAGER" create avd -f -n "$AVD_NAME" -k "$IMAGE"
+          # Match the emulator runner profile explicitly; without -d, avdmanager
+          # prompts to create a custom hardware profile and exits in non-interactive CI.
+          "$AVDMANAGER" create avd -f -n "$AVD_NAME" -k "$IMAGE" -d pixel_7
           AVD_INI="$AVD_HOME/$AVD_NAME.ini"
           test -s "$AVD_INI"
           if ! grep -Fxq "target=android-37.0" "$AVD_INI"; then
