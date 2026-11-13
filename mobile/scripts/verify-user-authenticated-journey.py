@@ -470,25 +470,6 @@ def install_user_apk_with_retries(apk_path: str, attempts: int = 3) -> None:
             time.sleep(3)
 
 
-def launch_user_app() -> None:
-    """Start the app's launcher Activity directly, without depending on the system launcher.
-
-    Some Google APIs emulator images intermittently show a Pixel Launcher ANR
-    even though Android Package Manager and the app package are available. An
-    explicit MAIN/LAUNCHER intent scoped to this package starts AFCON360 itself
-    and avoids using the Home screen as an intermediate test dependency.
-    """
-    output = run_adb(
-        "shell", "am", "start", "-W",
-        "-a", "android.intent.action.MAIN",
-        "-c", "android.intent.category.LAUNCHER",
-        "-p", PACKAGE,
-    )
-    if "Status: ok" not in output and "Starting:" not in output:
-        raise RuntimeError(f"Android did not start the AFCON360 User Activity: {output[-2000:]}")
-    print("ANDROID_APP_LAUNCH: started AFCON360 directly through ActivityManager.", flush=True)
-
-
 def main() -> None:
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     PROGRESS.write_text(json.dumps({"completed_stages": []}, indent=2) + "\n", encoding="utf-8")
@@ -496,7 +477,7 @@ def main() -> None:
     wait_for_android_package_manager()
     run_adb("reverse", "tcp:5000", "tcp:5000")
     install_user_apk_with_retries(APK_PATH)
-    launch_user_app()
+    run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
 
     wait_for_text("AFCON360 User", "Sign in securely", label="native sign-in screen")
     save_screen("01-login")
@@ -612,7 +593,7 @@ def main() -> None:
     mark_stage("session_restore_started")
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
-    launch_user_app()
+    run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
     wait_for_text("Welcome to Pamoja", f"Good to see you, {USERNAME}.", timeout=45, label="restored authenticated session")
     save_screen("10-session-restored")
     mark_stage("session_restored")
