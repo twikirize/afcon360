@@ -67,6 +67,7 @@ def _configure_withdrawal_checks(monkeypatch):
 
     config = SimpleNamespace(
         withdrawals_enabled=True,
+        native_withdrawals_enabled=True,
         max_withdrawal_amount=Decimal("100000"),
         withdrawal_fee_percent=Decimal("1.00"),
         max_daily_amount=Decimal("1000000"),
@@ -420,3 +421,40 @@ def test_native_withdrawal_api_routes_return_safe_quote_and_pending_state(client
     status = client.get("/api/mobile/v1/wallet/withdrawals/NATWD-TEST", headers=headers)
     assert status.status_code == 202
     assert status.get_json()["data"]["reference"] == "NATWD-TEST"
+
+
+def test_native_withdrawals_require_explicit_feature_enablement(app, monkeypatch, withdrawal_account):
+    from app.extensions import db
+    from app.identity.models.user import User
+    from app.wallet.models.config import WalletSystemConfig
+    from app.wallet.services.native_withdrawal_service import NativeWithdrawalError, NativeWithdrawalService
+
+    config = SimpleNamespace(
+        withdrawals_enabled=True,
+        native_withdrawals_enabled=False,
+        max_withdrawal_amount=Decimal("100000"),
+        withdrawal_fee_percent=Decimal("1.00"),
+        max_daily_amount=Decimal("1000000"),
+        max_monthly_amount=Decimal("10000000"),
+    )
+    monkeypatch.setattr(WalletSystemConfig, "get_config", classmethod(lambda cls: config))
+    monkeypatch.setattr(
+        NativeWithdrawalService,
+        "_ensure_provider_ready",
+        classmethod(lambda cls: None),
+    )
+
+    with app.app_context():
+        user = db.session.get(User, withdrawal_account[0])
+        with pytest.raises(NativeWithdrawalError) as error:
+            NativeWithdrawalService.create_quote(
+                user,
+                amount="1000",
+                currency="UGX",
+                network="MTN",
+                phone_number="0700123456",
+                beneficiary_name="Amina Nakato",
+            )
+        assert error.value.code == "native_withdrawals_disabled"
+        assert error.value.status_code == 503
+        db.session.remove()
