@@ -98,6 +98,17 @@ class NativeWithdrawalService:
         return f"+256 *** ***{phone[-3:]}"
 
     @classmethod
+    @classmethod
+    def _ensure_native_withdrawals_enabled(cls):
+        """Keep the new customer payout route unavailable until explicitly enabled."""
+        config = WalletSystemConfig.get_config()
+        if not bool(getattr(config, "native_withdrawals_enabled", False)):
+            raise NativeWithdrawalError(
+                "native_withdrawals_disabled",
+                "Native wallet withdrawals are not enabled yet. Existing wallet withdrawal services are unaffected.",
+                503,
+            )
+
     def _ensure_provider_ready(cls):
         config = PaymentProviderConfig.get_active_config(cls.PROVIDER)
         env_secret = current_app.config.get("FLUTTERWAVE_SECRET_KEY")
@@ -125,6 +136,7 @@ class NativeWithdrawalService:
         phone_number: str,
         beneficiary_name: str,
     ) -> dict:
+        cls._ensure_native_withdrawals_enabled()
         cls._ensure_provider_ready()
 
         currency = str(currency or "").strip().upper()
@@ -337,6 +349,7 @@ class NativeWithdrawalService:
 
     @classmethod
     def confirm_quote(cls, user, *, quote_token: str, pin: str) -> dict:
+        cls._ensure_native_withdrawals_enabled()
         cls._ensure_provider_ready()
         quote = cls._load_quote(user, quote_token)
         reference = cls._reference_for_quote(user, quote["quote_id"])
