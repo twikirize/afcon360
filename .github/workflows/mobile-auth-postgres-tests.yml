@@ -17,6 +17,8 @@ on:
       - "app/accommodation/routes.py"
       - "app/wallet/services/wallet_service.py"
       - "app/wallet/services/native_withdrawal_service.py"
+      - "app/wallet/models/config.py"
+      - "migrations/versions/20261113120000_add_native_withdrawals_feature_gate.py"
       - "app/wallet/services/payment_gateway.py"
       - "app/tasks/webhook_processor.py"
       - "tests/auth/test_native_wallet_withdrawals.py"
@@ -51,6 +53,8 @@ on:
       - "tests/auth/test_mobile_wallet_api.py"
       - "app/wallet/services/wallet_service.py"
       - "app/wallet/services/native_withdrawal_service.py"
+      - "app/wallet/models/config.py"
+      - "migrations/versions/20261113120000_add_native_withdrawals_feature_gate.py"
       - "app/wallet/services/payment_gateway.py"
       - "app/tasks/webhook_processor.py"
       - "tests/auth/test_native_wallet_withdrawals.py"
@@ -77,6 +81,8 @@ on:
       - "app/accommodation/routes.py"
       - "app/wallet/services/wallet_service.py"
       - "app/wallet/services/native_withdrawal_service.py"
+      - "app/wallet/models/config.py"
+      - "migrations/versions/20261113120000_add_native_withdrawals_feature_gate.py"
       - "app/wallet/services/payment_gateway.py"
       - "app/tasks/webhook_processor.py"
       - "tests/auth/test_native_wallet_withdrawals.py"
@@ -191,6 +197,8 @@ jobs:
             app/accommodation/services/payment_processors/wallet_processor.py \
             app/wallet/services/wallet_service.py \
             app/wallet/services/native_withdrawal_service.py \
+            app/wallet/models/config.py \
+            migrations/versions/20261113120000_add_native_withdrawals_feature_gate.py \
             app/wallet/services/payment_gateway.py \
             app/tasks/webhook_processor.py \
             app/auth/account_deletion_service.py \
