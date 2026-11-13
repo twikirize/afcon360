@@ -16,11 +16,51 @@
 
 {% block content %}
 
+<!-- ── PAMOJA HERO & MOBILE SERVICE SHORTCUTS ───────────── -->
+<section class="pamoja-hero-section" aria-labelledby="pamoja-hero-title">
+  <div class="hero-content">
+    <h1 class="hero-title" id="pamoja-hero-title">Welcome to <span>Pamoja</span></h1>
+    <p class="hero-subtitle">Your gateway to matches, travel, tickets, and experiences across Africa and beyond.</p>
+
+    <div class="hero-actions">
+      <a href="{{ safe_url('events.list') }}" class="btn-hero-primary">Explore Featured Events</a>
+      <a href="{{ safe_url('accommodation.guest_search') }}"
+         class="btn-hero-ghost{% if not modules.get('accommodation') %} is-disabled{% endif %}"
+         {% if not modules.get('accommodation') %}aria-disabled="true" onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
+        Find Stays &amp; Hotels
+      </a>
+    </div>
+
+    <!-- Thumb-friendly horizontal shortcuts, shown on mobile only -->
+    <nav class="mobile-service-chips" aria-label="Pamoja service shortcuts">
+      <a href="{{ safe_url('events.list') }}" class="mobile-chip">🏟️ Events</a>
+      <a href="{{ safe_url('accommodation.guest_search') }}"
+         class="mobile-chip{% if not modules.get('accommodation') %} is-disabled{% endif %}"
+         {% if not modules.get('accommodation') %}aria-disabled="true" onclick="event.preventDefault(); flash('Accommodation module is currently disabled', 'warning');"{% endif %}>
+        🏨 Stays
+      </a>
+      <a href="{{ safe_url('transport.home') }}"
+         class="mobile-chip{% if not modules.get('transport') %} is-disabled{% endif %}"
+         {% if not modules.get('transport') %}aria-disabled="true" onclick="event.preventDefault(); flash('Transport module is currently disabled', 'warning');"{% endif %}>
+        🚌 Transport
+      </a>
+      <a href="{{ links.tourism_home }}"
+         class="mobile-chip{% if links.tourism_home == '#' %} is-disabled{% endif %}"
+         {% if links.tourism_home == '#' %}aria-disabled="true" onclick="event.preventDefault(); flash('Tourism module is currently disabled', 'warning');"{% endif %}>
+        🌴 Tourism
+      </a>
+      <a href="{% if session.get('user_id') %}{{ safe_url('wallet.wallet_dashboard') }}{% else %}{{ safe_url('wallet.wallet_home') }}{% endif %}" class="mobile-chip">
+        👛 Wallet
+      </a>
+    </nav>
+  </div>
+</section>
+
 <!-- ── SEARCH BAR ─────────────────────────────────────── -->
-<section class="top-search">
+<section class="top-search" role="search" aria-label="Search Pamoja">
   <div class="search-inner">
-    <div class="search-select-wrap">
-      <select>
+    <div class="search-select-wrap desktop-only-search">
+      <select aria-label="Filter by region">
         <option>All Regions</option>
         <option>Africa</option>
         <option>Asia</option>
@@ -28,8 +68,8 @@
         <option>North America</option>
       </select>
     </div>
-    <div class="search-select-wrap">
-      <select>
+    <div class="search-select-wrap desktop-only-search">
+      <select aria-label="Filter by event type">
         <option>Event Type</option>
         <option>Sports</option>
         <option>Music</option>
@@ -38,17 +78,30 @@
         <option>Cultural</option>
       </select>
     </div>
-    <div class="search-select-wrap">
-      <select>
+    <div class="search-select-wrap desktop-only-search">
+      <select aria-label="Filter by date">
         <option>Any Date</option>
         <option>This Week</option>
         <option>This Month</option>
         <option>This Year</option>
       </select>
     </div>
+
+    <!-- A single, touch-friendly search field replaces the filters on phones. -->
+    <label class="search-select-wrap mobile-only-search" for="home-mobile-search">
+      <span aria-hidden="true">🔍</span>
+      <input
+        id="home-mobile-search"
+        type="search"
+        placeholder="Search events and experiences…"
+        autocomplete="off"
+        aria-label="Search events and experiences"
+      >
+    </label>
+
     <div class="search-btn-group">
-      <button class="search-btn">🔍 Search</button>
-      <button class="search-btn-arrow">▼</button>
+      <button class="search-btn" type="button">🔍 Search</button>
+      <button class="search-btn-arrow" type="button" aria-label="More search options">▼</button>
     </div>
   </div>
   <div class="trending-tags">

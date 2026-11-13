@@ -1,0 +1,33 @@
+name: Pamoja homepage hero source contract
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "templates/public_home.html"
+      - "static/css/global/home.css"
+      - "scripts/check_pamoja_homepage_hero.py"
+      - ".github/workflows/pamoja-homepage-hero-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  homepage-source-contract:
+    name: Jinja and responsive hero source contract
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install source-check dependencies
+        run: python -m pip install --disable-pip-version-check Jinja2 tinycss2
+
+      - name: Verify homepage hero and existing content
+        run: python scripts/check_pamoja_homepage_hero.py

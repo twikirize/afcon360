@@ -42,6 +42,7 @@ from sqlalchemy.pool import NullPool
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+os.environ["APP_ENV"] = "testing"
 os.environ['FLASK_ENV'] = 'testing'
 
 # Disable live Redis for the test suite: tests must mock Redis, never depend
