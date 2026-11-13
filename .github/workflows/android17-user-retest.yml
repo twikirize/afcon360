@@ -175,7 +175,7 @@ jobs:
           echo "::error::The isolated API did not become healthy."
           exit 1
 
-      - name: Install compatible Android SDK tools and validate Android 17 AVD
+      - name: Install compatible Android SDK tools and prepare Android 17 AVD profile
         id: android17_sdk
         shell: bash
         run: |
@@ -260,28 +260,16 @@ jobs:
           echo "Selected Android 17 phone profile: $AVD_PROFILE"
           echo "avd_profile=$AVD_PROFILE" >> "$GITHUB_OUTPUT"
 
-          AVD_LOG="$RUNNER_TEMP/afcon360-api37-avd-create.log"
-          set +e
-          # Match android-emulator-runner's non-interactive AVD creation:
-          # it pipes "no" to avdmanager to decline a custom hardware profile.
-          printf 'no\n' | "$AVDMANAGER" --verbose create avd -f -n "$AVD_NAME" -k "$IMAGE" -d "$AVD_PROFILE" > "$AVD_LOG" 2>&1
-          CREATE_STATUS=$?
-          set -e
-          cat "$AVD_LOG"
-          if [ "$CREATE_STATUS" -ne 0 ]; then
-            echo "::error::Android 17 AVD metadata creation failed (exit $CREATE_STATUS)."
-            exit "$CREATE_STATUS"
-          fi
-
-          AVD_INI="$AVD_HOME/$AVD_NAME.ini"
-          test -s "$AVD_INI"
-          if ! grep -Fxq "target=android-37.0" "$AVD_INI"; then
-            echo "::error::Android 17 AVD metadata is invalid."
-            cat "$AVD_INI"
+          # Do not create a second, disposable AVD here. The runner action below
+          # performs the real AVD creation using its own supported non-interactive
+          # invocation and then launches that same Android 17 device.
+          if ! grep -Fxq -- "$AVD_PROFILE" <<< "$DEVICE_IDS"; then
+            echo "::error::Selected Android 17 AVD profile is not present in the SDK catalogue."
             exit 1
           fi
-          echo "ANDROID_17_AVD_METADATA_PASS: $(grep '^target=' "$AVD_INI")"
-          "$AVDMANAGER" delete avd -n "$AVD_NAME" >/dev/null
+          echo "ANDROID_17_SDK_IMAGE_READY: $IMAGE"
+          echo "ANDROID_17_AVD_PROFILE_READY: $AVD_PROFILE"
+
 
       - name: Enable KVM hardware acceleration
         shell: bash
