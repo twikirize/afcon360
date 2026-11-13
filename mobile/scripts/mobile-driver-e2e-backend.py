@@ -81,9 +81,21 @@ def build_app():
         # The backend-only offers preflight has its own sanitized response summary.
         # Keep it out of the APK request audit so it cannot satisfy client-journey
         # login, identity-read or logout evidence.
-        if request.headers.get("User-Agent") != BACKEND_PREFLIGHT_USER_AGENT:
+        is_backend_preflight = request.headers.get("User-Agent") == BACKEND_PREFLIGHT_USER_AGENT
+        if not is_backend_preflight:
             with REQUEST_LOG.open("a", encoding="utf-8") as handle:
                 handle.write(f"{response.status_code}\t{request.method}\t{request.path}\n")
+
+            # Record only the machine-readable error code for failed login
+            # attempts. Never persist the submitted identifier, password,
+            # response message, token, headers, cookies or request body.
+            if request.path == "/api/mobile/v1/auth/login" and response.status_code >= 400:
+                payload = response.get_json(silent=True) or {}
+                code = str(payload.get("code") or "missing_error_code")
+                if not code.replace("_", "").replace("-", "").isalnum():
+                    code = "invalid_error_code"
+                with (EVIDENCE / "auth-failures.tsv").open("a", encoding="utf-8") as handle:
+                    handle.write(f"{response.status_code}\t{code}\n")
 
         # Keep a deliberately narrow, non-identifying projection of the
         # server-owned Driver API response for audit evidence.
@@ -398,8 +410,16 @@ def assert_evidence(app) -> None:
         db.session.rollback()
 
     EVIDENCE.mkdir(parents=True, exist_ok=True)
+    auth_failure_path = EVIDENCE / "auth-failures.tsv"
+    auth_failure_codes = []
+    if auth_failure_path.is_file():
+        for line in auth_failure_path.read_text(encoding="utf-8").splitlines():
+            parts = line.split("\\t", 1)
+            if len(parts) == 2 and parts[0].isdigit():
+                auth_failure_codes.append({"status": int(parts[0]), "code": parts[1]})
     report = {
         "result": "passed" if all(required.values()) else "failed",
+        "sanitized_login_failures": auth_failure_codes,
         "synthetic_driver": DRIVER_USERNAME,
         "driver_code": DRIVER_CODE,
         "checks": required,
