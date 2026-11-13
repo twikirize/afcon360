@@ -273,7 +273,7 @@ def verify_driver_only_login_guard(app) -> None:
                 "http_status": response.status_code,
                 "error_code": payload.get("code"),
                 "customer_rejected": True,
-            }, indent=2) + "\\n",
+            }, indent=2) + "\n",
             encoding="utf-8",
         )
         print("PASS: customer-only identity rejected by Driver sign-in guard", flush=True)

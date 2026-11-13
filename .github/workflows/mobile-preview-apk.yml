@@ -934,6 +934,22 @@ jobs:
         run: |
           set -euo pipefail
           SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          # Keep the build-time Gradle alias out of SDK Manager's package scan.
+          # The canonical Android 17 package metadata identifies android-37.0;
+          # leaving android-37 as a symlink makes sdkmanager see one package at
+          # two paths and reject it as an inconsistent installation.
+          PLATFORM_ALIAS="$SDK_ROOT/platforms/android-37"
+          if [ -L "$PLATFORM_ALIAS" ]; then
+            if [ "$(readlink "$PLATFORM_ALIAS")" != "android-37.0" ]; then
+              echo "::error::Unexpected Android 37 platform alias target."
+              exit 1
+            fi
+            rm "$PLATFORM_ALIAS"
+          elif [ -e "$PLATFORM_ALIAS" ]; then
+            echo "::error::Android 37 alias exists but is not the expected symlink."
+            exit 1
+          fi
+          test -s "$SDK_ROOT/platforms/android-37.0/android.jar"
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
           test -n "$SDKMANAGER"
           WRAPPER_DIR="$RUNNER_TEMP/afcon360-sdkmanager-wrapper"
