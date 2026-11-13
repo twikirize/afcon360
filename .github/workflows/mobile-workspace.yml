@@ -758,6 +758,9 @@ jobs:
           # The Android CLI uses slash-style package IDs. avdmanager from the
           # upgraded tools still validates the .ini target consumed by
           # android-emulator-runner.
+          # Install the emulator package explicitly before AVD creation. The emulator-runner
+          # action performs this installation separately from the system image.
+          "$ANDROID_CLI" sdk install emulator
           "$ANDROID_CLI" sdk install "system-images/android-37.0/default/x86_64"
 
           IMAGE="system-images;android-37.0;default;x86_64"
@@ -774,7 +777,7 @@ jobs:
           # is required for validating the API 37 target metadata.
           # Match the emulator runner profile explicitly; without -d, avdmanager
           # prompts to create a custom hardware profile and exits in non-interactive CI.
-          "$AVDMANAGER" create avd -f -n "$AVD_NAME" -k "$IMAGE" -d pixel_7
+          "$AVDMANAGER" --verbose create avd -f -n "$AVD_NAME" -k "$IMAGE" -d pixel_7
           AVD_INI="$AVD_HOME/$AVD_NAME.ini"
           test -s "$AVD_INI"
           if ! grep -Fxq "target=android-37.0" "$AVD_INI"; then
