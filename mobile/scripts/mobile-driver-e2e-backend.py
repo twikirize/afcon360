@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import uuid
+import hashlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -94,8 +95,26 @@ def build_app():
                 code = str(payload.get("code") or "missing_error_code")
                 if not code.replace("_", "").replace("-", "").isalnum():
                     code = "invalid_error_code"
+                submitted = str((request.get_json(silent=True) or {}).get("identifier") or "").strip().lower()
+                expected = str(DRIVER_USERNAME or "").strip().lower()
+                matches_expected = bool(submitted) and submitted == expected
+                resolved_profile = False
+                try:
+                    from sqlalchemy import func, or_
+                    from app.identity.models.user import User
+                    from app.transport.models import DriverProfile
+                    identity = User.query.filter(
+                        or_(func.lower(User.username) == submitted, func.lower(User.email) == submitted)
+                    ).first() if submitted else None
+                    if identity is not None:
+                        resolved_profile = DriverProfile.query.filter_by(
+                            user_id=identity.id, is_deleted=False
+                        ).first() is not None
+                except Exception:
+                    resolved_profile = False
+                # Store only booleans and the public error code, never the submitted identifier/password.
                 with (EVIDENCE / "auth-failures.tsv").open("a", encoding="utf-8") as handle:
-                    handle.write(f"{response.status_code}\t{code}\n")
+                    handle.write(f"{response.status_code}\t{code}\t{str(matches_expected).lower()}\t{str(resolved_profile).lower()}\n")
 
         # Keep a deliberately narrow, non-identifying projection of the
         # server-owned Driver API response for audit evidence.
@@ -203,6 +222,7 @@ def seed_test_accounts(app) -> None:
             verification_tier=VerificationTier.PENDING,
             compliance_status=ComplianceStatus.PENDING_REVIEW,
             is_active=True,
+            is_deleted=False,
             is_online=False,
             is_available=False,
             max_passenger_capacity=4,
@@ -211,6 +231,14 @@ def seed_test_accounts(app) -> None:
         )
         db.session.add(driver)
         db.session.commit()
+
+        # Assert the exact non-deleted-profile lookup used by the production login guard.
+        persisted = DriverProfile.query.filter_by(
+            user_id=driver_user.id, is_deleted=False
+        ).one_or_none()
+        if persisted is None:
+            raise AssertionError("The synthetic Driver profile was not persisted as a non-deleted row.")
+
 
         print("DRIVER_E2E_SYNTHETIC_DRIVER_AND_NON_DRIVER_SEEDED", flush=True)
 
@@ -414,9 +442,13 @@ def assert_evidence(app) -> None:
     auth_failure_codes = []
     if auth_failure_path.is_file():
         for line in auth_failure_path.read_text(encoding="utf-8").splitlines():
-            parts = line.split("\\t", 1)
-            if len(parts) == 2 and parts[0].isdigit():
-                auth_failure_codes.append({"status": int(parts[0]), "code": parts[1]})
+            parts = line.split("\t")
+            if len(parts) >= 2 and parts[0].isdigit():
+                item = {"status": int(parts[0]), "code": parts[1]}
+                if len(parts) >= 4:
+                    item["identifier_matches_expected_driver"] = parts[2] == "true"
+                    item["resolved_identity_has_driver_profile"] = parts[3] == "true"
+                auth_failure_codes.append(item)
     report = {
         "result": "passed" if all(required.values()) else "failed",
         "sanitized_login_failures": auth_failure_codes,
