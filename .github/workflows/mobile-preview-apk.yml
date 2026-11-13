@@ -361,7 +361,8 @@ jobs:
         app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
         # Android 14 through the latest Android 17 preview/current platform,
         # plus the original legacy API compatibility coverage.
-        api-level: [24, 29, 33, 34, 35, 36, 37]
+        # API 37 preview compilation remains in the build job; this emulator matrix uses installable stable images.
+        api-level: [24, 29, 33, 34, 35, 36]
     env:
       APP: ${{ matrix.app }}
       EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
@@ -406,33 +407,6 @@ jobs:
           sudo chmod 0666 /dev/kvm
           test -r /dev/kvm
           test -w /dev/kvm
-
-      - name: Normalize Android 17 SDK platform package ID
-        if: matrix.api-level == 37
-        shell: bash
-        run: |
-          set -euo pipefail
-          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
-          test -n "$SDKMANAGER"
-          WRAPPER_DIR="$RUNNER_TEMP/afcon360-sdkmanager-wrapper"
-          mkdir -p "$WRAPPER_DIR"
-          cat > "$WRAPPER_DIR/sdkmanager" <<'EOF'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          REAL_SDKMANAGER="${AFCON360_REAL_SDKMANAGER:?real sdkmanager path is required}"
-          args=()
-          for arg in "$@"; do
-            if [[ "$arg" == "platforms;android-37" ]]; then
-              arg="platforms;android-37.0"
-            fi
-            args+=("$arg")
-          done
-          exec "$REAL_SDKMANAGER" "${args[@]}"
-          EOF
-          chmod +x "$WRAPPER_DIR/sdkmanager"
-          echo "AFCON360_REAL_SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-          echo "$WRAPPER_DIR" >> "$GITHUB_PATH"
 
       - name: Install and launch on Android API ${{ matrix.api-level }}
         uses: reactivecircus/android-emulator-runner@v2.38.0
