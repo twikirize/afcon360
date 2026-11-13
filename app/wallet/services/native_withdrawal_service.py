@@ -98,7 +98,6 @@ class NativeWithdrawalService:
         return f"+256 *** ***{phone[-3:]}"
 
     @classmethod
-    @classmethod
     def _ensure_native_withdrawals_enabled(cls):
         """Keep the new customer payout route unavailable until explicitly enabled."""
         config = WalletSystemConfig.get_config()
@@ -109,6 +108,7 @@ class NativeWithdrawalService:
                 503,
             )
 
+    @classmethod
     def _ensure_provider_ready(cls):
         config = PaymentProviderConfig.get_active_config(cls.PROVIDER)
         env_secret = current_app.config.get("FLUTTERWAVE_SECRET_KEY")
