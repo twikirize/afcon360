@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Cookie Policy | AFCON360{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/global/public-info-pages.css') }}">
+{% endblock %}
+{% block content %}
+<article class="public-page-wrap">
+  <header class="public-page-hero">
+    <p class="public-page-kicker">Legal · Working draft</p>
+    <h1>Cookie Policy</h1>
+    <p class="public-page-intro">This page explains how cookies and similar technologies may be used when you visit AFCON360 online.</p>
+  </header>
+
+  <div class="public-draft-note">
+    <strong>WORKING DRAFT — VERIFY AGAINST THE LIVE WEBSITE</strong>
+    The actual cookie names, providers, durations, analytics tools and consent controls must be checked in the deployed website before this policy is approved. Remove any category that is not used.
+  </div>
+
+  <div class="public-page-content">
+    <section>
+      <h2>1. What cookies are</h2>
+      <p>Cookies are small text files stored by a website in your browser. Similar technologies may store or read information on a device. They can help a website remember a session, protect an account or understand how a service is used.</p>
+    </section>
+
+    <section>
+      <h2>2. Types of technology that may be used</h2>
+      <ul>
+        <li><strong>Essential cookies:</strong> support core functions such as sign-in sessions, security, request protection and navigation. These may be necessary for the website to work.</li>
+        <li><strong>Preference cookies:</strong> remember choices such as language or display settings, where these features are enabled.</li>
+        <li><strong>Analytics and performance tools:</strong> may help understand traffic, errors and feature usage. They should be enabled and configured in accordance with applicable law and any required consent.</li>
+        <li><strong>Third-party content:</strong> maps, media or embedded services may use their own technologies when loaded. Review the provider's notice where relevant.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3. Your choices</h2>
+      <p>You can manage or delete cookies through your browser settings. Blocking essential cookies may prevent sign-in or other website features from working properly. Where consent is required for optional technologies, the website should provide an appropriate choice and respect that choice.</p>
+    </section>
+
+    <section>
+      <h2>4. Updates and questions</h2>
+      <p>We may update this policy when the website's technologies change. For questions, visit <a href="{{ url_for('public_pages.contact') }}">Contact Us</a> or read the <a href="{{ url_for('public_pages.privacy_policy') }}">Privacy Policy</a>.</p>
+    </section>
+
+    <p class="public-page-meta">Working draft prepared 9 November 2026 · Add the verified cookie inventory and retention details before final approval.</p>
+  </div>
+</article>
+{% endblock %}
