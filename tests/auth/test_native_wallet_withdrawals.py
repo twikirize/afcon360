@@ -458,3 +458,19 @@ def test_native_withdrawals_require_explicit_feature_enablement(app, monkeypatch
         assert error.value.code == "native_withdrawals_disabled"
         assert error.value.status_code == 503
         db.session.remove()
+
+
+def test_provider_readiness_guard_is_bound_and_fails_closed(app, monkeypatch):
+    from app.wallet.models.config import PaymentProviderConfig
+    from app.wallet.services.native_withdrawal_service import NativeWithdrawalError, NativeWithdrawalService
+
+    monkeypatch.setattr(
+        PaymentProviderConfig,
+        "get_active_config",
+        classmethod(lambda cls, provider: None),
+    )
+    with app.app_context():
+        with pytest.raises(NativeWithdrawalError) as error:
+            NativeWithdrawalService._ensure_provider_ready()
+    assert error.value.code == "withdrawal_provider_unavailable"
+    assert error.value.status_code == 503
