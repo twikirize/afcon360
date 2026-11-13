@@ -976,11 +976,23 @@ jobs:
           EOF
           chmod +x "$SDKMANAGER"
 
+      - name: Install supported Android emulator image for authenticated Driver journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          SYSTEM_IMAGE="system-images;android-36;google_apis;x86_64"
+          "$SDKMANAGER" --install "$SYSTEM_IMAGE"
+          "$SDKMANAGER" --list_installed | grep -F "$SYSTEM_IMAGE"
+
       - name: Install, sign in, read Driver screens, restore session and sign out on Android
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
-          # Latest Android 17 API level; the same source-keyed cached APK is reused.
-          api-level: 37
+          # API 37 remains the APK compile/target-SDK level. Use API 36 for the
+          # authenticated emulator until Google's API 37 Google APIs image is published.
+          api-level: 36
           target: google_apis
           arch: x86_64
           profile: pixel_7
@@ -991,7 +1003,19 @@ jobs:
 
       - name: Verify Driver API evidence and server-side session revocation
         if: always()
-        run: python mobile/scripts/mobile-driver-e2e-backend.py assert
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST_AUDIT="driver-e2e-evidence/backend-requests.tsv"
+          # Do not turn an emulator boot/install failure into dozens of false
+          # authentication/API failures. The emulator step already carries the
+          # primary error; run backend assertions only after the real APK sends
+          # its login request. Failed login responses are still audited here.
+          if [[ ! -s "$REQUEST_AUDIT" ]] || ! awk -F '\t' '$2 == "POST" && $3 == "/api/mobile/v1/auth/login" { found=1 } END { exit !found }' "$REQUEST_AUDIT"; then
+            echo "::warning::The Driver APK did not reach the login endpoint; skipping dependent backend assertions. Inspect the Android emulator step above."
+            exit 0
+          fi
+          python mobile/scripts/mobile-driver-e2e-backend.py assert
 
       - name: Upload Driver screenshots and sanitized backend evidence
         if: always()
