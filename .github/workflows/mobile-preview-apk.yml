@@ -521,7 +521,8 @@ jobs:
     name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
     concurrency:
       group: afcon360-ios-compat-${{ github.ref }}-${{ matrix.app }}
-      cancel-in-progress: false
+      # Latest source on this ref supersedes an older long-running iOS compile.
+      cancel-in-progress: true
     needs: detect-app-changes
     if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' }}
     runs-on: macos-26-intel
