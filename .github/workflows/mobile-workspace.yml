@@ -706,12 +706,26 @@ jobs:
           # mis-parse Major.Minor platform identifiers such as android-37.0.
           # Updating cmdline-tools;latest to >=20.0 fixes avdmanager parsing;
           # version 22.0 also bundles the Android CLI used for package installs.
-          CURRENT_VERSION="$("$SDKMANAGER" --version 2>/dev/null | tail -n 1 | tr -d '\r')"
+          # Read the package revision from source.properties. Recent sdkmanager
+          # builds print a CLI compatibility version ("Android CLI") rather
+          # than the cmdline-tools package revision from --version.
+          cmdline_tools_revision() {
+            local properties_file="$1/source.properties"
+            if [ ! -s "$properties_file" ]; then
+              return 1
+            fi
+            awk -F= '$1 == "Pkg.Revision" { gsub(/[[:space:]]/, "", $2); print $2; exit }' "$properties_file"
+          }
+
+          CURRENT_VERSION="$(cmdline_tools_revision "$CLT")"
           CURRENT_MAJOR="${CURRENT_VERSION%%.*}"
-          echo "Pre-update Android SDK command-line tools version: $CURRENT_VERSION"
+          echo "Pre-update Android SDK command-line tools package revision: ${CURRENT_VERSION:-unknown}"
           if ! [[ "$CURRENT_MAJOR" =~ ^[0-9]+$ ]] || [ "$CURRENT_MAJOR" -lt 20 ]; then
+            # The hosted runner's old sdkmanager installs a newer package next
+            # to the existing cmdline-tools/latest directory (usually latest-2).
+            # Promote that actual installation before invoking avdmanager.
             set +o pipefail
-            yes | "$SDKMANAGER" --install "cmdline-tools;latest" >/dev/null
+            yes 2>/dev/null | "$SDKMANAGER" --install "cmdline-tools;latest" >/dev/null
             set -o pipefail
 
             UPDATED_CLT="$(find "$CLT_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'latest-*' -printf '%f\n' | sort -V | tail -n 1)"
@@ -731,13 +745,14 @@ jobs:
           test -x "$AVDMANAGER"
           test -x "$ANDROID_CLI"
 
-          UPDATED_VERSION="$("$SDKMANAGER" --version 2>/dev/null | tail -n 1 | tr -d '\r')"
+          UPDATED_VERSION="$(cmdline_tools_revision "$CLT")"
           UPDATED_MAJOR="${UPDATED_VERSION%%.*}"
           if ! [[ "$UPDATED_MAJOR" =~ ^[0-9]+$ ]] || [ "$UPDATED_MAJOR" -lt 20 ]; then
-            echo "::error::Android SDK command-line tools must be version 20.0 or newer; found $UPDATED_VERSION."
+            echo "::error::Android SDK command-line tools package revision must be 20.0 or newer; found ${UPDATED_VERSION:-unknown}."
             exit 1
           fi
-          echo "Updated Android SDK command-line tools version: $UPDATED_VERSION"
+          echo "Updated Android SDK command-line tools package revision: $UPDATED_VERSION"
+          "$SDKMANAGER" --version || true
           "$ANDROID_CLI" --version
 
           # The Android CLI uses slash-style package IDs. avdmanager from the
