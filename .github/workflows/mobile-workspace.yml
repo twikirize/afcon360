@@ -686,7 +686,7 @@ jobs:
           echo "::error::The isolated API did not become healthy."
           exit 1
 
-      - name: Update Android SDK command-line tools and validate Android 17 AVD metadata
+      - name: Install compatible Android SDK tools and prepare Android 17 AVD profile
         id: android17_sdk
         if: matrix.android-label == 'android-17'
         shell: bash
@@ -697,41 +697,28 @@ jobs:
           CLT="$CLT_ROOT/latest"
           SDKMANAGER="$CLT/bin/sdkmanager"
           AVDMANAGER="$CLT/bin/avdmanager"
+          ANDROID_CLI="$CLT/bin/android"
 
-          if [ ! -x "$SDKMANAGER" ] || [ ! -x "$AVDMANAGER" ]; then
-            echo "::error::Android SDK command-line tools are incomplete on this runner."
-            exit 1
-          fi
+          test -x "$SDKMANAGER"
+          test -x "$AVDMANAGER"
 
-          # ubuntu-24.04 currently ships command-line tools 12.0. Those tools
-          # mis-parse Major.Minor platform identifiers such as android-37.0.
-          # Updating cmdline-tools;latest to >=20.0 fixes avdmanager parsing;
-          # version 22.0 also bundles the Android CLI used for package installs.
-          # Read the package revision from source.properties. Recent sdkmanager
-          # builds print a CLI compatibility version ("Android CLI") rather
-          # than the cmdline-tools package revision from --version.
           cmdline_tools_revision() {
             local properties_file="$1/source.properties"
-            if [ ! -s "$properties_file" ]; then
-              return 1
-            fi
+            test -s "$properties_file" || return 1
             awk -F= '$1 == "Pkg.Revision" { gsub(/[[:space:]]/, "", $2); print $2; exit }' "$properties_file"
           }
 
           CURRENT_VERSION="$(cmdline_tools_revision "$CLT")"
           CURRENT_MAJOR="${CURRENT_VERSION%%.*}"
-          echo "Pre-update Android SDK command-line tools package revision: ${CURRENT_VERSION:-unknown}"
+          echo "Pre-update Android SDK command-line tools revision: ${CURRENT_VERSION:-unknown}"
           if ! [[ "$CURRENT_MAJOR" =~ ^[0-9]+$ ]] || [ "$CURRENT_MAJOR" -lt 20 ]; then
-            # The hosted runner's old sdkmanager installs a newer package next
-            # to the existing cmdline-tools/latest directory (usually latest-2).
-            # Promote that actual installation before invoking avdmanager.
             set +o pipefail
             yes 2>/dev/null | "$SDKMANAGER" --install "cmdline-tools;latest" >/dev/null
             set -o pipefail
 
-            UPDATED_CLT="$(find "$CLT_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'latest-*' -printf '%f\n' | sort -V | tail -n 1)"
+            UPDATED_CLT="$(find "$CLT_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'latest-*' -printf '%f\\n' | sort -V | tail -n 1)"
             if [ -z "$UPDATED_CLT" ]; then
-              echo "::error::The updated Android command-line tools were not installed beside the existing latest directory."
+              echo "::error::Updated Android command-line tools were not installed."
               exit 1
             fi
             rm -rf "$CLT_ROOT/latest"
@@ -749,40 +736,25 @@ jobs:
           UPDATED_VERSION="$(cmdline_tools_revision "$CLT")"
           UPDATED_MAJOR="${UPDATED_VERSION%%.*}"
           if ! [[ "$UPDATED_MAJOR" =~ ^[0-9]+$ ]] || [ "$UPDATED_MAJOR" -lt 20 ]; then
-            echo "::error::Android SDK command-line tools package revision must be 20.0 or newer; found ${UPDATED_VERSION:-unknown}."
+            echo "::error::Expected command-line tools 20.0 or newer; found ${UPDATED_VERSION:-unknown}."
             exit 1
           fi
-          echo "Updated Android SDK command-line tools package revision: $UPDATED_VERSION"
-          "$SDKMANAGER" --version || true
+          echo "Updated Android SDK command-line tools revision: $UPDATED_VERSION"
           "$ANDROID_CLI" --version
 
-          # The Android CLI uses slash-style package IDs. avdmanager from the
-          # upgraded tools still validates the .ini target consumed by
-          # android-emulator-runner.
-          # Install the emulator package explicitly before AVD creation. The emulator-runner
-          # action performs this installation separately from the system image.
+          # Install the Android 17 system image and the emulator runtime.
+          # Do not manually create a throwaway AVD here: the emulator runner
+          # below owns AVD creation and launch, using its supported invocation.
           "$ANDROID_CLI" sdk install emulator
           "$ANDROID_CLI" sdk install "system-images/android-37.0/default/x86_64"
 
           IMAGE="system-images;android-37.0;default;x86_64"
           IMAGE_DIR="$SDK/system-images/android-37.0/default/x86_64"
-          test -d "$IMAGE_DIR"
           test -s "$IMAGE_DIR/system.img"
 
-          AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
-          AVD_NAME="afcon360-api37-tools-check"
-          mkdir -p "$AVD_HOME"
-          "$AVDMANAGER" delete avd -n "$AVD_NAME" >/dev/null 2>&1 || true
-
-          # Resolve a phone profile from the runner's installed catalogue.
-          # Device IDs are not guaranteed to be identical across SDK tool revisions.
-          DEVICE_IDS="$("$AVDMANAGER" list device -c | tr -d '\r')"
-          if [ -z "$DEVICE_IDS" ]; then
-            echo "::error::avdmanager returned no installed hardware device profiles."
-            exit 1
-          fi
+          DEVICE_IDS="$("$AVDMANAGER" list device -c | tr -d '\\r')"
           echo "Available Android AVD hardware profile IDs:"
-          printf '%s\n' "$DEVICE_IDS"
+          printf '%s\\n' "$DEVICE_IDS"
 
           AVD_PROFILE=""
           for candidate in pixel_7 pixel_7_pro pixel_6 pixel_5 pixel_4 pixel "Nexus 5X"; do
@@ -792,33 +764,14 @@ jobs:
             fi
           done
           if [ -z "$AVD_PROFILE" ]; then
-            echo "::error::No supported Pixel/Nexus phone profile was found in the Android SDK catalogue."
+            echo "::error::No supported Pixel/Nexus phone profile was found."
             exit 1
           fi
           echo "Selected Android 17 phone profile: $AVD_PROFILE"
           echo "avd_profile=$AVD_PROFILE" >> "$GITHUB_OUTPUT"
+          echo "ANDROID_17_SDK_IMAGE_READY: $IMAGE"
+          echo "ANDROID_17_AVD_PROFILE_READY: $AVD_PROFILE"
 
-          # Capture verbose output and preserve the avdmanager exit status.
-          set +e
-          "$AVDMANAGER" --verbose create avd -f -n "$AVD_NAME" -k "$IMAGE" -d "$AVD_PROFILE" 2>&1 |
-            tee "$RUNNER_TEMP/afcon360-api37-avd-create.log"
-          CREATE_STATUS="${PIPESTATUS[0]}"
-          set -e
-          if [ "$CREATE_STATUS" -ne 0 ]; then
-            echo "::error::avdmanager failed to create the Android 17 validation AVD (exit $CREATE_STATUS)."
-            cat "$RUNNER_TEMP/afcon360-api37-avd-create.log"
-            exit "$CREATE_STATUS"
-          fi
-
-          AVD_INI="$AVD_HOME/$AVD_NAME.ini"
-          test -s "$AVD_INI"
-          if ! grep -Fxq "target=android-37.0" "$AVD_INI"; then
-            echo "::error::Android 17 AVD metadata is invalid; expected target=android-37.0."
-            cat "$AVD_INI"
-            exit 1
-          fi
-          echo "ANDROID_17_AVD_METADATA_PASS: $(grep '^target=' "$AVD_INI")"
-          "$AVDMANAGER" delete avd -n "$AVD_NAME" >/dev/null
       - name: Enable hardware acceleration
         shell: bash
         run: |
