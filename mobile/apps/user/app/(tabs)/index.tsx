@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useAuth } from "../../src/auth/AuthProvider";
+import { MyEventsOverview } from "../../src/components/MyEventsOverview";
 import { authClient } from "../../src/services/api";
 import { getSelectedApiBaseUrl } from "../../src/services/api";
 
@@ -469,6 +470,8 @@ export default function UserHome() {
           </Pressable>
         </View>
       </View>
+
+      <MyEventsOverview onOpenEvents={() => openEventSearch()} onOpenWebsite={openWebsite} />
 
       <View style={styles.serviceChipsFloat}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.serviceChips}>
