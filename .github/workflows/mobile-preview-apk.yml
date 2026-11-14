@@ -487,8 +487,23 @@ jobs:
               exit 1
             fi
           done
-          if grep -Eq 'android:debuggable="true"|android:usesCleartextTraffic="true"' "$REPORT/AndroidManifest.xml"; then
-            echo "::error::$APP APK enables debuggable mode or cleartext traffic."
+          if grep -Eq 'android:debuggable="true"' "$REPORT/AndroidManifest.xml"; then
+            echo "::error::$APP APK is debuggable."
+            exit 1
+          fi
+
+          if [[ "$APP" == "driver" && "$EXPECTED_PACKAGE" == "space.pamoja.afcon360.driver.preview" ]]; then
+            # This exact Driver preview package intentionally supports private-LAN
+            # HTTP for laptop/phone-hotspot staging. The app API client restricts
+            # HTTP origins to private IPv4 addresses on port 5000. Production
+            # Driver builds do not set this preview-only native configuration.
+            if ! grep -Eq 'android:usesCleartextTraffic="true"' "$REPORT/AndroidManifest.xml"; then
+              echo "::error::Driver preview APK is missing the private-LAN HTTP capability required for hotspot testing."
+              exit 1
+            fi
+            echo "::notice::Driver preview cleartext HTTP is an intentional preview-only capability for private-LAN hotspot staging."
+          elif grep -Eq 'android:usesCleartextTraffic="true"' "$REPORT/AndroidManifest.xml"; then
+            echo "::error::$APP APK unexpectedly enables cleartext traffic outside the approved Driver preview package."
             exit 1
           fi
 
