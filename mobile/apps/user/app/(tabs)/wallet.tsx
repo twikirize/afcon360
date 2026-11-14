@@ -12,13 +12,13 @@ import {
   View,
 } from "react-native";
 import {
-  AppScreen,
   PageHeader,
   Panel,
   SectionTitle,
   StatusPill,
   palette,
 } from "@afcon360/mobile-ui";
+import { UserAppScreen } from "../../src/components/UserAppScreen";
 import { useFocusEffect } from "expo-router";
 import { walletClient } from "../../src/services/api";
 import type {
@@ -621,7 +621,7 @@ export default function Wallet() {
   );
 
   return (
-    <AppScreen>
+    <UserAppScreen>
       <ScrollView contentContainerStyle={{ gap: 14, paddingBottom: 28 }}>
         <PageHeader
           eyebrow="Wallet"
@@ -1082,6 +1082,6 @@ export default function Wallet() {
           </Panel>
         ) : null}
       </ScrollView>
-    </AppScreen>
+    </UserAppScreen>
   );
 }
