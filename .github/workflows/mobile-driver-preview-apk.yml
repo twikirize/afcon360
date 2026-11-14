@@ -224,27 +224,98 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          BUILD_JSON="$RUNNER_TEMP/driver-eas-build.json"
+          BUILD_STDERR="$RUNNER_TEMP/driver-eas-build.stderr"
+
+          set +e
           npx --yes eas-cli@latest build \
             --platform android \
             --profile apk-share \
+            --clear-cache \
+            --verbose-logs \
+            --build-logger-level trace \
             --non-interactive \
             --wait \
-            --json > "$RUNNER_TEMP/driver-eas-build.json"
+            --json > "$BUILD_JSON" 2> "$BUILD_STDERR"
+          BUILD_EXIT=$?
+          set -e
 
           BUILD_ID="$(
-            node - "$RUNNER_TEMP/driver-eas-build.json" <<'NODE'
+            node - "$BUILD_JSON" <<'NODE'
           const fs = require("fs");
-          const result = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          const builds = Array.isArray(result) ? result : (result.builds || [result]);
-          const build = builds.find(item =>
-            item && item.id && String(item.platform || "").toLowerCase() === "android"
-          ) || builds.find(item => item && item.id);
-          if (!build) throw new Error("EAS Build returned no build ID.");
-          process.stdout.write(build.id);
+          const file = process.argv[2];
+          if (!fs.existsSync(file) || !fs.statSync(file).size) process.exit(0);
+          const raw = fs.readFileSync(file, "utf8").trim();
+          try {
+            const parsed = JSON.parse(raw);
+            const builds = Array.isArray(parsed) ? parsed : (parsed.builds || [parsed]);
+            const build = builds.find(item => item && item.id &&
+              String(item.platform || "ANDROID").toUpperCase() === "ANDROID"
+            ) || builds.find(item => item && item.id);
+            if (build) process.stdout.write(build.id);
+          } catch {
+            // Some CLI versions print human-readable output even with --json.
+          }
           NODE
           )"
-          test -n "$BUILD_ID"
+
+          # If the build command failed before returning JSON, locate the latest
+          # project build so the failed EAS build can still be inspected.
+          if [ -z "$BUILD_ID" ]; then
+            npx --yes eas-cli@latest build:list \
+              --platform android \
+              --limit 5 \
+              --json \
+              --non-interactive > "$RUNNER_TEMP/driver-eas-build-list.json"
+            BUILD_ID="$(
+              node - "$RUNNER_TEMP/driver-eas-build-list.json" <<'NODE'
+          const fs = require("fs");
+          const parsed = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const builds = Array.isArray(parsed) ? parsed : (parsed.builds || []);
+          const candidate = builds.find(item => item && item.id &&
+            (item.buildProfile === "apk-share" || item.profile === "apk-share")
+          ) || builds.find(item => item && item.id);
+          if (candidate) process.stdout.write(candidate.id);
+          NODE
+            )"
+          fi
+
+          if [ -z "$BUILD_ID" ]; then
+            echo "::error::EAS CLI returned no build ID. Build command exit code: $BUILD_EXIT"
+            sed -n '1,180p' "$BUILD_STDERR" || true
+            exit 1
+          fi
+
           echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          echo "EAS Driver build ID: $BUILD_ID"
+
+          if [ "$BUILD_EXIT" -ne 0 ]; then
+            echo "::error::EAS Build returned exit code $BUILD_EXIT. Fetching build details and logs."
+            npx --yes eas-cli@latest build:view "$BUILD_ID" --json \
+              > "$RUNNER_TEMP/driver-eas-build-failure.json" || true
+            if [ -s "$RUNNER_TEMP/driver-eas-build-failure.json" ]; then
+              node - "$RUNNER_TEMP/driver-eas-build-failure.json" <<'NODE'
+          const fs = require("fs");
+          const build = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          process.stdout.write(JSON.stringify({
+            id: build.id,
+            status: build.status,
+            platform: build.platform,
+            buildProfile: build.buildProfile,
+            createdAt: build.createdAt,
+            completedAt: build.completedAt,
+            error: build.error ?? null,
+            artifacts: build.artifacts ? {
+              applicationArchive: Boolean(build.artifacts.applicationArchiveUrl),
+              buildArtifacts: Boolean(build.artifacts.buildArtifactsUrl)
+            } : null
+          }, null, 2) + "\n");
+          NODE
+            fi
+            echo "----- EAS CLI output -----"
+            sed -n '1,240p' "$BUILD_STDERR" || true
+            exit "$BUILD_EXIT"
+          fi
 
           npx --yes eas-cli@latest build:download \
             --build-id "$BUILD_ID" \
