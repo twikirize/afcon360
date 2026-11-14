@@ -104,6 +104,24 @@ if (!userSettingsSource.includes("<SectionTitle>Version & updates</SectionTitle>
   throw new Error("User Settings must contain the Version & updates section and app update controls.");
 }
 
+const requiredAccountDestinations = [
+  'openWebsite("/profile/me")',
+  'openWebsite("/profile/edit")',
+  'openWebsite("/account")',
+  'openWebsite("/account/settings")',
+  'openWebsite("/account/settings#password")',
+  'openWebsite("/account/security")',
+  'openWebsite("/preferences")',
+  'openWebsite("/settings/interests")',
+  'openWebsite("/dashboard")',
+  'router.push("/(service)/settings" as never)',
+];
+for (const destination of requiredAccountDestinations) {
+  if (!userAccountSource.includes(destination)) {
+    throw new Error(`Account hub is missing a required destination: ${destination}`);
+  }
+}
+
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const full = path.join(directory, entry.name);
