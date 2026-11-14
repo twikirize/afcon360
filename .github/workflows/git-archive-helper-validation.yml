@@ -61,11 +61,15 @@ jobs:
               $ErrorActionPreference = $previous
           }
 
-          if ($code -eq 0 -or $result.Count -ne 0) {
-              throw "A missing remote ref was not handled as an absent ref."
+          if ($code -ne 1 -or $result.Count -ne 0) {
+              throw "A missing remote ref was not handled as an absent ref (expected exit 1 and no output; got exit $code and $($result.Count) output lines)."
           }
 
           Write-Host "Missing remote branch refs are handled safely on Windows PowerShell 5.1."
+          # Git's expected exit code for an absent ref must not leak into the
+          # Actions step's final process status after the assertion succeeds.
+          $global:LASTEXITCODE = 0
+          exit 0
 
       - name: Smoke-test Windows PowerShell 5.1 native stderr handling and inventory
         shell: powershell
