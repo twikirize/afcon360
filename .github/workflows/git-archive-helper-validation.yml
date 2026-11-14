@@ -42,3 +42,11 @@ jobs:
           }
 
           Write-Host "PowerShell syntax is valid: $path"
+
+      - name: Smoke-test read-only inventory action
+        shell: pwsh
+        run: |
+          & ./scripts/git/afcon360-git-archive.ps1 -Action List
+          if ($LASTEXITCODE -ne 0) {
+              throw "The read-only inventory action failed."
+          }
