@@ -3,13 +3,31 @@
 name: AFCON360 Mobile Android and iOS compatibility
 
 on:
+  # The isolated Driver branch also runs its cached-APK authenticated journey
+  # directly on push. Push events use before/after SHAs because they do not
+  # populate pull_request.base/head fields.
+  push:
+    branches:
+      - feat/native-driver-workspace-parity-20261109
+      - feat/native-driver-app-integration-20261108
+    paths:
+      - "mobile/apps/**"
+      - "mobile/packages/**"
+      - "mobile/scripts/**"
+      - "mobile/docs/**"
+      - "mobile/package.json"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/.npmrc"
+      - ".github/workflows/mobile-preview-apk.yml"
   pull_request:
     branches:
       - feat/native-mobile-apps-20261104
+      - feat/native-driver-app-integration-20261108
     paths:
       - "mobile/apps/**"
       - "mobile/packages/**"
       - "mobile/docs/**"
+      - "mobile/scripts/**"
       - "mobile/README.md"
       - "mobile/AGENTS.md"
       - "mobile/package.json"
@@ -19,47 +37,154 @@ on:
       - ".github/workflows/mobile-preview-apk.yml"
   workflow_dispatch:
 
-concurrency:
-  group: afcon360-mobile-platform-checks-${{ github.ref }}
-  cancel-in-progress: true
-
 # This PR-capable workflow never receives stable signing keys or write-capable tokens.
 permissions:
   actions: read
   contents: read
 
 jobs:
+  detect-app-changes:
+    name: Detect affected native clients
+    runs-on: ubuntu-24.04
+    outputs:
+      apps_json: ${{ steps.detect.outputs.apps_json }}
+      build_apps_json: ${{ steps.detect.outputs.build_apps_json }}
+    steps:
+      - name: Check out source history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Select only changed native applications
+        id: detect
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo 'apps_json=["user","driver"]' >> "$GITHUB_OUTPUT"
+            echo 'build_apps_json=["user","driver"]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          shared=false
+          user=false
+          driver=false
+
+          if grep -Eq '^mobile/(packages/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|\.npmrc$)' <<< "$changed"; then
+            shared=true
+          fi
+          if grep -Eq '^mobile/apps/user/' <<< "$changed"; then user=true; fi
+          if grep -Eq '^mobile/apps/driver/' <<< "$changed"; then driver=true; fi
+
+          if [[ "$shared" == "true" ]]; then
+            user=true
+            driver=true
+          fi
+          # A change to this compatibility workflow on the isolated Driver
+          # candidate is an explicit request to re-run the Driver platform
+          # matrix. The source-keyed cache restores the already-built APK, so
+          # validation does not need a new Gradle build for workflow-only edits.
+          if [[ "$GITHUB_REF" == "refs/heads/feat/native-driver-workspace-parity-20261109" ]] && \
+             grep -Fxq ".github/workflows/mobile-preview-apk.yml" <<< "$changed"; then
+            driver=true
+          fi
+
+          apps="["
+          separator=""
+          if [[ "$user" == "true" ]]; then
+            apps+="$separator\"user\""
+            separator=","
+          fi
+          if [[ "$driver" == "true" ]]; then
+            apps+="$separator\"driver\""
+          fi
+          apps+="]"
+          echo "apps_json=$apps" >> "$GITHUB_OUTPUT"
+          echo "Affected native apps in the PR: $apps"
+
+          # Only native source/dependency changes in this event's changed-file
+          # range can require a platform compile. Test-harness-only commits reuse the cached APK.
+          latest_changed="$changed"
+          build_shared=false
+          build_user=false
+          build_driver=false
+          # JavaScript/TypeScript screens and shared UI logic are OTA-compatible.
+          # Rebuild only when native projects, native config or dependency manifests change.
+          if grep -Eq "^mobile/(package[.]json|pnpm-lock[.]yaml|pnpm-workspace[.]yaml|[.]npmrc)$|^mobile/packages/.*/package[.]json$" <<< "$latest_changed"; then
+            build_shared=true
+          fi
+          if grep -Eq "^mobile/apps/user/(app[.]config[.]ts|package[.]json|android/|ios/|plugins/)" <<< "$latest_changed"; then
+            build_user=true
+          fi
+          if grep -Eq "^mobile/apps/driver/(app[.]config[.]ts|package[.]json|android/|ios/|plugins/)" <<< "$latest_changed"; then
+            build_driver=true
+          fi
+          if [[ "$build_shared" == "true" ]]; then
+            build_user=true
+            build_driver=true
+          fi
+          if [[ "$GITHUB_REF" == "refs/heads/feat/native-driver-workspace-parity-20261109" ]] && \
+             grep -Fxq ".github/workflows/mobile-preview-apk.yml" <<< "$latest_changed"; then
+            build_driver=true
+          fi
+
+          build_apps="["
+          build_separator=""
+          if [[ "$build_user" == "true" ]]; then
+            build_apps+="$build_separator\"user\""
+            build_separator=","
+          fi
+          if [[ "$build_driver" == "true" ]]; then
+            build_apps+="$build_separator\"driver\""
+          fi
+          build_apps+="]"
+          echo "build_apps_json=$build_apps" >> "$GITHUB_OUTPUT"
+          echo "Apps requiring a fresh Android/iOS platform build: $build_apps"
+
   build-preview-apk:
     name: Build and verify ${{ matrix.app }} Android preview APK
+    concurrency:
+      group: afcon360-preview-build-${{ github.ref }}-${{ matrix.app }}
+      cancel-in-progress: false
+    needs: detect-app-changes
+    if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
     env:
       APP: ${{ matrix.app }}
-      EXPECTED_PACKAGE: ${{ matrix.package }}
+      EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
       AFCON360_PREVIEW_BUILD: "true"
+      AFCON360_DRIVER_EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
     steps:
       - name: Check out source
         uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22.13.1"
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
         with:
           version: 10.12.4
           run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Restore reusable unsigned Android preview APK
+        id: apk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: mobile/apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk
+          key: afcon360-${{ matrix.app }}-preview-v1-${{ runner.os }}-${{ hashFiles(format('mobile/apps/{0}/**', matrix.app), format('!mobile/apps/{0}/android/**', matrix.app), format('!mobile/apps/{0}/ios/**', matrix.app), format('!mobile/apps/{0}/node_modules/**', matrix.app), format('!mobile/apps/{0}/.expo/**', matrix.app), 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
 
       - name: Set up Java
         uses: actions/setup-java@v6
@@ -98,10 +223,12 @@ jobs:
           echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
 
       - name: Generate native Android project
+        if: steps.apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile
         run: pnpm --filter "@afcon360/${{ matrix.app }}-app" exec expo prebuild --platform android --no-install --clean
 
       - name: Configure temporary Android release signing
+        if: steps.apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile
         run: |
           node <<'NODE'
@@ -134,8 +261,16 @@ jobs:
           NODE
 
       - name: Build standalone release APK
+        if: steps.apk-cache.outputs.cache-hit != 'true'
         working-directory: mobile
         run: cd "apps/$APP/android" && ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Save reusable unsigned Android preview APK
+        if: steps.apk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: mobile/apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk
+          key: afcon360-${{ matrix.app }}-preview-v1-${{ runner.os }}-${{ hashFiles(format('mobile/apps/{0}/**', matrix.app), format('!mobile/apps/{0}/android/**', matrix.app), format('!mobile/apps/{0}/ios/**', matrix.app), format('!mobile/apps/{0}/node_modules/**', matrix.app), format('!mobile/apps/{0}/.expo/**', matrix.app), 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
 
       - name: Sign and verify APK package, SDK and payload
         working-directory: mobile
@@ -211,42 +346,26 @@ jobs:
 
   android-compatibility:
     name: Android API ${{ matrix.api-level }} / ${{ matrix.app }} install and launch
-    needs: build-preview-apk
-    if: ${{ needs.build-preview-apk.result == 'success' }}
+    concurrency:
+      group: afcon360-android-compat-${{ github.ref }}-${{ matrix.app }}-${{ matrix.api-level }}
+      cancel-in-progress: false
+    needs: [detect-app-changes, build-preview-apk]
+    if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' && needs.build-preview-apk.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      max-parallel: 4
+      # Android emulators are resource-heavy; avoid Pixel Launcher ANRs from over-parallelism.
+      max-parallel: 2
       matrix:
-        include:
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-            api-level: 24
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-            api-level: 29
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-            api-level: 33
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-            api-level: 36
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
-            api-level: 24
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
-            api-level: 29
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
-            api-level: 33
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
-            api-level: 36
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
+        # Android 14 through the latest Android 17 preview/current platform,
+        # plus the original legacy API compatibility coverage.
+        # API 37 preview compilation remains in the build job; this emulator matrix uses installable stable images.
+        api-level: [24, 29, 33, 34, 35, 36]
     env:
       APP: ${{ matrix.app }}
-      EXPECTED_PACKAGE: ${{ matrix.package }}
+      EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
     steps:
       - name: Check out emulator verification script
         uses: actions/checkout@v7
@@ -303,21 +422,20 @@ jobs:
 
   apk-manifest-audit:
     name: Audit ${{ matrix.app }} APK permissions and components
-    needs: build-preview-apk
-    if: ${{ needs.build-preview-apk.result == 'success' }}
+    concurrency:
+      group: afcon360-apk-audit-${{ github.ref }}-${{ matrix.app }}
+      cancel-in-progress: false
+    needs: [detect-app-changes, build-preview-apk]
+    if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' && needs.build-preview-apk.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - app: user
-            package: space.pamoja.afcon360.user.preview
-          - app: driver
-            package: space.pamoja.afcon360.driver.preview
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
     env:
       APP: ${{ matrix.app }}
-      EXPECTED_PACKAGE: ${{ matrix.package }}
+      EXPECTED_PACKAGE: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user.preview' || 'space.pamoja.afcon360.driver.preview' }}
     steps:
       - name: Download this run's app APK
         uses: actions/download-artifact@v8
@@ -369,8 +487,23 @@ jobs:
               exit 1
             fi
           done
-          if grep -Eq 'android:debuggable="true"|android:usesCleartextTraffic="true"' "$REPORT/AndroidManifest.xml"; then
-            echo "::error::$APP APK enables debuggable mode or cleartext traffic."
+          if grep -Eq 'android:debuggable="true"' "$REPORT/AndroidManifest.xml"; then
+            echo "::error::$APP APK is debuggable."
+            exit 1
+          fi
+
+          if [[ "$APP" == "driver" && "$EXPECTED_PACKAGE" == "space.pamoja.afcon360.driver.preview" ]]; then
+            # This exact Driver preview package intentionally supports private-LAN
+            # HTTP for laptop/phone-hotspot staging. The app API client restricts
+            # HTTP origins to private IPv4 addresses on port 5000. Production
+            # Driver builds do not set this preview-only native configuration.
+            if ! grep -Eq 'android:usesCleartextTraffic="true"' "$REPORT/AndroidManifest.xml"; then
+              echo "::error::Driver preview APK is missing the private-LAN HTTP capability required for hotspot testing."
+              exit 1
+            fi
+            echo "::notice::Driver preview cleartext HTTP is an intentional preview-only capability for private-LAN hotspot staging."
+          elif grep -Eq 'android:usesCleartextTraffic="true"' "$REPORT/AndroidManifest.xml"; then
+            echo "::error::$APP APK unexpectedly enables cleartext traffic outside the approved Driver preview package."
             exit 1
           fi
 
@@ -401,34 +534,38 @@ jobs:
 
   ios-compatibility:
     name: iOS 16.4 minimum / current simulator / ${{ matrix.app }}
+    concurrency:
+      # Isolate each workflow run so an older Xcode compile cannot hold up current validation.
+      group: afcon360-ios-compat-${{ github.run_id }}-${{ matrix.app }}
+      # Latest source on this ref supersedes an older long-running iOS compile.
+      cancel-in-progress: true
+    needs: detect-app-changes
+    if: ${{ needs.detect-app-changes.outputs.build_apps_json != '[]' }}
     runs-on: macos-26-intel
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - app: user
-            bundle-id: space.pamoja.afcon360.user
-          - app: driver
-            bundle-id: space.pamoja.afcon360.driver
+        app: ${{ fromJSON(needs.detect-app-changes.outputs.build_apps_json) }}
     env:
       APP: ${{ matrix.app }}
-      EXPECTED_BUNDLE_ID: ${{ matrix.bundle-id }}
+      EXPECTED_BUNDLE_ID: ${{ matrix.app == 'user' && 'space.pamoja.afcon360.user' || 'space.pamoja.afcon360.driver' }}
+      AFCON360_DRIVER_EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
     steps:
       - name: Check out source
         uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22.13.1"
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
         with:
           version: 10.12.4
           run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
 
       - name: Confirm Xcode 26.4 or later
         shell: bash
@@ -490,18 +627,24 @@ jobs:
           print(candidates[0])
           ')"
 
+          # Boot the exact simulator selected above, then target it directly.
+          # A generic iOS Simulator destination makes Xcode compile every simulator
+          # architecture (both x86_64 and arm64 on this runner), greatly extending
+          # React Native / CocoaPods builds without improving this install-and-launch check.
           xcrun simctl boot "$SIMULATOR_UDID"
-          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
 
           DERIVED_DATA="$RUNNER_TEMP/afcon360-$APP-ios-derived-data"
           xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
             -configuration Debug \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -destination "id=$SIMULATOR_UDID" \
             -derivedDataPath "$DERIVED_DATA" \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+          # Wait for first-boot LaunchServices migration only before installation.
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
 
           APP_PATH="$(find "$DERIVED_DATA/Build/Products/Debug-iphonesimulator" -maxdepth 1 -type d -name '*.app' -print -quit)"
           test -n "$APP_PATH"
@@ -513,3 +656,392 @@ jobs:
           xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
           xcrun simctl launch "$SIMULATOR_UDID" "$EXPECTED_BUNDLE_ID"
           echo "PASS: $APP installed and launched on iOS 26.4; deployment minimum is iOS $MIN_IOS."
+
+  driver-authenticated-journey:
+    name: Driver APK — real login, Driver workspace reads, session restore and logout
+    concurrency:
+      group: afcon360-driver-e2e-${{ github.ref }}
+      cancel-in-progress: false
+    # Run the isolated authenticated journey on this Driver candidate's push or matching PR update.
+    # Its app-input cache keeps test-harness-only corrections from recompiling the APK.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/feat/native-driver-workspace-parity-20261109' || github.ref == 'refs/heads/feat/native-driver-app-integration-20261108')) || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/native-driver-workspace-parity-20261109') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: afcon360_driver_e2e_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d afcon360_driver_e2e_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      APP_ENV: testing
+      FLASK_ENV: testing
+      SECRET_KEY: "ci-only-not-a-production-secret"
+      SECURITY_SALT: "ci-only-security-salt-value-long-enough-for-driver-e2e-2026"
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/afcon360_driver_e2e_test"
+      TEST_DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/afcon360_driver_e2e_test"
+      REDIS_URL: "redis://127.0.0.1:6379/15"
+      DISABLE_REDIS: "0"
+      SOCKETIO_ENABLED: "false"
+      ANALYTICS_ENABLED: "false"
+      MAIL_SUPPRESS_SEND: "true"
+      EXPO_PUBLIC_API_BASE_URL: "http://127.0.0.1:5000"
+      AFCON360_PREVIEW_BUILD: "true"
+      AFCON360_DRIVER_EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
+      AFCON360_DRIVER_E2E_USERNAME: native_e2e_driver
+      AFCON360_DRIVER_E2E_EMAIL: native-driver-e2e@afcon360.test
+      AFCON360_DRIVER_E2E_PASSWORD: DriverE2ePassword2026
+      AFCON360_NON_DRIVER_E2E_USERNAME: native_e2e_customer
+      AFCON360_NON_DRIVER_E2E_EMAIL: native-customer-e2e@afcon360.test
+      AFCON360_NON_DRIVER_E2E_PASSWORD: CustomerE2ePassword2026
+      AFCON360_DRIVER_E2E_EVIDENCE_DIR: driver-e2e-evidence
+      AFCON360_DRIVER_E2E_BACKEND_ROOT: ${{ github.workspace }}/backend-candidate
+    steps:
+      - name: Check out the Driver app source
+        uses: actions/checkout@v7
+
+      # The native app and its proposed backend contract live in separate PRs.
+      # Test the APK from this PR against the consolidated backend candidate
+      # instead of silently exercising the older backend base branch.
+      - name: Check out consolidated Driver backend candidate
+        uses: actions/checkout@v7
+        with:
+          repository: twikirize/afcon360
+          # Use the consolidated Driver API after it lands in authoritative backend main.
+          ref: main
+          path: backend-candidate
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install backend test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend-candidate/requirements.txt
+
+      - name: Build a fresh disposable PostgreSQL schema from the backend candidate
+        working-directory: backend-candidate
+        run: python -m flask --app 'app:create_app()' db upgrade
+
+      - name: Ensure current SystemConfig model exists in the disposable Driver E2E schema
+        working-directory: backend-candidate
+        run: |
+          python - <<'PY'
+          from app import create_app
+          from app.extensions import db
+          from app.models.system_config import SystemConfig
+
+          app = create_app()
+          with app.app_context():
+              existed = db.inspect(db.engine).has_table(SystemConfig.__tablename__)
+              SystemConfig.__table__.create(bind=db.engine, checkfirst=True)
+              created = SystemConfig.initialize_defaults()
+              print(
+                  "Driver E2E SystemConfig schema ready: "
+                  f"table_preexisting={existed}, defaults_created={created}"
+              )
+          PY
+
+      - name: Seed a synthetic pending Driver and a customer-only identity
+        run: python mobile/scripts/mobile-driver-e2e-backend.py seed
+
+      - name: Start isolated Flask API and wait for health
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p driver-e2e-evidence
+          nohup python mobile/scripts/mobile-driver-e2e-backend.py serve > driver-e2e-evidence/backend.log 2>&1 < /dev/null &
+          echo $! > driver-e2e-evidence/backend.pid
+
+          for _ in $(seq 1 90); do
+            if curl --connect-timeout 2 --max-time 5 --silent --fail http://127.0.0.1:5000/api/health/ping >/dev/null; then
+              echo "Disposable AFCON360 Driver API is healthy."
+              exit 0
+            fi
+            if ! kill -0 "$(cat driver-e2e-evidence/backend.pid)" 2>/dev/null; then
+              cat driver-e2e-evidence/backend.log
+              echo "::error::The disposable Driver API process exited before becoming healthy."
+              exit 1
+            fi
+            sleep 2
+          done
+
+          cat driver-e2e-evidence/backend.log
+          echo "::error::Disposable AFCON360 Driver API did not become healthy."
+          exit 1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install mobile workspace dependencies
+        working-directory: mobile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Check Driver Expo dependency compatibility
+        working-directory: mobile
+        run: pnpm --filter "@afcon360/driver-app" exec expo install --check
+
+      - name: Install Android platform and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::Android sdkmanager was not found."
+            exit 1
+          fi
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" "platform-tools" "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+          test -s "$ANDROID_HOME/platforms/android-37/android.jar"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
+
+      - name: Generate Driver Android project for the isolated test API
+        working-directory: mobile
+        run: pnpm --filter "@afcon360/driver-app" exec expo prebuild --platform android --no-install --clean
+
+      - name: Permit cleartext only in this disposable loopback test APK
+        working-directory: mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("fs");
+          const path = "apps/driver/android/app/src/main/AndroidManifest.xml";
+          let manifest = fs.readFileSync(path, "utf8");
+          if (!/<application\b/.test(manifest)) {
+            throw new Error("Generated Driver Android manifest has no application element.");
+          }
+          manifest = manifest.replace(/<application\b([^>]*)>/, (_match, attrs) => {
+            const cleaned = attrs.replace(/\s+android:usesCleartextTraffic="[^"]*"/, "");
+            return '<application' + cleaned + ' android:usesCleartextTraffic="true">';
+          });
+          fs.writeFileSync(path, manifest);
+          if (!/android:usesCleartextTraffic="true"/.test(manifest)) {
+            throw new Error("Could not enable loopback HTTP for the disposable test APK.");
+          }
+          NODE
+
+      # This cache is keyed only by Driver application inputs, not this workflow or
+      # the E2E/backend test scripts. Test-harness corrections therefore reuse the
+      # same self-contained APK; changing Driver app code/dependencies invalidates it.
+      - name: Restore reusable Driver E2E release APK
+        id: driver-e2e-apk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk
+          key: afcon360-driver-e2e-release-v2-${{ runner.os }}-${{ hashFiles('mobile/apps/driver/**', '!mobile/apps/driver/android/**', '!mobile/apps/driver/ios/**', '!mobile/apps/driver/node_modules/**', '!mobile/apps/driver/.expo/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+
+      - name: Configure temporary signing for the standalone Driver E2E APK
+        if: steps.driver-e2e-apk-cache.outputs.cache-hit != 'true'
+        working-directory: mobile
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const path = "apps/driver/android/app/build.gradle";
+          let source = fs.readFileSync(path, "utf8");
+          const buildTypes = source.indexOf("buildTypes {");
+          const release = source.indexOf("release {", buildTypes);
+          if (buildTypes < 0 || release < 0) throw new Error("Could not find Android release build type");
+          const open = source.indexOf("{", release);
+          let depth = 0;
+          let end = -1;
+          for (let i = open; i < source.length; i++) {
+            if (source[i] === "{") depth++;
+            if (source[i] === "}") {
+              depth--;
+              if (depth === 0) { end = i + 1; break; }
+            }
+          }
+          if (end < 0) throw new Error("Could not find end of Android release build type");
+          let block = source.slice(release, end);
+          const signing = /signingConfig\s+signingConfigs\.[A-Za-z0-9_]+/;
+          if (signing.test(block)) {
+            block = block.replace(signing, "signingConfig signingConfigs.debug");
+          } else {
+            block = block.replace("release {", "release {\n            signingConfig signingConfigs.debug");
+          }
+          source = source.slice(0, release) + block + source.slice(end);
+          fs.writeFileSync(path, source);
+          NODE
+
+      - name: Build self-contained Driver E2E release APK
+        if: steps.driver-e2e-apk-cache.outputs.cache-hit != 'true'
+        working-directory: mobile
+        run: cd apps/driver/android && ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Save reusable Driver E2E release APK
+        if: steps.driver-e2e-apk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk
+          key: afcon360-driver-e2e-release-v2-${{ runner.os }}-${{ hashFiles('mobile/apps/driver/**', '!mobile/apps/driver/android/**', '!mobile/apps/driver/ios/**', '!mobile/apps/driver/node_modules/**', '!mobile/apps/driver/.expo/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
+
+      - name: Verify and stage the standalone Driver E2E APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="mobile/apps/driver/android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          apksigner verify --verbose "$APK"
+          unzip -l "$APK" | grep -F "assets/index.android.bundle"
+          mkdir -p driver-e2e-evidence
+          cp "$APK" driver-e2e-evidence/driver-e2e.apk
+          aapt dump badging driver-e2e-evidence/driver-e2e.apk | grep -F "package: name='space.pamoja.afcon360.driver.preview'"
+          sha256sum driver-e2e-evidence/driver-e2e.apk | tee driver-e2e-evidence/driver-e2e-apk.sha256
+          echo "The standalone test APK embeds the Driver app bundle and points only to the disposable loopback API."
+
+      - name: Enable and verify KVM hardware acceleration for authenticated Driver journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::/dev/kvm is unavailable; refusing a slow software-emulation fallback."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+
+      - name: Normalize Android 17 SDK platform package ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          # Keep the build-time Gradle alias out of SDK Manager's package scan.
+          # The canonical Android 17 package metadata identifies android-37.0;
+          # leaving android-37 as a symlink makes sdkmanager see one package at
+          # two paths and reject it as an inconsistent installation.
+          PLATFORM_ALIAS="$SDK_ROOT/platforms/android-37"
+          if [ -L "$PLATFORM_ALIAS" ]; then
+            if [ "$(readlink "$PLATFORM_ALIAS")" != "android-37.0" ]; then
+              echo "::error::Unexpected Android 37 platform alias target."
+              exit 1
+            fi
+            rm "$PLATFORM_ALIAS"
+          elif [ -e "$PLATFORM_ALIAS" ]; then
+            echo "::error::Android 37 alias exists but is not the expected symlink."
+            exit 1
+          fi
+          test -s "$SDK_ROOT/platforms/android-37.0/android.jar"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          # The emulator action invokes cmdline-tools' SDK Manager directly,
+          # so a PATH-only shim is bypassed. Wrap that exact executable instead.
+          # Keep the real script beside the wrapper so it still resolves its own lib/ directory.
+          REAL_SDKMANAGER="${SDKMANAGER}.afcon360-real"
+          if [ -e "$REAL_SDKMANAGER" ]; then
+            echo "::error::The real SDK Manager backup already exists; refusing to overwrite it."
+            exit 1
+          fi
+          mv "$SDKMANAGER" "$REAL_SDKMANAGER"
+          cat > "$SDKMANAGER" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          REAL_SDKMANAGER="${0}.afcon360-real"
+          args=()
+          for arg in "$@"; do
+            if [[ "$arg" == "platforms;android-37" ]]; then
+              arg="platforms;android-37.0"
+            fi
+            args+=("$arg")
+          done
+          exec "$REAL_SDKMANAGER" "${args[@]}"
+          EOF
+          chmod +x "$SDKMANAGER"
+
+      - name: Install supported Android emulator image for authenticated Driver journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          SYSTEM_IMAGE="system-images;android-36;google_apis;x86_64"
+          "$SDKMANAGER" --install "$SYSTEM_IMAGE"
+          "$SDKMANAGER" --list_installed | grep -F "$SYSTEM_IMAGE"
+
+      - name: Install, sign in, read Driver screens, restore session and sign out on Android
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          # API 37 remains the APK compile/target-SDK level. Use API 36 for the
+          # authenticated emulator until Google's API 37 Google APIs image is published.
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: python mobile/scripts/verify-driver-authenticated-journey.py
+
+      - name: Verify Driver API evidence and server-side session revocation
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST_AUDIT="driver-e2e-evidence/backend-requests.tsv"
+          # Do not turn an emulator boot/install failure into dozens of false
+          # authentication/API failures. The emulator step already carries the
+          # primary error; run backend assertions only after the real APK sends
+          # its login request. Failed login responses are still audited here.
+          if [[ ! -s "$REQUEST_AUDIT" ]] || ! awk -F '\t' '$2 == "POST" && $3 == "/api/mobile/v1/auth/login" { found=1 } END { exit !found }' "$REQUEST_AUDIT"; then
+            echo "::warning::The Driver APK did not reach the login endpoint; skipping dependent backend assertions. Inspect the Android emulator step above."
+            exit 0
+          fi
+          python mobile/scripts/mobile-driver-e2e-backend.py assert
+
+      - name: Upload Driver screenshots and sanitized backend evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-driver-authenticated-journey-evidence
+          path: driver-e2e-evidence/
+          if-no-files-found: warn
+          retention-days: 30

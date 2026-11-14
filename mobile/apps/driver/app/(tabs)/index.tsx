@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
@@ -14,6 +14,7 @@ import {
 } from "@afcon360/mobile-ui";
 import { MobileAuthError } from "@afcon360/mobile-core";
 import { authClient } from "../../src/services/api";
+import { DriverMapPanel } from "../../src/map/DriverMapPanel";
 import { requestForegroundDriverLocation } from "../../src/location/permissions";
 
 type DriverProfile = {
@@ -32,6 +33,26 @@ type DriverProfile = {
       hint?: string;
     }>;
   };
+  performance?: {
+    reliability_score?: number | null;
+    safety_score?: number | null;
+    acceptance_rate?: string | null;
+    cancellation_rate?: string | null;
+    total_trips?: number | null;
+    completed_trips?: number | null;
+    total_duration_minutes?: number | null;
+    total_distance_km?: string | null;
+    average_rating?: string | null;
+    total_ratings?: number | null;
+  };
+  assigned_vehicle?: {
+    make?: string | null;
+    model?: string | null;
+    year?: number | null;
+    license_plate?: string | null;
+    vehicle_class?: string | null;
+    passenger_capacity?: number | null;
+  } | null;
 };
 
 type Offer = {
@@ -55,6 +76,12 @@ type ActiveTrip = {
   payment_status?: string;
   fare_amount?: string;
   currency?: string;
+  can_cancel?: boolean;
+  can_mark_no_show?: boolean;
+  pickup_schedule?: {
+    local_datetime?: string;
+    timezone_name?: string;
+  } | null;
 };
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -74,43 +101,124 @@ export default function DriverHome() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const onlineRef = useRef(false);
+  const coreLoadInFlight = useRef(false);
 
   const load = useCallback(async () => {
+    if (coreLoadInFlight.current) return;
+    coreLoadInFlight.current = true;
     try {
-      const [me, offerResponse, tripResponse] = await Promise.all([
+      const [me, tripResponse] = await Promise.all([
         authClient.request<{ data: DriverProfile }>("/api/mobile/v1/driver/me"),
-        authClient.request<{ data: { offers: Offer[] } }>("/api/mobile/v1/driver/offers"),
         authClient.request<{ data: ActiveTrip | null }>("/api/mobile/v1/driver/trips/active")
       ]);
+      onlineRef.current = me.data.is_online === true;
       setProfile(me.data);
-      setOffers(offerResponse.data.offers ?? []);
       setActiveTrip(tripResponse.data ?? null);
+      if (!onlineRef.current) setOffers([]);
       setError(null);
     } catch (e) {
+      onlineRef.current = false;
       setError(e instanceof Error ? e.message : "Driver information could not be loaded.");
     } finally {
+      coreLoadInFlight.current = false;
       setLoading(false);
+    }
+  }, []);
+
+  const loadOffers = useCallback(async () => {
+    if (
+      !onlineRef.current ||
+      AppState.currentState !== "active"
+    ) return { ok: false, count: 0 };
+
+    try {
+      const response = await authClient.request<{ data: { offers: Offer[] } }>(
+        "/api/mobile/v1/driver/offers"
+      );
+      const next = response.data.offers ?? [];
+      setOffers(next);
+      return { ok: true, count: next.length };
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ride offers could not be refreshed.");
+      return { ok: false, count: 0 };
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      let active = true;
+      let offerTimer: ReturnType<typeof setTimeout> | null = null;
+      let coreTimer: ReturnType<typeof setInterval> | null = null;
+      let offerDelay = 4000;
+      let offerPollInFlight = false;
 
-      // Poll only while this tab is visible and the app is foregrounded.
-      // Refresh immediately when the driver returns to the dashboard.
+      const clearOfferTimer = () => {
+        if (offerTimer) {
+          clearTimeout(offerTimer);
+          offerTimer = null;
+        }
+      };
+
+      const scheduleOffers = () => {
+        clearOfferTimer();
+        if (!active || AppState.currentState !== "active") return;
+        offerTimer = setTimeout(() => { void pollOffers(); }, offerDelay);
+      };
+
+      const pollOffers = async () => {
+        if (!active || AppState.currentState !== "active") return;
+        if (!onlineRef.current) {
+          offerDelay = Math.min(offerDelay * 2, 30000);
+          scheduleOffers();
+          return;
+        }
+        if (offerPollInFlight) {
+          scheduleOffers();
+          return;
+        }
+
+        offerPollInFlight = true;
+        try {
+          const result = await loadOffers();
+          if (!active) return;
+          offerDelay = result.ok && result.count > 0
+            ? 4000
+            : Math.min(offerDelay * 2, 30000);
+        } finally {
+          offerPollInFlight = false;
+          scheduleOffers();
+        }
+      };
+
+      const refreshWorkspace = async () => {
+        clearOfferTimer();
+        await load();
+        if (!active) return;
+        offerDelay = 4000;
+        void pollOffers();
+      };
+
+      void refreshWorkspace();
+      coreTimer = setInterval(() => {
+        if (AppState.currentState === "active") void refreshWorkspace();
+      }, 15000);
+
       const subscription = AppState.addEventListener("change", state => {
-        if (state === "active") void load();
+        if (state === "active") {
+          void refreshWorkspace();
+        } else {
+          clearOfferTimer();
+        }
       });
-      const interval = setInterval(() => {
-        if (AppState.currentState === "active") void load();
-      }, 10000);
 
       return () => {
-        clearInterval(interval);
+        active = false;
+        clearOfferTimer();
+        if (coreTimer) clearInterval(coreTimer);
         subscription.remove();
       };
-    }, [load])
+    }, [load, loadOffers])
   );
 
   async function toggleOnline() {
@@ -176,6 +284,8 @@ export default function DriverHome() {
           path,
         { method: "POST", body: {} }
       );
+      await load();
+      await loadOffers();
       Alert.alert(
         action === "accept" ? "Ride accepted" : "Offer declined",
         action === "accept"
@@ -308,6 +418,78 @@ export default function DriverHome() {
         >
           <Text style={{ color: palette.greenDark, fontWeight: "800" }}>Refresh dashboard</Text>
         </Pressable>
+      </Panel>
+
+      <DriverMapPanel />
+
+      <Panel>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <SectionTitle>Driving performance</SectionTitle>
+          <StatusPill tone="neutral">
+            {profile?.performance?.total_trips === undefined || profile.performance.total_trips === null
+              ? "No summary"
+              : String(profile.performance.total_trips) + " trips"}
+          </StatusPill>
+        </View>
+        {profile?.performance ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
+            <DetailRow label="Average rating" value={profile.performance.average_rating ?? "Not rated"} />
+            <DetailRow
+              label="Total ratings"
+              value={profile.performance.total_ratings === undefined || profile.performance.total_ratings === null
+                ? "Not available"
+                : String(profile.performance.total_ratings)}
+            />
+            <DetailRow
+              label="Reliability score"
+              value={profile.performance.reliability_score === undefined || profile.performance.reliability_score === null
+                ? "Not available"
+                : String(profile.performance.reliability_score) + "/100"}
+            />
+            <DetailRow
+              label="Safety score"
+              value={profile.performance.safety_score === undefined || profile.performance.safety_score === null
+                ? "Not available"
+                : String(profile.performance.safety_score) + "/100"}
+            />
+            <DetailRow label="Acceptance rate" value={profile.performance.acceptance_rate ? profile.performance.acceptance_rate + "%" : "Not available"} />
+            <DetailRow label="Cancellation rate" value={profile.performance.cancellation_rate ? profile.performance.cancellation_rate + "%" : "Not available"} />
+            <DetailRow
+              label="Completed trips"
+              value={profile.performance.completed_trips === undefined || profile.performance.completed_trips === null
+                ? "Not available"
+                : String(profile.performance.completed_trips)}
+            />
+            <DetailRow
+              label="Total distance"
+              value={profile.performance.total_distance_km ? profile.performance.total_distance_km + " km" : "Not available"}
+            />
+            <DetailRow
+              label="Total driving time"
+              value={profile.performance.total_duration_minutes === undefined || profile.performance.total_duration_minutes === null
+                ? "Not available"
+                : String(profile.performance.total_duration_minutes) + " min"}
+            />
+          </View>
+        ) : (
+          <Text style={{ color: palette.muted, fontSize: 12 }}>
+            Performance information is not available from Transport yet.
+          </Text>
+        )}
+        {profile?.assigned_vehicle ? (
+          <View style={{ padding: 12, borderRadius: 13, backgroundColor: "#F8FBF9", gap: 4 }}>
+            <Text style={{ color: palette.muted, fontSize: 11, fontWeight: "700" }}>Current assigned vehicle</Text>
+            <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "900" }}>
+              {[profile.assigned_vehicle.make, profile.assigned_vehicle.model, profile.assigned_vehicle.year]
+                .filter(value => value !== undefined && value !== null && value !== "")
+                .join(" ")}
+            </Text>
+            <Text style={{ color: palette.muted, fontSize: 12 }}>
+              {profile.assigned_vehicle.license_plate ?? "Registration not provided"}
+              {profile.assigned_vehicle.vehicle_class ? " · " + profile.assigned_vehicle.vehicle_class : ""}
+            </Text>
+          </View>
+        ) : null}
       </Panel>
 
       <Panel>

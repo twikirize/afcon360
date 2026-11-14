@@ -1,0 +1,241 @@
+name: AFCON360 Driver trusted preview APK
+
+# Trusted-branch build only. This workflow is intentionally not triggered by pull_request.
+# It uses Expo-managed Android signing and never uses the disposable CI signing key.
+on:
+  push:
+    branches:
+      - feat/native-driver-workspace-parity-20261109
+      - feat/native-driver-app-integration-20261108
+    paths:
+      - "mobile/apps/driver/app.config.ts"
+      - "mobile/apps/driver/eas.json"
+      - "mobile/apps/driver/package.json"
+      - "mobile/pnpm-lock.yaml"
+      - "mobile/pnpm-workspace.yaml"
+      - "mobile/packages/**"
+      - ".easignore"
+      - ".github/workflows/mobile-driver-preview-apk.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: afcon360-driver-preview-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-driver-preview-apk:
+    name: Build OTA-enabled Driver preview APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      AFCON360_DRIVER_EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID || '4196f859-ddbd-47b1-82e6-8bc441ede17b' }}
+      AFCON360_PREVIEW_BUILD: "true"
+      EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+
+    steps:
+      - name: Check out trusted Driver source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Validate shared Expo account credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN" || {
+            echo "::error::The existing EXPO_TOKEN repository secret is required."
+            exit 1
+          }
+          [[ "$AFCON360_DRIVER_EAS_PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || {
+            echo "::error::A valid dedicated AFCON360_DRIVER_EAS_PROJECT_ID is required."
+            exit 1
+          }
+          echo "The shared Expo publishing credential is available."
+
+      - name: Install mobile workspace dependencies
+        working-directory: mobile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Validate Driver Expo dependencies and TypeScript
+        working-directory: mobile
+        run: |
+          pnpm --filter @afcon360/driver-app exec expo install --check
+          pnpm driver:typecheck
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK and NDK for local EAS build
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          export ANDROID_HOME="$SDK"
+          export ANDROID_SDK_ROOT="$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -n 1)"
+          test -x "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-37.0" \
+            "build-tools;37.0.0" \
+            "ndk;27.1.12297006"
+          if [ -d "$SDK/platforms/android-37.0" ] && [ ! -e "$SDK/platforms/android-37" ]; then
+            ln -s android-37.0 "$SDK/platforms/android-37"
+          fi
+          test -s "$SDK/platforms/android-37/android.jar"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK/build-tools/37.0.0" >> "$GITHUB_PATH"
+
+      - name: Export the Driver Android bundle
+        working-directory: mobile
+        run: |
+          pnpm --filter @afcon360/driver-app exec expo export \
+            --platform android \
+            --output-dir "$RUNNER_TEMP/afcon360-driver-android-export"
+
+      - name: Configure the Driver preview API environment
+        working-directory: mobile/apps/driver
+        run: |
+          npx --yes eas-cli@latest env:set \
+            --name EXPO_PUBLIC_API_BASE_URL \
+            --value "$EXPO_PUBLIC_API_BASE_URL" \
+            --environment preview \
+            --scope project \
+            --visibility plaintext \
+            --non-interactive
+
+      - name: Ensure the Driver preview update branch and channel exist
+        working-directory: mobile/apps/driver
+        run: |
+          set -euo pipefail
+          if ! npx --yes eas-cli@latest branch:view driver-preview --json >/dev/null 2>&1; then
+            npx --yes eas-cli@latest branch:create driver-preview --non-interactive
+          fi
+          if ! npx --yes eas-cli@latest channel:view driver-preview --json >/dev/null 2>&1; then
+            npx --yes eas-cli@latest channel:create driver-preview --non-interactive
+          fi
+          npx --yes eas-cli@latest channel:edit driver-preview --branch driver-preview --non-interactive
+
+      - name: Build the OTA-enabled Driver APK locally with EAS-managed signing
+        id: eas-build
+        working-directory: mobile/apps/driver
+        shell: bash
+        env:
+          EAS_LOCAL_BUILD_SKIP_CLEANUP: "1"
+          EAS_LOCAL_BUILD_WORKINGDIR: ${{ runner.temp }}/driver-eas-local-work
+          EAS_LOCAL_BUILD_ARTIFACTS_DIR: ${{ runner.temp }}/driver-eas-local-artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p "$EAS_LOCAL_BUILD_WORKINGDIR" "$EAS_LOCAL_BUILD_ARTIFACTS_DIR"
+          APK_OUT="$RUNNER_TEMP/AFCON360-Driver-preview.apk"
+
+          set +e
+          npx --yes eas-cli@latest build \
+            --platform android \
+            --profile apk-share \
+            --local \
+            --output "$APK_OUT" \
+            --non-interactive
+          BUILD_EXIT=$?
+          set -e
+
+          if [ "$BUILD_EXIT" -ne 0 ]; then
+            echo "::error::Local EAS build failed with exit code $BUILD_EXIT."
+            echo "Local EAS build diagnostics:"
+            find "$EAS_LOCAL_BUILD_WORKINGDIR" "$EAS_LOCAL_BUILD_ARTIFACTS_DIR" \
+              -maxdepth 5 -type f \( -name '*.log' -o -name '*.txt' \) -print 2>/dev/null || true
+            for LOG in $(find "$EAS_LOCAL_BUILD_WORKINGDIR" "$EAS_LOCAL_BUILD_ARTIFACTS_DIR" \
+              -maxdepth 5 -type f -name '*.log' 2>/dev/null | sort); do
+              echo "----- $LOG -----"
+              tail -n 160 "$LOG" || true
+            done
+            exit "$BUILD_EXIT"
+          fi
+
+          test -s "$APK_OUT"
+          apksigner verify --verbose --print-certs "$APK_OUT"
+          BADGING="$(aapt dump badging "$APK_OUT")"
+          PACKAGE="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
+          MINIMUM="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
+          TARGET="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
+          test "$PACKAGE" = "space.pamoja.afcon360.driver.preview"
+          test "$MINIMUM" = "24"
+          test -n "$TARGET" && test "$TARGET" -ge 36
+
+          mkdir -p "$GITHUB_WORKSPACE/release"
+          cp "$APK_OUT" "$GITHUB_WORKSPACE/release/AFCON360-Driver-preview.apk"
+          APK_SHA256="$(sha256sum "$GITHUB_WORKSPACE/release/AFCON360-Driver-preview.apk" | awk '{print $1}')"
+          cat > "$GITHUB_WORKSPACE/release/driver-build-info.txt" <<EOF
+          app=driver
+          package=$PACKAGE
+          min_sdk=$MINIMUM
+          target_sdk=$TARGET
+          channel=driver-preview
+          eas_project_id=$AFCON360_DRIVER_EAS_PROJECT_ID
+          source_sha=$GITHUB_SHA
+          signing=EAS-managed Android credentials downloaded from Expo
+          apk_sha256=$APK_SHA256
+          EOF
+          echo "build_id=local-$GITHUB_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Verified OTA-enabled Driver APK package=$PACKAGE minSdk=$MINIMUM targetSdk=$TARGET"
+
+      - name: Publish the initial Driver OTA bundle
+        working-directory: mobile/apps/driver
+        run: |
+          npx --yes eas-cli@latest update \
+            --branch driver-preview \
+            --message "AFCON360 Driver preview bootstrap $GITHUB_SHA" \
+            --platform all \
+            --environment preview \
+            --non-interactive
+
+      - name: Upload the installable OTA-enabled Driver APK
+        id: upload-apk
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-driver-ota-enabled-preview-apk
+          path: |
+            release/AFCON360-Driver-preview.apk
+            release/driver-build-info.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summarize the Driver APK and OTA channel
+        shell: bash
+        env:
+          ARTIFACT_URL: ${{ steps.upload-apk.outputs.artifact-url }}
+          EAS_BUILD_ID: ${{ steps.eas-build.outputs.build_id }}
+          EAS_PROJECT_ID: 4196f859-ddbd-47b1-82e6-8bc441ede17b
+        run: |
+          {
+            echo "## AFCON360 Driver preview APK"
+            echo
+            echo "- APK: [Download the OTA-enabled Driver APK]($ARTIFACT_URL)"
+            echo "- Build: $EAS_BUILD_ID (local EAS build using Expo-managed signing)"
+            echo "- EAS project: $EAS_PROJECT_ID"
+            echo "- OTA channel: `driver-preview`"
+            echo "- Runtime policy: native fingerprint"
+            echo "- Signing: Expo EAS-managed Android credentials"
+            echo
+            echo "JavaScript and asset updates published to `driver-preview` can be received without reinstalling this APK. Native dependency, permission, or Android configuration changes still require a new APK."
+          } >> "$GITHUB_STEP_SUMMARY"

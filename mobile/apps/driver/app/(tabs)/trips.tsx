@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, AppState, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Pressable, Text, View } from "react-native";
 import {
   ActionButton,
   AppScreen,
@@ -16,12 +16,59 @@ import { authClient } from "../../src/services/api";
 type ActiveTrip = {
   booking_reference: string;
   status: string;
+  next_action?: string | null;
   pickup?: { address?: string };
   dropoff?: { address?: string };
+  pickup_time?: string | null;
+  pickup_schedule?: {
+    local_datetime?: string;
+    utc_datetime?: string;
+    timezone_name?: string;
+    utc_offset?: string;
+    display_timezone_derived?: boolean;
+  } | null;
+  booking_mode?: string;
+  can_cancel?: boolean;
+  can_mark_no_show?: boolean;
   payment_method?: string;
   payment_status?: string;
   fare_amount?: string;
   currency?: string;
+};
+
+type TripHistoryScope = "upcoming" | "recent" | "all";
+
+type TripHistoryItem = {
+  booking_reference: string;
+  status: string;
+  booking_mode?: string;
+  pickup_time?: string | null;
+  pickup_schedule?: {
+    local_datetime?: string;
+    utc_datetime?: string;
+    timezone_name?: string;
+    utc_offset?: string;
+    display_timezone_derived?: boolean;
+  } | null;
+  pickup?: { address?: string };
+  dropoff?: { address?: string };
+  passenger_count?: number;
+  fare_amount?: string | null;
+  currency?: string | null;
+  payment_method?: string | null;
+  payment_status?: string | null;
+  can_mark_no_show?: boolean;
+  created_at?: string | null;
+  completed_at?: string | null;
+};
+
+type TripHistoryResponse = {
+  data: {
+    scope: TripHistoryScope;
+    items: TripHistoryItem[];
+    count: number;
+    limit: number;
+  };
 };
 
 const nextAction: Record<string, { action: string; label: string }> = {
@@ -29,6 +76,13 @@ const nextAction: Record<string, { action: string; label: string }> = {
   driver_en_route: { action: "arrive", label: "I have arrived" },
   pickup_arrived: { action: "start", label: "Start trip" },
   in_progress: { action: "complete", label: "Complete trip" }
+};
+
+const serverActionLabels: Record<string, { action: string; label: string }> = {
+  en_route: { action: "en_route", label: "Start driving to pickup" },
+  arrive: { action: "arrive", label: "I have arrived" },
+  start: { action: "start", label: "Start trip" },
+  complete: { action: "complete", label: "Complete trip" }
 };
 
 function TripDetail({ label, value }: { label: string; value: string }) {
@@ -40,11 +94,75 @@ function TripDetail({ label, value }: { label: string; value: string }) {
   );
 }
 
+function historyTime(item: TripHistoryItem) {
+  const local = item.pickup_schedule?.local_datetime;
+  if (local) {
+    const timezone = item.pickup_schedule?.timezone_name;
+    return timezone ? local + " · " + timezone : local;
+  }
+  return item.pickup_time ?? "Time not provided";
+}
+
+function HistoryTripCard({ item }: { item: TripHistoryItem }) {
+  return (
+    <View
+      style={{
+        gap: 10,
+        padding: 13,
+        borderRadius: 15,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: "#F8FBF9"
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <Text style={{ color: palette.ink, fontSize: 12, fontWeight: "900", flexShrink: 1 }}>
+          {item.booking_reference}
+        </Text>
+        <StatusPill>{item.status}</StatusPill>
+      </View>
+      <Text style={{ color: palette.ink, fontSize: 14, lineHeight: 20, fontWeight: "800" }}>
+        {item.pickup?.address ?? "Pickup details unavailable"} →{" "}
+        {item.dropoff?.address ?? "Destination details unavailable"}
+      </Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
+        <TripDetail label="Pickup time" value={historyTime(item)} />
+        <TripDetail
+          label="Fare"
+          value={
+            item.fare_amount !== undefined && item.fare_amount !== null
+              ? item.fare_amount + " " + (item.currency ?? "")
+              : "Not provided"
+          }
+        />
+        <TripDetail
+          label="Passengers"
+          value={item.passenger_count === undefined ? "Not provided" : String(item.passenger_count)}
+        />
+      </View>
+      <Text style={{ color: palette.muted, fontSize: 12 }}>
+        {(item.booking_mode ?? "Trip") + " · " + (item.payment_method ?? "Payment not provided")} ·{" "}
+        {item.payment_status ?? "Payment status not provided"}
+      </Text>
+      {item.completed_at ? (
+        <Text style={{ color: palette.muted, fontSize: 11 }}>
+          Completed: {item.completed_at}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export default function Trips() {
   const [trip, setTrip] = useState<ActiveTrip | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyScope, setHistoryScope] = useState<TripHistoryScope>("upcoming");
+  const [historyItems, setHistoryItems] = useState<TripHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -57,6 +175,29 @@ export default function Trips() {
       setError(e instanceof Error ? e.message : "Could not load your active trip.");
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const loadHistory = useCallback(async (scope: TripHistoryScope) => {
+    setHistoryLoading(true);
+    setHistoryLoaded(false);
+    setHistoryItems([]);
+    setHistoryError(null);
+    try {
+      const response = await authClient.request<TripHistoryResponse>(
+        "/api/mobile/v1/driver/trips?scope=" + scope + "&limit=20"
+      );
+      setHistoryItems(response.data.items ?? []);
+      setHistoryError(null);
+    } catch (e) {
+      setHistoryError(
+        e instanceof Error
+          ? e.message
+          : "Trip history is temporarily unavailable. Please try again."
+      );
+    } finally {
+      setHistoryLoaded(true);
+      setHistoryLoading(false);
     }
   }, []);
 
@@ -80,6 +221,12 @@ export default function Trips() {
     }, [load])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      void loadHistory(historyScope);
+    }, [historyScope, loadHistory])
+  );
+
   async function advance(action: string) {
     if (!trip) return;
     setBusy(true);
@@ -98,6 +245,46 @@ export default function Trips() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function confirmTripAction(action: "cancel" | "no_show") {
+    if (!trip) return;
+    const isNoShow = action === "no_show";
+    Alert.alert(
+      isNoShow ? "Report passenger no-show" : "Cancel assigned trip",
+      isNoShow
+        ? "Only report a no-show after you have arrived at the scheduled pickup and the passenger has not appeared. AFCON360 will verify the booking's scheduled pickup and grace period."
+        : "Cancel this assigned trip only when you cannot complete it. AFCON360 will apply the booking's cancellation and reassignment rules.",
+      [
+        { text: "Keep trip", style: "cancel" },
+        {
+          text: isNoShow ? "Report no-show" : "Cancel trip",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await authClient.request(
+                "/api/mobile/v1/driver/trips/" +
+                  encodeURIComponent(trip.booking_reference) +
+                  "/status",
+                { method: "POST", body: { action } }
+              );
+              await load();
+            } catch (e) {
+              Alert.alert(
+                isNoShow ? "No-show not recorded" : "Trip not cancelled",
+                e instanceof Error
+                  ? e.message
+                  : "AFCON360 rejected this action or requires a different trip state."
+              );
+              await load();
+            } finally {
+              setBusy(false);
+            }
+          }
+        }
+      ]
+    );
   }
 
   async function confirmCash() {
@@ -133,7 +320,17 @@ export default function Trips() {
     );
   }
 
-  const action = trip ? nextAction[trip.status.toLowerCase()] : undefined;
+  const action = trip
+    ? (trip.next_action
+        ? serverActionLabels[trip.next_action]
+        : nextAction[trip.status.toLowerCase()])
+    : undefined;
+  const canCancel = trip?.can_cancel === true;
+  const canMarkNoShow = trip?.can_mark_no_show === true;
+  const pickupTimeLabel = trip?.pickup_schedule?.local_datetime
+    ? trip.pickup_schedule.local_datetime +
+      (trip.pickup_schedule.timezone_name ? " · " + trip.pickup_schedule.timezone_name : "")
+    : trip?.pickup_time ?? null;
   const canConfirmCash =
     trip?.status.toLowerCase() === "completed" &&
     trip.payment_method === "cash" &&
@@ -144,7 +341,7 @@ export default function Trips() {
       <PageHeader
         eyebrow="Trips"
         title="Your assigned work."
-        description="Follow each server-confirmed trip step. Trip completion and payment settlement are separate."
+        description="Follow each server-confirmed trip step, review upcoming work and revisit completed trips."
       />
       <Panel>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -175,6 +372,9 @@ export default function Trips() {
               <View style={{ height: 1, backgroundColor: palette.border }} />
               <TripDetail label="Destination" value={trip.dropoff?.address ?? "Not provided"} />
             </View>
+            {pickupTimeLabel ? (
+              <TripDetail label="Pickup time" value={pickupTimeLabel} />
+            ) : null}
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
               <TripDetail
                 label="Fare"
@@ -187,6 +387,12 @@ export default function Trips() {
               <TripDetail label="Payment method" value={trip.payment_method ?? "Not provided"} />
               <TripDetail label="Payment status" value={trip.payment_status ?? "Pending"} />
             </View>
+            {trip.pickup_schedule?.local_datetime ? (
+              <Text style={{ color: palette.muted, fontSize: 12 }}>
+                Scheduled pickup: {trip.pickup_schedule.local_datetime}
+                {trip.pickup_schedule.timezone_name ? " · " + trip.pickup_schedule.timezone_name : ""}
+              </Text>
+            ) : null}
             {action ? (
               <ActionButton
                 label={busy ? "Updating trip…" : action.label}
@@ -198,6 +404,48 @@ export default function Trips() {
                 There is no further trip action available for this server-reported status.
               </Text>
             )}
+            {trip.can_cancel ? (
+              <ActionButton
+                label={busy ? "Please wait…" : "Cancel assigned trip"}
+                disabled={busy}
+                onPress={() => confirmTripAction("cancel")}
+              />
+            ) : null}
+            {trip.can_mark_no_show ? (
+              <ActionButton
+                label={busy ? "Please wait…" : "Report passenger no-show"}
+                disabled={busy}
+                onPress={() => confirmTripAction("no_show")}
+              />
+            ) : null}
+            {canCancel ? (
+              <ActionButton
+                label="Cancel trip"
+                disabled={busy}
+                onPress={() => Alert.alert(
+                  "Cancel this trip?",
+                  "AFCON360 will validate the cancellation and handle the dispatch/rider update.",
+                  [
+                    { text: "Keep trip", style: "cancel" },
+                    { text: "Cancel trip", style: "destructive", onPress: () => { void advance("cancel"); } }
+                  ]
+                )}
+              />
+            ) : null}
+            {canMarkNoShow ? (
+              <ActionButton
+                label="Report passenger no-show"
+                disabled={busy}
+                onPress={() => Alert.alert(
+                  "Report a passenger no-show?",
+                  "Only proceed if you are at the pickup point and the passenger has not arrived. AFCON360 has confirmed the waiting period has elapsed.",
+                  [
+                    { text: "Not now", style: "cancel" },
+                    { text: "Confirm no-show", style: "destructive", onPress: () => { void advance("no_show"); } }
+                  ]
+                )}
+              />
+            ) : null}
             {canConfirmCash ? (
               <View style={{ gap: 8 }}>
                 <View style={{ padding: 12, borderRadius: 13, backgroundColor: palette.warningSoft }}>
@@ -219,6 +467,71 @@ export default function Trips() {
           label={loading ? "Refreshing…" : "Refresh trip"}
           disabled={loading || busy}
           onPress={() => { setLoading(true); void load(); }}
+        />
+      </Panel>
+
+      <Panel>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <SectionTitle>Trip history</SectionTitle>
+          <StatusPill>{historyItems.length} trips</StatusPill>
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {(["upcoming", "recent", "all"] as const).map(scope => {
+            const selected = historyScope === scope;
+            return (
+              <Pressable
+                key={scope}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => setHistoryScope(scope)}
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  paddingVertical: 11,
+                  borderRadius: 12,
+                  backgroundColor: selected ? palette.green : "#F1F5F2"
+                }}
+              >
+                <Text style={{ color: selected ? "#FFFFFF" : palette.ink, fontSize: 13, fontWeight: "800" }}>
+                  {scope === "upcoming" ? "Upcoming" : scope === "recent" ? "Recent" : "All"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {historyLoading ? <ActivityIndicator color={palette.green} /> : null}
+        {historyError ? (
+          <View style={{ gap: 8 }}>
+            <Text accessibilityRole="alert" style={{ color: "#9A3A2F", fontSize: 13, lineHeight: 19 }}>
+              {historyError}
+            </Text>
+            <ActionButton
+              label="Retry trip history"
+              disabled={historyLoading}
+              onPress={() => { void loadHistory(historyScope); }}
+            />
+          </View>
+        ) : null}
+        {historyLoaded && !historyLoading && !historyError && historyItems.length === 0 ? (
+          <EmptyState
+            title={historyScope === "upcoming" ? "No upcoming trips" : "No recent trips"}
+            description={
+              historyScope === "upcoming"
+                ? "Assigned scheduled trips will appear here when AFCON360 confirms them."
+                : historyScope === "recent"
+                  ? "Completed and past assigned trips will appear here."
+                  : "Your assigned trips will appear here, including upcoming and completed work."
+            }
+          />
+        ) : null}
+        {!historyError ? historyItems.map(item => (
+          <HistoryTripCard key={item.booking_reference} item={item} />
+        )) : null}
+        <ActionButton
+          label={historyLoading ? "Refreshing history…" : "Refresh history"}
+          disabled={historyLoading}
+          onPress={() => { void loadHistory(historyScope); }}
         />
       </Panel>
     </AppScreen>
