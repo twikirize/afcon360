@@ -57,6 +57,7 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-secure-store",
     "expo-dev-client",
+    "expo-updates",
     [
       "expo-location",
       {
