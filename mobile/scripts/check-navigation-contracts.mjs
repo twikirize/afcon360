@@ -29,7 +29,7 @@ const nativeInternalRoutes = [
   ["apps/user/app/login.tsx", 'router.push("/server-settings" as never)'],
   ["apps/user/app/server-settings.tsx", "export default function ServerSettingsScreen()"],
   ["apps/user/app/(service)/_layout.tsx", 'if (!user) return <Redirect href="/login" />;'],
-  ["apps/user/app/(service)/_layout.tsx", 'return <Stack screenOptions={{ headerShown: false }} />;'],
+  ["apps/user/app/(service)/_layout.tsx", 'return <Stack screenOptions={{ headerShown: true, header: () => <UserDashboardHeader /> }} />;'],
   ["apps/user/app/(service)/events.tsx", "export default function Events()"],
   ["apps/user/app/(service)/stays.tsx", "export default function Stays()"],
   ["apps/user/app/(service)/ride.tsx", "export default function RideScreen()"],
