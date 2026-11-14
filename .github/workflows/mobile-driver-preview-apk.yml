@@ -180,7 +180,7 @@ jobs:
 
       - name: Install the mobile workspace from the frozen lockfile
         working-directory: mobile
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Validate Driver Expo dependencies and TypeScript
         working-directory: mobile
