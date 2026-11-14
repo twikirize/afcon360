@@ -17,7 +17,6 @@ on:
       - ".github/workflows/mobile-driver-preview-apk.yml"
 
 permissions:
-  actions: write
   contents: read
 
 concurrency:
@@ -68,8 +67,6 @@ jobs:
       - name: Resolve or create the separate Driver EAS project
         id: eas-project
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -175,11 +172,7 @@ jobs:
               exit 1
             }
 
-            gh variable set AFCON360_DRIVER_EAS_PROJECT_ID \
-              --body "$PROJECT_ID" \
-              --repo "$GITHUB_REPOSITORY"
-
-            echo "Created or linked the dedicated Driver EAS project under the same Expo account as User."
+            echo "Driver EAS project is linked. Its public project ID is embedded in Driver app configuration."
           fi
 
           echo "AFCON360_DRIVER_EAS_PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
