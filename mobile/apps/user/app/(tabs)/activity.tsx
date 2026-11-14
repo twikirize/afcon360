@@ -1,7 +1,8 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, AppState, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { AppScreen, PageHeader, Panel, SectionTitle, StatusPill, palette, EmptyState } from "@afcon360/mobile-ui";
+import { PageHeader, Panel, SectionTitle, StatusPill, palette, EmptyState } from "@afcon360/mobile-ui";
+import { UserAppScreen } from "../../src/components/UserAppScreen";
 import { useFocusEffect } from "expo-router";
 import { authClient } from "../../src/services/api";
 
@@ -33,7 +34,7 @@ export default function Activity() {
     }, [load])
   );
 
-  return <AppScreen>
+  return <UserAppScreen>
     <PageHeader eyebrow="Your activity" title="Your rides and bookings." description="Your recent ride requests and confirmed transport bookings are loaded from AFCON360." />
     <Panel>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -52,5 +53,5 @@ export default function Activity() {
         </Pressable>
       ))}
     </Panel>
-  </AppScreen>;
+  </UserAppScreen>;
 }
