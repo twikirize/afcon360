@@ -167,7 +167,7 @@ jobs:
               config.expo.extra.eas && config.expo.extra.eas.projectId;
             if (!id) throw new Error("EAS init did not write extra.eas.projectId to app.json.");
             process.stdout.write(id);
-            NODE
+          NODE
             )"
 
             [[ "$PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || {
