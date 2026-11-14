@@ -1,26 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Keyboard,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View
+import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, View
 } from "react-native";
 import { useRouter } from "expo-router";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import * as Location from "expo-location";
 import {
-  ActionButton,
-  AppScreen,
-  PageHeader,
-  Panel,
-  SectionTitle,
-  StatusPill,
-  palette
-} from "@afcon360/mobile-ui";
+  ActionButton, PageHeader, Panel, SectionTitle, StatusPill, palette } from "@afcon360/mobile-ui";
+import { UserAppScreen } from "../../src/components/UserAppScreen";
 import { authClient } from "../../src/services/api";
 import { MobileAuthError } from "@afcon360/mobile-core";
 
@@ -853,7 +839,7 @@ export default function RideScreen() {
   };
 
   return (
-    <AppScreen>
+    <UserAppScreen>
       <PageHeader
         eyebrow="Transport"
         title="Your ride, your game!"
@@ -1258,7 +1244,7 @@ export default function RideScreen() {
           ) : null}
         </Panel>
       ) : null}
-    </AppScreen>
+    </UserAppScreen>
   );
 }
 
