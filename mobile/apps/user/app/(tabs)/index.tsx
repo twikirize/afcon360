@@ -163,6 +163,7 @@ function TrendCard({
   item: FeedItem;
   baseUrl: string;
   onPress: () => void;
+  websiteHandoff: boolean;
 }) {
   const image = imageUri(item.image_url, baseUrl);
   const meta = feedMeta(item);
@@ -188,6 +189,7 @@ function TrendCard({
         <View style={styles.trendTagRow}>
           <Text style={styles.trendTag}>{feedTypeLabel(item.type)}</Text>
           {item.type === "ad" ? <Text style={styles.sponsoredMark}>AD</Text> : null}
+          {websiteHandoff ? <Text style={styles.websiteMark}>WEB ↗</Text> : null}
         </View>
         <Text numberOfLines={2} style={styles.trendTitle}>{item.title || "Discover more on Pamoja"}</Text>
         {meta ? <Text numberOfLines={1} style={styles.trendMeta}>{meta}</Text> : null}
@@ -514,6 +516,7 @@ export default function UserHome() {
                   item={item}
                   baseUrl={apiBaseUrl}
                   onPress={() => openTrendingItem(item)}
+                  websiteHandoff={Boolean(item.link_url) && !["event", "property", "transport"].includes(item.type)}
                 />
               )}
               showsHorizontalScrollIndicator={false}
@@ -565,7 +568,7 @@ const styles = StyleSheet.create({
   hero: { minHeight: 204, borderRadius: 22, padding: 17, overflow: "hidden", backgroundColor: BRAND_DARK, flexDirection: "row", alignItems: "center" },
   heroOrbLarge: { position: "absolute", width: 240, height: 240, borderRadius: 120, backgroundColor: "rgba(119,164,101,0.15)", right: -118, top: -126 },
   heroOrbSmall: { position: "absolute", width: 150, height: 150, borderRadius: 75, borderWidth: 1, borderColor: "rgba(255,204,0,0.24)", right: -25, bottom: -72 },
-  heroCopy: { flex: 1, gap: 8, zIndex: 1 },
+  heroCopy: { flex: 1, maxWidth: "62%", gap: 8, zIndex: 1 },
   heroEyebrowPill: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 99, backgroundColor: "rgba(255,255,255,0.10)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)" },
   heroEyebrowDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: BRAND_GOLD },
   heroEyebrow: { color: "rgba(255,255,255,0.86)", fontSize: 8, fontWeight: "900", letterSpacing: 0.8 },
@@ -575,8 +578,8 @@ const styles = StyleSheet.create({
   heroButtonPressed: { opacity: 0.82 },
   heroButtonText: { color: BRAND_DARK, fontSize: 10, fontWeight: "900" },
   heroButtonArrow: { color: BRAND_DARK, fontSize: 18, lineHeight: 20, fontWeight: "800" },
-  heroArtwork: { position: "absolute", right: 15, top: 35, width: 112, height: 128, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,204,0,0.10)", borderWidth: 1, borderColor: "rgba(255,204,0,0.22)", transform: [{ rotate: "7deg" }] },
-  heroArtworkNumber: { color: BRAND_GOLD, fontSize: 58, lineHeight: 64, fontWeight: "900", letterSpacing: -3 },
+  heroArtwork: { position: "absolute", right: 12, top: 42, width: 96, height: 112, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,204,0,0.10)", borderWidth: 1, borderColor: "rgba(255,204,0,0.22)", transform: [{ rotate: "7deg" }] },
+  heroArtworkNumber: { color: BRAND_GOLD, fontSize: 50, lineHeight: 56, fontWeight: "900", letterSpacing: -3 },
   heroArtworkLabel: { color: WHITE, fontSize: 12, fontWeight: "900", letterSpacing: 2 },
   sectionHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   sectionTitle: { color: INK, fontSize: 16, lineHeight: 20, fontWeight: "900", letterSpacing: -0.2 },
@@ -615,6 +618,7 @@ const styles = StyleSheet.create({
   trendTagRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   trendTag: { color: BRAND_GREEN, fontSize: 7, fontWeight: "900", letterSpacing: 0.7 },
   sponsoredMark: { color: "#815E12", backgroundColor: "#FFF1C8", fontSize: 6, fontWeight: "900", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, overflow: "hidden" },
+  websiteMark: { color: BRAND_GREEN, backgroundColor: "#E8F3EA", fontSize: 6, fontWeight: "900", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, overflow: "hidden" },
   trendTitle: { color: INK, fontSize: 11, lineHeight: 15, fontWeight: "900" },
   trendMeta: { color: MUTED, fontSize: 8, lineHeight: 11 },
   trendBody: { color: "#68766D", fontSize: 8, lineHeight: 11 },
