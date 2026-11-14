@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Alert, Text } from "react-native";
 import { useRouter } from "expo-router";
-import { AppScreen, PageHeader, Panel, palette } from "@afcon360/mobile-ui";
+import { PageHeader, Panel, palette } from "@afcon360/mobile-ui";
+import { UserAppScreen } from "../../src/components/UserAppScreen";
 import { AuthField, AuthNotice, AuthSubmit } from "@afcon360/mobile-ui/auth";
 import { MobileAuthError } from "@afcon360/mobile-core";
 import { useAuth } from "../../src/auth/AuthProvider";
@@ -12,7 +13,7 @@ export default function DeleteAccountScreen() {
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [mfaCode, setMfaCode] = useState("");
-  return <AppScreen>
+  return <UserAppScreen>
     <PageHeader eyebrow="Account control" title="Delete your account." description="Account deletion is permanent to your sign-in. Verified records may be anonymized and retained where required for financial, safety or legal duties." />
     <Panel>
       <AuthNotice>Read the account deletion information on AFCON360 first. Platform owner accounts cannot self-delete. You must confirm your password and any enrolled authenticator factor.</AuthNotice>
@@ -22,5 +23,5 @@ export default function DeleteAccountScreen() {
       <AuthSubmit label="Request account deletion" loading={signingIn} disabled={!password || confirmation !== "DELETE MY ACCOUNT"} onPress={() => Alert.alert("Confirm account deletion", "Your AFCON360 account will be deleted or anonymized according to platform retention requirements. Continue?", [{text:"Keep account",style:"cancel"},{text:"Delete account",style:"destructive",onPress:() => deleteAccount(password,confirmation,mfaCode || undefined).then(() => { Alert.alert("Account request received","Your sign-in has been disabled and the personal profile anonymized. Some compliance, Wallet, booking and audit records may be retained where required."); router.replace("/login"); }).catch(e => Alert.alert("Deletion unsuccessful",e instanceof MobileAuthError ? e.message : "AFCON360 could not process this request."))}])} />
     </Panel>
     <Text style={{ color: palette.muted, fontSize: 12 }}>You will be signed out on this device after the deletion request is accepted.</Text>
-  </AppScreen>;
+  </UserAppScreen>;
 }
