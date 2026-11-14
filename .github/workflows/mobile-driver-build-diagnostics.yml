@@ -1,0 +1,93 @@
+name: AFCON360 Driver EAS build diagnostics
+
+on:
+  push:
+    branches:
+      - feat/native-driver-workspace-parity-20261109
+    paths:
+      - ".github/workflows/mobile-driver-build-diagnostics.yml"
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: EAS build ID to inspect
+        required: false
+        default: "3e9ff490-03ad-4396-8025-a70fcaa54bde"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-build:
+    name: Inspect failed Driver EAS build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      AFCON360_DRIVER_EAS_PROJECT_ID: "4196f859-ddbd-47b1-82e6-8bc441ede17b"
+      AFCON360_PREVIEW_BUILD: "true"
+      BUILD_ID: ${{ github.event.inputs.build_id || '3e9ff490-03ad-4396-8025-a70fcaa54bde' }}
+    steps:
+      - name: Check out Driver config
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Fetch EAS build metadata and available diagnostics
+        working-directory: mobile/apps/driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_TOKEN"
+          npx --yes eas-cli@latest build:view "$BUILD_ID" --json \
+            > "$RUNNER_TEMP/driver-build-view.json"
+
+          node - "$RUNNER_TEMP/driver-build-view.json" <<'NODE'
+          const fs = require("fs");
+          const build = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const summary = {
+            id: build.id,
+            status: build.status,
+            platform: build.platform,
+            distribution: build.distribution,
+            channel: build.channel,
+            buildProfile: build.buildProfile,
+            appVersion: build.appVersion,
+            appBuildVersion: build.appBuildVersion,
+            runtimeVersion: build.runtimeVersion,
+            createdAt: build.createdAt,
+            completedAt: build.completedAt,
+            error: build.error ?? null,
+            errors: build.errors ?? null,
+            buildError: build.buildError ?? null,
+            artifacts: build.artifacts ? {
+              hasApplicationArchive: Boolean(build.artifacts.applicationArchiveUrl),
+              hasBuildArtifacts: Boolean(build.artifacts.buildArtifactsUrl),
+              hasXcodeLogs: Boolean(build.artifacts.xcodeBuildLogsUrl)
+            } : null
+          };
+          process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+          NODE
+
+          set +e
+          npx --yes eas-cli@latest build:download \
+            --build-id "$BUILD_ID" \
+            --all-artifacts \
+            --json \
+            --non-interactive > "$RUNNER_TEMP/driver-build-download.json" 2> "$RUNNER_TEMP/driver-build-download.stderr"
+          DOWNLOAD_EXIT=$?
+          set -e
+          echo "Build artifact download exit code: $DOWNLOAD_EXIT"
+          if [ "$DOWNLOAD_EXIT" -ne 0 ]; then
+            sed -n '1,120p' "$RUNNER_TEMP/driver-build-download.stderr"
+          else
+            node - "$RUNNER_TEMP/driver-build-download.json" <<'NODE'
+          const fs = require("fs");
+          const result = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          for (const [name, path] of Object.entries(result)) {
+            process.stdout.write(name + ": " + path + "\n");
+          }
+          NODE
+          fi
