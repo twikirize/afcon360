@@ -1,13 +1,14 @@
 import React from "react";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { ActionButton, AppScreen, PageHeader, Panel, SectionTitle, ServiceTile } from "@afcon360/mobile-ui";
+import { ActionButton, PageHeader, Panel, SectionTitle, ServiceTile } from "@afcon360/mobile-ui";
+import { UserAppScreen } from "../../src/components/UserAppScreen";
 
 const SITE = "https://www.pamoja.space";
 
 export default function Explore() {
   const router = useRouter();
-  return <AppScreen>
+  return <UserAppScreen>
     <PageHeader eyebrow="Explore" title="Make more of the journey." description="Book transport and accommodation natively. Events and free tickets are available natively; tours and experiences still open the AFCON360 website." />
     <Panel>
       <SectionTitle>Transport</SectionTitle>
@@ -26,5 +27,5 @@ export default function Explore() {
       <ServiceTile title="Events" description="Discover events and registrations." symbol="🎟️" />
       <ActionButton label="Discover events and tickets" onPress={() => router.push("/(service)/events" as never)} />
     </Panel>
-  </AppScreen>;
+  </UserAppScreen>;
 }
