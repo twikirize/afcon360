@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Pressable,
   Share,
+  StyleSheet,
   Text,
   View
 } from "react-native";
@@ -11,9 +12,70 @@ import Constants from "expo-constants";
 import * as Updates from "expo-updates";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
-import { AppScreen, PageHeader, Panel, SectionTitle, ServiceTile, StatusPill, ActionButton, palette } from "@afcon360/mobile-ui";
+import { AppScreen, PageHeader, palette } from "@afcon360/mobile-ui";
 import { useAuth } from "../../src/auth/AuthProvider";
-import { SERVER_SELECTION_ENABLED } from "../../src/services/api";
+import { getSelectedApiBaseUrl, SERVER_SELECTION_ENABLED } from "../../src/services/api";
+
+const WEBSITE_ACTION_LABEL = "Opens on Pamoja website";
+
+type WebsiteMenuRowProps = {
+  title: string;
+  description: string;
+  symbol: string;
+  onPress: () => void;
+  last?: boolean;
+};
+
+function WebsiteMenuRow({ title, description, symbol, onPress, last = false }: WebsiteMenuRowProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title + ". " + WEBSITE_ACTION_LABEL}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.menuRow,
+        !last && styles.menuRowDivider,
+        pressed && styles.menuRowPressed
+      ]}
+    >
+      <View style={styles.menuIcon}>
+        <Text style={styles.menuIconText}>{symbol}</Text>
+      </View>
+      <View style={styles.menuCopy}>
+        <Text style={styles.menuTitle}>{title}</Text>
+        <Text style={styles.menuDescription}>{description}</Text>
+        <Text style={styles.menuHint}>{WEBSITE_ACTION_LABEL}</Text>
+      </View>
+      <Text style={styles.menuArrow}>↗</Text>
+    </Pressable>
+  );
+}
+
+function AccountMenuSection({
+  title,
+  description,
+  children
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeading}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionDescription}>{description}</Text>
+      </View>
+      <View style={styles.menuCard}>{children}</View>
+    </View>
+  );
+}
+
+function accountInitials(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "AF";
+  return parts.slice(0, 2).map(part => part[0]?.toUpperCase() ?? "").join("");
+}
 
 type UpdateStatus = "idle" | "checking" | "downloading" | "ready" | "current" | "error" | "unavailable";
 
@@ -208,6 +270,38 @@ function AppUpdateControls() {
 export default function Account() {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const [websiteBaseUrl, setWebsiteBaseUrl] = useState("https://www.pamoja.space");
+
+  useEffect(() => {
+    let mounted = true;
+    void getSelectedApiBaseUrl()
+      .then(url => {
+        if (mounted) setWebsiteBaseUrl(url);
+      })
+      .catch(() => {
+        if (mounted) setWebsiteBaseUrl("https://www.pamoja.space");
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const openWebsite = useCallback(async (path: string) => {
+    try {
+      const base = new URL(websiteBaseUrl);
+      const target = new URL(path, base.origin + "/");
+      if (target.origin !== base.origin || (target.protocol !== "https:" && target.protocol !== "http:")) {
+        throw new Error("That account page is not available on the selected AFCON360 server.");
+      }
+      await WebBrowser.openBrowserAsync(target.toString());
+    } catch (error) {
+      Alert.alert(
+        "Website unavailable",
+        error instanceof Error ? error.message : "AFCON360 could not open that account page."
+      );
+    }
+  }, [websiteBaseUrl]);
+
   const signOut = async () => {
     try {
       await logout();
@@ -223,25 +317,293 @@ export default function Account() {
     }
   };
 
-  const share = async (url: string, message: string) => {
-    try { await Share.share({ message: message + " " + url, url }); }
-    catch { Alert.alert("Share unavailable", "Copy this link: " + url); }
+  const shareApp = async () => {
+    const url = "https://www.pamoja.space/apps";
+    try {
+      await Share.share({ message: "AFCON360 — official app information and downloads. " + url, url });
+    } catch {
+      Alert.alert("Share unavailable", "Copy this link: " + url);
+    }
   };
-  return <AppScreen>
-    <PageHeader eyebrow="Account" title="Your AFCON360 identity." description="Your account, roles and verification state are owned by AFCON360 identity services." />
-    <Panel>
-      <StatusPill>Signed in securely</StatusPill>
-      <SectionTitle>{user?.display_name ?? user?.username ?? "Your account"}</SectionTitle>
-      <Text style={{ color: palette.muted, fontSize: 12 }}>{user?.email ?? ""}</Text>
-      <ServiceTile title="Identity and verification" description="Profile and KYC status are returned by AFCON360 Identity." symbol="✓" />
-      <ServiceTile title="Secure device session" description="Access credentials are kept in the device secure store and can be revoked by signing out." symbol="🔐" />
-      <AppUpdateControls />
-      <ActionButton label="Share AFCON360 app page" onPress={() => share("https://www.pamoja.space/apps", "AFCON360 — official app information and downloads.")} />
-      <ActionButton label="Privacy notice (website)" onPress={() => WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")} />
-      {SERVER_SELECTION_ENABLED ? <ActionButton label="Connection settings (preview)" onPress={() => router.push("/server-settings" as never)} /> : null}
-      <ActionButton label="Delete AFCON360 account" onPress={() => router.push("/(service)/delete-account" as never)} />
-      <ActionButton label="Sign out" onPress={() => Alert.alert("Sign out", "Sign out of AFCON360 on this device?", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", onPress: () => { void signOut(); } }])} />
-    </Panel>
-    <Text style={{ color: palette.muted, fontSize: 12 }}>Privacy and support: pamoja.space/support</Text>
-  </AppScreen>;
+
+  const displayName = user?.display_name || user?.username || "AFCON360 member";
+  const initials = accountInitials(displayName);
+
+  return (
+    <AppScreen>
+      <PageHeader
+        eyebrow="Account"
+        title="Your account."
+        description="Manage your profile, personal settings, preferences and security."
+      />
+
+      <View style={styles.profileHero}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{initials}</Text>
+        </View>
+        <View style={styles.profileInfo}>
+          <Text style={styles.profileEyebrow}>YOUR PAMOJA IDENTITY</Text>
+          <Text style={styles.profileName} numberOfLines={2}>{displayName}</Text>
+          <Text style={styles.profileUsername}>@{user?.username ?? "member"}</Text>
+          <Text style={styles.profileEmail} numberOfLines={1}>{user?.email || "No email address on file"}</Text>
+          <View style={styles.statusRow}>
+            <View style={styles.statusPill}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusText}>SIGNED IN</Text>
+            </View>
+            <View style={[styles.statusPill, user?.email_verified ? styles.verifiedPill : styles.pendingPill]}>
+              <Text style={[styles.statusText, user?.email_verified ? styles.verifiedText : styles.pendingText]}>
+                {user?.email_verified ? "EMAIL VERIFIED" : "EMAIL NOT VERIFIED"}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <AccountMenuSection
+        title="Profile"
+        description="Your public presence and personal information"
+      >
+        <WebsiteMenuRow
+          title="Public profile"
+          description="See how your profile appears to other people"
+          symbol="◎"
+          onPress={() => void openWebsite("/profile/me")}
+        />
+        <WebsiteMenuRow
+          title="Edit profile"
+          description="Update your display name, photo and personal details"
+          symbol="✎"
+          onPress={() => void openWebsite("/profile/edit")}
+        />
+        <WebsiteMenuRow
+          title="Account overview"
+          description="Review contact details, verification, roles and account limits"
+          symbol="▤"
+          onPress={() => void openWebsite("/account")}
+          last
+        />
+      </AccountMenuSection>
+
+      <AccountMenuSection
+        title="Settings & preferences"
+        description="Control your account and personalise your experience"
+      >
+        <WebsiteMenuRow
+          title="User settings"
+          description="Manage account details, password and recovery options"
+          symbol="⚙"
+          onPress={() => void openWebsite("/account/settings")}
+        />
+        <WebsiteMenuRow
+          title="Preferences"
+          description="Adjust theme, language, accessibility and display preferences"
+          symbol="◐"
+          onPress={() => void openWebsite("/preferences")}
+        />
+        <WebsiteMenuRow
+          title="Interests & fan settings"
+          description="Manage your sports interests, teams and related preferences"
+          symbol="☆"
+          onPress={() => void openWebsite("/settings/interests")}
+          last
+        />
+      </AccountMenuSection>
+
+      <AccountMenuSection
+        title="Security & privacy"
+        description="Review account protection and privacy information"
+      >
+        <WebsiteMenuRow
+          title="Security centre"
+          description="Manage two-step verification, sign-in recovery and devices"
+          symbol="⌑"
+          onPress={() => void openWebsite("/account/security")}
+        />
+        <WebsiteMenuRow
+          title="Privacy notice"
+          description="Read how AFCON360 handles your information"
+          symbol="◇"
+          onPress={() => void WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")}
+          last
+        />
+      </AccountMenuSection>
+
+      <View style={styles.appSection}>
+        <View style={styles.sectionHeading}>
+          <Text style={styles.sectionTitle}>App & device</Text>
+          <Text style={styles.sectionDescription}>Manage this installation of AFCON360</Text>
+        </View>
+        <AppUpdateControls />
+        <View style={styles.utilityCard}>
+          <Pressable accessibilityRole="button" onPress={() => void shareApp()} style={styles.utilityRow}>
+            <View style={styles.utilityIcon}><Text style={styles.utilityIconText}>↗</Text></View>
+            <View style={styles.utilityCopy}>
+              <Text style={styles.utilityTitle}>Share AFCON360</Text>
+              <Text style={styles.utilityDescription}>Share the official app information and download page</Text>
+            </View>
+            <Text style={styles.utilityArrow}>›</Text>
+          </Pressable>
+          {SERVER_SELECTION_ENABLED ? (
+            <Pressable accessibilityRole="button" onPress={() => router.push("/server-settings" as never)} style={styles.utilityRow}>
+              <View style={styles.utilityIcon}><Text style={styles.utilityIconText}>⇄</Text></View>
+              <View style={styles.utilityCopy}>
+                <Text style={styles.utilityTitle}>Connection settings</Text>
+                <Text style={styles.utilityDescription}>Choose the preview server used by this app</Text>
+              </View>
+              <Text style={styles.utilityArrow}>›</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.accountActions}>
+        <Text style={styles.sectionTitle}>Account actions</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push("/(service)/delete-account" as never)}
+          style={styles.deleteAction}
+        >
+          <Text style={styles.deleteActionTitle}>Delete AFCON360 account</Text>
+          <Text style={styles.deleteActionDescription}>Permanently request account deletion from this device</Text>
+          <Text style={styles.deleteActionArrow}>›</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => Alert.alert(
+            "Sign out",
+            "Sign out of AFCON360 on this device?",
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Sign out", style: "destructive", onPress: () => { void signOut(); } }
+            ]
+          )}
+          style={styles.signOutAction}
+        >
+          <Text style={styles.signOutText}>Sign out</Text>
+        </Pressable>
+      </View>
+
+      <Text style={styles.footerText}>AFCON360 · Your account, your experience.</Text>
+    </AppScreen>
+  );
 }
+
+const styles = StyleSheet.create({
+  profileHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 17,
+    borderRadius: 20,
+    backgroundColor: "#173D28",
+    overflow: "hidden"
+  },
+  avatar: {
+    width: 62,
+    height: 62,
+    borderRadius: 21,
+    borderWidth: 2,
+    borderColor: "#FFCC00",
+    backgroundColor: "#0D2C1A",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  avatarText: { color: "#FFCC00", fontSize: 22, fontWeight: "900" },
+  profileInfo: { flex: 1, minWidth: 0, gap: 3 },
+  profileEyebrow: { color: "rgba(255,255,255,0.70)", fontSize: 9, fontWeight: "900", letterSpacing: 1.4 },
+  profileName: { color: "#FFFFFF", fontSize: 19, lineHeight: 23, fontWeight: "900" },
+  profileUsername: { color: "#FFCC00", fontSize: 11, fontWeight: "800" },
+  profileEmail: { color: "rgba(255,255,255,0.78)", fontSize: 11, marginTop: 2 },
+  statusRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 7 },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 99,
+    backgroundColor: "rgba(255,255,255,0.12)"
+  },
+  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#75D39A" },
+  statusText: { color: "#FFFFFF", fontSize: 8, fontWeight: "900", letterSpacing: 0.5 },
+  verifiedPill: { backgroundColor: "rgba(117,211,154,0.16)" },
+  pendingPill: { backgroundColor: "rgba(255,204,0,0.16)" },
+  verifiedText: { color: "#B9F0CB" },
+  pendingText: { color: "#FFE28A" },
+  section: { gap: 9 },
+  sectionHeading: { gap: 3 },
+  sectionTitle: { color: palette.ink, fontSize: 14, fontWeight: "900", letterSpacing: 0.3 },
+  sectionDescription: { color: palette.muted, fontSize: 11, lineHeight: 16 },
+  menuCard: {
+    overflow: "hidden",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface
+  },
+  menuRow: {
+    minHeight: 77,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 11
+  },
+  menuRowDivider: { borderBottomWidth: 1, borderBottomColor: palette.border },
+  menuRowPressed: { backgroundColor: "#F1F6F2" },
+  menuIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E7F1E9"
+  },
+  menuIconText: { color: "#175D37", fontSize: 20, fontWeight: "800" },
+  menuCopy: { flex: 1, minWidth: 0, gap: 2 },
+  menuTitle: { color: palette.ink, fontSize: 12, fontWeight: "900" },
+  menuDescription: { color: palette.muted, fontSize: 10, lineHeight: 15 },
+  menuHint: { color: "#477655", fontSize: 8, fontWeight: "900", letterSpacing: 0.5, marginTop: 2 },
+  menuArrow: { color: "#477655", fontSize: 19, fontWeight: "700", paddingHorizontal: 3 },
+  appSection: { gap: 9 },
+  utilityCard: {
+    overflow: "hidden",
+    backgroundColor: palette.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.border
+  },
+  utilityRow: { minHeight: 68, flexDirection: "row", alignItems: "center", padding: 12, gap: 11 },
+  utilityIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#E7F1E9" },
+  utilityIconText: { color: "#175D37", fontSize: 20, fontWeight: "800" },
+  utilityCopy: { flex: 1, gap: 3 },
+  utilityTitle: { color: palette.ink, fontSize: 12, fontWeight: "900" },
+  utilityDescription: { color: palette.muted, fontSize: 10, lineHeight: 15 },
+  utilityArrow: { color: palette.muted, fontSize: 21, fontWeight: "700" },
+  accountActions: { gap: 9, paddingTop: 2 },
+  deleteAction: {
+    minHeight: 68,
+    padding: 13,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#F0D6D4",
+    backgroundColor: "#FFF8F7",
+    justifyContent: "center"
+  },
+  deleteActionTitle: { color: "#9A342D", fontSize: 12, fontWeight: "900" },
+  deleteActionDescription: { color: "#9B6A65", fontSize: 10, marginTop: 3, paddingRight: 20 },
+  deleteActionArrow: { position: "absolute", right: 14, top: 17, color: "#9A342D", fontSize: 20 },
+  signOutAction: {
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  signOutText: { color: palette.ink, fontSize: 12, fontWeight: "900" },
+  footerText: { color: palette.muted, textAlign: "center", fontSize: 10, paddingBottom: 4 }
+});
