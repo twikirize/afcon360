@@ -207,11 +207,13 @@ export function UserDashboardHeader() {
                 <Pressable
                   key={item.key}
                   accessibilityRole="button"
+                  accessibilityHint={item.webPath ? "Opens on AFCON360 website" : undefined}
                   onPress={() => activate(item)}
                   style={({ pressed }) => [styles.menuItem, item.key === activeKey && styles.menuItemActive, pressed && styles.menuItemPressed]}
                 >
                   <Text style={styles.menuSymbol}>{item.symbol}</Text>
                   <Text style={[styles.menuLabel, item.key === activeKey && styles.menuLabelActive]}>{item.label}</Text>
+                  {item.webPath ? <Text style={styles.webTag}>WEB</Text> : null}
                   <Text style={styles.menuArrow}>›</Text>
                 </Pressable>
               ))}
@@ -346,6 +348,7 @@ const styles = StyleSheet.create({
   menuSymbol: { color: BLUE, fontSize: 18, fontWeight: "800", width: 24, textAlign: "center" },
   menuLabel: { color: INK, fontSize: 13, fontWeight: "700", flex: 1 },
   menuLabelActive: { color: BLUE, fontWeight: "900" },
+  webTag: { color: BLUE, fontSize: 8, fontWeight: "900", letterSpacing: 0.6, backgroundColor: BLUE_SOFT, paddingHorizontal: 5, paddingVertical: 3, borderRadius: 5 },
   menuArrow: { color: MUTED, fontSize: 20 },
   menuDivider: { height: 1, backgroundColor: BORDER, marginVertical: 12 },
   drawerFoot: { color: MUTED, fontSize: 10, textAlign: "center", paddingTop: 12, borderTopWidth: 1, borderTopColor: BORDER },
