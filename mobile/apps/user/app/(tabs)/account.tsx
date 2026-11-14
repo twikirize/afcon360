@@ -43,7 +43,7 @@ function WebsiteMenuRow({ title, description, symbol, onPress, last = false, ext
         <Text style={styles.menuDescription}>{description}</Text>
         {external ? <Text style={styles.menuHint}>{WEBSITE_ACTION_LABEL}</Text> : null}
       </View>
-      <Text style={styles.menuArrow}>↗</Text>
+      <Text style={styles.menuArrow}>{external ? "↗" : "›"}</Text>
     </Pressable>
   );
 }
@@ -162,7 +162,7 @@ export default function Account() {
 
       <AccountMenuSection
         title="Profile"
-        description="Your public presence and personal information"
+        description="Your public identity and the information other people can see"
       >
         <WebsiteMenuRow
           title="Public profile"
@@ -172,45 +172,84 @@ export default function Account() {
         />
         <WebsiteMenuRow
           title="Edit profile"
-          description="Update your display name, photo and personal details"
+          description="Update your display name, photo, bio and personal details"
           symbol="✎"
           onPress={() => void openWebsite("/profile/edit")}
-        />
-        <WebsiteMenuRow
-          title="Account overview"
-          description="Review contact details, verification, roles and account limits"
-          symbol="▤"
-          onPress={() => void openWebsite("/account")}
           last
         />
       </AccountMenuSection>
 
       <AccountMenuSection
-        title="Settings & preferences"
-        description="Control your account and personalise your experience"
+        title="Account overview & security"
+        description="Your account details, password, recovery methods and sign-in protection"
       >
         <WebsiteMenuRow
-          title="User settings"
-          description="Manage account details, password and recovery options"
+          title="Account overview"
+          description="Review login credentials, verification, roles, account limits and active sessions"
+          symbol="▤"
+          onPress={() => void openWebsite("/account")}
+        />
+        <WebsiteMenuRow
+          title="Account settings"
+          description="Manage email, phone, account details, security questions and recovery codes"
           symbol="⚙"
           onPress={() => void openWebsite("/account/settings")}
         />
         <WebsiteMenuRow
-          title="Preferences"
-          description="Adjust theme, language, accessibility and display preferences"
+          title="Change password"
+          description="Use your current password to set a new sign-in password"
+          symbol="🔑"
+          onPress={() => void openWebsite("/account/settings#password")}
+        />
+        <WebsiteMenuRow
+          title="Security centre"
+          description="Manage two-step verification, signed-in devices and recent security activity"
+          symbol="⌑"
+          onPress={() => void openWebsite("/account/security")}
+          last
+        />
+      </AccountMenuSection>
+
+      <AccountMenuSection
+        title="Personalise your experience"
+        description="Appearance and fan interests are separate settings"
+      >
+        <WebsiteMenuRow
+          title="Preferences & accessibility"
+          description="Choose your theme, text size, font, contrast, colour-vision and motion settings"
           symbol="◐"
           onPress={() => void openWebsite("/preferences")}
         />
         <WebsiteMenuRow
-          title="Interests & fan settings"
-          description="Manage your sports interests, teams and related preferences"
+          title="Interests & Fan Profile"
+          description="Activate or manage your Fan Profile, favourite sports and teams, match reminders and tournament updates"
           symbol="☆"
           onPress={() => void openWebsite("/settings/interests")}
+          last
         />
+      </AccountMenuSection>
+
+      <AccountMenuSection
+        title="Dashboard"
+        description="Open your AFCON360 activity and available workspaces"
+      >
         <WebsiteMenuRow
-          title="App settings"
-          description="View the installed version, check for updates and manage app connections"
-          symbol="⚙"
+          title="Open dashboard"
+          description="View your registrations, activity, wallet and available module dashboards"
+          symbol="▦"
+          onPress={() => void openWebsite("/dashboard")}
+          last
+        />
+      </AccountMenuSection>
+
+      <AccountMenuSection
+        title="App settings"
+        description="Settings for this installed AFCON360 app"
+      >
+        <WebsiteMenuRow
+          title="Version & updates"
+          description="View the installed version, check for updates and manage preview connections"
+          symbol="⬆"
           onPress={() => router.push("/(service)/settings" as never)}
           external={false}
           last
@@ -218,18 +257,12 @@ export default function Account() {
       </AccountMenuSection>
 
       <AccountMenuSection
-        title="Security & privacy"
-        description="Review account protection and privacy information"
+        title="Privacy"
+        description="How AFCON360 handles your information"
       >
         <WebsiteMenuRow
-          title="Security centre"
-          description="Manage two-step verification, sign-in recovery and devices"
-          symbol="⌑"
-          onPress={() => void openWebsite("/account/security")}
-        />
-        <WebsiteMenuRow
           title="Privacy notice"
-          description="Read how AFCON360 handles your information"
+          description="Read the AFCON360 privacy notice"
           symbol="◇"
           onPress={() => void WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")}
           last
