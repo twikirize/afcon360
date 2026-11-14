@@ -39,6 +39,8 @@ export type MobileAuthClientOptions = {
   client: MobileClientKind;
   store: SecureTokenStore;
   baseUrl?: string;
+  getBaseUrl?: () => Promise<string | undefined>;
+  allowPrivateHttp?: boolean;
   deviceName?: string;
 };
 

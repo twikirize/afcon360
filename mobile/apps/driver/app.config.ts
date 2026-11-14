@@ -12,6 +12,27 @@ const easProjectId = (
 const updateChannel = isPreview ? "driver-preview" : "driver-production";
 const updatesEnabled = Boolean(easProjectId);
 
+const plugins: NonNullable<ExpoConfig["plugins"]> = [
+  "expo-router",
+  "expo-secure-store",
+  "expo-dev-client",
+  "expo-updates"
+];
+
+// Cleartext HTTP is enabled only for the internal preview APK.
+// The API client additionally limits HTTP to private IPv4 staging addresses on port 5000.
+if (isPreview) {
+  plugins.push(["expo-build-properties", { android: { usesCleartextTraffic: true } }]);
+}
+
+plugins.push([
+  "expo-location",
+  {
+    locationWhenInUsePermission:
+      "Allow AFCON360 Driver to use your location while you are using the app for availability and trip navigation."
+  }
+]);
+
 // This app config defines the binary runtime contract. Changes to its native
 // update configuration require one fresh APK; later JS-only changes use OTA.
 
@@ -57,21 +78,10 @@ const config: ExpoConfig = {
     ],
     adaptiveIcon: { backgroundColor: "#087A4B" }
   },
-  plugins: [
-    "expo-router",
-    "expo-secure-store",
-    "expo-dev-client",
-    "expo-updates",
-    [
-      "expo-location",
-      {
-        locationWhenInUsePermission:
-          "Allow AFCON360 Driver to use your location while you are using the app for availability and trip navigation."
-      }
-    ]
-  ],
+  plugins,
   extra: {
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://www.pamoja.space",
+    allowServerSelection: isPreview,
     ...(easProjectId ? { eas: { projectId: easProjectId } } : {})
   }
 };

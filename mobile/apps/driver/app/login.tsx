@@ -6,12 +6,13 @@ import { AppScreen, PageHeader, Panel, StatusPill, palette } from "@afcon360/mob
 import { AuthField, AuthLink, AuthNotice, AuthPasswordField, AuthShell, AuthSubmit } from "@afcon360/mobile-ui/auth";
 import { MobileAuthError } from "@afcon360/mobile-core";
 import { useAuth } from "../src/auth/AuthProvider";
+import { SERVER_SELECTION_ENABLED } from "../src/services/api";
 
 const SITE = "https://www.pamoja.space";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { user, loading, signingIn, mfaChallenge, mfaType, mfaDestinationHint, signIn, verifyMfa, cancelMfa } = useAuth();
+  const { user, loading, restoreError, retryRestoreSession, signingIn, mfaChallenge, mfaType, mfaDestinationHint, signIn, verifyMfa, cancelMfa } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -48,6 +49,12 @@ export default function LoginScreen() {
           />
         </View>
         <Panel>
+          {restoreError ? (
+            <>
+              <AuthNotice>{restoreError} Your saved credentials have not been deleted. Check your connection and retry the session check.</AuthNotice>
+              <AuthLink label="Retry saved session" onPress={() => { void retryRestoreSession(); }} />
+            </>
+          ) : null}
           {mfaChallenge ? (
             <>
               <AuthNotice>
@@ -125,6 +132,12 @@ export default function LoginScreen() {
                 label="Forgot your password?"
                 onPress={() => router.push("/forgot-password")}
               />
+              {SERVER_SELECTION_ENABLED ? (
+                <AuthLink
+                  label="Connection settings (preview)"
+                  onPress={() => router.push("/server-settings" as never)}
+                />
+              ) : null}
             </>
           )}
           <AuthLink

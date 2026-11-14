@@ -52,6 +52,8 @@ export class MobileAuthClient {
     this.deviceName = options.deviceName ?? (options.client === "driver" ? "AFCON360 Driver" : "AFCON360 User");
     this.api = new ApiClient({
       baseUrl: options.baseUrl,
+      getBaseUrl: options.getBaseUrl,
+      allowPrivateHttp: options.allowPrivateHttp,
       readAccessToken: () => this.store.getAccessToken(),
       timeoutMs: 20000
     });
