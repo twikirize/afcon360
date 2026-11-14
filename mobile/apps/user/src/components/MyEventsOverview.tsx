@@ -138,6 +138,7 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
   const registeredDates = new Set(
     registrations.map(startDate).filter(Boolean)
   );
+  const pastEventDates = new Set(past.map(startDate).filter(Boolean));
   const dayKey = (day: number) =>
     String(monthYear) + "-" +
     String(monthIndex + 1).padStart(2, "0") + "-" +
@@ -224,6 +225,7 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           {calendarCells.map((day, index) => {
             const hasEvent = day !== null && registeredDates.has(dayKey(day));
+            const isPastEvent = day !== null && pastEventDates.has(dayKey(day));
             const isToday = day !== null && dayKey(day) === today;
             return (
               <View
@@ -247,14 +249,23 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
                     }}>
                       {day}
                     </Text>
-                    {hasEvent ? <View style={styles.eventDot} /> : null}
+                    {hasEvent ? <View style={[styles.eventDot, { backgroundColor: isPastEvent ? MUTED : BLUE }]} /> : null}
                   </Pressable>
                 ) : null}
               </View>
             );
           })}
         </View>
-        <Text style={quiet}>Blue dots mark dates with your event registrations.</Text>
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: 16 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: BLUE }} />
+            <Text style={quiet}>Upcoming</Text>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: MUTED }} />
+            <Text style={quiet}>Past</Text>
+          </View>
+        </View>
       </View>
 
       <View style={card}>
@@ -327,15 +338,21 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
         </Pressable>
       </View>
 
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <View style={[card, { flex: 1, alignItems: "center" }]}>
-          <Text style={styles.statNumber}>{upcoming.length}</Text>
-          <Text style={styles.statLabel}>ACTIVE TICKETS</Text>
+      <View style={card}>
+        <Text style={heading}>Tickets & Badges</Text>
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flex: 1, alignItems: "center", backgroundColor: CANVAS, borderRadius: 11, padding: 12, gap: 4 }}>
+            <Text style={styles.statNumber}>{upcoming.length}</Text>
+            <Text style={styles.statLabel}>ACTIVE TICKETS</Text>
+          </View>
+          <View style={{ flex: 1, alignItems: "center", backgroundColor: CANVAS, borderRadius: 11, padding: 12, gap: 4 }}>
+            <Text style={styles.statNumber}>{attended.length}</Text>
+            <Text style={styles.statLabel}>BADGES EARNED</Text>
+          </View>
         </View>
-        <View style={[card, { flex: 1, alignItems: "center" }]}>
-          <Text style={styles.statNumber}>{attended.length}</Text>
-          <Text style={styles.statLabel}>BADGES EARNED</Text>
-        </View>
+        <Pressable onPress={onOpenEvents} style={{ alignSelf: "flex-end", paddingVertical: 3 }}>
+          <Text style={{ color: BLUE, fontSize: 11, fontWeight: "900" }}>View All Tickets ›</Text>
+        </Pressable>
       </View>
 
       <View style={card}>
@@ -444,4 +461,4 @@ const styles = {
   statLabel: { color: MUTED, fontSize: 9, fontWeight: "800" as const, letterSpacing: 0.5 },
   filterButton: { paddingVertical: 8, paddingHorizontal: 11, borderRadius: 20, backgroundColor: CANVAS },
   filterButtonActive: { backgroundColor: BLUE_SOFT }
-};
+} as const;
