@@ -2,9 +2,13 @@ import type { ExpoConfig } from "expo/config";
 
 const isPreview = process.env.AFCON360_PREVIEW_BUILD === "true";
 const appId = "space.pamoja.afcon360.driver" + (isPreview ? ".preview" : "");
+// EAS project IDs are public identifiers, not credentials. Keep the Driver
+// project linked even when the optional GitHub repository variable is absent.
 const easProjectId = (
-  process.env.AFCON360_DRIVER_EAS_PROJECT_ID ?? process.env.EAS_PROJECT_ID
-)?.trim();
+  process.env.AFCON360_DRIVER_EAS_PROJECT_ID ??
+  process.env.EAS_PROJECT_ID ??
+  "4196f859-ddbd-47b1-82e6-8bc441ede17b"
+).trim();
 const updateChannel = isPreview ? "driver-preview" : "driver-production";
 const updatesEnabled = Boolean(easProjectId);
 
