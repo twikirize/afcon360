@@ -371,8 +371,9 @@ export default function DriverAccount() {
             {Updates.isEnabled ? "Update service enabled" : "Setup required"}
           </StatusPill>
         </View>
+        <StatusPill tone="green">DRIVER OTA CHECK: NOV-14-2026-A</StatusPill>
         <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
-          AFCON360 checks for compatible screen and feature updates when the app opens. Native Android components still require an app update.
+          Preview verification marker. Once this label appears on the installed Driver preview app, the screen update has arrived without reinstalling the APK. Native Android components still require a new APK.
         </Text>
         {updateMessage ? (
           <Text accessibilityRole="status" style={{ color: palette.ink, fontSize: 12, lineHeight: 18 }}>
