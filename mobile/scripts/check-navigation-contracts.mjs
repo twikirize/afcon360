@@ -14,6 +14,7 @@ const approved = [
   ["apps/driver/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', 'label="Privacy notice (website)"'],
   ["apps/user/app/(tabs)/wallet.tsx", "Linking.openURL(checkout.toString())", 'label={busy ? "Starting secure checkout…" : "Continue to Flutterwave"}'],
   ["apps/user/app/(tabs)/wallet.tsx", "Linking.openURL(checkout.toString())", 'label="Open Flutterwave checkout"'],
+  ["apps/user/src/components/UserDashboardHeader.tsx", "WebBrowser.openBrowserAsync(target)", 'accessibilityHint={item.webPath ? "Opens on AFCON360 website" : undefined}'],
 ];
 
 const nativeInternalRoutes = [
