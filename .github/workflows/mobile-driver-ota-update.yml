@@ -33,12 +33,12 @@ jobs:
         id: config
         shell: bash
         env:
-          EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
+          EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID || '4196f859-ddbd-47b1-82e6-8bc441ede17b' }}
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           if [[ -z "$EAS_PROJECT_ID" || -z "$EXPO_TOKEN" ]]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Driver OTA publishing is not enabled yet. Configure the AFCON360_DRIVER_EAS_PROJECT_ID repository variable and EXPO_TOKEN repository secret."
+            echo "::warning::Driver OTA publishing is not enabled yet. Configure the EXPO_TOKEN repository secret."
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
@@ -70,7 +70,7 @@ jobs:
         id: target
         shell: bash
         env:
-          EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
+          EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID || '4196f859-ddbd-47b1-82e6-8bc441ede17b' }}
         run: |
           if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
             echo "branch=driver-production" >> "$GITHUB_OUTPUT"
