@@ -1,0 +1,392 @@
+# -------------------------
+# Python
+# -------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# -------------------------
+# Virtual Environment
+# -------------------------
+.venv/
+venv/
+ENV/
+env/
+
+# -------------------------
+# Secrets / Environment Variables
+# -------------------------
+.env
+.env.prod
+.env.test
+.env.testing
+.env.local
+.env.*.local
+# All env variants (pre_cutover, bak, future layers) must never be committable - AGENTS.md section 9
+.env.*
+*.secret
+*.key
+*.pem
+*.crt
+*.csr
+*.p12
+*.pfx
+# Local-dev TLS material (dev_tls.py) — never commit
+certs/
+
+# -------------------------
+# Flask Runtime
+# -------------------------
+instance/
+flask_session/
+*.pid
+
+# -------------------------
+# Database
+# -------------------------
+*.db
+*.sqlite
+*.sqlite3
+
+# -------------------------
+# IDE / Editor
+# -------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+._*
+
+# -------------------------
+# Logs
+# -------------------------
+logs/
+*.log
+
+# -------------------------
+# Backups & Temp Files
+# -------------------------
+backups_today/
+model_backups/
+templates_backup/
+backup_*.json
+*.backup
+*.bak
+*.bak2
+*.tmp
+*.temp
+*.zip
+*.tar.gz
+
+# -------------------------
+# Testing & Coverage
+# -------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.tox/
+
+# -------------------------
+# Node / Frontend
+# -------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.parcel-cache
+.cache/
+dist/
+build/
+*.css.map
+*.js.map
+
+# -------------------------
+# AI Tooling / IDE Extensions
+# -------------------------
+.windsurf/
+.junie/
+.kiro/
+.kilocode/
+.continue/
+.aider*
+
+# -------------------------
+# MCP Servers
+# -------------------------
+mcps/
+
+# -------------------------
+# Prompts & Specs
+# -------------------------
+prompts/
+
+# -------------------------
+# Jupyter Notebooks
+# -------------------------
+.ipynb_checkpoints/
+*.ipynb
+
+# -------------------------
+# Celery
+# -------------------------
+celerybeat-schedule
+celerybeat.pid
+
+# -------------------------
+# Docker
+# -------------------------
+docker-compose.override.yml
+*.pid
+
+# -------------------------
+# Generated Assets
+# -------------------------
+static/css/generated/
+
+# -------------------------
+# OS Files
+# -------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+._*_*.py
+
+*_out.txt
+
+setup_log.txt
+
+Implement/*.md
+
+find_duplicate_indexes.py
+
+fix_duplicate_indexes.py
+
+.env.*
+
+
+.env.docker
+
+%TEMP%
+baseline_out.txt
+test_results_full.txt
+
+EGGE_CLEANUP_REPORT.md
+EGGE_*.md
+egge_*.md
+*_analysis.md
+app/identity/ORG_ADMINISTRATION_SPEC.md
+
+app/identity/ORG_ADMINISTRATION_SPEC.md
+# Tool/IDE artifacts
+.playwright-mcp/
+test-results/
+
+# Probe & diagnostic scripts
+scripts/_diag_*.py
+scripts/_verify_*.py
+
+# Throwaway test scratch files
+test_multi.py
+test_template.py
+
+# Screenshots & scratch output
+phase-c-unauth-boundary.png
+summary.txt
+scripts_tmp_out.txt
+
+# Investigation / analysis docs at repo root
+AFCON360_*.md
+GATE1_*.md
+ONBOARDING_*.md
+# Scratch/debug/verification scripts
+debug_*.py
+diag*.py
+check_*.py
+fix_*.py
+fix_routes*.py
+fix_template.py
+auth_experiment.py
+trace_loader.py
+verify.py
+
+# Scratch output/artifacts
+browser_srv_*.txt
+check_orgs_out.txt
+result.txt
+test_write*.txt
+null
+temp_script.html
+new_head.html
+
+# Root-level handoff/report docs
+AFCON360_*.docx
+COMPLETION_SUMMARY.md
+GEO_DEFERRED_WORK_REGISTER.md
+GEO_PLANNING_RECONCILIATION*.md
+PLAN_MARKETPLACE_OWNER_DRIVER_1.md
+driver_dashboard_plan.md
+
+# Third-party / vendored dumps
+githubcode/
+
+opencode.json
+opencode.json
+
+.junie/
+
+github_token.txt
+
+opencode.json
+.junie/
+githubcode/
+
+test_rdprobe_tmp.py
+# Local dev TLS certs/scripts
+dev_tls.py
+tests/test_dev_tls.py
+
+# Screenshots
+*.png
+
+# Tmp / probe tests
+tests/test_zz_tmp_*.py
+tests/test_location_best.cjs
+# Celery beat runtime state
+celerybeat-schedule*
+.celery/
+celerybeat.pid
+
+# Scratch / one-off artifacts
+csp-after.json
+update_gps.py
+FOLDER_IDENTITY_REPORT.md
+tree.md
+fine tuning transport.md
+
+node_modules/
+package.json
+package-lock.json
+playwright.config.js
+tests/browser/
+tests/playwright/
+
+CCLI_*.md
+CLI_*.md
+SIDEKICK_*.md
+
+CCLI_*.md
+CLI_*.md
+SIDEKICK_*.md
+
+test_output.txt
+*_output.txt
+AFCON360-Organisation-Refactor-Target (1)/
+organization_types_improved_candidate.py
+test_enum_case.py
+OPENCODE_IMPLEMENTATION_TASK.md
+SEARCH_AND_REFACTOR_MAP.md
+test_onboarding_output.txt
+config_redis.txt
+redis_lines.txt
+
+.env.verify
+
+scripts/item19_preflight.py
+afcon360_pgcrypto_dependency_audit.py
+afcon360_pgcrypto_full_audit.py
+test_async_backup.py
+test_pg_dump.py
+# Schema investigation output (root-level, one-off)
+EVIDENCE_SUMMARY.txt
+adjudication_findings.json
+afcon360_h3_head_idempotence_check.py
+agent_indexes_prod_only.txt
+agent_timestamps_prod_only.txt
+enums_prod.txt
+enums_prod_only.txt
+enums_reference.txt
+enums_test.txt
+fk_actions_prod_only.txt
+fk_actions_reference_only.txt
+fk_actions_test_only.txt
+functions_prod.txt
+h3a_norm.sql
+investigation_summary.json
+prod_norm.sql
+production_vs_test.diff
+reference_vs_production.diff
+reference_vs_test.diff
+schema_semantic_diff.txt
+structural_comparison_analysis.json
+triggers_prod.txt
+evidence/
+
+# ---------------------------------------------------------------------------
+# Database credentials - the ONLY password store is the libpq pgpass file
+# (%APPDATA%\postgresql\pgpass.conf on Windows, $HOME/.pgpass elsewhere).
+# Never commit pgpass files or credential-bearing one-off scripts. AGENTS.md section 9.
+# ---------------------------------------------------------------------------
+pgpass.conf
+.pgpass
+check_tables.py
+
+scripts/h3/migrations/
+migrations/h3_candidate/versions/*.py
+# One-off migration/stamp drivers
+apply_final_migration.py
+run_baseline.py
+run_migrations_proper.py
+run_pickup_mode_migration.py
+run_tz_unify.py
+stamp_direct.py
+stamp_fix.py
+stamp_head.py
+
+# Root-level scratch probes
+test_countdown.py
+test_features.py
+test_locked.py
+test_login.py
+verify_current.py
+verify_gap.py
+count_checks.py
+extract_sql.py
+
+# SQL scratch dumps
+baseline_schema.sql
+migration.sql
+migration_sql.txt
+marketplace_code.txt
+my_code_changes.txt
+run_with_otel.py
+
+# EAS monorepo builds must retain app and workspace package manifests.
+# The root .gitignore intentionally excludes package.json from local commits;
+# EAS needs the tracked manifests to install mobile/apps/* and mobile/packages/*.
+!**/package.json
