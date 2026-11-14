@@ -1,6 +1,6 @@
 # AFCON360 Git archive and recovery
 
-Use scripts/git/afcon360-git-archive.ps1 to move completed branches and obsolete stash entries out of the active lists without destroying their history. The helper supports Windows PowerShell 5.1; normal Git stderr progress output is captured and judged by Git's exit code rather than treated as a terminating PowerShell error.
+Use scripts/git/afcon360-git-archive.ps1 to move completed branches and obsolete stash entries out of the active lists without destroying their history. The helper supports Windows PowerShell 5.1; normal Git stderr progress output is captured and judged by Git's exit code rather than treated as a terminating PowerShell error. Missing local or remote branch refs are treated as an expected absent ref, allowing local-only and remote-only branches to be archived independently.
 
 ## Inspect first
 
