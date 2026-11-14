@@ -608,7 +608,7 @@ export default function UserHome() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+    <SafeAreaView style={styles.safe} edges={["left", "right"]}>
       <FlatList
         data={feedItems}
         keyExtractor={(item) => item.feed_id}
