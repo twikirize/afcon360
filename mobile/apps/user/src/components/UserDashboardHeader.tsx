@@ -98,12 +98,9 @@ export function UserDashboardHeader() {
         >
           <Text style={styles.headerButtonText}>☰</Text>
         </Pressable>
-        <View style={styles.brand}>
-          <View style={styles.brandMark}><Text style={styles.brandMarkText}>360</Text></View>
-          <View>
-            <Text style={styles.brandName}>AFCON 360</Text>
-            <Text style={styles.brandCaption}>USER DASHBOARD</Text>
-          </View>
+        <View style={styles.headerGreeting}>
+          <Text numberOfLines={1} style={styles.headerGreetingTitle}>Welcome back, {displayName}</Text>
+          <Text numberOfLines={1} style={styles.headerGreetingSub}>Your AFCON 360 overview for today</Text>
         </View>
         <View style={styles.headerActions}>
           <Pressable
@@ -273,6 +270,9 @@ const styles = StyleSheet.create({
   brandMarkText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900", letterSpacing: 0.6 },
   brandName: { color: INK, fontSize: 14, fontWeight: "900", letterSpacing: 0.3 },
   brandCaption: { color: MUTED, fontSize: 8, fontWeight: "800", letterSpacing: 1.1, marginTop: 1 },
+  headerGreeting: { flex: 1, minWidth: 0, gap: 2 },
+  headerGreetingTitle: { color: INK, fontSize: 12, fontWeight: "900" },
+  headerGreetingSub: { color: MUTED, fontSize: 9 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 2 },
   notificationDot: { position: "absolute", width: 6, height: 6, borderRadius: 3, backgroundColor: BLUE, top: 8, right: 8 },
   avatarButton: { flexDirection: "row", alignItems: "center", gap: 3, paddingLeft: 4, paddingRight: 2 },
