@@ -109,15 +109,17 @@ jobs:
             )"
             EAS_FULL_NAME="$(
               printf '%s\n' "$USER_PROJECT_INFO_CLEAN" |
-                awk '$1 == "fullName" { print $2; exit }'
+                grep -oE '@[^[:space:]]+/afcon360-user' |
+                head -n 1 || true
             )"
             EAS_OWNER="${EAS_FULL_NAME#@}"
             EAS_OWNER="${EAS_OWNER%%/*}"
-            test -n "$EAS_OWNER" && test "$EAS_OWNER" != "$EAS_FULL_NAME" || {
+            if [ -z "$EAS_OWNER" ] || [ "$EAS_OWNER" = "$EAS_FULL_NAME" ]; then
               echo "::error::Could not resolve the Expo account owner from the existing User EAS project."
+              echo "Non-secret EAS project information returned by the CLI:"
               printf '%s\n' "$USER_PROJECT_INFO_CLEAN"
               exit 1
-            }
+            fi
 
             cat > "$TMP_ROOT/driver/app.json" <<EOF
           {
