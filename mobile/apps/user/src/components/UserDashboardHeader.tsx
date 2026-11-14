@@ -8,7 +8,7 @@ import {
   Text,
   View
 } from "react-native";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import { useAuth } from "../auth/AuthProvider";
@@ -64,6 +64,7 @@ const MENU_ITEMS: MenuItem[] = [
 
 export function UserDashboardHeader() {
   const router = useRouter();
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -72,6 +73,16 @@ export function UserDashboardHeader() {
   const contexts = useMemo(() => user?.contexts ?? [], [user?.contexts]);
   const displayName = user?.display_name || user?.username || "AFCON360 User";
   const initial = displayName.trim().charAt(0).toUpperCase() || "U";
+  const activeKey: MenuKey = useMemo(() => {
+    const path = pathname.toLowerCase();
+    if (path.includes("events")) return "events";
+    if (path.includes("wallet")) return "wallet";
+    if (path.includes("ride")) return "rides";
+    if (path.includes("stays")) return "stays";
+    if (path.includes("tourism")) return "tourism";
+    if (path.includes("account")) return "account";
+    return "home";
+  }, [pathname]);
 
   useEffect(() => {
     let active = true;
@@ -197,10 +208,10 @@ export function UserDashboardHeader() {
                   key={item.key}
                   accessibilityRole="button"
                   onPress={() => activate(item)}
-                  style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                  style={({ pressed }) => [styles.menuItem, item.key === activeKey && styles.menuItemActive, pressed && styles.menuItemPressed]}
                 >
                   <Text style={styles.menuSymbol}>{item.symbol}</Text>
-                  <Text style={styles.menuLabel}>{item.label}</Text>
+                  <Text style={[styles.menuLabel, item.key === activeKey && styles.menuLabelActive]}>{item.label}</Text>
                   <Text style={styles.menuArrow}>›</Text>
                 </Pressable>
               ))}
@@ -331,8 +342,10 @@ const styles = StyleSheet.create({
   menuSectionLabel: { color: MUTED, fontSize: 9, fontWeight: "900", letterSpacing: 1.2, marginBottom: 8, marginTop: 3 },
   menuItem: { height: 46, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 10, borderRadius: 11 },
   menuItemPressed: { backgroundColor: BLUE_SOFT },
+  menuItemActive: { backgroundColor: "#EEF4FF", borderWidth: 1, borderColor: "#C7D9FF" },
   menuSymbol: { color: BLUE, fontSize: 18, fontWeight: "800", width: 24, textAlign: "center" },
   menuLabel: { color: INK, fontSize: 13, fontWeight: "700", flex: 1 },
+  menuLabelActive: { color: BLUE, fontWeight: "900" },
   menuArrow: { color: MUTED, fontSize: 20 },
   menuDivider: { height: 1, backgroundColor: BORDER, marginVertical: 12 },
   drawerFoot: { color: MUTED, fontSize: 10, textAlign: "center", paddingTop: 12, borderTopWidth: 1, borderTopColor: BORDER },
