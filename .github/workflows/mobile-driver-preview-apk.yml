@@ -83,20 +83,55 @@ jobs:
             echo "Using the existing dedicated Driver EAS project."
           else
             TMP_ROOT="$RUNNER_TEMP/driver-eas-project-bootstrap"
-            mkdir -p "$TMP_ROOT/driver"
+            mkdir -p "$TMP_ROOT/user" "$TMP_ROOT/driver"
 
-            EAS_IDENTITY="$(
-              NO_COLOR=1 npx --yes eas-cli@latest whoami 2>&1 |
-                sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' |
-                awk 'NF { print $1; exit }'
-            )"
-            EAS_OWNER="${EAS_IDENTITY%%(*}"
-            EAS_OWNER="${EAS_OWNER//[[:space:]]/}"
-            test -n "$EAS_OWNER" || {
-              echo "::error::The shared EXPO_TOKEN did not return an Expo account username."
-              exit 1
+            cat > "$TMP_ROOT/user/package.json" <<'EOF'
+          {
+            "name": "afcon360-user-eas-bootstrap",
+            "private": true,
+            "dependencies": {
+              "expo": "~58.0.22"
             }
-            echo "Resolved Expo project owner from the shared Expo identity."
+          }
+          EOF
+
+            cat > "$TMP_ROOT/user/app.json" <<EOF
+          {
+            "expo": {
+              "name": "AFCON360",
+              "slug": "afcon360-user",
+              "version": "1.0.0",
+              "extra": {
+                "eas": {
+                  "projectId": "$AFCON360_USER_EAS_PROJECT_ID"
+                }
+              }
+            }
+          }
+          EOF
+
+            USER_PROJECT_INFO="$(
+              cd "$TMP_ROOT/user"
+              NO_COLOR=1 npx --yes eas-cli@latest project:info 2>&1
+            )"
+            USER_PROJECT_INFO_CLEAN="$(
+              printf '%s\n' "$USER_PROJECT_INFO" |
+                sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g'
+            )"
+            EAS_FULL_NAME="$(
+              printf '%s\n' "$USER_PROJECT_INFO_CLEAN" |
+                grep -oE '@[^[:space:]]+/afcon360-user' |
+                head -n 1 || true
+            )"
+            EAS_OWNER="${EAS_FULL_NAME#@}"
+            EAS_OWNER="${EAS_OWNER%%/*}"
+            if [ -z "$EAS_OWNER" ] || [ "$EAS_OWNER" = "$EAS_FULL_NAME" ]; then
+              echo "::error::Could not resolve the owner of the existing User EAS project."
+              echo "Non-secret EAS project information returned by the CLI:"
+              printf '%s\n' "$USER_PROJECT_INFO_CLEAN"
+              exit 1
+            fi
+            echo "Resolved Driver project owner from the existing User EAS project."
 
             cat > "$TMP_ROOT/driver/package.json" <<'EOF'
           {
