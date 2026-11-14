@@ -580,8 +580,19 @@ def main() -> None:
     time.sleep(0.5)
     tap_text("Sign in securely", require_enabled=True)
 
-    wait_for_text(f"Welcome back, {USERNAME}", "Your AFCON 360 overview for today.", timeout=45, label="authenticated User home")
-    save_screen("02-home")
+    wait_for_text(f"Welcome back, {USERNAME}", "Your AFCON 360 overview for today", timeout=45, label="authenticated User home")
+
+    tap_text("Open dashboard menu")
+    wait_for_text(
+        "Home", "Events", "Wallet", "Rides", "Stays", "Tourism",
+        "Become a Partner", "Public Profile", "Account", "Edit Profile", "Settings",
+        timeout=20,
+        label="website-matched native User dashboard menu"
+    )
+    save_screen("02-dashboard-menu")
+    tap_text("Close menu")
+    wait_for_text("My Events", "Event Calendar", "Upcoming Reminders", "Tickets & Badges", timeout=35, label="website-matched native User dashboard overview")
+    save_screen("03-home")
     mark_stage("authenticated_home")
 
     mark_stage("activity_navigation_started")
