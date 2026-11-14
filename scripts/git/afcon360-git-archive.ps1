@@ -23,8 +23,20 @@ function Invoke-Git {
         [Parameter(Mandatory = $true)][string[]]$GitArgs,
         [switch]$AllowFailure
     )
-    $output = @(& git @GitArgs 2>&1)
-    $code = $LASTEXITCODE
+    # Windows PowerShell 5.1 can promote redirected native stderr (including
+    # normal Git progress such as "From https://...") to ErrorRecords. With
+    # ErrorActionPreference=Stop those benign messages terminate the script
+    # before Git's exit code can be checked. Temporarily use Continue while
+    # capturing both streams; the actual Git exit code remains authoritative.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = @(& git @GitArgs 2>&1 | ForEach-Object { [string]$_ })
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     if ($code -ne 0 -and -not $AllowFailure) {
         $details = ($output | ForEach-Object { "$_" }) -join [System.Environment]::NewLine
         throw (("git {0} failed (exit {1})." -f ($GitArgs -join " "), $code) + [System.Environment]::NewLine + $details)

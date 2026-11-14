@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Parse archive and recovery helper
-        shell: pwsh
+        shell: powershell
         run: |
           $tokens = $null
           $parseErrors = $null
@@ -43,9 +43,21 @@ jobs:
 
           Write-Host "PowerShell syntax is valid: $path"
 
-      - name: Smoke-test read-only inventory action
-        shell: pwsh
+      - name: Smoke-test Windows PowerShell 5.1 native stderr handling and inventory
+        shell: powershell
         run: |
+          # Simulate the benign stderr progress text Git emits after fetching
+          # updated refs. The helper must capture it without treating it as a
+          # fatal PowerShell error, then decide success from Git's exit code.
+          $global:AFCON360_REAL_GIT = (Get-Command git.exe -ErrorAction Stop).Source
+          function global:git {
+              if ($args.Count -gt 0 -and $args[0] -eq "fetch") {
+                  Write-Error "From https://example.invalid/twikirize/afcon360"
+              }
+              & $global:AFCON360_REAL_GIT @args
+              $global:LASTEXITCODE = $LASTEXITCODE
+          }
+
           & ./scripts/git/afcon360-git-archive.ps1 -Action List
           if ($LASTEXITCODE -ne 0) {
               throw "The read-only inventory action failed."
