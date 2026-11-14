@@ -63,7 +63,7 @@ jobs:
           }
           echo "The shared Expo publishing credential is available."
 
-      - name: Install the mobile workspace from the frozen lockfile
+      - name: Install mobile workspace dependencies
         working-directory: mobile
         run: pnpm install --no-frozen-lockfile
 
@@ -224,7 +224,7 @@ jobs:
         env:
           ARTIFACT_URL: ${{ steps.upload-apk.outputs.artifact-url }}
           EAS_BUILD_ID: ${{ steps.eas-build.outputs.build_id }}
-          EAS_PROJECT_ID: ${{ env.AFCON360_DRIVER_EAS_PROJECT_ID }}
+          EAS_PROJECT_ID: 4196f859-ddbd-47b1-82e6-8bc441ede17b
         run: |
           {
             echo "## AFCON360 Driver preview APK"
