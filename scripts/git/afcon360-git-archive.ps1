@@ -50,6 +50,14 @@ function Assert-Repository {
     $null = Invoke-Git -GitArgs @("remote", "get-url", "origin")
 }
 
+function Assert-CleanWorkingTree {
+    $changes = @(& git status --porcelain)
+    if ($changes.Count -gt 0) {
+        $details = ($changes -join [Environment]::NewLine)
+        throw ("Working tree is not clean. Commit or stash these changes first:" + [Environment]::NewLine + $details)
+    }
+}
+
 function Assert-NotProtected {
     param([Parameter(Mandatory = $true)][string]$Name)
     if ($ProtectedBranches -contains $Name -or
@@ -102,6 +110,7 @@ function Confirm-DestructiveStep {
 }
 
 function Show-ArchiveInventory {
+    $null = Invoke-Git -GitArgs @("fetch", "origin", "--tags")
     Write-Host ""
     Write-Host "AFCON360 branch archive tags" -ForegroundColor Cyan
     $branchTags = @(& git tag --list "archive/branches/*" --sort=-creatordate)
@@ -131,6 +140,8 @@ function Show-ArchiveInventory {
 
 function Archive-Branch {
     if ([string]::IsNullOrWhiteSpace($BranchName)) { throw "Supply -BranchName with the exact branch name." }
+    Assert-CleanWorkingTree
+    $null = Invoke-Git -GitArgs @("fetch", "origin", "--prune")
     Assert-NotProtected -Name $BranchName
     $null = Invoke-Git -GitArgs @("check-ref-format", "--branch", $BranchName)
 
@@ -174,6 +185,12 @@ function Archive-Branch {
     }
 
     if ($remoteSha) {
+        $remoteNow = @(& git ls-remote --heads origin ("refs/heads/" + $BranchName) 2>$null)
+        $remoteNowSha = $null
+        if ($remoteNow.Count -gt 0) { $remoteNowSha = (($remoteNow[0] -split '\\s+')[0]).Trim() }
+        if ($remoteNowSha -ne $remoteSha) {
+            throw "origin/$BranchName changed after the archive snapshot. It was NOT deleted; archive tag(s) remain."
+        }
         $null = Invoke-Git -GitArgs @("push", "origin", "--delete", $BranchName)
         Write-Host ("Deleted origin/" + $BranchName)
     }
@@ -185,7 +202,90 @@ function Archive-Branch {
 }
 
 function Archive-Stash {
-    if ([string]::IsNullOrWhiteSpace($StashSelector) -or $StashSelector -notmatch '^stash@\{\d+\}$') {
+    Assert-CleanWorkingTree
+    if ([string]::IsNullOrWhiteSpace($StashSelector) -or $StashSelector -notmatch '^stash@\{\d+\}        throw "Supply an exact stash selector such as -StashSelector 'stash@{2}'."
+    }
+
+    $stashRef = "{0}^{{commit}}" -f $StashSelector
+    $stashSha = Get-GitRefSha -RefName $stashRef
+    if (-not $stashSha) { throw "Could not resolve $StashSelector. Refresh git stash list and try again." }
+
+    $subject = (& git log -1 --format=%s $stashSha).Trim()
+    $tagName = Get-ArchiveTagName -Kind "stashes" -Name $subject
+    $message = "AFCON360 archived $StashSelector. Stash commit $stashSha. The tag preserves all parents, including index and untracked-file snapshots."
+
+    Publish-ArchiveTag -TagName $tagName -CommitSha $stashSha -Message $message
+    Write-Host ("Verified remote stash archive tag: " + $tagName) -ForegroundColor Green
+    Write-Host ("Saved stash commit: " + $stashSha)
+
+    $prompt = "The complete stash commit is preserved by the verified remote tag. This removes $StashSelector from the active local stash list only."
+    if (-not (Confirm-DestructiveStep -Prompt $prompt -RequiredWord "DROP")) {
+        Write-Host "Cancelled. Original stash remains in the stash list; archive tag is available."
+        return
+    }
+
+    $null = Invoke-Git -GitArgs @("stash", "drop", $StashSelector)
+    Write-Host "Stash removed from active list; archived tag remains recoverable." -ForegroundColor Green
+}
+
+function Restore-Branch {
+    if ([string]::IsNullOrWhiteSpace($ArchiveRef) -or [string]::IsNullOrWhiteSpace($BranchName)) {
+        throw "Supply both -ArchiveRef and -BranchName."
+    }
+
+    $tagRef = "refs/tags/" + $ArchiveRef
+    if (-not (Test-GitRef -RefName $tagRef)) { $null = Invoke-Git -GitArgs @("fetch", "origin", "--tags") }
+    $sha = Get-GitRefSha -RefName ($tagRef + "^{commit}")
+    if (-not $sha) { throw "Archive tag not found: $ArchiveRef" }
+
+    Assert-NotProtected -Name $BranchName
+    $null = Invoke-Git -GitArgs @("check-ref-format", "--branch", $BranchName)
+    if ((Test-GitRef -RefName ("refs/heads/" + $BranchName)) -or
+        (Test-GitRef -RefName ("refs/remotes/origin/" + $BranchName))) {
+        throw "A local or remote branch named '$BranchName' already exists. Nothing was overwritten."
+    }
+
+    $null = Invoke-Git -GitArgs @("branch", $BranchName, $sha)
+    $null = Invoke-Git -GitArgs @("push", "-u", "origin", ("refs/heads/" + $BranchName + ":refs/heads/" + $BranchName))
+    Write-Host ("Restored branch '$BranchName' from " + $ArchiveRef) -ForegroundColor Green
+}
+
+function Restore-Stash {
+    if ([string]::IsNullOrWhiteSpace($ArchiveRef)) { throw "Supply -ArchiveRef with the exact archive/stashes/... tag." }
+
+    $tagRef = "refs/tags/" + $ArchiveRef
+    if (-not (Test-GitRef -RefName $tagRef)) { $null = Invoke-Git -GitArgs @("fetch", "origin", "--tags") }
+    $sha = Get-GitRefSha -RefName ($tagRef + "^{commit}")
+    if (-not $sha) { throw "Archive tag not found: $ArchiveRef" }
+
+    $existing = @(& git stash list --format=%H)
+    if ($existing -contains $sha) {
+        Write-Host "This exact stash commit is already present in the active stash list. No duplicate was created."
+        @(& git stash list --date=local) | ForEach-Object { Write-Host $_ }
+        return
+    }
+
+    $null = Invoke-Git -GitArgs @("stash", "store", "-m", ("Restored from archive tag " + $ArchiveRef), $sha)
+    Write-Host "The archived stash is back in the active stash list; it has NOT been applied to the working tree." -ForegroundColor Green
+    @(& git stash list -n 1 --date=local) | ForEach-Object { Write-Host ("  " + $_) }
+    Write-Host "Inspect it first; use git stash apply to restore its files without deleting the stash."
+}
+
+try {
+    Assert-Repository
+    switch ($Action) {
+        "List" { Show-ArchiveInventory }
+        "ArchiveBranch" { Archive-Branch }
+        "ArchiveStash" { Archive-Stash }
+        "RestoreBranch" { Restore-Branch }
+        "RestoreStash" { Restore-Stash }
+    }
+}
+catch {
+    Write-Error $_
+    exit 1
+}
+) {
         throw "Supply an exact stash selector such as -StashSelector 'stash@{2}'."
     }
 
