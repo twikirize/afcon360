@@ -98,6 +98,16 @@ jobs:
             }
             echo "Resolved Expo project owner from the shared Expo identity."
 
+            cat > "$TMP_ROOT/driver/package.json" <<'EOF'
+          {
+            "name": "afcon360-driver-eas-bootstrap",
+            "private": true,
+            "dependencies": {
+              "expo": "~58.0.22"
+            }
+          }
+          EOF
+
             cat > "$TMP_ROOT/driver/app.json" <<EOF
           {
             "expo": {
