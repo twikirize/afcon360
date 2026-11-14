@@ -101,10 +101,21 @@ jobs:
               echo "Downloading EAS worker log $index"
               if curl --fail --silent --show-error --location "$log_url" --output "$log_file"; then
                 echo "Downloaded worker log $index ($(wc -c < "$log_file") bytes)."
+                echo "Worker log file type:"
+                file "$log_file" || true
+                decoded_file="$log_file.decoded"
+                if gzip -t "$log_file" >/dev/null 2>&1; then
+                  gzip -dc "$log_file" > "$decoded_file"
+                elif unzip -t "$log_file" >/dev/null 2>&1; then
+                  unzip -p "$log_file" > "$decoded_file"
+                else
+                  cp "$log_file" "$decoded_file"
+                fi
+                echo "Decoded worker log $index ($(wc -c < "$decoded_file") bytes)."
                 echo "Relevant diagnostic lines from worker log $index:"
-                grep -inE 'error|failed|failure|exception|gradle|credential|hook|unsupported|denied|not found|timeout' "$log_file" | tail -n 160 || true
+                grep -aEin 'error|failed|failure|exception|gradle|credential|hook|unsupported|denied|not found|timeout|phase' "$decoded_file" | tail -n 200 || true
                 echo "Final lines from worker log $index:"
-                tail -n 100 "$log_file"
+                tail -n 160 "$decoded_file"
               else
                 echo "::warning::Could not download worker log $index."
               fi
