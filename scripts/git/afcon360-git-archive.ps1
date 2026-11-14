@@ -187,7 +187,7 @@ function Archive-Branch {
     if ($remoteSha) {
         $remoteNow = @(& git ls-remote --heads origin ("refs/heads/" + $BranchName) 2>$null)
         $remoteNowSha = $null
-        if ($remoteNow.Count -gt 0) { $remoteNowSha = (($remoteNow[0] -split '\\s+')[0]).Trim() }
+        if ($remoteNow.Count -gt 0) { $remoteNowSha = $remoteNow[0].Split([char[]]@(9, 32), [StringSplitOptions]::RemoveEmptyEntries)[0] }
         if ($remoteNowSha -ne $remoteSha) {
             throw "origin/$BranchName changed after the archive snapshot. It was NOT deleted; archive tag(s) remain."
         }
@@ -203,7 +203,8 @@ function Archive-Branch {
 
 function Archive-Stash {
     Assert-CleanWorkingTree
-    if ([string]::IsNullOrWhiteSpace($StashSelector) -or $StashSelector -notmatch '^stash@\{\d+\}        throw "Supply an exact stash selector such as -StashSelector 'stash@{2}'."
+    if ([string]::IsNullOrWhiteSpace($StashSelector) -or $StashSelector -notmatch '^stash@\{\d+\}$') {
+        throw "Supply an exact stash selector such as -StashSelector 'stash@{2}'."
     }
 
     $stashRef = "{0}^{{commit}}" -f $StashSelector
