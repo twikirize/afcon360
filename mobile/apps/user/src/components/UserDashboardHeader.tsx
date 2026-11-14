@@ -59,7 +59,7 @@ const MENU_ITEMS: MenuItem[] = [
   { key: "public-profile", label: "Public Profile", symbol: "▤", group: "account", webPath: "/profile/me" },
   { key: "account", label: "Account", symbol: "○", group: "account", route: "/(tabs)/account" },
   { key: "edit-profile", label: "Edit Profile", symbol: "✎", group: "account", webPath: "/profile/edit" },
-  { key: "settings", label: "Settings", symbol: "⚙", group: "account", webPath: "/theme/preferences" }
+  { key: "settings", label: "Settings", symbol: "⚙", group: "account", webPath: "/profile/settings-pane" }
 ];
 
 export function UserDashboardHeader() {

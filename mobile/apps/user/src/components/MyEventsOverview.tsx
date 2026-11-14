@@ -314,7 +314,7 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
       <View style={card}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={heading}>Upcoming Reminders</Text>
-          <Pressable onPress={() => onOpenWebsite("/theme/preferences")}>
+          <Pressable onPress={() => onOpenWebsite("/profile/settings-pane")}>
             <Text style={{ color: BLUE, fontSize: 11, fontWeight: "900" }}>Manage Alerts</Text>
           </Pressable>
         </View>
