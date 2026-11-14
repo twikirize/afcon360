@@ -1,7 +1,8 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, AppState, Pressable, Text } from "react-native";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
-import { AppScreen, PageHeader, Panel, SectionTitle, StatusPill, palette } from "@afcon360/mobile-ui";
+import { PageHeader, Panel, SectionTitle, StatusPill, palette } from "@afcon360/mobile-ui";
+import { UserAppScreen } from "../../../src/components/UserAppScreen";
 import { authClient } from "../../../src/services/api";
 
 type VehicleData = {
@@ -192,7 +193,7 @@ export default function RideStatusScreen() {
   const payment = data?.payment;
 
   return (
-    <AppScreen>
+    <UserAppScreen>
       <PageHeader
         eyebrow={isBooking ? "Ride booking" : "Ride tracking"}
         title={isBooking ? "Your ride booking." : "Your driver journey."}
@@ -306,6 +307,6 @@ export default function RideStatusScreen() {
           ) : null}
         </Panel>
       ) : null}
-    </AppScreen>
+    </UserAppScreen>
   );
 }
