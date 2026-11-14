@@ -2,14 +2,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
 import {
-  ActionButton,
-  AppScreen,
-  PageHeader,
-  Panel,
-  SectionTitle,
-  StatusPill,
-  palette,
-} from "@afcon360/mobile-ui";
+  ActionButton, PageHeader, Panel, SectionTitle, StatusPill, palette } from "@afcon360/mobile-ui";
+import { UserAppScreen } from "../../src/components/UserAppScreen";
 import {
   NativeEventDetail,
   NativeEventRegistration,
@@ -139,7 +133,7 @@ export default function Events() {
   };
 
   return (
-    <AppScreen>
+    <UserAppScreen>
       <PageHeader
         eyebrow="Events and tickets"
         title="Be there for the moments."
@@ -264,6 +258,6 @@ export default function Events() {
         )}
         <ActionButton label={registrationsLoading ? "Refreshing tickets…" : "Refresh tickets"} disabled={registrationsLoading} onPress={() => void loadRegistrations()} />
       </Panel>
-    </AppScreen>
+    </UserAppScreen>
   );
 }
