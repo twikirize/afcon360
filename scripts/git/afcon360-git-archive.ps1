@@ -113,7 +113,7 @@ function Confirm-DestructiveStep {
 }
 
 function Show-ArchiveInventory {
-    $null = Invoke-Git -GitArgs @("fetch", "origin", "--tags")
+    $null = Invoke-Git -GitArgs @("fetch", "origin", "--prune", "--tags")
 
     Write-Host ""
     Write-Host "AFCON360 branch archive tags" -ForegroundColor Cyan
