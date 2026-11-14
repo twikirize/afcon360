@@ -23,6 +23,8 @@
     "apk-share": {
       "distribution": "internal",
       "channel": "driver-preview",
+      "environment": "preview",
+      "autoIncrement": true,
       "android": {
         "buildType": "apk"
       }
