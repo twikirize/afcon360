@@ -14,6 +14,7 @@ on:
       - "mobile/pnpm-lock.yaml"
       - "mobile/pnpm-workspace.yaml"
       - "mobile/packages/**"
+      - ".easignore"
       - ".github/workflows/mobile-driver-preview-apk.yml"
 
 permissions:
