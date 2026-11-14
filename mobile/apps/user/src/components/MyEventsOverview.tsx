@@ -154,16 +154,14 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
 
   return (
     <View style={{ gap: 15 }}>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => onOpenWebsite("/onboarding/choose")}
+      <View
         style={{
           backgroundColor: "#EAF1FF",
           borderColor: "#C9DAFF",
           borderWidth: 1,
           borderRadius: 15,
           padding: 15,
-          gap: 7
+          gap: 9
         }}
       >
         <Text style={{ color: BLUE, fontSize: 10, fontWeight: "900", letterSpacing: 0.9 }}>
@@ -173,10 +171,23 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
         <Text style={quiet}>
           Already using AFCON360 as a customer? You can also offer services or operate an organisation.
         </Text>
-        <Text style={{ color: BLUE, fontSize: 12, fontWeight: "900" }}>
-          Explore partnership options ›
-        </Text>
-      </Pressable>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => onOpenWebsite("/onboarding/choose")}
+            style={{ backgroundColor: BLUE, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 9 }}
+          >
+            <Text style={{ color: WHITE, fontSize: 11, fontWeight: "900" }}>Become a Partner ›</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => onOpenWebsite("/wallet/agent/apply")}
+            style={{ backgroundColor: WHITE, borderColor: BLUE, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 9 }}
+          >
+            <Text style={{ color: BLUE, fontSize: 11, fontWeight: "900" }}>Apply as Wallet Agent</Text>
+          </Pressable>
+        </View>
+      </View>
 
       <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
         <View style={{ flex: 1, gap: 3 }}>
