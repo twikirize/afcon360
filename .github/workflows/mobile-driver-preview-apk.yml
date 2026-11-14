@@ -267,7 +267,7 @@ jobs:
 
       - name: Upload the installable OTA-enabled Driver APK
         id: upload-apk
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v7
         with:
           name: afcon360-driver-ota-enabled-preview-apk
           path: |
