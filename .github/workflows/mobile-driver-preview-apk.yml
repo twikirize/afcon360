@@ -154,22 +154,20 @@ jobs:
           }
           EOF
 
-            PROJECT_JSON="$(
+            (
               cd "$TMP_ROOT/driver"
-              npx --yes eas-cli@latest init --account "$EAS_OWNER" --json --non-interactive
-            )"
+              NO_COLOR=1 npx --yes eas-cli@latest init --account "$EAS_OWNER" --non-interactive
+            )
+
             PROJECT_ID="$(
-              printf '%s' "$PROJECT_JSON" |
-                node -e '
-                  let input = "";
-                  process.stdin.on("data", chunk => input += chunk);
-                  process.stdin.on("end", () => {
-                    const result = JSON.parse(input);
-                    const id = result.projectId;
-                    if (!id) process.exit(2);
-                    process.stdout.write(id);
-                  });
-                '
+              node - "$TMP_ROOT/driver/app.json" <<'NODE'
+            const fs = require("fs");
+            const config = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            const id = config.expo && config.expo.extra &&
+              config.expo.extra.eas && config.expo.extra.eas.projectId;
+            if (!id) throw new Error("EAS init did not write extra.eas.projectId to app.json.");
+            process.stdout.write(id);
+            NODE
             )"
 
             [[ "$PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || {
