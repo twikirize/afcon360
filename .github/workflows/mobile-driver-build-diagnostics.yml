@@ -101,21 +101,41 @@ jobs:
               echo "Downloading EAS worker log $index"
               if curl --fail --silent --show-error --location "$log_url" --output "$log_file"; then
                 echo "Downloaded worker log $index ($(wc -c < "$log_file") bytes)."
-                echo "Worker log file type:"
-                file "$log_file" || true
-                decoded_file="$log_file.decoded"
-                if gzip -t "$log_file" >/dev/null 2>&1; then
-                  gzip -dc "$log_file" > "$decoded_file"
-                elif unzip -t "$log_file" >/dev/null 2>&1; then
-                  unzip -p "$log_file" > "$decoded_file"
-                else
-                  cp "$log_file" "$decoded_file"
-                fi
-                echo "Decoded worker log $index ($(wc -c < "$decoded_file") bytes)."
-                echo "Relevant diagnostic lines from worker log $index:"
-                grep -aEin 'error|failed|failure|exception|gradle|credential|hook|unsupported|denied|not found|timeout|phase' "$decoded_file" | tail -n 200 || true
-                echo "Final lines from worker log $index:"
-                tail -n 160 "$decoded_file"
+                echo "Decoding Brotli-compressed EAS JSON-lines log $index."
+                node - "$log_file" <<'NODE'
+          const fs = require("fs");
+          const zlib = require("zlib");
+          const raw = fs.readFileSync(process.argv[2]);
+          let decoded;
+          try {
+            decoded = zlib.brotliDecompressSync(raw).toString("utf8");
+          } catch (brotliError) {
+            try {
+              decoded = zlib.gunzipSync(raw).toString("utf8");
+            } catch {
+              decoded = raw.toString("utf8");
+            }
+          }
+          const records = decoded.split(/\r?\n/).filter(Boolean).flatMap(line => {
+            try { return [JSON.parse(line)]; } catch { return [{ phase: "UNPARSED", msg: line }]; }
+          });
+          const phases = new Map();
+          for (const record of records) {
+            const phase = record.phase || "UNKNOWN_PHASE";
+            if (!phases.has(phase)) phases.set(phase, []);
+            phases.get(phase).push(record);
+          }
+          process.stdout.write(`Decoded ${raw.length} compressed bytes into ${Buffer.byteLength(decoded)} bytes and ${records.length} log records.\n`);
+          for (const [phase, phaseRecords] of phases) {
+            process.stdout.write(`\n===== ${phase} (${phaseRecords.length} records) =====\n`);
+            const selected = phaseRecords.length > 180 ? phaseRecords.slice(-180) : phaseRecords;
+            for (const record of selected) {
+              const time = record.time ? `[${record.time}] ` : "";
+              const message = String(record.msg ?? record.message ?? JSON.stringify(record));
+              process.stdout.write(time + message.slice(0, 1800) + "\n");
+            }
+          }
+          NODE
               else
                 echo "::warning::Could not download worker log $index."
               fi
