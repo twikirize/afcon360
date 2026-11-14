@@ -159,6 +159,7 @@ function TrendCard({
   item,
   baseUrl,
   onPress,
+  websiteHandoff,
 }: {
   item: FeedItem;
   baseUrl: string;
