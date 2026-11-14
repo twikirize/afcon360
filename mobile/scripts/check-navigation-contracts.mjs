@@ -7,7 +7,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const approved = [
   ["apps/user/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', 'label="Privacy notice (website)"'],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/tourism")', 'label="Explore tourism on website"'],
-  ["apps/user/app/(tabs)/index.tsx", "WebBrowser.openBrowserAsync(target)", 'Host an event on website'],
+  ["apps/user/app/(tabs)/index.tsx", "WebBrowser.openBrowserAsync(target)", 'accessibilityLabel="Tourism · website"'],
   ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")', 'label="Continue driver registration on website"'],
   ["apps/user/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", 'label="Back to AFCON360 website home"'],
   ["apps/driver/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", 'label="Back to AFCON360 website home"'],
