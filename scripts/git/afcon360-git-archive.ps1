@@ -52,8 +52,21 @@ function Test-GitRef {
 
 function Get-GitRefSha {
     param([Parameter(Mandatory = $true)][string]$RefName)
-    $value = @(& git rev-parse --verify $RefName 2>$null)
-    if ($LASTEXITCODE -eq 0 -and $value.Count -gt 0) {
+
+    # A missing ref is an expected condition when archiving local-only or
+    # remote-only branches. Use --quiet and temporarily neutralise native
+    # stderr promotion in Windows PowerShell 5.1; absence returns $null.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $value = @(& git rev-parse --verify --quiet $RefName 2>$null)
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($code -eq 0 -and $value.Count -gt 0) {
         return ([string]$value[0]).Trim()
     }
     return $null
