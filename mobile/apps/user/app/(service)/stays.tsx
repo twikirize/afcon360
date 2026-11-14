@@ -1,14 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import {
-  ActionButton,
-  AppScreen,
-  PageHeader,
-  Panel,
-  SectionTitle,
-  StatusPill,
-  palette,
-} from "@afcon360/mobile-ui";
+  ActionButton, PageHeader, Panel, SectionTitle, StatusPill, palette } from "@afcon360/mobile-ui";
+import { UserAppScreen } from "../../src/components/UserAppScreen";
 import {
   AccommodationBooking,
   AccommodationBookingQuote,
@@ -284,7 +278,7 @@ export default function Stays() {
   };
 
   return (
-    <AppScreen>
+    <UserAppScreen>
       <PageHeader
         eyebrow="Accommodation"
         title="Find your place to stay."
@@ -414,6 +408,6 @@ export default function Stays() {
         )}
         <ActionButton label={bookingsLoading ? "Refreshing bookings…" : "Refresh bookings"} disabled={bookingsLoading} onPress={() => void loadBookings()} />
       </Panel>
-    </AppScreen>
+    </UserAppScreen>
   );
 }
