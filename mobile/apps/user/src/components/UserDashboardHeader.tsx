@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Modal,
@@ -12,6 +12,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import { useAuth } from "../auth/AuthProvider";
+import { getSelectedApiBaseUrl } from "../services/api";
 
 const SITE = "https://www.pamoja.space";
 const BLUE = "#0E4CCD";
@@ -34,6 +35,19 @@ type MenuItem = {
   webPath?: string;
 };
 
+function safeWebsiteUrl(path: string, baseUrl: string): string | null {
+  if (!path || !baseUrl) return null;
+  try {
+    const base = new URL(baseUrl);
+    const target = new URL(path, base.origin + "/");
+    if (target.origin !== base.origin) return null;
+    if (target.protocol !== "https:" && target.protocol !== "http:") return null;
+    return target.toString();
+  } catch {
+    return null;
+  }
+}
+
 const MENU_ITEMS: MenuItem[] = [
   { key: "home", label: "Home", symbol: "⌂", group: "journey", route: "/(tabs)" },
   { key: "events", label: "Events", symbol: "▣", group: "journey", route: "/(service)/events" },
@@ -54,12 +68,25 @@ export function UserDashboardHeader() {
   const { user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [websiteBaseUrl, setWebsiteBaseUrl] = useState(SITE);
   const contexts = useMemo(() => user?.contexts ?? [], [user?.contexts]);
   const displayName = user?.display_name || user?.username || "AFCON360 User";
   const initial = displayName.trim().charAt(0).toUpperCase() || "U";
 
+  useEffect(() => {
+    let active = true;
+    void getSelectedApiBaseUrl().then(url => {
+      if (active && url) setWebsiteBaseUrl(url);
+    }).catch(() => {
+      if (active) setWebsiteBaseUrl(SITE);
+    });
+    return () => { active = false; };
+  }, []);
+
   const openWebsite = (path: string) => {
-    void WebBrowser.openBrowserAsync(SITE + path);
+    const target = safeWebsiteUrl(path, websiteBaseUrl);
+    if (target) void WebBrowser.openBrowserAsync(target);
+    else Alert.alert("Website unavailable", "AFCON360 could not resolve the selected server for this page. Check your connection settings and try again.");
   };
 
   const activate = (item: MenuItem) => {
