@@ -1,29 +1,36 @@
 import React from "react";
 import { Redirect, Tabs } from "expo-router";
-import { Pressable, Text } from "react-native";
+import { Platform, Pressable, Text } from "react-native";
 import { palette } from "@afcon360/mobile-ui";
 import { ActivityIndicator, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../src/auth/AuthProvider";
 const symbols: Record<string, string> = { index: "⌂", explore: "◇", activity: "↗", wallet: "◈", account: "○" };
+const ANDROID_EDGE_TO_EDGE_API_LEVEL = 35;
 export default function UserTabs() {
   const insets = useSafeAreaInsets();
   const { user, loading, restoreError, retryRestoreSession } = useAuth();
   if (loading) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: palette.canvas }}><ActivityIndicator color={palette.green} /></View>;
   if (restoreError) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: palette.canvas }}><Text style={{ color: palette.ink, textAlign: "center", lineHeight: 22 }}>{restoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retryRestoreSession()} style={{ marginTop: 16, padding: 14, backgroundColor: palette.green, borderRadius: 10 }}><Text style={{ color: "#FFFFFF", fontWeight: "800" }}>Retry saved session</Text></Pressable></View>;
   if (!user) return <Redirect href="/login" />;
+
+  // Android 15+ bottom system space is reserved once by the root navigator.
+  // iOS and pre-edge-to-edge Android continue to use the tab bar's own inset.
+  const tabBarBottomInset =
+    Platform.OS === "android" &&
+    Number(Platform.Version) >= ANDROID_EDGE_TO_EDGE_API_LEVEL
+      ? 0
+      : insets.bottom;
+
   return <Tabs screenOptions={({ route }) => ({
     headerShown: false,
     tabBarActiveTintColor: palette.green,
     tabBarInactiveTintColor: palette.muted,
     tabBarLabelStyle: { fontSize: 10, fontWeight: "700" },
-    // Keep the custom 66dp tab content above Android's system navigation
-    // bar and iOS's home indicator. The fixed height without the bottom inset
-    // places Activity/Wallet/Account controls underneath system UI.
     tabBarStyle: {
-      height: 66 + insets.bottom,
+      height: 66 + tabBarBottomInset,
       paddingTop: 7,
-      paddingBottom: 8 + insets.bottom,
+      paddingBottom: 8 + tabBarBottomInset,
       borderTopColor: palette.border,
       backgroundColor: palette.surface
     },
