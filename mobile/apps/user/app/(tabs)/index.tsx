@@ -14,7 +14,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useAuth } from "../../src/auth/AuthProvider";
 import { MyEventsOverview } from "../../src/components/MyEventsOverview";
 import { authClient } from "../../src/services/api";
 import { getSelectedApiBaseUrl } from "../../src/services/api";
@@ -323,7 +322,6 @@ function EventCard({
 
 export default function UserHome() {
   const router = useRouter();
-  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [apiBaseUrl, setApiBaseUrl] = useState(SITE);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
@@ -451,26 +449,6 @@ export default function UserHome() {
 
   const listHeader = (
     <View style={styles.pageContent}>
-      <View style={styles.hero}>
-        <View style={styles.heroTopLine}>
-          <Text style={styles.heroEyebrow}>PAMOJA · AFCON360</Text>
-          <View style={styles.heroLivePill}><View style={styles.heroLiveDot} /><Text style={styles.heroLiveText}>EAST AFRICA & BEYOND</Text></View>
-        </View>
-        <Text style={styles.heroTitle}>
-          Welcome back, <Text style={styles.heroTitleGold}>{user?.display_name || "Pamoja"}</Text>
-        </Text>
-        <Text style={styles.heroSubtitle}>Your AFCON 360 overview for today.</Text>
-        <View style={styles.heroActions}>
-          <Pressable accessibilityRole="button" onPress={() => openService("events")} style={styles.heroPrimaryButton}>
-            <Text style={styles.heroPrimaryText}>Explore events</Text>
-            <Text style={styles.heroPrimaryArrow}>›</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => openService("stays")} style={styles.heroSecondaryButton}>
-            <Text style={styles.heroSecondaryText}>Find Stays & Hotels</Text>
-          </Pressable>
-        </View>
-      </View>
-
       <MyEventsOverview onOpenEvents={() => openEventSearch()} onOpenWebsite={openWebsite} />
 
       <View style={styles.serviceChipsFloat}>
