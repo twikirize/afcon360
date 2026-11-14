@@ -30,8 +30,7 @@ jobs:
     timeout-minutes: 150
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
-      AFCON360_DRIVER_EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID }}
+      AFCON360_DRIVER_EAS_PROJECT_ID: ${{ vars.AFCON360_DRIVER_EAS_PROJECT_ID || '4196f859-ddbd-47b1-82e6-8bc441ede17b' }}
       AFCON360_PREVIEW_BUILD: "true"
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
 
@@ -58,125 +57,11 @@ jobs:
             echo "::error::The existing EXPO_TOKEN repository secret is required."
             exit 1
           }
-          test -n "$AFCON360_USER_EAS_PROJECT_ID" || {
-            echo "::error::AFCON360_USER_EAS_PROJECT_ID is required to resolve the same Expo account used by the User app."
+          [[ "$AFCON360_DRIVER_EAS_PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || {
+            echo "::error::A valid dedicated AFCON360_DRIVER_EAS_PROJECT_ID is required."
             exit 1
           }
           echo "The shared Expo publishing credential is available."
-
-      - name: Resolve or create the separate Driver EAS project
-        id: eas-project
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          PROJECT_ID="$AFCON360_DRIVER_EAS_PROJECT_ID"
-
-          if [ -n "$PROJECT_ID" ]; then
-            [[ "$PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || {
-              echo "::error::AFCON360_DRIVER_EAS_PROJECT_ID is not a valid UUID."
-              exit 1
-            }
-            echo "Using the existing dedicated Driver EAS project."
-          else
-            TMP_ROOT="$RUNNER_TEMP/driver-eas-project-bootstrap"
-            mkdir -p "$TMP_ROOT/user" "$TMP_ROOT/driver"
-
-            cat > "$TMP_ROOT/user/package.json" <<'EOF'
-          {
-            "name": "afcon360-user-eas-bootstrap",
-            "private": true,
-            "dependencies": {
-              "expo": "~58.0.22"
-            }
-          }
-          EOF
-
-            cat > "$TMP_ROOT/user/app.json" <<EOF
-          {
-            "expo": {
-              "name": "AFCON360",
-              "slug": "afcon360-user",
-              "version": "1.0.0",
-              "extra": {
-                "eas": {
-                  "projectId": "$AFCON360_USER_EAS_PROJECT_ID"
-                }
-              }
-            }
-          }
-          EOF
-
-            USER_PROJECT_INFO="$(
-              cd "$TMP_ROOT/user"
-              NO_COLOR=1 npx --yes eas-cli@latest project:info 2>&1
-            )"
-            USER_PROJECT_INFO_CLEAN="$(
-              printf '%s\n' "$USER_PROJECT_INFO" |
-                sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g'
-            )"
-            EAS_FULL_NAME="$(
-              printf '%s\n' "$USER_PROJECT_INFO_CLEAN" |
-                grep -oE '@[^[:space:]]+/afcon360-user' |
-                head -n 1 || true
-            )"
-            EAS_OWNER="${EAS_FULL_NAME#@}"
-            EAS_OWNER="${EAS_OWNER%%/*}"
-            if [ -z "$EAS_OWNER" ] || [ "$EAS_OWNER" = "$EAS_FULL_NAME" ]; then
-              echo "::error::Could not resolve the owner of the existing User EAS project."
-              echo "Non-secret EAS project information returned by the CLI:"
-              printf '%s\n' "$USER_PROJECT_INFO_CLEAN"
-              exit 1
-            fi
-            echo "Resolved Driver project owner from the existing User EAS project."
-
-            cat > "$TMP_ROOT/driver/package.json" <<'EOF'
-          {
-            "name": "afcon360-driver-eas-bootstrap",
-            "private": true,
-            "dependencies": {
-              "expo": "~58.0.22"
-            }
-          }
-          EOF
-
-            cat > "$TMP_ROOT/driver/app.json" <<EOF
-          {
-            "expo": {
-              "name": "AFCON360 Driver",
-              "slug": "afcon360-driver",
-              "owner": "$EAS_OWNER",
-              "version": "1.0.0"
-            }
-          }
-          EOF
-
-            (
-              cd "$TMP_ROOT/driver"
-              NO_COLOR=1 npx --yes eas-cli@latest init --account "$EAS_OWNER" --non-interactive
-            )
-
-            PROJECT_ID="$(
-              node - "$TMP_ROOT/driver/app.json" <<'NODE'
-            const fs = require("fs");
-            const config = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-            const id = config.expo && config.expo.extra &&
-              config.expo.extra.eas && config.expo.extra.eas.projectId;
-            if (!id) throw new Error("EAS init did not write extra.eas.projectId to app.json.");
-            process.stdout.write(id);
-          NODE
-            )"
-
-            [[ "$PROJECT_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || {
-              echo "::error::EAS did not return a valid Driver project UUID."
-              exit 1
-            }
-
-            echo "Driver EAS project is linked. Its public project ID is embedded in Driver app configuration."
-          fi
-
-          echo "AFCON360_DRIVER_EAS_PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
-          echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
 
       - name: Install the mobile workspace from the frozen lockfile
         working-directory: mobile
@@ -187,6 +72,38 @@ jobs:
         run: |
           pnpm --filter @afcon360/driver-app exec expo install --check
           pnpm driver:typecheck
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK and NDK for local EAS build
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          export ANDROID_HOME="$SDK"
+          export ANDROID_SDK_ROOT="$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -n 1)"
+          test -x "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-37.0" \
+            "build-tools;37.0.0" \
+            "ndk;27.1.12297006"
+          if [ -d "$SDK/platforms/android-37.0" ] && [ ! -e "$SDK/platforms/android-37" ]; then
+            ln -s android-37.0 "$SDK/platforms/android-37"
+          fi
+          test -s "$SDK/platforms/android-37/android.jar"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK/build-tools/37.0.0" >> "$GITHUB_PATH"
 
       - name: Export the Driver Android bundle
         working-directory: mobile
@@ -218,133 +135,68 @@ jobs:
           fi
           npx --yes eas-cli@latest channel:edit driver-preview --branch driver-preview --non-interactive
 
-      - name: Build the OTA-enabled Driver APK with EAS managed signing
+      - name: Build the OTA-enabled Driver APK locally with EAS-managed signing
         id: eas-build
         working-directory: mobile/apps/driver
         shell: bash
+        env:
+          EAS_LOCAL_BUILD_SKIP_CLEANUP: "1"
+          EAS_LOCAL_BUILD_WORKINGDIR: ${{ runner.temp }}/driver-eas-local-work
+          EAS_LOCAL_BUILD_ARTIFACTS_DIR: ${{ runner.temp }}/driver-eas-local-artifacts
         run: |
           set -euo pipefail
-          BUILD_JSON="$RUNNER_TEMP/driver-eas-build.json"
-          BUILD_STDERR="$RUNNER_TEMP/driver-eas-build.stderr"
+          mkdir -p "$EAS_LOCAL_BUILD_WORKINGDIR" "$EAS_LOCAL_BUILD_ARTIFACTS_DIR"
+          APK_OUT="$RUNNER_TEMP/AFCON360-Driver-preview.apk"
 
           set +e
           npx --yes eas-cli@latest build \
             --platform android \
             --profile apk-share \
-            --clear-cache \
-            --verbose-logs \
-            --build-logger-level trace \
-            --non-interactive \
-            --wait \
-            --json > "$BUILD_JSON" 2> "$BUILD_STDERR"
+            --local \
+            --output "$APK_OUT" \
+            --non-interactive
           BUILD_EXIT=$?
           set -e
 
-          BUILD_ID="$(
-            node - "$BUILD_JSON" <<'NODE'
-          const fs = require("fs");
-          const file = process.argv[2];
-          if (!fs.existsSync(file) || !fs.statSync(file).size) process.exit(0);
-          const raw = fs.readFileSync(file, "utf8").trim();
-          try {
-            const parsed = JSON.parse(raw);
-            const builds = Array.isArray(parsed) ? parsed : (parsed.builds || [parsed]);
-            const build = builds.find(item => item && item.id &&
-              String(item.platform || "ANDROID").toUpperCase() === "ANDROID"
-            ) || builds.find(item => item && item.id);
-            if (build) process.stdout.write(build.id);
-          } catch {
-            // Some CLI versions print human-readable output even with --json.
-          }
-          NODE
-          )"
-
-          # If the build command failed before returning JSON, locate the latest
-          # project build so the failed EAS build can still be inspected.
-          if [ -z "$BUILD_ID" ]; then
-            npx --yes eas-cli@latest build:list \
-              --platform android \
-              --limit 5 \
-              --json \
-              --non-interactive > "$RUNNER_TEMP/driver-eas-build-list.json"
-            BUILD_ID="$(
-              node - "$RUNNER_TEMP/driver-eas-build-list.json" <<'NODE'
-          const fs = require("fs");
-          const parsed = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          const builds = Array.isArray(parsed) ? parsed : (parsed.builds || []);
-          const candidate = builds.find(item => item && item.id &&
-            (item.buildProfile === "apk-share" || item.profile === "apk-share")
-          ) || builds.find(item => item && item.id);
-          if (candidate) process.stdout.write(candidate.id);
-          NODE
-            )"
-          fi
-
-          if [ -z "$BUILD_ID" ]; then
-            echo "::error::EAS CLI returned no build ID. Build command exit code: $BUILD_EXIT"
-            sed -n '1,180p' "$BUILD_STDERR" || true
-            exit 1
-          fi
-
-          echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
-          echo "EAS Driver build ID: $BUILD_ID"
-
           if [ "$BUILD_EXIT" -ne 0 ]; then
-            echo "::error::EAS Build returned exit code $BUILD_EXIT. Fetching build details and logs."
-            npx --yes eas-cli@latest build:view "$BUILD_ID" --json \
-              > "$RUNNER_TEMP/driver-eas-build-failure.json" || true
-            if [ -s "$RUNNER_TEMP/driver-eas-build-failure.json" ]; then
-              node - "$RUNNER_TEMP/driver-eas-build-failure.json" <<'NODE'
-          const fs = require("fs");
-          const build = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          process.stdout.write(JSON.stringify({
-            id: build.id,
-            status: build.status,
-            platform: build.platform,
-            buildProfile: build.buildProfile,
-            createdAt: build.createdAt,
-            completedAt: build.completedAt,
-            error: build.error ?? null,
-            artifacts: build.artifacts ? {
-              applicationArchive: Boolean(build.artifacts.applicationArchiveUrl),
-              buildArtifacts: Boolean(build.artifacts.buildArtifactsUrl)
-            } : null
-          }, null, 2) + "\n");
-          NODE
-            fi
-            echo "----- EAS CLI output -----"
-            sed -n '1,240p' "$BUILD_STDERR" || true
+            echo "::error::Local EAS build failed with exit code $BUILD_EXIT."
+            echo "Local EAS build diagnostics:"
+            find "$EAS_LOCAL_BUILD_WORKINGDIR" "$EAS_LOCAL_BUILD_ARTIFACTS_DIR" \
+              -maxdepth 5 -type f \( -name '*.log' -o -name '*.txt' \) -print 2>/dev/null || true
+            for LOG in $(find "$EAS_LOCAL_BUILD_WORKINGDIR" "$EAS_LOCAL_BUILD_ARTIFACTS_DIR" \
+              -maxdepth 5 -type f -name '*.log' 2>/dev/null | sort); do
+              echo "----- $LOG -----"
+              tail -n 160 "$LOG" || true
+            done
             exit "$BUILD_EXIT"
           fi
 
-          npx --yes eas-cli@latest build:download \
-            --build-id "$BUILD_ID" \
-            --json \
-            --non-interactive > "$RUNNER_TEMP/driver-eas-download.json"
-
-          APK_PATH="$(
-            node - "$RUNNER_TEMP/driver-eas-download.json" <<'NODE'
-          const fs = require("fs");
-          const result = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          if (!result.path) throw new Error("EAS Build download returned no artifact path.");
-          process.stdout.write(result.path);
-          NODE
-          )"
-          test -s "$APK_PATH"
+          test -s "$APK_OUT"
+          apksigner verify --verbose --print-certs "$APK_OUT"
+          BADGING="$(aapt dump badging "$APK_OUT")"
+          PACKAGE="$(printf '%s\n' "$BADGING" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
+          MINIMUM="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
+          TARGET="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
+          test "$PACKAGE" = "space.pamoja.afcon360.driver.preview"
+          test "$MINIMUM" = "24"
+          test -n "$TARGET" && test "$TARGET" -ge 36
 
           mkdir -p "$GITHUB_WORKSPACE/release"
-          cp "$APK_PATH" "$GITHUB_WORKSPACE/release/AFCON360-Driver-preview.apk"
-
+          cp "$APK_OUT" "$GITHUB_WORKSPACE/release/AFCON360-Driver-preview.apk"
+          APK_SHA256="$(sha256sum "$GITHUB_WORKSPACE/release/AFCON360-Driver-preview.apk" | awk '{print $1}')"
           cat > "$GITHUB_WORKSPACE/release/driver-build-info.txt" <<EOF
           app=driver
-          package=space.pamoja.afcon360.driver.preview
+          package=$PACKAGE
+          min_sdk=$MINIMUM
+          target_sdk=$TARGET
           channel=driver-preview
           eas_project_id=$AFCON360_DRIVER_EAS_PROJECT_ID
-          eas_build_id=$BUILD_ID
           source_sha=$GITHUB_SHA
-          signing=EAS-managed Android credentials
-          apk_sha256=$(sha256sum "$GITHUB_WORKSPACE/release/AFCON360-Driver-preview.apk" | awk '{print $1}')
+          signing=EAS-managed Android credentials downloaded from Expo
+          apk_sha256=$APK_SHA256
           EOF
+          echo "build_id=local-$GITHUB_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Verified OTA-enabled Driver APK package=$PACKAGE minSdk=$MINIMUM targetSdk=$TARGET"
 
       - name: Publish the initial Driver OTA bundle
         working-directory: mobile/apps/driver
@@ -372,13 +224,13 @@ jobs:
         env:
           ARTIFACT_URL: ${{ steps.upload-apk.outputs.artifact-url }}
           EAS_BUILD_ID: ${{ steps.eas-build.outputs.build_id }}
-          EAS_PROJECT_ID: ${{ steps.eas-project.outputs.project_id }}
+          EAS_PROJECT_ID: ${{ env.AFCON360_DRIVER_EAS_PROJECT_ID }}
         run: |
           {
             echo "## AFCON360 Driver preview APK"
             echo
             echo "- APK: [Download the OTA-enabled Driver APK]($ARTIFACT_URL)"
-            echo "- EAS build: $EAS_BUILD_ID"
+            echo "- Build: $EAS_BUILD_ID (local EAS build using Expo-managed signing)"
             echo "- EAS project: $EAS_PROJECT_ID"
             echo "- OTA channel: `driver-preview`"
             echo "- Runtime policy: native fingerprint"
