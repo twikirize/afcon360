@@ -26,7 +26,7 @@ function Invoke-Git {
     $output = @(& git @GitArgs 2>&1)
     $code = $LASTEXITCODE
     if ($code -ne 0 -and -not $AllowFailure) {
-        $details = ($output | ForEach-Object { "$_" }) -join [Environment]::NewLine
+        $details = ($output | ForEach-Object { "$_" }) -join [System.Environment]::NewLine
         throw (("git {0} failed (exit {1})." -f ($GitArgs -join " "), $code) + [Environment]::NewLine + $details)
     }
     return $output
@@ -40,8 +40,8 @@ function Test-GitRef {
 
 function Get-GitRefSha {
     param([Parameter(Mandatory = $true)][string]$RefName)
-    $value = & git rev-parse --verify $RefName 2>$null
-    if ($LASTEXITCODE -eq 0 -and $value) { return ([string]$value[0]).Trim() }
+    $value = @(& git rev-parse --verify $RefName 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $value.Count -gt 0) { return ([string]$value[0]).Trim() }
     return $null
 }
 
@@ -61,7 +61,7 @@ function Assert-CleanWorkingTree {
 function Assert-NotProtected {
     param([Parameter(Mandatory = $true)][string]$Name)
     if ($ProtectedBranches -contains $Name -or
-        $Name.StartsWith("archive/", [StringComparison]::OrdinalIgnoreCase) -or
+        $Name.StartsWith("archive/", [System.StringComparison]::OrdinalIgnoreCase) -or
         $Name.StartsWith("release/", [StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to archive or overwrite protected branch '$Name'."
     }
@@ -187,7 +187,7 @@ function Archive-Branch {
     if ($remoteSha) {
         $remoteNow = @(& git ls-remote --heads origin ("refs/heads/" + $BranchName) 2>$null)
         $remoteNowSha = $null
-        if ($remoteNow.Count -gt 0) { $remoteNowSha = $remoteNow[0].Split([char[]]@(9, 32), [StringSplitOptions]::RemoveEmptyEntries)[0] }
+        if ($remoteNow.Count -gt 0) { $remoteNowSha = $remoteNow[0].Split([char[]]@(9, 32), [System.StringSplitOptions]::RemoveEmptyEntries)[0] }
         if ($remoteNowSha -ne $remoteSha) {
             throw "origin/$BranchName changed after the archive snapshot. It was NOT deleted; archive tag(s) remain."
         }
