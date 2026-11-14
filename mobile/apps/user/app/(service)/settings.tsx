@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
 import { useRouter } from "expo-router";
@@ -15,6 +15,9 @@ function AppUpdateControls() {
   );
 
   const appVersion = Constants.expoConfig?.version ?? "Unknown";
+  const runtimeVersion = Updates.runtimeVersion ?? "Not reported";
+  const channel = Updates.channel ?? "Not configured";
+  const updateId = Updates.updateId ? Updates.updateId.slice(0, 8) : "Built-in app bundle";
   const busy = status === "checking" || status === "downloading";
 
   const checkForUpdates = async () => {
@@ -196,9 +199,6 @@ function AppUpdateControls() {
 export default function UserAppSettings() {
   const router = useRouter();
   const appVersion = Constants.expoConfig?.version ?? "Unknown";
-  const runtimeVersion = Updates.runtimeVersion ?? "Not reported";
-  const channel = Updates.channel ?? "Not configured";
-  const updateId = Updates.updateId ? Updates.updateId.slice(0, 8) : "Built-in app bundle";
 
   const shareApp = async () => {
     const url = "https://www.pamoja.space/apps";

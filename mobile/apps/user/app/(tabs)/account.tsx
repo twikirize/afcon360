@@ -367,5 +367,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
+  accountActions: { gap: 9, paddingTop: 2 },
+  footerText: { color: palette.muted, textAlign: "center", fontSize: 10, paddingBottom: 4 },
   signOutText: { color: palette.ink, fontSize: 12, fontWeight: "900" },
 });
