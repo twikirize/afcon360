@@ -11,7 +11,8 @@ import Constants from "expo-constants";
 import * as Updates from "expo-updates";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
-import { AppScreen, PageHeader, Panel, SectionTitle, ServiceTile, StatusPill, ActionButton, palette } from "@afcon360/mobile-ui";
+import { PageHeader, Panel, SectionTitle, ServiceTile, StatusPill, ActionButton, palette } from "@afcon360/mobile-ui";
+import { UserAppScreen } from "../../src/components/UserAppScreen";
 import { useAuth } from "../../src/auth/AuthProvider";
 import { SERVER_SELECTION_ENABLED } from "../../src/services/api";
 
@@ -227,7 +228,7 @@ export default function Account() {
     try { await Share.share({ message: message + " " + url, url }); }
     catch { Alert.alert("Share unavailable", "Copy this link: " + url); }
   };
-  return <AppScreen>
+  return <UserAppScreen>
     <PageHeader eyebrow="Account" title="Your AFCON360 identity." description="Your account, roles and verification state are owned by AFCON360 identity services." />
     <Panel>
       <StatusPill>Signed in securely</StatusPill>
@@ -243,5 +244,5 @@ export default function Account() {
       <ActionButton label="Sign out" onPress={() => Alert.alert("Sign out", "Sign out of AFCON360 on this device?", [{ text: "Cancel", style: "cancel" }, { text: "Sign out", onPress: () => { void signOut(); } }])} />
     </Panel>
     <Text style={{ color: palette.muted, fontSize: 12 }}>Privacy and support: pamoja.space/support</Text>
-  </AppScreen>;
+  </UserAppScreen>;
 }
