@@ -45,7 +45,7 @@ jobs:
         working-directory: mobile
         run: pnpm install --no-frozen-lockfile
 
-      - name: Fetch EAS build metadata and available diagnostics
+      - name: Fetch EAS build metadata and download worker logs
         working-directory: mobile/apps/driver
         shell: bash
         run: |
@@ -66,20 +66,50 @@ jobs:
             buildProfile: build.buildProfile,
             appVersion: build.appVersion,
             appBuildVersion: build.appBuildVersion,
+            sdkVersion: build.sdkVersion,
             runtimeVersion: build.runtimeVersion,
             createdAt: build.createdAt,
+            updatedAt: build.updatedAt,
             completedAt: build.completedAt,
+            metrics: build.metrics ?? null,
             error: build.error ?? null,
             errors: build.errors ?? null,
-            buildError: build.buildError ?? null,
             artifacts: build.artifacts ? {
               hasApplicationArchive: Boolean(build.artifacts.applicationArchiveUrl),
               hasBuildArtifacts: Boolean(build.artifacts.buildArtifactsUrl),
               hasXcodeLogs: Boolean(build.artifacts.xcodeBuildLogsUrl)
-            } : null
+            } : null,
+            logFileCount: Array.isArray(build.logFiles) ? build.logFiles.length : 0
           };
           process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+          fs.writeFileSync(
+            process.argv[2] + ".logs",
+            (build.logFiles || []).join("\n") + ((build.logFiles || []).length ? "\n" : "")
+          );
           NODE
+
+          LOG_INDEX="$RUNNER_TEMP/driver-build-view.json.logs"
+          if [ ! -s "$LOG_INDEX" ]; then
+            echo "::warning::EAS did not return build worker log URLs."
+          else
+            mkdir -p "$RUNNER_TEMP/driver-worker-logs"
+            index=0
+            while IFS= read -r log_url; do
+              [ -n "$log_url" ] || continue
+              index=$((index + 1))
+              log_file="$RUNNER_TEMP/driver-worker-logs/worker-$index.log"
+              echo "Downloading EAS worker log $index"
+              if curl --fail --silent --show-error --location "$log_url" --output "$log_file"; then
+                echo "Downloaded worker log $index ($(wc -c < "$log_file") bytes)."
+                echo "Relevant diagnostic lines from worker log $index:"
+                grep -inE 'error|failed|failure|exception|gradle|credential|hook|unsupported|denied|not found|timeout' "$log_file" | tail -n 160 || true
+                echo "Final lines from worker log $index:"
+                tail -n 100 "$log_file"
+              else
+                echo "::warning::Could not download worker log $index."
+              fi
+            done < "$LOG_INDEX"
+          fi
 
           set +e
           npx --yes eas-cli@latest build:download \
