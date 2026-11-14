@@ -25,7 +25,6 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-variables.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/theme-components.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/global/workspace-context-switcher.css') }}">
-
   
   <!-- Theme System - Proper Cascade Order -->
   <!-- 1. Global Theme (Foundation) -->
@@ -307,12 +306,6 @@
 
     <nav class="main-nav desktop-nav" aria-label="Main menu">
       <ul class="menu">
-        {% if current_user.is_authenticated %}
-          {% from "components/workspace_context_switcher.html" import render_workspace_context_switcher with context %}
-          <li class="menu-item workspace-context-switcher-desktop">
-            {{ render_workspace_context_switcher('desktop') }}
-          </li>
-        {% endif %}
         <li class="menu-item"><a href="{{ url_for('index') }}">Home</a></li>
 
         <li class="menu-item has-dropdown">
@@ -504,7 +497,7 @@
                        {% elif current_user.has_global_role('accommodation_admin') %}{% if module_enabled('accommodation') %}{{ url_for('accommodation.admin_dashboard') }}{% else %}{{ url_for('admin.super_dashboard') }}{% endif %}
                         {% elif current_user.has_global_role('tourism_admin') %}{{ links.tourism_home if links.tourism_home != '#' else url_for('admin.super_dashboard') }}
                           {% else %}{{ url_for('user.dashboard') }}{% endif %}"
-                   class="nav-dashboard-link">
+                 class="nav-dashboard-link">
                 <i class="bi bi-speedometer2 me-1"></i>Dashboard
               </a>
             </li>
@@ -535,20 +528,44 @@
                   </span>
                 </li>
                 <li><hr class="drop-divider"></li>
-                {# ── Global Role Switching ── #}
-                {% set user_roles = current_user.roles|list %}
-                {% if user_roles|length > 1 or active_global_role %}
-                <li><span class="drop-header">Global Persona</span></li>
+                {# —— Global Role Switching —— #}
+                {% set global_roles = [] %}
+                {% for ur in current_user.roles %}
+                  {% if ur.role and ur.role.is_global %}
+                    {% set _ = global_roles.append(ur.role) %}
+                  {% endif %}
+                {% endfor %}
+                {% if global_roles|length > 0 %}
+                <li><span class="drop-header">Global Roles</span></li>
+                {% for role in global_roles|sort(attribute='level') %}
                 <li>
-                  <a class="drop-item" href="{{ url_for('auth.switch_role') }}" style="color: var(--brand-primary); font-weight: 500;">
-                    <i class="fas fa-exchange-alt me-2"></i>
-                    {% if active_global_role %}
-                      <span class="badge bg-primary me-1">{{ active_global_role|title }}</span> Mode
-                    {% else %}
-                      Switch Active Role
-                    {% endif %}
-                  </a>
+                  <form method="POST" action="{{ url_for('auth.switch_context') }}">
+                    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+                    <input type="hidden" name="type" value="personal">
+                    <input type="hidden" name="role" value="{{ role.name }}">
+                    <button type="submit" class="drop-item drop-item--btn {% if active_global_role == role.name %}is-current{% endif %}" style="width:100%;text-align:left;background:none;border:none;padding:0.5rem 0.75rem;">
+                      <span class="d-flex align-items-center justify-content-between w-100">
+                        <span><i class="fas fa-user-shield me-2"></i>{{ role.name|title }}</span>
+                        {% if active_global_role == role.name %}
+                          <span class="badge bg-success">Active</span>
+                        {% endif %}
+                      </span>
+                    </button>
+                  </form>
                 </li>
+                {% endfor %}
+                {% if active_global_role %}
+                <li>
+                  <form method="POST" action="{{ url_for('auth.switch_context') }}">
+                    <input type="hidden" name="csrf_token" value="{{ raw_csrf_token }}">
+                    <input type="hidden" name="type" value="personal">
+                    <input type="hidden" name="role" value="user">
+                    <button type="submit" class="drop-item drop-item--btn" style="width:100%;text-align:left;background:none;border:none;padding:0.5rem 0.75rem;">
+                      <span><i class="fas fa-user me-2"></i>All Roles (Reset)</span>
+                    </button>
+                  </form>
+                </li>
+                {% endif %}
                 <li><hr class="drop-divider"></li>
                 {% endif %}
                 {% include 'components/account_dropdown_contexts.html' %}
@@ -597,10 +614,6 @@
       <button class="drawer-close" id="drawerClose" aria-label="Close menu">&#10005;</button>
     </div>
     <nav class="drawer-nav">
-      {% if current_user.is_authenticated %}
-        {% from "components/workspace_context_switcher.html" import render_workspace_context_switcher with context %}
-        {{ render_workspace_context_switcher('drawer') }}
-      {% endif %}
       <a class="drawer-link" href="{{ url_for('index') }}">🏠 Home</a>
 
       <div class="drawer-accordion">
@@ -777,7 +790,7 @@
           <h2>Support</h2>
           <a href="{{ url_for('public_pages.faqs') }}">FAQs</a>
           <a href="{{ url_for('public_app_download') }}">Download App</a>
-          <a href="{{ url_for('public_pages.refunds_and_cancellations') }}">Refunds &amp; Cancellations</a>
+          <a href="{{ url_for('public_pages.refunds_and_cancellations') }}">Refunds & Cancellations</a>
         </section>
         <section class="footer-link-group">
           <h2>Legal</h2>
@@ -825,6 +838,13 @@
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
             return new bootstrap.Tooltip(tooltipTriggerEl);
         });
+    });
+    // Prevent back/forward cache (bfcache) from showing stale authenticated pages after logout
+    window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+            // Page was restored from bfcache - force reload to get fresh auth state
+            window.location.reload();
+        }
     });
   </script>
 
