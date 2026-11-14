@@ -101,16 +101,21 @@ jobs:
 
             USER_PROJECT_INFO="$(
               cd "$TMP_ROOT/user"
-              npx --yes eas-cli@latest project:info 2>&1
+              NO_COLOR=1 npx --yes eas-cli@latest project:info 2>&1
             )"
-            EAS_OWNER="$(
+            USER_PROJECT_INFO_CLEAN="$(
               printf '%s\n' "$USER_PROJECT_INFO" |
-                sed -nE 's/^fullName[[:space:]]+@([^/]+)\/.*/\1/p' |
-                head -n 1
+                sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g'
             )"
-            test -n "$EAS_OWNER" || {
+            EAS_FULL_NAME="$(
+              printf '%s\n' "$USER_PROJECT_INFO_CLEAN" |
+                awk '$1 == "fullName" { print $2; exit }'
+            )"
+            EAS_OWNER="${EAS_FULL_NAME#@}"
+            EAS_OWNER="${EAS_OWNER%%/*}"
+            test -n "$EAS_OWNER" && test "$EAS_OWNER" != "$EAS_FULL_NAME" || {
               echo "::error::Could not resolve the Expo account owner from the existing User EAS project."
-              printf '%s\n' "$USER_PROJECT_INFO"
+              printf '%s\n' "$USER_PROJECT_INFO_CLEAN"
               exit 1
             }
 
