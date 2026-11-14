@@ -36,6 +36,8 @@ const nativeInternalRoutes = [
   ["apps/user/app/(service)/ride.tsx", "export default function RideScreen()"],
   ["apps/user/app/(service)/ride-status/[reference].tsx", "export default function RideStatusScreen()"],
   ["apps/user/app/(service)/delete-account.tsx", "export default function DeleteAccountScreen()"],
+  ["apps/user/app/(tabs)/account.tsx", 'router.push("/(service)/settings" as never)'],
+  ["apps/user/app/(service)/settings.tsx", "export default function UserAppSettings()"],
 ];
 
 const nativeResetRoutes = [
@@ -91,6 +93,15 @@ for (const [relative, visibleLabel] of requiredWebsiteHandoffLabels) {
   if (!source.includes(visibleLabel)) {
     throw new Error(`External website handoff must be visibly labelled: ${relative} — expected ${visibleLabel}`);
   }
+}
+
+const userAccountSource = fs.readFileSync(path.join(root, "apps/user/app/(tabs)/account.tsx"), "utf8");
+const userSettingsSource = fs.readFileSync(path.join(root, "apps/user/app/(service)/settings.tsx"), "utf8");
+if (userAccountSource.includes("AppUpdateControls") || userAccountSource.includes("Check for updates")) {
+  throw new Error("App version and update controls belong in User Settings, not the Account page.");
+}
+if (!userSettingsSource.includes("<SectionTitle>Version & updates</SectionTitle>") || !userSettingsSource.includes("<AppUpdateControls />")) {
+  throw new Error("User Settings must contain the Version & updates section and app update controls.");
 }
 
 function walk(directory) {
