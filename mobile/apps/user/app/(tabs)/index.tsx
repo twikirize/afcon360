@@ -20,13 +20,14 @@ import { getSelectedApiBaseUrl } from "../../src/services/api";
 
 const SITE = "https://www.pamoja.space";
 const PAGE_SIZE = 10;
-const BRAND_DARK = "#173D28";
-const BRAND_GREEN = "#28633C";
+const BRAND_DARK = "#173D28"; // Retained for the website's event-poster and partner-banner treatment.
+const BRAND_PRIMARY = "#0E4CCD"; // Matches the rendered User dashboard accent in dashboard.css.
 const BRAND_GOLD = "#FFCC00";
-const INK = "#17261D";
-const MUTED = "#6D7B73";
-const BORDER = "#E2E9E3";
-const CANVAS = "#F4F7F4";
+const PALE_BLUE = "#DBEAFE";
+const INK = "#1A1A1A";
+const MUTED = "#6C757D";
+const BORDER = "#E9ECEF";
+const CANVAS = "#F2F4F2";
 const WHITE = "#FFFFFF";
 
 type FeedMetadata = {
@@ -450,17 +451,14 @@ export default function UserHome() {
   const listHeader = (
     <View style={styles.pageContent}>
       <View style={styles.hero}>
-        <View style={styles.heroGlowLarge} />
-        <View style={styles.heroGlowSmall} />
         <View style={styles.heroTopLine}>
           <Text style={styles.heroEyebrow}>PAMOJA · AFCON360</Text>
           <View style={styles.heroLivePill}><View style={styles.heroLiveDot} /><Text style={styles.heroLiveText}>EAST AFRICA & BEYOND</Text></View>
         </View>
-        <Text style={styles.heroTitle}>Welcome to <Text style={styles.heroTitleGold}>Pamoja</Text></Text>
-        <Text style={styles.heroSubtitle}>
-          Your gateway to matches, travel, tickets, and experiences across Africa and beyond.
+        <Text style={styles.heroTitle}>
+          Welcome back, <Text style={styles.heroTitleGold}>{user?.display_name || "Pamoja"}</Text>
         </Text>
-        {user?.display_name ? <Text style={styles.heroGreeting}>Good to see you, {user.display_name}.</Text> : null}
+        <Text style={styles.heroSubtitle}>Your AFCON 360 overview for today.</Text>
         <View style={styles.heroActions}>
           <Pressable accessibilityRole="button" onPress={() => openService("events")} style={styles.heroPrimaryButton}>
             <Text style={styles.heroPrimaryText}>Explore events</Text>
@@ -507,7 +505,7 @@ export default function UserHome() {
             onSubmitEditing={submitSearch}
             returnKeyType="search"
             placeholder="Search events, football, music, culture…"
-            placeholderTextColor="#89958D"
+            placeholderTextColor="#6C757D"
             style={styles.searchInput}
             accessibilityLabel="Search events and experiences"
           />
@@ -530,7 +528,7 @@ export default function UserHome() {
 
       <View style={styles.quickActionsGrid}>
         <Pressable onPress={() => openService("rides")} style={styles.quickAction}>
-          <View style={[styles.quickActionIcon, { backgroundColor: "#E8F2EA" }]}><Text style={styles.quickActionEmoji}>🚘</Text></View>
+          <View style={[styles.quickActionIcon, { backgroundColor: PALE_BLUE }]}><Text style={styles.quickActionEmoji}>🚘</Text></View>
           <Text style={styles.quickActionTitle}>Book a ride</Text>
           <Text style={styles.quickActionSub}>Move around</Text>
         </Pressable>
@@ -540,7 +538,7 @@ export default function UserHome() {
           <Text style={styles.quickActionSub}>Places to rest</Text>
         </Pressable>
         <Pressable onPress={() => openService("events")} style={styles.quickAction}>
-          <View style={[styles.quickActionIcon, { backgroundColor: "#E8EEF9" }]}><Text style={styles.quickActionEmoji}>🎟️</Text></View>
+          <View style={[styles.quickActionIcon, { backgroundColor: PALE_BLUE }]}><Text style={styles.quickActionEmoji}>🎟️</Text></View>
           <Text style={styles.quickActionTitle}>Discover events</Text>
           <Text style={styles.quickActionSub}>Moments that matter</Text>
         </Pressable>
@@ -591,7 +589,7 @@ export default function UserHome() {
   const listFooter = (
     <View style={styles.listFooter}>
       {loadingMore ? (
-        <View style={styles.loadingMore}><ActivityIndicator color={BRAND_GREEN} /><Text style={styles.loadingMoreText}>Loading more from Pamoja…</Text></View>
+        <View style={styles.loadingMore}><ActivityIndicator color={BRAND_PRIMARY} /><Text style={styles.loadingMoreText}>Loading more from Pamoja…</Text></View>
       ) : null}
       {!hasMore && feedItems.length > 0 ? <Text style={styles.feedEndText}>You’re all caught up.</Text> : null}
       <View style={styles.hostBanner}>
@@ -617,7 +615,7 @@ export default function UserHome() {
         ListEmptyComponent={
           loading ? (
             <View style={styles.feedEmpty}>
-              <ActivityIndicator color={BRAND_GREEN} />
+              <ActivityIndicator color={BRAND_PRIMARY} />
               <Text style={styles.feedEmptyText}>Loading the latest from Pamoja…</Text>
             </View>
           ) : feedError ? (
@@ -636,7 +634,7 @@ export default function UserHome() {
             </View>
           )
         }
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BRAND_GREEN} colors={[BRAND_GREEN]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BRAND_PRIMARY} colors={[BRAND_PRIMARY]} />}
         onEndReached={onLoadMore}
         onEndReachedThreshold={0.35}
         contentContainerStyle={styles.listContent}
@@ -660,71 +658,50 @@ const styles = StyleSheet.create({
   listContent: { paddingBottom: 28 },
   pageContent: { paddingBottom: 4, gap: 20 },
   hero: {
-    backgroundColor: BRAND_DARK,
+    backgroundColor: WHITE,
     paddingHorizontal: 20,
-    paddingTop: 22,
-    paddingBottom: 18,
-    overflow: "hidden",
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    paddingTop: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
   },
-  heroGlowLarge: {
-    position: "absolute",
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    backgroundColor: "rgba(105,153,91,0.18)",
-    right: -105,
-    top: -115,
-  },
-  heroGlowSmall: {
-    position: "absolute",
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    borderWidth: 1,
-    borderColor: "rgba(255,204,0,0.28)",
-    right: 20,
-    top: 20,
-  },
-  heroTopLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 22 },
-  heroEyebrow: { color: "rgba(255,255,255,0.76)", fontSize: 10, fontWeight: "900", letterSpacing: 1.6 },
-  heroLivePill: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.24)", borderRadius: 99, paddingHorizontal: 9, paddingVertical: 6 },
+  heroTopLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  heroEyebrow: { color: MUTED, fontSize: 10, fontWeight: "800", letterSpacing: 1.4 },
+  heroLivePill: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderColor: BORDER, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 6, backgroundColor: "#F8F9FA" },
   heroLiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: BRAND_GOLD },
-  heroLiveText: { color: "rgba(255,255,255,0.8)", fontSize: 8, fontWeight: "800", letterSpacing: 0.8 },
-  heroTitle: { color: WHITE, fontSize: 31, fontWeight: "900", letterSpacing: -1.1, lineHeight: 38 },
-  heroTitleGold: { color: BRAND_GOLD },
-  heroSubtitle: { color: "rgba(255,255,255,0.88)", fontSize: 14, lineHeight: 21, marginTop: 8, maxWidth: 340 },
-  heroGreeting: { color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: "600", marginTop: 9 },
-  heroActions: { flexDirection: "row", gap: 10, marginTop: 19, marginBottom: 16 },
-  heroPrimaryButton: { minHeight: 46, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, backgroundColor: BRAND_GOLD, borderRadius: 13 },
-  heroPrimaryText: { color: "#16351F", fontSize: 13, fontWeight: "900" },
-  heroPrimaryArrow: { color: "#16351F", fontSize: 22, lineHeight: 24, fontWeight: "700" },
-  heroSecondaryButton: { minHeight: 46, paddingHorizontal: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.10)", borderWidth: 1, borderColor: "rgba(255,255,255,0.38)", borderRadius: 13 },
-  heroSecondaryText: { color: WHITE, fontSize: 13, fontWeight: "800" },
-  serviceChipsFloat: { marginTop: -21, paddingHorizontal: 18, zIndex: 3, elevation: 3, marginBottom: -4 },
+  heroLiveText: { color: MUTED, fontSize: 8, fontWeight: "800", letterSpacing: 0.7 },
+  heroTitle: { color: INK, fontSize: 27, fontWeight: "800", letterSpacing: -0.6, lineHeight: 34 },
+  heroTitleGold: { color: BRAND_PRIMARY },
+  heroSubtitle: { color: MUTED, fontSize: 13, lineHeight: 20, marginTop: 4, maxWidth: 340 },
+  heroActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14, marginBottom: 0 },
+  heroPrimaryButton: { minHeight: 44, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, backgroundColor: BRAND_PRIMARY, borderRadius: 9 },
+  heroPrimaryText: { color: WHITE, fontSize: 13, fontWeight: "800" },
+  heroPrimaryArrow: { color: WHITE, fontSize: 22, lineHeight: 24, fontWeight: "700" },
+  heroSecondaryButton: { minHeight: 44, paddingHorizontal: 15, alignItems: "center", justifyContent: "center", backgroundColor: "#F8F9FA", borderWidth: 1, borderColor: BORDER, borderRadius: 9 },
+  heroSecondaryText: { color: INK, fontSize: 13, fontWeight: "700" },
+  serviceChipsFloat: { marginTop: 0, paddingHorizontal: 18, zIndex: 1, elevation: 0, marginBottom: 0 },
   serviceChips: { gap: 8, paddingRight: 18, paddingVertical: 2 },
-  serviceChip: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 13, borderRadius: 99, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, shadowColor: "#173D28", shadowOpacity: 0.08, shadowRadius: 7, shadowOffset: { width: 0, height: 3 } },
-  serviceChipActive: { backgroundColor: BRAND_GOLD, borderColor: BRAND_GOLD },
+  serviceChip: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 13, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE },
+  serviceChipActive: { backgroundColor: BRAND_PRIMARY, borderColor: BRAND_PRIMARY },
   serviceChipIcon: { fontSize: 14 },
-  serviceChipText: { color: BRAND_DARK, fontSize: 11, fontWeight: "800" },
-  serviceChipTextActive: { color: BRAND_DARK },
-  searchPanel: { marginHorizontal: 16, marginTop: 10, padding: 15, backgroundColor: WHITE, borderRadius: 18, borderWidth: 1, borderColor: BORDER, shadowColor: "#173D28", shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2, gap: 12 },
+  serviceChipText: { color: INK, fontSize: 11, fontWeight: "700" },
+  serviceChipTextActive: { color: WHITE },
+  searchPanel: { marginHorizontal: 16, marginTop: 10, padding: 16, backgroundColor: WHITE, borderRadius: 16, borderWidth: 1, borderColor: BORDER, shadowColor: "#000000", shadowOpacity: 0.035, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1, gap: 12 },
   searchHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   searchTitle: { color: INK, fontSize: 15, fontWeight: "900" },
   searchSubtitle: { color: MUTED, fontSize: 11, marginTop: 3 },
-  searchIcon: { color: BRAND_GREEN, fontSize: 28, fontWeight: "700" },
+  searchIcon: { color: BRAND_PRIMARY, fontSize: 28, fontWeight: "700" },
   searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  searchInput: { flex: 1, minHeight: 46, borderWidth: 1, borderColor: BORDER, backgroundColor: "#FAFCFA", borderRadius: 12, paddingHorizontal: 12, color: INK, fontSize: 13 },
-  searchButton: { minHeight: 46, paddingHorizontal: 14, borderRadius: 12, backgroundColor: BRAND_GREEN, alignItems: "center", justifyContent: "center" },
+  searchInput: { flex: 1, minHeight: 46, borderWidth: 1, borderColor: BORDER, backgroundColor: "#F8F9FA", borderRadius: 12, paddingHorizontal: 12, color: INK, fontSize: 13 },
+  searchButton: { minHeight: 46, paddingHorizontal: 14, borderRadius: 12, backgroundColor: BRAND_PRIMARY, alignItems: "center", justifyContent: "center" },
   searchButtonText: { color: WHITE, fontSize: 12, fontWeight: "900" },
   trendingSection: { paddingHorizontal: 18, gap: 9 },
   trendingLabel: { color: MUTED, fontSize: 10, fontWeight: "900", letterSpacing: 1 },
   trendingChips: { gap: 7, paddingRight: 16 },
-  trendingChip: { borderRadius: 99, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#E9F0E9", borderWidth: 1, borderColor: "#D9E5D9" },
-  trendingChipText: { color: BRAND_DARK, fontSize: 11, fontWeight: "800" },
+  trendingChip: { borderRadius: 9, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: PALE_BLUE, borderWidth: 1, borderColor: "#BFDBFE" },
+  trendingChipText: { color: BRAND_PRIMARY, fontSize: 11, fontWeight: "700" },
   quickActionsGrid: { paddingHorizontal: 16, flexDirection: "row", flexWrap: "wrap", gap: 9 },
-  quickAction: { width: "48%", flexGrow: 1, minHeight: 105, borderRadius: 16, padding: 12, backgroundColor: WHITE, borderWidth: 1, borderColor: BORDER, gap: 4 },
+  quickAction: { width: "48%", flexGrow: 1, minHeight: 105, borderRadius: 12, padding: 14, backgroundColor: WHITE, borderWidth: 1, borderColor: BORDER, gap: 4 },
   quickActionIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 3 },
   quickActionEmoji: { fontSize: 18 },
   quickActionTitle: { color: INK, fontSize: 12, fontWeight: "900" },
@@ -732,9 +709,9 @@ const styles = StyleSheet.create({
   sectionBlock: { gap: 11 },
   sectionHeading: { paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   sectionHeadingCopy: { flex: 1, gap: 3 },
-  sectionTitle: { color: INK, fontSize: 17, fontWeight: "900", letterSpacing: -0.25 },
+  sectionTitle: { color: INK, fontSize: 17, fontWeight: "800", letterSpacing: -0.25 },
   sectionSubtitle: { color: MUTED, fontSize: 11, lineHeight: 16 },
-  sectionAction: { color: BRAND_GREEN, fontSize: 11, fontWeight: "900" },
+  sectionAction: { color: BRAND_PRIMARY, fontSize: 11, fontWeight: "900" },
   eventRail: { gap: 11, paddingHorizontal: 16, paddingRight: 22 },
   eventCard: { width: 275, height: 182, borderRadius: 17, overflow: "hidden", backgroundColor: BRAND_DARK, justifyContent: "flex-end" },
   eventCardCompact: { width: 252, height: 158 },
@@ -750,31 +727,31 @@ const styles = StyleSheet.create({
   eventTitle: { color: WHITE, fontSize: 15, lineHeight: 19, fontWeight: "900" },
   eventMeta: { color: "rgba(255,255,255,0.82)", fontSize: 10, fontWeight: "600" },
   eventAction: { color: BRAND_GOLD, fontSize: 10, fontWeight: "900", marginTop: 3 },
-  sectionEmpty: { marginHorizontal: 16, padding: 16, borderRadius: 15, backgroundColor: WHITE, borderWidth: 1, borderColor: BORDER, gap: 5 },
-  sectionEmptyCompact: { marginHorizontal: 16, padding: 14, borderRadius: 15, backgroundColor: WHITE, borderWidth: 1, borderColor: BORDER, gap: 5 },
+  sectionEmpty: { marginHorizontal: 16, padding: 16, borderRadius: 12, backgroundColor: WHITE, borderWidth: 1, borderColor: BORDER, gap: 5 },
+  sectionEmptyCompact: { marginHorizontal: 16, padding: 14, borderRadius: 12, backgroundColor: WHITE, borderWidth: 1, borderColor: BORDER, gap: 5 },
   sectionEmptyIcon: { fontSize: 20 },
   sectionEmptyTitle: { color: INK, fontSize: 12, fontWeight: "900" },
   sectionEmptyText: { color: MUTED, fontSize: 11, lineHeight: 16 },
   feedSectionHeading: { paddingTop: 5, gap: 8 },
   feedLiveLabel: { paddingHorizontal: 18, flexDirection: "row", alignItems: "center", gap: 6 },
-  feedLiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#2D9A61" },
-  feedLiveText: { color: BRAND_GREEN, fontSize: 9, fontWeight: "900", letterSpacing: 0.8 },
-  feedCard: { marginHorizontal: 16, marginBottom: 11, padding: 14, borderWidth: 1, borderColor: BORDER, borderRadius: 17, backgroundColor: WHITE, gap: 9 },
+  feedLiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: BRAND_PRIMARY },
+  feedLiveText: { color: BRAND_PRIMARY, fontSize: 9, fontWeight: "900", letterSpacing: 0.8 },
+  feedCard: { marginHorizontal: 16, marginBottom: 11, padding: 16, borderWidth: 1, borderColor: BORDER, borderRadius: 16, backgroundColor: WHITE, gap: 9, shadowColor: "#000000", shadowOpacity: 0.025, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   pinnedTag: { alignSelf: "flex-start", color: "#795E16", fontSize: 9, fontWeight: "900", backgroundColor: "#FFF4D5", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 99 },
   feedCardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
-  feedTypeIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#EDF4EE", alignItems: "center", justifyContent: "center" },
+  feedTypeIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#DBEAFE", alignItems: "center", justifyContent: "center" },
   feedTypeIconText: { fontSize: 18 },
   feedAuthorCopy: { flex: 1, gap: 2 },
   feedAuthor: { color: INK, fontSize: 12, fontWeight: "900" },
   feedSource: { color: MUTED, fontSize: 9, fontWeight: "700", textTransform: "capitalize" },
   sponsoredTag: { color: "#88651A", backgroundColor: "#FFF3D5", fontSize: 9, fontWeight: "900", paddingHorizontal: 8, paddingVertical: 5, borderRadius: 99, overflow: "hidden" },
   feedTitle: { color: INK, fontSize: 14, lineHeight: 19, fontWeight: "900" },
-  feedBody: { color: "#506057", fontSize: 12, lineHeight: 18 },
-  feedImage: { width: "100%", height: 190, borderRadius: 12, backgroundColor: "#E8EEE9" },
+  feedBody: { color: "#495057", fontSize: 12, lineHeight: 18 },
+  feedImage: { width: "100%", height: 190, borderRadius: 12, backgroundColor: "#E9ECEF" },
   feedExtras: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  feedExtra: { color: "#596A60", backgroundColor: "#F2F6F2", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 9, fontWeight: "700", overflow: "hidden" },
+  feedExtra: { color: "#495057", backgroundColor: "#F8F9FA", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 9, fontWeight: "700", overflow: "hidden" },
   feedLink: { alignSelf: "flex-start", paddingVertical: 3 },
-  feedLinkText: { color: BRAND_GREEN, fontSize: 11, fontWeight: "900" },
+  feedLinkText: { color: BRAND_PRIMARY, fontSize: 11, fontWeight: "900" },
   feedEmpty: { alignItems: "center", paddingHorizontal: 28, paddingVertical: 25, gap: 8 },
   feedEmptyIcon: { fontSize: 28 },
   feedEmptyTitle: { color: INK, fontSize: 14, fontWeight: "900", textAlign: "center" },

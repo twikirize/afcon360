@@ -5,16 +5,17 @@ import { palette } from "@afcon360/mobile-ui";
 import { ActivityIndicator, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../src/auth/AuthProvider";
+const USER_PRIMARY = "#0E4CCD";
 const symbols: Record<string, string> = { index: "⌂", explore: "◇", activity: "↗", wallet: "◈", account: "○" };
 export default function UserTabs() {
   const insets = useSafeAreaInsets();
   const { user, loading, restoreError, retryRestoreSession } = useAuth();
-  if (loading) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: palette.canvas }}><ActivityIndicator color={palette.green} /></View>;
-  if (restoreError) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: palette.canvas }}><Text style={{ color: palette.ink, textAlign: "center", lineHeight: 22 }}>{restoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retryRestoreSession()} style={{ marginTop: 16, padding: 14, backgroundColor: palette.green, borderRadius: 10 }}><Text style={{ color: "#FFFFFF", fontWeight: "800" }}>Retry saved session</Text></Pressable></View>;
+  if (loading) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: palette.canvas }}><ActivityIndicator color={USER_PRIMARY} /></View>;
+  if (restoreError) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: palette.canvas }}><Text style={{ color: palette.ink, textAlign: "center", lineHeight: 22 }}>{restoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retryRestoreSession()} style={{ marginTop: 16, padding: 14, backgroundColor: USER_PRIMARY, borderRadius: 10 }}><Text style={{ color: "#FFFFFF", fontWeight: "800" }}>Retry saved session</Text></Pressable></View>;
   if (!user) return <Redirect href="/login" />;
   return <Tabs screenOptions={({ route }) => ({
     headerShown: false,
-    tabBarActiveTintColor: palette.green,
+    tabBarActiveTintColor: USER_PRIMARY,
     tabBarInactiveTintColor: palette.muted,
     tabBarLabelStyle: { fontSize: 10, fontWeight: "700" },
     // Keep the custom 66dp tab content above Android's system navigation
