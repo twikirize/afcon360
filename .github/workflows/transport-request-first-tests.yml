@@ -79,6 +79,7 @@ on:
       - "app/models/system_config.py"
       - "env.example"
       - "templates/auth/**"
+      - "templates/kyc/**"
       - "app/auth/routes.py"
       - "app/auth/services.py"
       - "app/identity/models/user.py"
@@ -312,6 +313,7 @@ jobs:
               "auth/mfa_setup.html",
               "auth/mfa_status.html",
               "auth/verify_phone.html",
+              "kyc/upgrade.html",
               "auth/verify_options.html",
               "auth/verify_otp.html",
               "transport/admin/dashboard.html",
@@ -375,6 +377,7 @@ jobs:
             echo "Running only the recorded failing tests."
             mapfile -t TARGETS < tests/ci/failed_test_targets.txt
             TARGETS+=(
+              tests/test_kyc_upgrade_display_contract.py
               tests/test_celery_small_batch_contracts.py
               tests/test_phone_verification.py
               tests/test_backup_offsite.py

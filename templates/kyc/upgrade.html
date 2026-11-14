@@ -34,12 +34,6 @@
         <div class="upgrade-card__header">
           <span class="tier-label">{{ upgrade.name }} (Tier {{ upgrade.tier }})</span>
         </div>
-        <div class="upgrade-card__limits">
-          <div class="limit-row">
-            <span>Daily limit</span>
-            <strong>UGX {{ "{:,.0f}".format(upgrade.limits) if upgrade.limits else 'Custom' }}</strong>
-          </div>
-        </div>
         <p class="upgrade-card__desc">{{ upgrade.description }}</p>
         <ul class="req-list">
           {% for doc in upgrade.required_documents %}
@@ -101,9 +95,6 @@
   .upgrade-card { border: 1.5px solid #c8d9cf; border-radius: 8px; padding: 1.5rem; background: #fff; }
   .upgrade-card__header { margin-bottom: 1rem; }
   .tier-label { font-weight: 700; font-size: 1rem; color: #1a3a2a; }
-  .upgrade-card__limits { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem; background: #f4f7f5; padding: 0.75rem 1rem; border-radius: 5px; }
-  .limit-row { display: flex; flex-direction: column; font-size: 0.82rem; color: #556b5e; }
-  .limit-row strong { color: #0f1f14; font-size: 1rem; }
   .upgrade-card__desc { font-size: 0.88rem; color: #4a6b58; margin: 0 0 0.75rem; }
   .req-list { list-style: none; padding: 0; margin: 0 0 1.25rem; font-size: 0.85rem; color: #2d7a4f; }
   .req-list li { padding: 0.2rem 0; }
