@@ -28,7 +28,7 @@ export class ApiError extends Error {
 
 function isPrivateIpv4(hostname: string): boolean {
   const parts = hostname.split(".");
-  if (parts.length !== 4 || !parts.every(part => /^\\d{1,3}$/.test(part))) return false;
+  if (parts.length !== 4 || !parts.every(part => /^\d{1,3}$/.test(part))) return false;
   const octets = parts.map(Number);
   if (octets.some(value => value < 0 || value > 255)) return false;
   const [first, second] = octets;
@@ -48,7 +48,7 @@ function resolveBaseUrl(override?: string, allowPrivateHttp = false): string {
   if (parsed.protocol !== "https:" && !localHttpAllowed) {
     throw new Error("The mobile API must use HTTPS, except for an approved local preview server.");
   }
-  return parsed.toString().replace(/\\/+$/, "");
+  return parsed.toString().replace(/\/+$/, "");
 }
 
 export class ApiClient {
