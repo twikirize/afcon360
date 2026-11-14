@@ -1,0 +1,44 @@
+name: Git archive helper validation
+
+on:
+  pull_request:
+    paths:
+      - "scripts/git/afcon360-git-archive.ps1"
+      - "docs/git/AFCON360_GIT_ARCHIVE_AND_RECOVERY.md"
+      - ".github/workflows/git-archive-helper-validation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/git/afcon360-git-archive.ps1"
+      - "docs/git/AFCON360_GIT_ARCHIVE_AND_RECOVERY.md"
+      - ".github/workflows/git-archive-helper-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-syntax:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Parse archive and recovery helper
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          $path = "scripts/git/afcon360-git-archive.ps1"
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              $path,
+              [ref]$tokens,
+              [ref]$parseErrors
+          )
+
+          if ($parseErrors.Count -gt 0) {
+              $parseErrors | Format-List *
+              exit 1
+          }
+
+          Write-Host "PowerShell syntax is valid: $path"
