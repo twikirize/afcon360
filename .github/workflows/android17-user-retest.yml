@@ -17,7 +17,7 @@ on:
       source_run_id:
         description: "Completed CI run containing the verified User APK artifact"
         required: true
-        default: "43440541728"
+        default: "43496414536"
         type: string
 
 permissions:
@@ -93,15 +93,15 @@ jobs:
         run: |
           echo "User source revision: $(git rev-parse HEAD)"
           echo "Backend API revision: $(git -C backend-main rev-parse HEAD)"
-          echo "Source APK run: ${{ inputs.source_run_id || '43440541728' }}"
+          echo "Source APK run: ${{ inputs.source_run_id || '43496414536' }}"
 
       - name: Download the exact verified User APK from the successful source run
         uses: actions/download-artifact@v8
         with:
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.source_run_id || '43440541728' }}
+          run-id: ${{ inputs.source_run_id || '43496414536' }}
           github-token: ${{ github.token }}
-          artifact-ids: "14046062129"
+          name: "afcon360-user-platform-test-apk"
           path: mobile-e2e-artifact
 
       - name: Verify User APK provenance and SHA-256
