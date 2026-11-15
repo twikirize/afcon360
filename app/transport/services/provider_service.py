@@ -159,12 +159,17 @@ class ProviderService:
             decisions = getattr(canonical, "kyc_decisions", {}) or {}
             kyc_status = decisions.get("verification_status", "pending")
             kyc_tier = int(getattr(canonical, "kyc_tier", 0) or 0)
+            profile_status = str(
+                getattr(canonical, "verification_status", "pending") or "pending"
+            ).lower()
 
             return {
                 "user_id": user_id,
-                # Tier 2 is the canonical verified-NIN + phone capability used
-                # by Driver Go-Live. Profile completion alone is not verification.
-                "identity_verified": kyc_tier >= 2,
+                # A separately verified canonical profile or verified Tier-2
+                # KYC satisfies the identity check. Profile completion alone
+                # does not; the Tier-2 Go-Live capability is still enforced
+                # independently by can_go_live().
+                "identity_verified": profile_status == "verified" or kyc_tier >= 2,
                 "email_verified": bool(getattr(user, "email_verified", False) or getattr(user, "is_verified", False)),
                 "phone_verified": bool(getattr(user, "phone_verified", False)),
                 "kyc_status": kyc_status,
