@@ -90,8 +90,12 @@ jobs:
           import gzip
           import lzma
           import pathlib
+          import snappy
           import sys
           import zlib
+          import brotli
+          import zstandard
+          import lz4.frame
 
           path = pathlib.Path(sys.argv[1])
           raw = path.read_bytes()
@@ -99,8 +103,13 @@ jobs:
           decoders = (
               ("gzip", gzip.decompress),
               ("zlib", zlib.decompress),
+              ("raw-deflate", lambda value: zlib.decompress(value, -15)),
               ("bz2", bz2.decompress),
               ("lzma", lzma.decompress),
+              ("brotli", brotli.decompress),
+              ("zstd", zstandard.ZstdDecompressor().decompress),
+              ("lz4-frame", lz4.frame.decompress),
+              ("snappy", snappy.decompress),
           )
           decoded = None
           for name, decoder in decoders:
@@ -108,11 +117,11 @@ jobs:
                   decoded = decoder(raw)
                   print(f"Decoded EAS log using {name}: {len(decoded)} bytes")
                   break
-              except Exception:
-                  pass
+              except Exception as exc:
+                  print(f"{name}: {type(exc).__name__}")
           if decoded is None:
               decoded = raw
-              print("No standard Python compression format matched; showing raw UTF-8 where possible.")
+              print("No available decoder matched the EAS log format.")
           text = decoded.decode("utf-8-sig", errors="replace")
           lines = text.splitlines()
           print("---- EAS Build complete hook log (last 250 lines) ----")
