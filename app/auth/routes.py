@@ -453,7 +453,10 @@ def register():
                 password=password,
                 email=email,
                 security_question=security_question,
-                security_answer=security_answer
+                security_answer=security_answer,
+                phone=phone,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get("User-Agent", ""),
             )
         except ValueError as exc:
             db.session.rollback()
@@ -709,7 +712,11 @@ def verify_phone():
     from app.profile.models import get_profile_by_user
 
     profile = get_profile_by_user(current_user.public_id)
-    phone_number = getattr(profile, 'phone_number', '') if profile else ''
+    phone_number = (
+        (getattr(profile, "phone_number", "") if profile else "")
+        or getattr(current_user, "phone", "")
+        or ""
+    )
     user_email = getattr(current_user, 'email', '') or ''
 
     if request.method == "GET":
@@ -732,8 +739,6 @@ def verify_phone():
         )
 
     code = request.form.get("code", "").strip()
-    full_name = request.form.get("full_name", "").strip()
-
     if not code or len(code) != 6 or not code.isdigit():
         flash("Please enter a valid 6-digit code.", "danger")
         return redirect(request.referrer or url_for("index"))
@@ -749,10 +754,6 @@ def verify_phone():
     )
 
     if success:
-        # Save full name to canonical profile (shared with KYC)
-        if full_name and profile:
-            profile.full_name = full_name
-            db.session.commit()
         if AuthConfiguration._sms_delivery_enabled():
             flash("Phone number verified successfully!", "success")
         else:
@@ -791,7 +792,7 @@ def resend_verification():
     else:
         flash("Unable to resend verification email at this time. Please contact support.", "danger")
 
-    return redirect(request.referrer or url_for("profile.account_overview"))
+    return redirect(url_for("auth.verify_email_code"))
 
 @auth_bp.route("/deactivate-account", endpoint="deactivate_account")
 @login_required
@@ -827,11 +828,14 @@ def send_phone_verification():
 
     if not phone_number:
         profile = get_profile_by_user(current_user.public_id)
-        if profile and profile.phone_number:
-            phone_number = profile.phone_number
-        else:
+        phone_number = (
+            (getattr(profile, "phone_number", "") if profile else "")
+            or getattr(current_user, "phone", "")
+            or ""
+        )
+        if not phone_number:
             flash("Please provide a phone number.", "danger")
-            return redirect(request.referrer or url_for("auth.verify_phone"))
+            return redirect(url_for("auth.verify_phone"))
 
     user_email = getattr(current_user, 'email', '') or ''
     if not user_email:
