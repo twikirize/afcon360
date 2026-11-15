@@ -17,6 +17,8 @@ const approved = [
   ["apps/driver/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', 'label="Privacy notice (website)"'],
   ["apps/user/app/(tabs)/wallet.tsx", "Linking.openURL(checkout.toString())", 'label={busy ? "Starting secure checkout…" : "Continue to Flutterwave"}'],
   ["apps/user/app/(tabs)/wallet.tsx", "Linking.openURL(checkout.toString())", 'label="Open Flutterwave checkout"'],
+  ["apps/user/app/(service)/settings.tsx", "Linking.openURL(officialDownloadsUrl)", 'nativeUpdateActionLabel = "Open official downloads"'],
+  ["apps/user/app/(service)/settings.tsx", "WebBrowser.openBrowserAsync(officialDownloadsUrl)", 'nativeUpdateActionLabel = "Open official downloads"'],
 ];
 
 const nativeInternalRoutes = [
