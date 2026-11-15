@@ -6,7 +6,7 @@
   <div class="ob-wizard-inner">
     <a href="{{ url_for('onboarding.choose') }}" class="ob-back">← Back to paths</a>
     <h2 class="ob-wizard-title">Driver — Licence</h2>
-    <p class="ob-wizard-sub">Upload your driving licence details.</p>
+    <p class="ob-wizard-sub">Enter your driving licence number and expiry date. The licence document upload is optional if you are submitting it later for review.</p>
     {% include 'onboarding/_progress_bar.html' %}
     <form method="POST" action="{{ url_for('onboarding.driver_onboarding', step=2) }}" class="ob-form" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -16,7 +16,7 @@
       </div>
       <div class="ob-field">
         <label>Licence Expiry</label>
-        <input type="date" name="licence_expiry">
+        <input type="date" name="licence_expiry" required>
       </div>
       <div class="ob-field">
         <label>Licence Class</label>
