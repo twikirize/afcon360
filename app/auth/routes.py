@@ -740,6 +740,8 @@ def verify_phone():
                 getattr(current_user, "email_verified", False)
                 or getattr(current_user, "is_verified", False)
             ),
+            phone_verified=bool(getattr(current_user, "phone_verified", False)),
+            phone_code_sent=bool(session.get("phone_verification_code_sent")),
             phone_verification_transport=phone_verification_transport,
         )
 
@@ -767,7 +769,8 @@ def verify_phone():
                 "This interim step does not independently confirm access to the phone handset.",
                 "success",
             )
-        session['phone_verified'] = True
+        session["phone_verified"] = True
+        session.pop("phone_verification_code_sent", None)
         return redirect(url_for("profile.account_overview"))
     else:
         flash(f"Invalid or expired verification code: {message}", "danger")
@@ -860,6 +863,7 @@ def send_phone_verification():
     )
 
     if result.get('success'):
+        session["phone_verification_code_sent"] = True
         if result.get('transport') == 'sms':
             flash(f"Verification code sent by SMS to {phone_number}.", "success")
         else:
