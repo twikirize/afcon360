@@ -244,9 +244,20 @@ def _make_canonical_profile(db_session, user, **overrides):
         profile = UserProfile(**fields)
         db_session.add(profile)
     else:
+        original_status = getattr(
+            profile.verification_status,
+            "value",
+            profile.verification_status,
+        )
+        # Test setup must respect the production immutability firewall: put
+        # the profile into a non-verified state while preparing fixture facts,
+        # flush those facts, then restore the original verified state.
+        profile.verification_status = "pending"
         for field_name, value in fields.items():
             if field_name != "user_id":
                 setattr(profile, field_name, value)
+        db_session.flush()
+        profile.verification_status = original_status
     db_session.flush()
     return profile
 
