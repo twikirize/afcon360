@@ -49,15 +49,15 @@
           </td>
           <td>
             {% if v.owner_type == 'driver' %}
-              <span class="badge badge-blue">Driver: {{ v.owner_id }}</span>
+              <span class="badge badge-blue">Driver owner</span>
             {% elif v.owner_type == 'organisation' %}
-              <span class="badge badge-purple">Org: {{ v.owner_id }}</span>
+              <span class="badge badge-purple">Organisation owner</span>
             {% else %}
-              <span class="badge badge-gray">User: {{ v.owner_id }}</span>
+              <span class="badge badge-gray">User owner</span>
             {% endif %}
           </td>
           <td>
-            <a href="{{ url_for('transport_admin.admin_vehicle_detail', vehicle_id=v.id) }}"
+            <a href="{{ url_for('transport_admin.admin_vehicle_detail', vehicle_ref=(v.qr_code_hash or v.license_plate)) }}"
                class="btn btn-secondary btn-sm">
               <i class="fa-solid fa-sliders"></i> Manage
             </a>
