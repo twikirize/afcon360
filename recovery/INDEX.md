@@ -18,19 +18,24 @@ This is an isolated review workspace, not a deployment branch. Do not merge it w
 |---|---|---|
 | Currency/home-currency work, tip `ef89674e` | `audit/recovery-currency-home-currency-20261116` | 64 commits ahead / 459 behind current main; 24 changed paths. Preserve as a source branch; port only reviewed pieces onto current main |
 | Driver heatmap work, tip `9ec1b6c8` | `audit/recovery-driver-heatmap-20261116` | 2 commits ahead / 392 behind current main; 5 changed paths. Preserve as a source branch; review route/API compatibility before porting |
+| Local EAS source snapshots | `audit/recovery-local-files-20261116` | Uploaded and verified. Commit `3acec884` adds root EAS JSON, User mobile pnpm lockfile and README; follow-up `5bb5ec8b` only normalizes README text |
 | Recovery index | `audit/recovery-review-20261116` | Review ledger and constraints |
 
-The latest versions of the currency service files and heatmap JS/CSS/template/routes were checked for common high-confidence token/private-key signatures; none were found in those current file contents. This is not a full historical secret scan.
+The currency service files and heatmap JS/CSS/template/routes were checked for common high-confidence token/private-key signatures; none were found in those current file contents. The two EAS files were checked locally against common credential signatures, and the uploaded files were verified remotely. These checks are not a guarantee that no secret is present in older history.
+
+## EAS and native workspace assessment
+
+- Uploaded `root-eas.json` is a 344-byte source snapshot. It defines `cli.version >= 27.10.0`, with development/preview/production profiles. Keep it as an audit artifact; do not copy it into the backend root or replace the native app configs without confirming the project root used by build commands.
+- The existing User and Driver app configs on `feat/native-user-app-integration-20261108` each define app-specific `development`, `preview`, `production`, and `apk-share` profiles. They are the relevant current app-level configuration candidates.
+- The uploaded `mobile/pnpm-lock.yaml` is lockfile v9 and contains workspace importers for `apps/user`, `apps/driver`, and packages. The current integration branch contains `mobile/pnpm-workspace.yaml` and app manifests but no root `mobile/pnpm-lock.yaml`; the uploaded lockfile therefore remains a source candidate to validate, not yet the authoritative workspace lock.
 
 ## Local material still to transfer from Windows
 
 | Source | Current finding | Action |
 |---|---|---|
-| Detached User EAS commit `f0db1e3b` | 0 commits ahead / 125 behind `feat/native-user-app-integration-20261108`; its app-level User and Driver EAS configs already exist on the remote branch | Do not upload this stale commit as another branch |
-| Detached EAS worktree's `mobile/pnpm-lock.yaml` | Untracked locally; not present on the remote User integration branch | Compare with workspace manifests, then snapshot to this recovery workspace |
-| Root `eas.json` | Untracked locally | Inspect contents and confirm placement; snapshot only after checking it contains no credentials |
-| `integration/backend-main-consolidation-20261112` | Local tip `f095be91` is not currently available through GitHub API; branch is locally ahead by one and behind by six | Push to a separate audit ref after local secret screening |
-| Other dangling commits | Several WIP, Celery, notifications, native events and infrastructure commits identified | Preserve useful commits with audit refs/tags after content and secret screening |
+| Detached User EAS commit `f0db1e3b` | 0 commits ahead / 125 behind `feat/native-user-app-integration-20261108`; the User server-settings change is already behind current User integration work | Do not upload this stale commit as another branch |
+| `integration/backend-main-consolidation-20261112` | Local tip `f095be91` is not currently available through GitHub API; branch is locally ahead by one and behind by six | Inspect the one local-only commit's changed paths and scan before pushing to a dedicated audit ref |
+| Other dangling commits | WIP, Celery, notifications, native events and infrastructure commits identified | Preserve useful commits with audit refs/tags after content and secret screening |
 
 ## Constraints
 
