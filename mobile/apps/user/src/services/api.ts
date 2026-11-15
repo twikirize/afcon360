@@ -44,6 +44,9 @@ export const authClient = new MobileAuthClient({
   client: "user",
   store,
   deviceName: "AFCON360 User",
+  // Use the Expo app configuration as the deterministic fallback on cold
+  // starts. A saved preview server selection still takes precedence.
+  baseUrl: DEFAULT_API_BASE_URL,
   getBaseUrl: async () => (await SecureStore.getItemAsync(API_BASE_URL_KEY)) ?? undefined,
   allowPrivateHttp: SERVER_SELECTION_ENABLED
 });
