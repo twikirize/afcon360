@@ -591,7 +591,7 @@ export default function UserHome() {
             onPress={() => openWebsite("/events/create")}
             style={styles.organizerPromoButton}
           >
-            <Text style={styles.organizerPromoButtonText}>Get started ↗</Text>
+            <Text style={styles.organizerPromoButtonText}>Host an event on website ↗</Text>
           </Pressable>
         </View>
 
