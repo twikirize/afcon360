@@ -1,0 +1,156 @@
+name: Build User preview APK locally
+
+on:
+  push:
+    branches:
+      - fix/user-release-engineering-20261115
+    paths:
+      - ".github/workflows/user-local-apk-fallback.yml"
+      - "mobile/apps/user/**"
+      - "mobile/packages/**"
+      - "mobile/pnpm-lock.yaml"
+      - "mobile/pnpm-workspace.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-user-preview-apk-local:
+    name: Build signed User APK on Linux runner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+      EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+      AFCON360_PREVIEW_BUILD: "true"
+      AFCON360_RELEASE_BUILD: "false"
+      EXPO_NO_TELEMETRY: "1"
+
+    steps:
+      - name: Check out validated User app source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 37, Build Tools 37 and NDK 27
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install "platforms;android-37" "build-tools;37.0.0" "ndk;27.1.12297006"
+          java -version
+          sdkmanager --list_installed | grep -E "platforms;android-37|build-tools;37.0.0|ndk;27.1.12297006"
+
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Validate User app configuration and dependencies
+        working-directory: mobile/apps/user
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo "::error::EXPO_TOKEN is not configured."; exit 1; }
+          [[ "${AFCON360_USER_EAS_PROJECT_ID:-}" =~ ^[0-9a-fA-F-]{36}$ ]] || { echo "::error::AFCON360_USER_EAS_PROJECT_ID is missing or invalid."; exit 1; }
+          pnpm --filter @afcon360/user-app typecheck
+          pnpm --filter @afcon360/user-app exec expo config --json > "$RUNNER_TEMP/afcon360-user-local-build-config.json"
+          node - "$RUNNER_TEMP/afcon360-user-local-build-config.json" <<'NODE'
+          const fs = require("node:fs");
+          const config = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const projectId = process.env.AFCON360_USER_EAS_PROJECT_ID;
+          const checks = {
+            package: config.android?.package === "space.pamoja.afcon360.user.preview",
+            liveApi: config.extra?.apiBaseUrl === "https://www.pamoja.space",
+            previewChannel: config.updates?.requestHeaders?.["expo-channel-name"] === "preview",
+            easProject: config.extra?.eas?.projectId === projectId,
+            updateUrl: config.updates?.url === "https://u.expo.dev/" + projectId
+          };
+          for (const name of Object.keys(checks)) console.log((checks[name] ? "PASS " : "FAIL ") + name);
+          if (Object.values(checks).some((passed) => !passed)) process.exit(1);
+          NODE
+
+      - name: Build signed APK locally with EAS-managed remote credentials
+        working-directory: mobile/apps/user
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest build \
+            --platform android \
+            --profile apk-share \
+            --local \
+            --non-interactive \
+            --freeze-credentials \
+            --verbose-logs \
+            --message "AFCON360 User preview APK local build ${GITHUB_SHA}" \
+            --output "$GITHUB_WORKSPACE/afcon360-user-preview.apk"
+          test -s "$GITHUB_WORKSPACE/afcon360-user-preview.apk"
+
+      - name: Verify package, SDK levels and signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          BUILD_TOOLS="$SDK_ROOT/build-tools/37.0.0"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/afcon360-user-preview.apk" | tee "$RUNNER_TEMP/afcon360-user-preview-signature.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/afcon360-user-preview.apk" > "$RUNNER_TEMP/afcon360-user-preview-badging.txt"
+          BADGING="$RUNNER_TEMP/afcon360-user-preview-badging.txt"
+          grep -F "package: name='space.pamoja.afcon360.user.preview'" "$BADGING"
+          grep -F "versionName='1.0.1'" "$BADGING"
+          VERSION_CODE="$(sed -n "s/^package:.*versionCode:'\\([^']*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
+          MINIMUM="$(sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
+          TARGET="$(sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
+          # Failed cloud attempts consumed version codes 2 and 3.
+          test -n "$VERSION_CODE" && test "$VERSION_CODE" -ge 4
+          test "$MINIMUM" = "24"
+          test -n "$TARGET" && test "$TARGET" -ge 36
+          CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/afcon360-user-preview-signature.txt" | head -n 1)"
+          test -n "$CERT_SHA256"
+          {
+            echo "package=space.pamoja.afcon360.user.preview"
+            echo "version_name=1.0.1"
+            echo "version_code=$VERSION_CODE"
+            echo "min_sdk=$MINIMUM"
+            echo "target_sdk=$TARGET"
+            echo "signing_certificate_sha256=$CERT_SHA256"
+            echo "api=https://www.pamoja.space"
+            echo "update_channel=preview"
+            echo "build_method=eas-local"
+          } > "$GITHUB_WORKSPACE/afcon360-user-preview-build-info.txt"
+          sha256sum "$GITHUB_WORKSPACE/afcon360-user-preview.apk" | tee "$GITHUB_WORKSPACE/afcon360-user-preview.apk.sha256"
+
+      - name: Upload signed User preview APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-preview-apk-local-${{ github.run_number }}
+          path: |
+            afcon360-user-preview.apk
+            afcon360-user-preview.apk.sha256
+            afcon360-user-preview-build-info.txt
+          if-no-files-found: error
+          retention-days: 30
