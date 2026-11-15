@@ -6,6 +6,7 @@ on:
       - fix/user-release-engineering-20261115
     paths:
       - ".github/workflows/user-local-apk-fallback.yml"
+      - ".easignore"
       - "mobile/apps/user/**"
       - "mobile/packages/**"
       - "mobile/pnpm-lock.yaml"
