@@ -261,9 +261,20 @@ def driver_onboarding(step: int = 1):
             return redirect(url_for("onboarding.driver_onboarding", step=2))
 
         elif step == 2:
+            licence_number = request.form.get("licence_number", "").strip()
+            licence_expiry = request.form.get("licence_expiry", "").strip()
+            if not licence_number or not licence_expiry:
+                flash("Enter your driving licence number and expiry date to continue.", "danger")
+                return redirect(url_for("onboarding.driver_onboarding", step=2))
+            try:
+                datetime.strptime(licence_expiry, "%Y-%m-%d")
+            except ValueError:
+                flash("Enter a valid driving licence expiry date.", "danger")
+                return redirect(url_for("onboarding.driver_onboarding", step=2))
+
             data["step2"] = {
-                "licence_number": request.form.get("licence_number", "").strip(),
-                "licence_expiry": request.form.get("licence_expiry"),
+                "licence_number": licence_number,
+                "licence_expiry": licence_expiry,
                 "licence_class": request.form.get("licence_class", "").strip(),
                 "licence_document_url": None,
             }
@@ -329,6 +340,15 @@ def driver_onboarding(step: int = 1):
                 if error_code == "PHONE_NOT_VERIFIED":
                     flash("Verify your saved phone number before continuing.", "warning")
                     return redirect(url_for("auth.verify_phone"))
+                if error_code == "AGE_NOT_AVAILABLE":
+                    flash(
+                        "Add your date of birth to your profile so we can confirm driver age eligibility.",
+                        "warning",
+                    )
+                    return redirect(url_for("profile.edit_profile"))
+                if error_code == "AGE_REQUIREMENT_NOT_MET":
+                    flash("You do not meet the minimum age requirement for driver registration.", "danger")
+                    return redirect(url_for("onboarding.choose"))
                 if error_code == "CRIMINAL_SCREENING_UNAVAILABLE":
                     flash(
                         "Driver registration is temporarily unavailable because required screening cannot be completed. Please contact support.",
@@ -365,6 +385,12 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
     # but must not write it. step1 data remains transport/session-only.
     step2 = data.get("step2", {})
     step3 = data.get("step3", {})
+    if not (step2.get("licence_number") or "").strip() or not step2.get("licence_expiry"):
+        raise ValueError("A driving licence number and expiry date are required.")
+    try:
+        licence_expiry = datetime.strptime(step2["licence_expiry"], "%Y-%m-%d")
+    except (TypeError, ValueError):
+        raise ValueError("Enter a valid driving licence expiry date.")
 
     # Operating country is a separate Transport declaration, never derived
     # from nationality. Current individual-driver launch markets are UG/KE/TZ.
@@ -410,11 +436,7 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
         driver = DriverProfile(
             user_id=user.id,  # internal FK - correct
             license_number=step2.get("licence_number", ""),  # Will be encrypted by model
-            license_expiry=(
-                datetime.strptime(step2["licence_expiry"], "%Y-%m-%d")
-                if step2.get("licence_expiry")
-                else None
-            ),
+            license_expiry=licence_expiry,
             verification_tier=VerificationTier.PENDING,
             compliance_status=ComplianceStatus.PENDING_REVIEW,
             is_online=False,
