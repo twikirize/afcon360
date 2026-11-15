@@ -1,0 +1,79 @@
+name: Diagnose User EAS APK build
+
+on:
+  push:
+    branches:
+      - fix/user-release-engineering-20261115
+    paths:
+      - ".github/workflows/user-eas-build-diagnostic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-failed-build:
+    name: Inspect previous EAS preview APK failure
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+      AFCON360_PREVIEW_BUILD: "true"
+      AFCON360_RELEASE_BUILD: "false"
+      EXPO_NO_TELEMETRY: "1"
+    steps:
+      - name: Check out release branch
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Read EAS failure metadata
+        working-directory: mobile/apps/user
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo "::error::EXPO_TOKEN is unavailable to this diagnostic workflow."; exit 1; }
+          test -n "${AFCON360_USER_EAS_PROJECT_ID:-}" || { echo "::error::AFCON360_USER_EAS_PROJECT_ID is unavailable."; exit 1; }
+          npx --yes eas-cli@latest build:view "a3d45d0f-f08e-4b89-b8ba-92902370edfa" --json > "$RUNNER_TEMP/afcon360-user-eas-failure.json"
+          node - "$RUNNER_TEMP/afcon360-user-eas-failure.json" <<'NODE'
+          const fs = require("node:fs");
+          const raw = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const build = raw.build || raw;
+          const summary = {
+            id: build.id,
+            status: build.status,
+            platform: build.platform,
+            buildProfile: build.buildProfile,
+            distribution: build.distribution,
+            appIdentifier: build.appIdentifier,
+            appVersion: build.appVersion,
+            appBuildVersion: build.appBuildVersion,
+            error: build.error || null,
+            logFiles: build.logFiles || [],
+            artifacts: {
+              buildUrlAvailable: Boolean(build.artifacts?.buildUrl),
+              buildArtifactsUrlAvailable: Boolean(build.artifacts?.buildArtifactsUrl)
+            },
+            createdAt: build.createdAt,
+            completedAt: build.completedAt
+          };
+          const output = JSON.stringify(summary, null, 2);
+          console.log(output);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "## EAS build failure details\n\n```json\n" + output + "\n```\n");
+          if (!summary.id || !summary.status) throw new Error("EAS did not return the expected build metadata.");
+          NODE
