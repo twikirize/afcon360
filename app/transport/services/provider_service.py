@@ -159,8 +159,9 @@ class ProviderService:
             decisions = getattr(canonical, "kyc_decisions", {}) or {}
             kyc_status = decisions.get("verification_status", "pending")
             kyc_tier = int(getattr(canonical, "kyc_tier", 0) or 0)
+            raw_profile_status = getattr(canonical, "verification_status", "pending")
             profile_status = str(
-                getattr(canonical, "verification_status", "pending") or "pending"
+                getattr(raw_profile_status, "value", raw_profile_status) or "pending"
             ).lower()
 
             return {
