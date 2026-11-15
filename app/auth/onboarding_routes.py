@@ -316,6 +316,25 @@ def driver_onboarding(step: int = 1):
                 return redirect(url_for("transport.driver_dashboard"))
             except Exception as e:
                 current_app.logger.error(f"Driver onboarding error: {e}")
+                error_code = getattr(e, "code", None)
+                if error_code == "IDENTITY_NOT_VERIFIED":
+                    flash(
+                        "Complete the driver identity verification requirements before submitting your driver profile.",
+                        "warning",
+                    )
+                    return redirect(url_for("kyc.upgrade", purpose="driver"))
+                if error_code == "EMAIL_NOT_VERIFIED":
+                    flash("Verify your account email before continuing.", "warning")
+                    return redirect(url_for("auth.verify_email_code"))
+                if error_code == "PHONE_NOT_VERIFIED":
+                    flash("Verify your saved phone number before continuing.", "warning")
+                    return redirect(url_for("auth.verify_phone"))
+                if error_code == "CRIMINAL_SCREENING_UNAVAILABLE":
+                    flash(
+                        "Driver registration is temporarily unavailable because required screening cannot be completed. Please contact support.",
+                        "danger",
+                    )
+                    return redirect(url_for("transport.driver_dashboard"))
                 flash("Something went wrong. Please try again.", "danger")
 
     from app.profile.models import get_profile_by_user
