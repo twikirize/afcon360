@@ -71,7 +71,7 @@ jobs:
           SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" --channel=3 --install "platforms;android-37" "build-tools;37.0.0" "ndk;27.1.12297006"
+          "$SDKMANAGER" --channel=3 --install "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006"
           "$SDKMANAGER" --list_installed | grep -E "platforms;android-37|build-tools;37.0.0|ndk;27.1.12297006"
 
       - name: Install workspace dependencies
