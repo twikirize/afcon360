@@ -32,8 +32,11 @@ jobs:
     name: Build and verify one complete User APK
     if: >-
       ${{
-        (github.event_name == 'workflow_dispatch' && inputs.build_apk == true) ||
-        (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-user-apk]'))
+        github.ref == 'refs/heads/feat/native-user-app-integration-20261108' &&
+        (
+          (github.event_name == 'workflow_dispatch' && inputs.build_apk == true) ||
+          (github.event_name == 'push' && contains(github.event.head_commit.message, '[build-user-apk]'))
+        )
       }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -82,8 +85,16 @@ jobs:
           const config = JSON.parse(
             fs.readFileSync(process.env.RUNNER_TEMP + "/user-preview-config.json", "utf8")
           );
+          const eas = JSON.parse(fs.readFileSync("apps/user/eas.json", "utf8"));
+          const profile = eas.build?.["apk-share"];
           const expectedProjectId = process.env.AFCON360_USER_EAS_PROJECT_ID;
           const checks = {
+            apkProfile: profile?.distribution === "internal" &&
+              profile?.android?.buildType === "apk" &&
+              profile?.channel === "preview",
+            remoteSigningAndVersioning: profile?.credentialsSource === "remote" &&
+              profile?.autoIncrement === true &&
+              profile?.environment === "preview",
             package: config.android?.package === "space.pamoja.afcon360.user.preview",
             version: config.version === "1.0.1",
             api: config.extra?.apiBaseUrl === "https://www.pamoja.space",
