@@ -85,6 +85,51 @@ def _make_role_user(app, label, role_name):
         return user.id
 
 
+def _driver_code(app, driver_id):
+    """Return a driver's public code for API/UI test requests."""
+    with app.app_context():
+        driver = db.session.get(DriverProfile, driver_id)
+        assert driver is not None
+        return driver.driver_code
+
+
+def _admin_override_url(app, driver_id):
+    return f"/api/transport/drivers/{_driver_code(app, driver_id)}/admin-online-override"
+
+
+def _admin_page_url(app, endpoint, **values):
+    from flask import url_for
+
+    with app.test_request_context():
+        return url_for(endpoint, **values)
+
+
+def _make_verified_registration_profile(app, user_id):
+    """Create the canonical verified identity required by driver registration."""
+    from datetime import date, datetime, timezone
+    from app.profile.models import UserProfile
+
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        assert user is not None
+        phone = f"+2567{uuid.uuid4().int % 10**8:08d}"
+        user.phone = phone
+        user.phone_verified = True
+        user.phone_verified_at = datetime.now(timezone.utc)
+        profile = UserProfile(
+            user_id=user.public_id,
+            full_name=f"Verified Driver {uuid.uuid4().hex[:8]}",
+            date_of_birth=date(1990, 1, 1),
+            nationality="UG",
+            email=user.email,
+            phone_number=phone,
+            verification_status="verified",
+        )
+        db.session.add(profile)
+        db.session.commit()
+        return profile.id
+
+
 # ============================================================================
 # T1: claim + release preserves flags
 # ============================================================================
@@ -310,11 +355,13 @@ def test_T7_register_driver_auto_approve_false_gives_F_F(app, monkeypatch):
     monkeypatch.setattr(
         SettingsService,
         "is_feature_enabled",
-        staticmethod(lambda key, default=False: False if key == "auto_approve_providers" else True),
+        staticmethod(lambda key, default=False: False if key in ("auto_approve_providers", "check_criminal_record") else True),
     )
 
     uid = uuid.uuid4().hex[:8]
     user_id = _create_user(app, f"drv_T7_{uid}")
+    from app.profile.models import UserProfile
+    profile_id = _make_verified_registration_profile(app, user_id)
     # register_driver carries @require_permission('provider:register');
     # log in as owner in a request context so only the pre-existing
     # idempotency-decorator behavior under test remains.
@@ -352,7 +399,7 @@ def test_T7_register_driver_auto_approve_false_gives_F_F(app, monkeypatch):
         )
         db.session.commit()
 
-    _delete(app, (DriverProfile, drv_id), (User, user_id))
+    _delete(app, (DriverProfile, drv_id), (UserProfile, profile_id), (User, user_id))
 
 
 # ============================================================================
@@ -363,11 +410,13 @@ def test_T8_register_driver_auto_approve_true_gives_T_F(app, monkeypatch):
     monkeypatch.setattr(
         SettingsService,
         "is_feature_enabled",
-        staticmethod(lambda key, default=False: True),
+        staticmethod(lambda key, default=False: False if key == "check_criminal_record" else True),
     )
 
     uid = uuid.uuid4().hex[:8]
     user_id = _create_user(app, f"drv_T8_{uid}")
+    from app.profile.models import UserProfile
+    profile_id = _make_verified_registration_profile(app, user_id)
     from app.identity.models.roles_permission import get_or_create_role
     from app.identity.models.user import UserRole
     with app.app_context():
@@ -398,7 +447,7 @@ def test_T8_register_driver_auto_approve_true_gives_T_F(app, monkeypatch):
         )
         db.session.commit()
 
-    _delete(app, (DriverProfile, drv_id), (User, user_id))
+    _delete(app, (DriverProfile, drv_id), (UserProfile, profile_id), (User, user_id))
 
 
 # ============================================================================
@@ -414,14 +463,25 @@ def test_T9_admin_enables_override_populates_metadata(app, admin_client):
         db.session.commit()
 
     resp = admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "test T9"},
     )
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["success"] is True
+    assert body["driver_code"] == _driver_code(app, drv_id)
+    assert "driver_id" not in body
+    assert "driver_id" not in body["data"]
+    assert "admin_online_override_by" not in body["data"]
     assert body["data"]["is_available"] is True
     assert body["data"]["is_online"] is False
+
+    # Numeric database IDs are not accepted as public API references.
+    numeric_id_response = admin_client.post(
+        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        json={"enabled": False, "reason": "numeric IDs must not resolve"},
+    )
+    assert numeric_id_response.status_code == 404
 
     with app.app_context():
         drv = db.session.get(DriverProfile, drv_id)
@@ -454,7 +514,7 @@ def test_T10_override_lets_driver_go_online(app, admin_client):
         db.session.commit()
 
     admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "T10"},
     )
 
@@ -493,11 +553,11 @@ def test_T11_disable_override_forces_offline_if_no_longer_eligible(app, admin_cl
         db.session.commit()
 
     admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "T11 on"},
     )
     resp = admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": False, "reason": "T11 off"},
     )
     assert resp.status_code == 200
@@ -526,7 +586,7 @@ def test_T12_override_on_suspended_driver_refused(app, admin_client):
         db.session.commit()
 
     resp = admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "T12"},
     )
     assert resp.status_code == 422
@@ -557,7 +617,7 @@ def test_T13_override_audit_persists(app, admin_client):
         db.session.commit()
 
     admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "T13"},
     )
 
@@ -591,7 +651,7 @@ def test_T14_override_requires_admin(app, client):
         _login_client(client, drv.user)
 
     resp = client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "should fail"},
     )
     # Web-style decorator redirects unauthorized API callers (302) instead
@@ -632,7 +692,7 @@ def test_T15_role_can_use_override(app, client, role_name):
         _login_client(client, role_user)
 
     resp = client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": f"T15 {role_name}"},
     )
     assert resp.status_code == 200, f"role {role_name} must be accepted"
@@ -648,4 +708,97 @@ def test_T15_role_can_use_override(app, client, role_name):
         (Vehicle, veh_id),
         (User, user_id),
         (User, role_user_id),
+    )
+
+
+
+# ============================================================================
+# T16: admin driver detail resolves by public driver code only
+# ============================================================================
+def test_T16_admin_driver_detail_uses_public_code(app, admin_client):
+    user_id, drv_id, veh_id, hist_id = _make_matchable_driver(app, "drv_T16")
+    driver_code = _driver_code(app, drv_id)
+
+    response = admin_client.get(
+        _admin_page_url(
+            app,
+            "transport_admin.admin_driver_detail",
+            driver_code=driver_code,
+        )
+    )
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert driver_code in html
+    assert "Driver ID" not in html
+    assert "User ID" not in html
+    assert f"/api/transport/drivers/{driver_code}/admin-online-override" in html
+    assert f"/api/transport/drivers/{drv_id}/admin-online-override" not in html
+
+    numeric_id_response = admin_client.get(
+        _admin_page_url(
+            app,
+            "transport_admin.admin_driver_detail",
+            driver_code=str(drv_id),
+        )
+    )
+    assert numeric_id_response.status_code == 404
+
+    _delete(
+        app,
+        (DriverVehicleHistory, hist_id),
+        (DriverProfile, drv_id),
+        (Vehicle, veh_id),
+        (User, user_id),
+    )
+
+
+# ============================================================================
+# T17: admin vehicle detail uses QR hash and legacy unique plate fallback
+# ============================================================================
+def test_T17_admin_vehicle_detail_uses_public_reference(app, admin_client):
+    user_id, drv_id, veh_id, hist_id = _make_matchable_driver(app, "drv_T17")
+
+    with app.app_context():
+        vehicle = db.session.get(Vehicle, veh_id)
+        qr_reference = vehicle.generate_qr_code()
+        license_plate = vehicle.license_plate
+        db.session.commit()
+
+    qr_response = admin_client.get(
+        _admin_page_url(
+            app,
+            "transport_admin.admin_vehicle_detail",
+            vehicle_ref=qr_reference,
+        )
+    )
+    assert qr_response.status_code == 200
+    qr_html = qr_response.get_data(as_text=True)
+    assert license_plate in qr_html
+    assert "Vehicle ID" not in qr_html
+    assert "Owner ID" not in qr_html
+
+    plate_response = admin_client.get(
+        _admin_page_url(
+            app,
+            "transport_admin.admin_vehicle_detail",
+            vehicle_ref=license_plate,
+        )
+    )
+    assert plate_response.status_code == 200
+
+    numeric_id_response = admin_client.get(
+        _admin_page_url(
+            app,
+            "transport_admin.admin_vehicle_detail",
+            vehicle_ref=str(veh_id),
+        )
+    )
+    assert numeric_id_response.status_code == 404
+
+    _delete(
+        app,
+        (DriverVehicleHistory, hist_id),
+        (DriverProfile, drv_id),
+        (Vehicle, veh_id),
+        (User, user_id),
     )
