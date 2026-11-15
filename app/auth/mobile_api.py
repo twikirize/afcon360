@@ -803,7 +803,7 @@ def mobile_logout():
 @mobile_api_bp.post("/auth/account-deletion")
 @_bearer_required()
 def mobile_account_deletion():
-    """In-app account deletion backed by the shared account-closure service."""
+    """In-app account closure backed by the shared account-closure service."""
     data = request.get_json(silent=True) or {}
     user = g._afcon360_mobile_auth_context["user"]
     try:
@@ -811,6 +811,7 @@ def mobile_account_deletion():
             AccountDeletionError,
             request_account_deletion,
         )
+        acknowledgements = data.get("acknowledgements")
         result = request_account_deletion(
             user=user,
             password=data.get("password"),
@@ -818,15 +819,17 @@ def mobile_account_deletion():
             mfa_code=str(data.get("mfa_code") or "").strip(),
             ip_address=request.remote_addr,
             user_agent=request.headers.get("User-Agent"),
+            acknowledgements=acknowledgements,
+            surface="mobile",
         )
     except AccountDeletionError as exc:
         return _error(exc.code, exc.message, exc.status_code)
     except Exception:
         db.session.rollback()
-        logger.exception("Native account deletion service failed unexpectedly")
+        logger.exception("Native account closure service failed unexpectedly")
         return _error(
             "account_deletion_failed",
-            "AFCON360 could not complete the account deletion request. Please contact support.",
+            "AFCON360 could not complete the account closure request. Please contact support.",
             503,
         )
     return jsonify({"success": True, "data": result}), 200
