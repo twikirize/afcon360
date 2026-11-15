@@ -2970,6 +2970,18 @@ def register_vehicle():
     """
     svc = get_provider_service()
     driver = svc.get_driver_profile(current_user.id)
+
+    # Driver-owned vehicles are a post-approval step. Do not send a pending
+    # driver through KYC upgrade just to discover they are not approved yet.
+    if driver:
+        status = getattr(driver.compliance_status, "value", driver.compliance_status)
+        if str(status).lower() != "approved":
+            flash(
+                "Your driver profile must be approved before you can register a vehicle.",
+                "info",
+            )
+            return redirect(url_for("transport.driver_dashboard"))
+
     required_tier = 2 if driver else 3
 
     from app.auth.kyc_compliance import calculate_kyc_tier
@@ -2986,15 +2998,6 @@ def register_vehicle():
                 purpose="driver" if driver else None,
             )
         )
-
-    if driver:
-        status = getattr(driver.compliance_status, "value", driver.compliance_status)
-        if str(status).lower() != "approved":
-            flash(
-                "Your driver profile must be approved before you can register a vehicle.",
-                "info",
-            )
-            return redirect(url_for("transport.driver_dashboard"))
 
     if request.method == "GET":
         return render_template(
