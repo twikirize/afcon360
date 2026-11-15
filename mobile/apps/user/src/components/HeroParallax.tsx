@@ -25,11 +25,13 @@ type HeroParallaxProps = {
 
 const styles = StyleSheet.create({
   hero: {
-    minHeight: 214,
-    borderRadius: 24,
-    padding: 18,
+    minHeight: 260,
+    borderRadius: 28,
+    padding: 22,
     overflow: 'hidden',
     backgroundColor: colors.brand.dark,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
     ...shadows.hero,
   },
   heroImage: {
@@ -45,7 +47,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(15,35,24,0.62)',
+    backgroundColor: 'rgba(15,35,24,0.68)',
   },
   orbLarge: {
     position: 'absolute',
@@ -128,10 +130,10 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.surface.white,
-    fontSize: 28,
-    lineHeight: 33,
+    fontSize: 32,
+    lineHeight: 38,
     fontWeight: '900',
-    letterSpacing: -0.7,
+    letterSpacing: -0.9,
   },
   titleGold: {
     color: colors.brand.gold,
@@ -139,15 +141,50 @@ const styles = StyleSheet.create({
   subtitle: {
     maxWidth: 280,
     color: 'rgba(255,255,255,0.80)',
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  featuredAction: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  featuredCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  featuredLabel: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.9,
+  },
+  featuredTitle: {
+    color: colors.surface.white,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '800',
+  },
+  featuredArrow: {
+    color: colors.brand.gold,
+    fontSize: 25,
+    lineHeight: 28,
+    fontWeight: '700',
   },
   cta: {
     alignSelf: 'flex-start',
-    minHeight: 38,
-    marginTop: 2,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+    minHeight: 44,
+    marginTop: 4,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     backgroundColor: colors.brand.gold,
     flexDirection: 'row',
     alignItems: 'center',
@@ -250,73 +287,52 @@ export const HeroParallax = ({
       )}
 
       <View style={styles.copy}>
+        <Animated.View style={badgeStyle}>
+          <View style={styles.eyebrowPill}>
+            <View style={styles.eyebrowDot} />
+            <Text style={styles.eyebrowText}>{'PAMOJA · EAST AFRICA & BEYOND'}</Text>
+          </View>
+        </Animated.View>
+
+        <Animated.Text style={[styles.title, titleStyle]}>
+          Your Africa.{'\n'}
+          <Text style={styles.titleGold}>Your journey.</Text>
+        </Animated.Text>
+
+        <Animated.Text style={[styles.subtitle, subtitleStyle]}>
+          {'Stays, rides, events, adventures and more — together on Pamoja.'}
+        </Animated.Text>
+
         {featured ? (
-          <>
-            <Animated.View style={[styles.tagRow, badgeStyle]}>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{feedTypeLabel(featured.type)}</Text>
+          <Pressable
+            accessibilityRole='button'
+            accessibilityLabel={'Open ' + (featured.title || 'featured highlight')}
+            onPress={onFeaturedPress}
+            style={({ pressed }) => [styles.featuredAction, pressed && styles.ctaPressed]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={styles.featuredCopy}>
+              <View style={styles.tagRow}>
+                <Text style={styles.featuredLabel}>{feedTypeLabel(featured.type)}</Text>
+                {isAd ? <Text style={styles.promoBadgeText}>SPONSORED</Text> : isPromo ? <Text style={styles.promoBadgeText}>PROMO</Text> : null}
               </View>
-              {isAd ? (
-                <View style={styles.promoBadge}>
-                  <Text style={styles.promoBadgeText}>SPONSORED</Text>
-                </View>
-              ) : isPromo ? (
-                <View style={styles.promoBadge}>
-                  <Text style={styles.promoBadgeText}>PROMO</Text>
-                </View>
-              ) : null}
-            </Animated.View>
-
-            <Animated.Text numberOfLines={2} style={[styles.title, titleStyle]}>
-              {featured.title || 'Discover more on Pamoja'}
-            </Animated.Text>
-
-            {featured.body ? (
-              <Animated.Text numberOfLines={2} style={[styles.subtitle, subtitleStyle]}>
-                {featured.body}
-              </Animated.Text>
-            ) : null}
-
-            <Pressable
-              accessibilityRole='button'
-              accessibilityLabel={'Open ' + (featured.title || 'featured offer')}
-              onPress={onFeaturedPress}
-              style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.ctaText}>View offer</Text>
-              <Text style={styles.ctaArrow}>{'\u203A'}</Text>
-            </Pressable>
-          </>
+              <Text numberOfLines={1} style={styles.featuredTitle}>
+                {featured.title || 'Discover more on Pamoja'}
+              </Text>
+            </View>
+            <Text style={styles.featuredArrow}>{'\u203A'}</Text>
+          </Pressable>
         ) : (
-          <>
-            <Animated.View style={badgeStyle}>
-              <View style={styles.eyebrowPill}>
-                <View style={styles.eyebrowDot} />
-                <Text style={styles.eyebrowText}>{'PAMOJA \u00B7 EAST AFRICA & BEYOND'}</Text>
-              </View>
-            </Animated.View>
-
-            <Animated.Text style={[styles.title, titleStyle]}>
-              Your Africa.{'\n'}
-              <Text style={styles.titleGold}>Your journey.</Text>
-            </Animated.Text>
-
-            <Animated.Text style={[styles.subtitle, subtitleStyle]}>
-              {'Stays, rides, events, adventures and more \u2014 together on Pamoja.'}
-            </Animated.Text>
-
-            <Pressable
-              accessibilityRole='button'
-              accessibilityLabel='Explore Pamoja services'
-              onPress={onExplore}
-              style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.ctaText}>Explore Pamoja</Text>
-              <Text style={styles.ctaArrow}>{'\u203A'}</Text>
-            </Pressable>
-          </>
+          <Pressable
+            accessibilityRole='button'
+            accessibilityLabel='Explore Pamoja services'
+            onPress={onExplore}
+            style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.ctaText}>Explore Pamoja</Text>
+            <Text style={styles.ctaArrow}>{'\u203A'}</Text>
+          </Pressable>
         )}
       </View>
     </View>
