@@ -104,6 +104,27 @@ def _admin_page_url(app, endpoint, **values):
         return url_for(endpoint, **values)
 
 
+def _make_verified_registration_profile(app, user_id):
+    """Create the canonical verified identity required by driver registration."""
+    from datetime import date
+    from app.profile.models import UserProfile
+
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        assert user is not None
+        profile = UserProfile(
+            user_id=user.public_id,
+            full_name=f"Verified Driver {uuid.uuid4().hex[:8]}",
+            date_of_birth=date(1990, 1, 1),
+            nationality="UG",
+            email=user.email,
+            verification_status="verified",
+        )
+        db.session.add(profile)
+        db.session.commit()
+        return profile.id
+
+
 # ============================================================================
 # T1: claim + release preserves flags
 # ============================================================================
@@ -329,11 +350,13 @@ def test_T7_register_driver_auto_approve_false_gives_F_F(app, monkeypatch):
     monkeypatch.setattr(
         SettingsService,
         "is_feature_enabled",
-        staticmethod(lambda key, default=False: False if key == "auto_approve_providers" else True),
+        staticmethod(lambda key, default=False: False if key == "auto_approve_providers" else default),
     )
 
     uid = uuid.uuid4().hex[:8]
     user_id = _create_user(app, f"drv_T7_{uid}")
+    from app.profile.models import UserProfile
+    profile_id = _make_verified_registration_profile(app, user_id)
     # register_driver carries @require_permission('provider:register');
     # log in as owner in a request context so only the pre-existing
     # idempotency-decorator behavior under test remains.
@@ -371,7 +394,7 @@ def test_T7_register_driver_auto_approve_false_gives_F_F(app, monkeypatch):
         )
         db.session.commit()
 
-    _delete(app, (DriverProfile, drv_id), (User, user_id))
+    _delete(app, (DriverProfile, drv_id), (UserProfile, profile_id), (User, user_id))
 
 
 # ============================================================================
@@ -382,11 +405,13 @@ def test_T8_register_driver_auto_approve_true_gives_T_F(app, monkeypatch):
     monkeypatch.setattr(
         SettingsService,
         "is_feature_enabled",
-        staticmethod(lambda key, default=False: True),
+        staticmethod(lambda key, default=False: True if key == "auto_approve_providers" else default),
     )
 
     uid = uuid.uuid4().hex[:8]
     user_id = _create_user(app, f"drv_T8_{uid}")
+    from app.profile.models import UserProfile
+    profile_id = _make_verified_registration_profile(app, user_id)
     from app.identity.models.roles_permission import get_or_create_role
     from app.identity.models.user import UserRole
     with app.app_context():
@@ -417,7 +442,7 @@ def test_T8_register_driver_auto_approve_true_gives_T_F(app, monkeypatch):
         )
         db.session.commit()
 
-    _delete(app, (DriverProfile, drv_id), (User, user_id))
+    _delete(app, (DriverProfile, drv_id), (UserProfile, profile_id), (User, user_id))
 
 
 # ============================================================================
