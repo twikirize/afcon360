@@ -118,9 +118,9 @@ Run from a clean backend checkout with the project's configured environment and 
    - `tests/test_registration_phone_persistence.py`
    - `tests/test_stage4b5_transport.py`
    - `tests/test_phase_c1_vehicle_ownership.py::TestDriverVehicleRegistrationAssignment`
-7. Confirm by tests that signup phone remains unverified until phone OTP success; email resend leads to the email code form; phone OTP is distinct; NIN is not re-entered when canonical; missing canonical NIN is collected once; the driver upgrade screen contains no Tier 3–5 offers; and non-driver vehicle registration still has Tier-3 enforcement.
-8. Confirm the mock identity branch is absent and a missing criminal-screening authority fails closed when the feature is enabled.
-9. Confirm no migration, schema, wallet, mobile or shared-fixture diff exists.
+8. Confirm by tests that signup phone remains unverified until phone OTP success; email resend leads to the email code form; phone OTP is distinct; NIN is not re-entered when canonical; missing canonical NIN is collected once; the driver upgrade screen contains no Tier 3–5 offers; and non-driver vehicle registration still has Tier-3 enforcement.
+9. Confirm the mock identity branch is absent and a missing criminal-screening authority fails closed when the feature is enabled.
+10. Confirm no migration, schema, wallet, mobile or shared-fixture diff exists.
 
 Passing the automated commands is necessary but not sufficient. The owner must verify the final branch on a clean local checkout against the isolated test database and confirm PASS before evidence/record creation or register updates.
 
