@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
   avatarText: { width: 31, height: 31, borderRadius: 16, backgroundColor: BLUE_SOFT, color: BLUE, textAlign: "center", textAlignVertical: "center", overflow: "hidden", fontSize: 13, fontWeight: "900" },
   chevron: { color: MUTED, fontSize: 14 },
   modalRoot: { flex: 1, flexDirection: "row", backgroundColor: "rgba(18, 27, 37, 0.30)" },
-  scrim: { ...StyleSheet.absoluteFillObject },
+  scrim: { ...StyleSheet.absoluteFill },
   drawer: {
     width: 306,
     maxWidth: "88%",
