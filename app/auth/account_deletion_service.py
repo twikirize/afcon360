@@ -1044,8 +1044,20 @@ def _anonymize_supporting_profiles(user, now: datetime) -> dict:
 
         posts = Post.query.filter(Post.author_id == user.id).all()
         for post in posts:
+            # Archive the record for aggregate/history integrity, but remove
+            # the content and author link that could identify the closed user.
             post.status = "archived"
+            post.visibility = "private"
+            post.body = ""
             post.media_url = None
+            post.link_url = None
+            post.link_title = None
+            post.source_module = None
+            post.source_item_id = None
+            post.source_item_type = None
+            post.is_pinned = False
+            post.author_id = None
+            post.author_type = "system"
         summary["posts_archived"] = len(posts)
     except Exception as exc:
         logger.exception("Required account-closure data operation failed")
@@ -1080,6 +1092,27 @@ def _anonymize_supporting_profiles(user, now: datetime) -> dict:
                 media.deleted_at = now
                 media.is_public = False
                 media.caption = None
+                # Remove the durable object locator and file-derived metadata
+                # after storage deletion succeeds. A soft-deleted row must not
+                # retain URLs, filenames or content hashes that identify the
+                # closed user's personal media.
+                media.storage_key = None
+                media.video_url = None
+                media.original_filename = None
+                media.file_size = None
+                media.mime_type = None
+                media.sha256_hash = None
+                media.perceptual_hash = None
+                media.thumbnail_url = None
+                media.urls = {}
+                media.upload_session_id = None
+                media.processing_metadata = None
+                media.error_message = None
+                media.failed_at = None
+                media.cleaned_at = now
+                media.uploaded_by = None
+                media.entity_id = "anonymized"
+                media.module = "anonymized"
                 deleted += 1
         summary["media_deleted"] = deleted
     except Exception as exc:
