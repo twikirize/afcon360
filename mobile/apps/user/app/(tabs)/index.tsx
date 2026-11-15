@@ -579,6 +579,22 @@ export default function UserHome() {
           </View>
         ) : null}
 
+        <View style={styles.organizerPromo}>
+          <View style={styles.organizerPromoIcon}><Text style={styles.organizerPromoIconText}>🎤</Text></View>
+          <View style={styles.organizerPromoCopy}>
+            <Text style={styles.organizerPromoTitle}>Want to host your own event?</Text>
+            <Text style={styles.organizerPromoDescription}>Become an organiser, publish events and manage your audience on Pamoja.</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Become an event organiser on Pamoja website"
+            onPress={() => openWebsite("/events/create")}
+            style={styles.organizerPromoButton}
+          >
+            <Text style={styles.organizerPromoButtonText}>Get started ↗</Text>
+          </Pressable>
+        </View>
+
         <View style={styles.dashboardStatsRow}>
           <View style={styles.dashboardStatCard}>
             <Text style={styles.dashboardStatValue}>{registrationsLoading ? "—" : upcomingRegistrations.length}</Text>
@@ -968,15 +984,6 @@ export default function UserHome() {
         <View style={styles.loadingMore}><ActivityIndicator color={BRAND_GREEN} /><Text style={styles.loadingMoreText}>Loading more from Pamoja…</Text></View>
       ) : null}
       {!hasMore && feedItems.length > 0 ? <Text style={styles.feedEndText}>You’re all caught up.</Text> : null}
-      <View style={styles.hostBanner}>
-        <View style={styles.hostBannerDecoration}><Text style={styles.hostBannerStadium}>🏟️</Text></View>
-        <Text style={styles.hostBannerEyebrow}>FOR ORGANISERS & COMMUNITIES</Text>
-        <Text style={styles.hostBannerTitle}>Host Your Event on <Text style={styles.hostBannerGold}>Pamoja</Text></Text>
-        <Text style={styles.hostBannerSubtitle}>Reach new audiences, manage registrations and promote your event.</Text>
-        <Pressable accessibilityRole="button" onPress={() => openWebsite("/events/create")} style={styles.hostBannerButton}>
-          <Text style={styles.hostBannerButtonText}>Host an event on website ›</Text>
-        </Pressable>
-      </View>
     </View>
   );
 
@@ -1041,6 +1048,14 @@ const styles = StyleSheet.create({
   myEventsSubtitle: { color: MUTED, fontSize: 10, lineHeight: 15 },
   browseEventsButton: { minHeight: 38, justifyContent: "center", paddingHorizontal: 12, borderRadius: 10, backgroundColor: BRAND_GREEN },
   browseEventsButtonText: { color: WHITE, fontSize: 10, fontWeight: "900" },
+  organizerPromo: { flexDirection: "row", alignItems: "center", gap: 9, padding: 11, borderRadius: 14, borderWidth: 1, borderColor: "#DCE9DE", backgroundColor: "#EEF5EF" },
+  organizerPromoIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "#DCEBDD" },
+  organizerPromoIconText: { fontSize: 17 },
+  organizerPromoCopy: { flex: 1, minWidth: 0, gap: 2 },
+  organizerPromoTitle: { color: BRAND_DARK, fontSize: 10, fontWeight: "900" },
+  organizerPromoDescription: { color: MUTED, fontSize: 8, lineHeight: 12 },
+  organizerPromoButton: { minHeight: 34, alignItems: "center", justifyContent: "center", paddingHorizontal: 9, borderRadius: 9, backgroundColor: BRAND_GREEN },
+  organizerPromoButtonText: { color: WHITE, fontSize: 8, fontWeight: "900" },
   dashboardStatsRow: { flexDirection: "row", gap: 8 },
   dashboardStatCard: { flex: 1, minHeight: 66, justifyContent: "center", alignItems: "center", gap: 4, borderRadius: 13, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE },
   dashboardStatValue: { color: BRAND_DARK, fontSize: 19, fontWeight: "900" },
