@@ -1,0 +1,123 @@
+name: User PackageInstaller UI compatibility matrix
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - feat/native-user-app-integration-20261108
+    paths:
+      - ".github/workflows/user-packageinstaller-ui-matrix.yml"
+      - "mobile/scripts/verify-user-packageinstaller-ui.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-test-apks:
+    name: Reuse checksum-verified User APK fixtures
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download verified 1.0.0, 1.0.1, and 1.0.2 APK fixtures
+        uses: actions/download-artifact@v8
+        with:
+          repository: ${{ github.repository }}
+          run-id: 43690898459
+          github-token: ${{ github.token }}
+          artifact-ids: "14153396023"
+          path: packageinstaller-apks
+
+      - name: Re-verify fixtures before Android device tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd packageinstaller-apks && sha256sum -c SHA256SUMS.txt)
+          for f in AFCON360-User-1.0.0.apk AFCON360-User-1.0.1.apk AFCON360-User-1.0.2.apk; do
+            test -s "packageinstaller-apks/$f"
+          done
+          echo 'Verified all three APK fixtures by SHA-256 and non-empty file checks.'
+
+      - name: Upload the same verified fixture set to this workflow run
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-packageinstaller-ui-test-apks
+          path: packageinstaller-apks/
+          if-no-files-found: error
+          retention-days: 30
+
+  packageinstaller-ui-matrix:
+    name: PackageInstaller UI — ${{ matrix.android-label }}
+    needs: build-test-apks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - android-label: "Android 13 API 33"
+            api-level: "33"
+            system-image-api-level: "33"
+            target: google_apis
+          - android-label: "Android 14 API 34"
+            api-level: "34"
+            system-image-api-level: "34"
+            target: google_apis
+          - android-label: "Android 15 API 35"
+            api-level: "35"
+            system-image-api-level: "35"
+            target: google_apis
+          - android-label: "Android 16 API 36"
+            api-level: "36"
+            system-image-api-level: "36"
+            target: google_apis
+          - android-label: "Android 17 API 37"
+            api-level: "37.0"
+            system-image-api-level: "37.0"
+            target: default
+
+    steps:
+      - name: Check out User test harness
+        uses: actions/checkout@v7
+
+      - name: Download verified User APK fixtures
+        uses: actions/download-artifact@v8
+        with:
+          name: afcon360-user-packageinstaller-ui-test-apks
+          path: packageinstaller-apks
+
+      - name: Verify fixture checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd packageinstaller-apks && sha256sum -c SHA256SUMS.txt)
+
+      - name: Run real Android PackageInstaller UI tests
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          system-image-api-level: ${{ matrix.system-image-api-level }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: pixel_7
+          ram-size: 4096M
+          disk-size: 12G
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -accel on
+          emulator-boot-timeout: 900
+          script: >-
+            python mobile/scripts/verify-user-packageinstaller-ui.py
+            --expected-api ${{ matrix.api-level == '37.0' && '37' || matrix.api-level }}
+            --old-apk packageinstaller-apks/AFCON360-User-1.0.0.apk
+            --current-apk packageinstaller-apks/AFCON360-User-1.0.1.apk
+            --upgrade-apk packageinstaller-apks/AFCON360-User-1.0.2.apk
+            --evidence-dir packageinstaller-ui-evidence
+
+      - name: Upload PackageInstaller UI evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-packageinstaller-ui-${{ matrix.android-label }}
+          path: packageinstaller-ui-evidence/
+          if-no-files-found: warn
+          retention-days: 30
