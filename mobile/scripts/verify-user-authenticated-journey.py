@@ -684,7 +684,7 @@ def main() -> None:
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
-    wait_for_text("Welcome to Pamoja", f"Good to see you, {USERNAME}.", timeout=45, label="restored authenticated session")
+    wait_for_text(f"Welcome back, {USERNAME}", "Your AFCON 360 overview for today", timeout=45, label="restored authenticated session")
     save_screen("10-session-restored")
     mark_stage("session_restored")
 
