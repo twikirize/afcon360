@@ -173,18 +173,21 @@ class TestContextSwitchNavE2E:
         resp = client.get("/user/dashboard")
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        # The shared operating-context selector is a first-class nav item on
-        # both desktop and mobile, including the User Dashboard route.
-        assert html.count("workspace-context-switcher__summary") == 2
-        assert "Operating as" in html
-        assert "<strong>Personal</strong>" in html
-        assert html.index("workspace-context-switcher__summary") < html.index("Home")
-        # Personal header (user has orgs, so the switcher block renders).
+        # Workspace selection now lives inside the account dropdown rather
+        # than occupying the primary desktop/mobile navigation. The dropdown
+        # must still expose the user's assigned organisation and driver
+        # contexts, with CSRF-protected POST forms and public identifiers.
+        assert "workspace-context-switcher__summary" not in html
+        # "Operating as" is expected inside the account dropdown.
+        # The legacy standalone workspace switcher is checked above.
+        assert 'name="csrf_token"' in html
         assert PERSONAL_ORG_MARKER in html
         assert ORG_MENU_MARKER not in html
-        # Personal context active in the shell switcher.
-        assert "data-context-type=\"personal\"" in html
-        assert "data-context-type=\"organisation\"" in html
+        assert 'name="type" value="organisation"' in html
+        assert f'name="public_id" value="{handles["org_public_id"]}"' in html
+        assert 'name="type" value="driver"' in html
+        assert f'name="public_id" value="{handles["driver_code"]}"' in html
+        assert f'org_id={handles["org_internal_id"]}' not in html
 
         # -- 3. Personal -> Organisation (real form POST, base-nav shape) --
         resp = client.post(

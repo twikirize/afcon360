@@ -168,10 +168,34 @@ def _wants_json_response():
 def _json_or_template(template, status=200, **ctx):
     """
     Returns JSON for AJAX/API clients, HTML for browsers.
-    Detects via Accept header or X-Requested-With.
+    Pagination objects are converted to the established JSON dictionary
+    shape so HTML templates can use ORM objects without breaking JSON callers.
     """
     if _wants_json_response():
-        return jsonify({"status": "ok", **ctx}), status
+        json_ctx = dict(ctx)
+
+        from flask_sqlalchemy.pagination import Pagination
+
+        for key, value in list(json_ctx.items()):
+            if isinstance(value, Pagination):
+                serialized_items = []
+
+                for item in value.items:
+                    serializer = getattr(item, "to_dict", None)
+                    serialized_items.append(
+                        serializer() if callable(serializer) else item
+                    )
+
+                json_ctx[key] = {
+                    "items": serialized_items,
+                    "total": value.total,
+                    "page": value.page,
+                    "per_page": value.per_page,
+                    "pages": value.pages,
+                }
+
+        return jsonify({"status": "ok", **json_ctx}), status
+
     return render_template(template, **ctx), status
 
 

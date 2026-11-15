@@ -627,8 +627,8 @@ class ProviderService:
 
     def list_drivers(self, page: int = 1, per_page: int = 25,
                      status: Optional[str] = None,
-                     online: Optional[str] = None) -> Dict[str, Any]:
-        """List drivers with pagination"""
+                     online: Optional[str] = None):
+        """List drivers with pagination - returns Flask-SQLAlchemy Pagination object"""
         try:
             query = DriverProfile.query.filter_by(is_deleted=False)
 
@@ -639,56 +639,28 @@ class ProviderService:
                 is_online = online.lower() in ('true', '1', 'yes')
                 query = query.filter_by(is_online=is_online)
 
-            paginated = query.order_by(
+            return query.order_by(
                 DriverProfile.created_at.desc()
             ).paginate(page=page, per_page=per_page, error_out=False)
-
-            return {
-                'items': [d.to_dict() for d in paginated.items],
-                'total': paginated.total,
-                'page': page,
-                'per_page': per_page,
-                'pages': paginated.pages
-            }
-        except Exception as e:
-            logger.error(f"Error listing drivers: {e}", exc_info=True)
-            return {
-                'items': [],
-                'total': 0,
-                'page': page,
-                'per_page': per_page,
-                'pages': 0
-            }
+        except Exception:
+            logger.exception("Error listing drivers")
+            raise
 
     def list_vehicles(self, page: int = 1, per_page: int = 25,
-                      status: Optional[str] = None) -> Dict[str, Any]:
-        """List vehicles with pagination"""
+                      status: Optional[str] = None):
+        """List vehicles with pagination - returns Flask-SQLAlchemy Pagination object"""
         try:
             query = Vehicle.query.filter_by(is_deleted=False)
 
             if status:
                 query = query.filter_by(status=status)
 
-            paginated = query.order_by(
+            return query.order_by(
                 Vehicle.created_at.desc()
             ).paginate(page=page, per_page=per_page, error_out=False)
-
-            return {
-                'items': [v.to_dict() for v in paginated.items],
-                'total': paginated.total,
-                'page': page,
-                'per_page': per_page,
-                'pages': paginated.pages
-            }
-        except Exception as e:
-            logger.error(f"Error listing vehicles: {e}", exc_info=True)
-            return {
-                'items': [],
-                'total': 0,
-                'page': page,
-                'per_page': per_page,
-                'pages': 0
-            }
+        except Exception:
+            logger.exception("Error listing vehicles")
+            raise
 
     # ===========================================================================
     # DRIVER REGISTRATION
