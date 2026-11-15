@@ -509,3 +509,57 @@ def test_organisation_eligibility_accepts_transport_company(db_session, monkeypa
 
     result = svc.validate_organisation_eligibility(org.id)
     assert result["eligible"] is True
+
+# ---------------------------------------------------------------------------
+# Transport identity adapter: real authority, no fabricated fallback
+# ---------------------------------------------------------------------------
+
+def test_transport_identity_projection_uses_real_account_and_profile(db_session):
+    from app.transport.services.provider_service import ProviderService
+
+    user = _make_user(db_session)
+    identity = ProviderService().get_user_identity(user.id)
+
+    assert identity["identity_verified"] is True
+    assert identity["email_verified"] is True
+    assert identity["phone_verified"] is True
+    assert identity["account_status"] == "active"
+    assert identity["age"] >= 30
+    # No criminal-screening provider is installed; unknown is not "clear".
+    assert identity["has_criminal_record"] is None
+    assert identity["profile"]["email"] == user.email
+    assert identity["profile"]["phone"] == user.phone
+
+
+def test_transport_identity_does_not_fabricate_verified_profile(db_session):
+    from app.profile.models import get_profile_by_user
+    from app.transport.services.provider_service import ProviderService
+
+    user = _make_user(db_session)
+    profile = get_profile_by_user(user.public_id)
+    profile.verification_status = "pending"
+    db_session.flush()
+
+    identity = ProviderService().get_user_identity(user.id)
+
+    assert identity["identity_verified"] is False
+    assert identity["account_status"] == "active"
+    assert identity["has_criminal_record"] is None
+
+
+def test_enabled_criminal_screening_fails_closed_without_result(db_session, monkeypatch):
+    from app.transport.services.provider_service import ProviderService
+    from app.transport.services.settings_service import SettingsService
+    from app.utils.exceptions import ServiceUnavailableError
+
+    user = _make_user(db_session)
+    monkeypatch.setattr(
+        SettingsService,
+        "is_feature_enabled",
+        staticmethod(lambda feature_key, default=False: feature_key == "check_criminal_record"),
+    )
+
+    with pytest.raises(ServiceUnavailableError) as excinfo:
+        ProviderService().validate_driver_eligibility(user.id)
+
+    assert excinfo.value.code == "CRIMINAL_SCREENING_UNAVAILABLE"
