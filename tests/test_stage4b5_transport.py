@@ -239,8 +239,14 @@ def _make_canonical_profile(db_session, user, **overrides):
     }
     fields.update(overrides)
 
-    profile = UserProfile(**fields)
-    db_session.add(profile)
+    profile = UserProfile.query.filter_by(user_id=user.public_id).first()
+    if profile is None:
+        profile = UserProfile(**fields)
+        db_session.add(profile)
+    else:
+        for field_name, value in fields.items():
+            if field_name != "user_id":
+                setattr(profile, field_name, value)
     db_session.flush()
     return profile
 
