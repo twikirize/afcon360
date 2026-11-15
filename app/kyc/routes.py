@@ -509,9 +509,13 @@ def verify_national_id_page():
         show_collection
         and (canonical is None or not (canonical.full_name or "").strip())
     )
+    canonical_id_type = (
+        getattr(canonical.id_type, "value", canonical.id_type)
+        if canonical is not None else None
+    )
     canonical_nin = (
         (canonical.id_number or "").strip().upper()
-        if canonical is not None else ""
+        if canonical is not None and canonical_id_type == "national_id" else ""
     )
     masked_nin = (
         ("*" * max(0, len(canonical_nin) - 4)) + canonical_nin[-4:]
@@ -560,9 +564,13 @@ def submit_national_id():
     # A canonical profile NIN is authoritative. Never accept a replacement
     # from the browser when one already exists; when absent, KYC is the sole
     # collection point for this evidence value.
+    canonical_id_type = (
+        getattr(canonical.id_type, "value", canonical.id_type)
+        if canonical is not None else None
+    )
     canonical_nin = (
         (canonical.id_number or "").strip().upper()
-        if canonical is not None else ""
+        if canonical is not None and canonical_id_type == "national_id" else ""
     )
     id_number = canonical_nin or submitted_id_number
 
