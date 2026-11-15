@@ -320,9 +320,17 @@ def upgrade():
 
     current = calculate_kyc_tier(effective.id)
     current_tier = current["tier"]
+    driver_purpose = request.args.get("purpose") == "driver"
 
     available_upgrades = []
-    for tier in range(current_tier + 1, TIER_5_CORPORATE + 1):
+    target_tiers = (
+        [TIER_2_STANDARD]
+        if driver_purpose and current_tier < TIER_2_STANDARD
+        else []
+        if driver_purpose
+        else range(current_tier + 1, TIER_5_CORPORATE + 1)
+    )
+    for tier in target_tiers:
         can_upgrade, missing = can_upgrade_to_tier(effective.id, tier)
         info = TIER_REQUIREMENTS[tier]
         available_upgrades.append({
@@ -351,6 +359,7 @@ def upgrade():
         current_tier_name=TIER_REQUIREMENTS[current_tier]["name"],
         available_upgrades=available_upgrades,
         TIER_INFO=TIER_INFO,
+        driver_purpose=driver_purpose,
     )
 
 
