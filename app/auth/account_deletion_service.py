@@ -74,12 +74,11 @@ REQUIRED_ACKNOWLEDGEMENTS = {
 }
 
 _RETENTION_SUMMARY = (
-    "Direct account and general-profile identifiers are anonymized at closure. "
-    "KYC/AML and financial records may be retained for up to 10 years; fraud, "
-    "security, dispute and audit evidence may be retained for up to 15 years; "
-    "a minimal closure receipt may be retained indefinitely to prevent "
-    "re-identification and to evidence the request. Legal holds may extend "
-    "retention where an investigation or legal obligation requires it."
+    "Direct account and general-profile identifiers are anonymized when closure "
+    "is finalized. Records may be retained only where an applicable legal, "
+    "financial, safety, security or dispute-resolution obligation requires it, "
+    "and only for the period supported by that obligation. This flow does not "
+    "promise a blanket retention period."
 )
 
 _ACTIVE_ACCOMMODATION_STATUSES = (
@@ -140,16 +139,21 @@ def _missing_acknowledgements(value) -> list[str]:
     return [key for key in REQUIRED_ACKNOWLEDGEMENTS if key not in accepted]
 
 
+def _fingerprint_enabled() -> bool:
+    value = current_app.config.get("ACCOUNT_CLOSURE_FINGERPRINT_ENABLED", False)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return value is True
+
+
 def _fingerprint_pepper() -> str:
-    return (
-        current_app.config.get("ACCOUNT_CLOSURE_FINGERPRINT_KEY")
-        or current_app.config.get("SECRET_KEY")
-        or ""
-    )
+    # Never fall back to SECRET_KEY: this purpose requires a separate key and
+    # an explicit privacy/legal approval before it can be enabled.
+    return str(current_app.config.get("ACCOUNT_CLOSURE_FINGERPRINT_KEY") or "").strip()
 
 
 def _fingerprint(kind: str, value) -> str | None:
-    if value is None:
+    if value is None or not _fingerprint_enabled():
         return None
     text = str(value).strip()
     if not text:
@@ -294,10 +298,13 @@ def _wallet_snapshot(user_id: int) -> dict:
     from app.wallet.models.ledger import AccountModel
     from app.wallet.models.payout import PayoutRequest
     from app.wallet.repositories.wallet_repository import WalletRepository
+    from app.accommodation.models.host_profile import HostProfile
 
     wallet_repo = WalletRepository()
     balances: dict[str, str] = {}
     total = Decimal("0")
+    host_pending = Decimal("0")
+
     try:
         accounts = (
             AccountModel.query.filter(AccountModel.user_id == user_id)
@@ -310,37 +317,48 @@ def _wallet_snapshot(user_id: int) -> dict:
             total += amount
             if amount != 0:
                 balances[account.currency] = str(amount)
-    except Exception:
-        logger.exception("Could not read wallet balance during account closure")
-        raise AccountDeletionError(
-            "wallet_check_unavailable",
-            "AFCON360 could not verify your wallet balance. Please try again.",
-            503,
+
+        pending_payouts = (
+            PayoutRequest.query.filter(
+                PayoutRequest.agent_id == user_id,
+                PayoutRequest.status.in_(("pending", "approved")),
+            ).count()
         )
 
-    pending_payouts = (
-        PayoutRequest.query.filter(
-            PayoutRequest.agent_id == user_id,
-            PayoutRequest.status.in_(("pending", "approved")),
-        ).count()
-    )
-
-    host_pending = Decimal("0")
-    try:
-        from app.accommodation.models.host_profile import HostProfile
-
-        host = HostProfile.query.filter_by(user_id=user_id, is_deleted=False).first()
+        host = HostProfile.query.filter_by(
+            user_id=user_id,
+            is_deleted=False,
+        ).first()
         if host is not None and host.pending_payout is not None:
-            host_pending = Decimal(str(host.pending_payout))
-    except Exception:
-        logger.exception("Could not read host pending payout during account closure")
+            host_pending = Decimal(str(host.pending_payout or "0"))
+    except Exception as exc:
+        logger.exception("Could not verify all wallet and payout obligations during account closure")
+        raise AccountDeletionError(
+            "wallet_check_unavailable",
+            "AFCON360 could not verify every wallet balance and payout obligation. Please try again.",
+            503,
+        ) from exc
 
     return {
+        # Kept for audit compatibility only; do not compare balances across currencies.
         "balance": str(total),
         "balances_by_currency": balances,
         "pending_payout_requests": pending_payouts,
         "host_pending_payout": str(host_pending),
     }
+
+
+def _has_outstanding_wallet_balance(snapshot: dict) -> bool:
+    """Check every currency independently; unlike currencies must never net off."""
+    balances = snapshot.get("balances_by_currency") or {}
+    for amount in balances.values():
+        try:
+            if Decimal(str(amount)) != 0:
+                return True
+        except (InvalidOperation, TypeError, ValueError):
+            # Unknown or malformed values are not evidence of a zero balance.
+            return True
+    return False
 
 
 def _revoke_user_sessions(user, now: datetime, reason: str) -> list[str]:
@@ -391,13 +409,16 @@ def _mark_mobile_sessions_revoked(session_ids) -> None:
 def _assert_no_financial_or_operator_obligations(user) -> dict:
     snapshot = _wallet_snapshot(user.id)
     try:
-        balance = Decimal(snapshot["balance"])
-        host_pending = Decimal(snapshot["host_pending_payout"])
-    except (InvalidOperation, KeyError):
-        balance = Decimal("0")
-        host_pending = Decimal("0")
+        host_pending = Decimal(str(snapshot["host_pending_payout"]))
+        pending_payouts = int(snapshot["pending_payout_requests"])
+    except (InvalidOperation, KeyError, TypeError, ValueError) as exc:
+        raise AccountDeletionError(
+            "wallet_check_unavailable",
+            "AFCON360 could not verify every wallet and payout obligation. Please try again.",
+            503,
+        ) from exc
 
-    if balance != 0 or host_pending != 0 or snapshot["pending_payout_requests"]:
+    if _has_outstanding_wallet_balance(snapshot) or host_pending != 0 or pending_payouts > 0:
         raise AccountDeletionError(
             "wallet_balance_outstanding",
             "Withdraw or resolve your wallet balance, host pending payout and any "
@@ -456,8 +477,13 @@ def _assert_no_financial_or_operator_obligations(user) -> dict:
             )
     except AccountDeletionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.exception("Could not check organisation ownership during account closure")
+        raise AccountDeletionError(
+            "organisation_ownership_check_unavailable",
+            "AFCON360 could not verify organisation ownership. Please try again.",
+            503,
+        ) from exc
 
     return snapshot
 
@@ -530,6 +556,8 @@ def _suppress_public_content(user, now: datetime) -> dict:
                     "visibility": prop.visibility,
                     "is_publicly_visible": prop.is_publicly_visible,
                     "is_active": prop.is_active,
+                    "archived_at": prop.archived_at.isoformat() if prop.archived_at else None,
+                    "archived_reason": prop.archived_reason,
                 }
             )
             prop.status = "archived"
@@ -538,8 +566,13 @@ def _suppress_public_content(user, now: datetime) -> dict:
             prop.is_active = False
             prop.archived_at = now
             prop.archived_reason = "account_closure"
-    except Exception:
-        logger.exception("Could not suppress owned properties during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.feed.models import Post
@@ -551,8 +584,13 @@ def _suppress_public_content(user, now: datetime) -> dict:
         for post in posts:
             state["posts"].append({"id": post.id, "status": post.status})
             post.status = "archived"
-    except Exception:
-        logger.exception("Could not suppress feed posts during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.media.models import Media
@@ -575,8 +613,13 @@ def _suppress_public_content(user, now: datetime) -> dict:
             media.is_deleted = True
             media.deleted_at = now
             media.is_public = False
-    except Exception:
-        logger.exception("Could not suppress uploaded media during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.fan.models import FanProfile
@@ -602,8 +645,13 @@ def _suppress_public_content(user, now: datetime) -> dict:
             fan.match_reminders = False
             fan.team_news = False
             fan.social_features_enabled = False
-    except Exception:
-        logger.exception("Could not deactivate fan profile during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.accommodation.models.host_profile import HostProfile
@@ -615,8 +663,13 @@ def _suppress_public_content(user, now: datetime) -> dict:
                 "is_active_host": host.is_active_host,
             }
             host.is_active_host = False
-    except Exception:
-        logger.exception("Could not deactivate host profile during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.events.models import OrganizerProfile
@@ -631,8 +684,13 @@ def _suppress_public_content(user, now: datetime) -> dict:
                 "status": organizer.status,
             }
             organizer.status = "suspended"
-    except Exception:
-        logger.exception("Could not suspend organizer profile during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.identity.models.organisation_member import OrganisationMember
@@ -646,8 +704,13 @@ def _suppress_public_content(user, now: datetime) -> dict:
                 {"id": membership.id, "is_active": membership.is_active}
             )
             membership.is_active = False
-    except Exception:
-        logger.exception("Could not deactivate organisation memberships during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.transport.models import DriverProfile
@@ -661,8 +724,13 @@ def _suppress_public_content(user, now: datetime) -> dict:
             }
             driver.is_online = False
             driver.is_available = False
-    except Exception:
-        logger.exception("Could not suspend driver availability during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     return state
 
@@ -681,10 +749,19 @@ def _restore_public_content(state: dict, now: datetime) -> None:
             prop.visibility = saved.get("visibility")
             prop.is_publicly_visible = saved.get("is_publicly_visible")
             prop.is_active = saved.get("is_active")
-            prop.archived_at = None
-            prop.archived_reason = None
-    except Exception:
-        logger.exception("Could not restore owned properties after cancellation")
+            prop.archived_at = (
+                datetime.fromisoformat(saved["archived_at"])
+                if saved.get("archived_at")
+                else None
+            )
+            prop.archived_reason = saved.get("archived_reason")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.feed.models import Post
@@ -693,8 +770,13 @@ def _restore_public_content(state: dict, now: datetime) -> None:
             post = db.session.get(Post, saved.get("id"))
             if post is not None:
                 post.status = saved.get("status")
-    except Exception:
-        logger.exception("Could not restore feed posts after cancellation")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.media.models import Media
@@ -706,8 +788,13 @@ def _restore_public_content(state: dict, now: datetime) -> None:
             media.is_deleted = bool(saved.get("is_deleted"))
             media.deleted_at = None if not media.is_deleted else now
             media.is_public = bool(saved.get("is_public"))
-    except Exception:
-        logger.exception("Could not restore uploaded media after cancellation")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.fan.models import FanProfile
@@ -728,8 +815,13 @@ def _restore_public_content(state: dict, now: datetime) -> None:
                 fan.match_reminders = bool(saved.get("match_reminders"))
                 fan.team_news = bool(saved.get("team_news"))
                 fan.social_features_enabled = bool(saved.get("social_features_enabled"))
-    except Exception:
-        logger.exception("Could not restore fan profile after cancellation")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.accommodation.models.host_profile import HostProfile
@@ -739,8 +831,13 @@ def _restore_public_content(state: dict, now: datetime) -> None:
             host = db.session.get(HostProfile, saved.get("id"))
             if host is not None:
                 host.is_active_host = bool(saved.get("is_active_host"))
-    except Exception:
-        logger.exception("Could not restore host profile after cancellation")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.events.models import OrganizerProfile
@@ -750,8 +847,13 @@ def _restore_public_content(state: dict, now: datetime) -> None:
             organizer = db.session.get(OrganizerProfile, saved.get("id"))
             if organizer is not None:
                 organizer.status = saved.get("status")
-    except Exception:
-        logger.exception("Could not restore organizer profile after cancellation")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.identity.models.organisation_member import OrganisationMember
@@ -760,8 +862,13 @@ def _restore_public_content(state: dict, now: datetime) -> None:
             membership = db.session.get(OrganisationMember, saved.get("id"))
             if membership is not None:
                 membership.is_active = bool(saved.get("is_active"))
-    except Exception:
-        logger.exception("Could not restore organisation memberships after cancellation")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.transport.models import DriverProfile
@@ -772,8 +879,13 @@ def _restore_public_content(state: dict, now: datetime) -> None:
             if driver is not None:
                 driver.is_online = bool(saved.get("is_online"))
                 driver.is_available = bool(saved.get("is_available"))
-    except Exception:
-        logger.exception("Could not restore driver availability after cancellation")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
 
 def _anonymize_supporting_profiles(user, now: datetime) -> dict:
@@ -793,8 +905,13 @@ def _anonymize_supporting_profiles(user, now: datetime) -> dict:
             fan.team_news = False
             fan.social_features_enabled = False
             summary["fan_profile"] = True
-    except Exception:
-        logger.exception("Could not anonymize fan profile during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.accommodation.models.guest_profile import GuestProfile
@@ -809,8 +926,13 @@ def _anonymize_supporting_profiles(user, now: datetime) -> dict:
             guest.sms_notifications = False
             guest.email_notifications = False
             summary["guest_profile"] = True
-    except Exception:
-        logger.exception("Could not anonymize guest profile during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.accommodation.models.guest_identity import GuestIdentityProfile
@@ -822,8 +944,13 @@ def _anonymize_supporting_profiles(user, now: datetime) -> dict:
             guest_identity.document_image = None
             guest_identity.notes = None
             summary["guest_identity"] = True
-    except Exception:
-        logger.exception("Could not anonymize guest identity profile during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.accommodation.models.host_profile import HostProfile
@@ -837,22 +964,32 @@ def _anonymize_supporting_profiles(user, now: datetime) -> dict:
             host.vat_number = None
             host.extra_data = {}
             summary["host_profile"] = True
-    except Exception:
-        logger.exception("Could not anonymize host profile during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.events.models import OrganizerProfile
 
         organizer = OrganizerProfile.query.filter_by(user_id=user.id).first()
         if organizer is not None:
-            organizer.status = "revoked"
+            organizer.status = "suspended"
             organizer.onboarding_completed = False
             organizer.organization_name = None
             organizer.bio = None
             organizer.revoked_at = now
             summary["organizer_profile"] = True
-    except Exception:
-        logger.exception("Could not anonymize organizer profile during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.identity.models.organisation_member import OrganisationMember
@@ -863,8 +1000,13 @@ def _anonymize_supporting_profiles(user, now: datetime) -> dict:
             membership.job_title = None
             membership.meta = {}
         summary["organisation_memberships"] = len(memberships)
-    except Exception:
-        logger.exception("Could not anonymize organisation memberships during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.accommodation.models.property import Property
@@ -881,8 +1023,13 @@ def _anonymize_supporting_profiles(user, now: datetime) -> dict:
             prop.gallery = []
             prop.moderation_notes = None
         summary["properties_archived"] = len(properties)
-    except Exception:
-        logger.exception("Could not permanently archive properties during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.feed.models import Post
@@ -892,8 +1039,13 @@ def _anonymize_supporting_profiles(user, now: datetime) -> dict:
             post.status = "archived"
             post.media_url = None
         summary["posts_archived"] = len(posts)
-    except Exception:
-        logger.exception("Could not permanently archive feed posts during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     try:
         from app.media.models import Media
@@ -909,19 +1061,26 @@ def _anonymize_supporting_profiles(user, now: datetime) -> dict:
                 if media.storage_key:
                     try:
                         get_storage_backend().delete(media.storage_key)
-                    except Exception:
-                        logger.warning(
-                            "Could not delete retained media object during account closure",
-                            exc_info=True,
-                        )
+                    except Exception as exc:
+                        logger.exception("Could not delete retained media object during account closure")
+                        raise AccountDeletionError(
+                            "media_erasure_failed",
+                            "AFCON360 could not complete media erasure. The closure will be retried.",
+                            503,
+                        ) from exc
                 media.is_deleted = True
                 media.deleted_at = now
                 media.is_public = False
                 media.caption = None
                 deleted += 1
         summary["media_deleted"] = deleted
-    except Exception:
-        logger.exception("Could not delete media during account closure")
+    except Exception as exc:
+        logger.exception("Required account-closure data operation failed")
+        raise AccountDeletionError(
+            "account_closure_data_update_failed",
+            "AFCON360 could not complete every required account-closure data update. Please retry or contact support.",
+            503,
+        ) from exc
 
     return summary
 
@@ -1359,12 +1518,9 @@ def request_account_deletion(
         identity_verified=True,
         verification_method="password+totp" if mfa_verified else "password",
         verified_at=now,
-        legal_basis="GDPR Art. 17; Uganda Data Protection and Privacy Act 2019",
-        exemption_applied=True,
-        exemption_reason=(
-            "Direct identifiers are anonymized at closure; KYC/AML, financial, "
-            "safety, dispute and audit records may be retained for statutory periods."
-        ),
+        legal_basis="Account-holder request; applicable data-protection obligations",
+        exemption_applied=False,
+        exemption_reason=None,
         sla_due_at=grace_until,
         created_by=user.id,
     )
@@ -1749,6 +1905,9 @@ def find_prior_closure_by_identifiers(
     nin: str | None = None,
 ):
     """Return a completed closure record that matches any supplied identifier."""
+    if not _fingerprint_enabled() or not _fingerprint_pepper():
+        return None
+
     from sqlalchemy import or_
 
     from app.admin.compliance.models import (
@@ -1797,6 +1956,8 @@ def find_prior_closure_by_identifiers(
 
 def flag_returning_identity(user) -> dict | None:
     """Create a compliance case when a new account reuses a closed identity."""
+    if not _fingerprint_enabled() or not _fingerprint_pepper():
+        return None
     try:
         profile = None
         try:
