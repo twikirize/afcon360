@@ -524,7 +524,7 @@ export default function UserHome() {
               contentContainerStyle={styles.trendRail}
               onEndReached={onLoadMore}
               onEndReachedThreshold={0.6}
-              ListFooterComponent={loadingMore ? <View style={styles.moreLoading}><ActivityIndicator color={BRAND_GREEN} /></View> : null}
+              ListFooterComponent={loadingMore ? <View style={styles.moreLoading}><ActivityIndicator color={BRAND_GREEN} /></View> : undefined}
             />
           ) : (
             <View style={styles.emptyState}>
