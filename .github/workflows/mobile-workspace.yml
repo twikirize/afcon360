@@ -195,6 +195,68 @@ jobs:
       - name: Check User app Expo SDK dependency compatibility
         run: pnpm --filter @afcon360/user-app exec expo install --check
 
+      - name: Validate production User app release configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_EAS_PROJECT_ID="00000000-0000-4000-8000-000000000001"
+          AFCON360_USER_EAS_PROJECT_ID="$TEST_EAS_PROJECT_ID" \
+          AFCON360_PREVIEW_BUILD="false" \
+          AFCON360_RELEASE_BUILD="true" \
+          EAS_BUILD="true" \
+          EXPO_PUBLIC_API_BASE_URL="https://www.pamoja.space" \
+            pnpm --filter @afcon360/user-app exec expo config --json \
+              > /tmp/afcon360-user-production-config.json
+
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const config = JSON.parse(
+            fs.readFileSync("/tmp/afcon360-user-production-config.json", "utf8")
+          );
+          const expectedProjectId = "00000000-0000-4000-8000-000000000001";
+          const checks = {
+            package: config.android?.package === "space.pamoja.afcon360.user",
+            api: config.extra?.apiBaseUrl === "https://www.pamoja.space",
+            easProject: config.extra?.eas?.projectId === expectedProjectId,
+            updatesUrl: config.updates?.url === `https://u.expo.dev/${expectedProjectId}`,
+            productionChannel:
+              config.updates?.requestHeaders?.["expo-channel-name"] === "production",
+            runtimeVersion: config.runtimeVersion === "1.0.1"
+          };
+          for (const [name, passed] of Object.entries(checks)) {
+            console.log(`${passed ? "PASS" : "FAIL"} production config: ${name}`);
+          }
+          if (Object.values(checks).some((passed) => !passed)) process.exit(1);
+          NODE
+
+          if AFCON360_USER_EAS_PROJECT_ID="$TEST_EAS_PROJECT_ID" \
+             AFCON360_PREVIEW_BUILD="false" \
+             AFCON360_RELEASE_BUILD="true" \
+             EAS_BUILD="true" \
+             EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:5000" \
+               pnpm --filter @afcon360/user-app exec expo config --json \
+                 >/dev/null 2>/tmp/afcon360-user-loopback-config.err; then
+            echo "::error::Production config unexpectedly accepted a loopback API URL."
+            exit 1
+          fi
+          grep -Fq "production builds must use an HTTPS API endpoint" \
+            /tmp/afcon360-user-loopback-config.err
+          echo "PASS production config rejects loopback/HTTP API URLs."
+
+          if env -u AFCON360_USER_EAS_PROJECT_ID -u EAS_BUILD_PROJECT_ID \
+             AFCON360_PREVIEW_BUILD="false" \
+             AFCON360_RELEASE_BUILD="true" \
+             EAS_BUILD="true" \
+             EXPO_PUBLIC_API_BASE_URL="https://www.pamoja.space" \
+               pnpm --filter @afcon360/user-app exec expo config --json \
+                 >/dev/null 2>/tmp/afcon360-user-missing-eas-id.err; then
+            echo "::error::EAS build config unexpectedly resolved without an EAS project ID."
+            exit 1
+          fi
+          grep -Fq "EAS builds require the dedicated EAS project ID" \
+            /tmp/afcon360-user-missing-eas-id.err
+          echo "PASS EAS build config fails when update-project linkage is missing."
+
       - name: Type-check User application
         run: pnpm user:typecheck
 
@@ -212,6 +274,7 @@ jobs:
         needs.classify-user-changes.outputs.native != 'true' &&
         needs.mobile-typecheck.result == 'success' &&
         github.event_name == 'workflow_dispatch' &&
+        github.ref_name == 'feat/native-user-app-integration-20261108' &&
         inputs.publish_preview_ota == true
       }}
     runs-on: ubuntu-latest
