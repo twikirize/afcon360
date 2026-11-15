@@ -147,7 +147,7 @@ def _requirement_fill_url(req: str):
     """Return the URL of the form where a missing requirement is filled in."""
     dedicated = {
         "phone_verified": lambda: url_for("auth.verify_phone"),
-        "full_name": lambda: url_for("auth.verify_phone"),
+        "full_name": lambda: url_for("profile.edit_profile"),
         "national_id": lambda: url_for("kyc.verify_national_id_page"),
         "selfie": lambda: url_for("kyc.upload", preselect="selfie"),
         "proof_of_address": lambda: url_for("kyc.verify_address"),
