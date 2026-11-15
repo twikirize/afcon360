@@ -31,6 +31,7 @@ from app.identity.models.organization_types import OrganizationType
 from app.transport.models import (
     ComplianceStatus,
     DriverProfile,
+    DriverVehicleHistory,
     Vehicle,
     VehicleClass,
     VerificationTier,
@@ -509,6 +510,44 @@ def test_organisation_eligibility_accepts_transport_company(db_session, monkeypa
 
     result = svc.validate_organisation_eligibility(org.id)
     assert result["eligible"] is True
+
+
+def test_driver_vehicle_registration_creates_canonical_active_assignment(db_session):
+    """Registering a driver-owned vehicle also establishes the canonical
+    DriverVehicleHistory row used by DriverProfile.current_vehicle."""
+    from app.transport.services.provider_service import ProviderService
+
+    user = _make_user(db_session)
+    driver = _make_driver_profile(db_session, user)
+    plate = f"UAT{uuid.uuid4().hex[:6].upper()}"
+    result = ProviderService().register_vehicle(
+        owner_type="driver",
+        owner_id=driver.id,
+        vehicle_data={
+            "plate_number": plate,
+            "license_plate": plate,
+            "make": "Toyota",
+            "model": "Corolla",
+            "year": 2021,
+            "vehicle_class": "comfort",
+            "capacity": 4,
+            "passenger_capacity": 4,
+            "luggage_capacity": 2,
+            "color": "White",
+            "vehicle_type": "sedan",
+        },
+    )
+
+    assert result["success"] is True
+    vehicle = db_session.get(Vehicle, result["data"]["vehicle_id"])
+    assignments = DriverVehicleHistory.query.filter_by(
+        driver_id=driver.id,
+        vehicle_id=vehicle.id,
+        ended_at=None,
+        is_deleted=False,
+    ).all()
+    assert len(assignments) == 1
+    assert driver.current_vehicle.id == vehicle.id
 
 # ---------------------------------------------------------------------------
 # Transport identity adapter: real authority, no fabricated fallback
