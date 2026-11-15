@@ -182,7 +182,7 @@ jobs:
           MINIMUM="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
           TARGET="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" | head -n 1)"
 
-          test "$PACKAGE" = "space.pamoja.afcon360.user.preview"
+          test "$PACKAGE" = "space.pamoja.afcon360.user"
           test "$VERSION_NAME" = "1.0.1"
           test -n "$VERSION_CODE" && test "$VERSION_CODE" -ge 1
           test "$MINIMUM" = "24"
