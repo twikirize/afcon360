@@ -77,35 +77,67 @@ const styles = StyleSheet.create({
     width: '48.6%',
   },
   tile: {
-    minHeight: 120,
-    borderRadius: radii.lg,
-    padding: spacing.md,
+    minHeight: 146,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
     borderWidth: 1,
     gap: spacing.xs,
+    overflow: 'hidden',
     ...shadows.card,
   },
+  tileAccent: {
+    position: 'absolute',
+    width: 116,
+    height: 116,
+    borderRadius: 58,
+    right: -56,
+    top: -62,
+    backgroundColor: 'rgba(255,255,255,0.38)',
+  },
+  tileTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
   iconWrapper: {
-    width: 42,
-    height: 42,
-    borderRadius: radii.md,
+    width: 48,
+    height: 48,
+    borderRadius: radii.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs,
   },
   iconText: {
-    fontSize: 22,
+    fontSize: 25,
+  },
+  arrowBadge: {
+    width: 27,
+    height: 27,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.60)',
+    borderWidth: 1,
+    borderColor: 'rgba(23,61,40,0.07)',
+  },
+  arrowText: {
+    color: colors.brand.dark,
+    fontSize: 16,
+    lineHeight: 19,
+    fontWeight: '900',
   },
   title: {
     color: colors.brand.dark,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: 15,
+    lineHeight: 19,
     fontWeight: '900',
+    letterSpacing: -0.2,
   },
   hint: {
     color: colors.text.muted,
     fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: '600',
+    lineHeight: 16,
+    fontWeight: '700',
   },
   webHint: {
     alignSelf: 'flex-start',
@@ -165,8 +197,14 @@ const ServiceTile = ({ service, index, onPress }: ServiceTileProps) => {
           ]}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <View style={[styles.iconWrapper, { backgroundColor: service.iconBg }]}>
-            <Text style={styles.iconText}>{service.icon}</Text>
+          <View pointerEvents='none' style={styles.tileAccent} />
+          <View style={styles.tileTopRow}>
+            <View style={[styles.iconWrapper, { backgroundColor: service.iconBg }]}>
+              <Text style={styles.iconText}>{service.icon}</Text>
+            </View>
+            <View style={styles.arrowBadge}>
+              <Text style={styles.arrowText}>{'\u2197'}</Text>
+            </View>
           </View>
           <Text style={styles.title}>{service.label}</Text>
           {service.isWeb ? (
