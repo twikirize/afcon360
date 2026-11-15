@@ -23,12 +23,12 @@ const approved = [
 
 const nativeInternalRoutes = [
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/events" as never)'],
-  ["apps/user/app/(tabs)/explore.tsx", "router.push('/(service)/stays' as never)"],
+  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/stays" as never)'],
   ["apps/user/app/(tabs)/index.tsx", "router.push('/(service)/ride' as never)"],
   ["apps/user/app/(tabs)/index.tsx", "pathname: '/(service)/events'"],
   ["apps/user/app/(tabs)/index.tsx", "router.push('/(service)/stays' as never)"],
   ["apps/user/app/(tabs)/index.tsx", "router.push('/(tabs)/wallet' as never)"],
-  ["apps/user/app/(tabs)/explore.tsx", "router.push('/(service)/ride' as never)"],
+  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/ride" as never)'],
   ["apps/user/app/(tabs)/activity.tsx", 'pathname: "/(service)/ride-status/[reference]"'],
   ["apps/user/app/(tabs)/account.tsx", 'router.push("/(service)/delete-account" as never)'],
   ["apps/user/app/login.tsx", 'router.push("/server-settings" as never)'],
