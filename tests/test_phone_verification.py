@@ -424,6 +424,8 @@ def test_verify_phone_prefills_signup_number_from_user_when_profile_copy_is_miss
 def test_resend_email_from_phone_gate_opens_email_code_page_and_resumes_phone(monkeypatch):
     user = _user()
     user.is_authenticated = True
+    user.is_verified = False
+    user.email_verified = False
     app = _request_app()
 
     monkeypatch.setattr(auth_routes, "current_user", user)
