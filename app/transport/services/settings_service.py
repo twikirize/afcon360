@@ -507,7 +507,7 @@ class SettingsService:
             value = get_setting(feature_key, default)
 
             # Cache result
-            set_cached(cache_key, bool(value), timeout=SettingsService.CACHE_TTL)
+            set_cached(cache_key, bool(value), ttl=SettingsService.CACHE_TTL)
 
             return bool(value)
 
