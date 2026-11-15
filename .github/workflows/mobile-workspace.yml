@@ -240,6 +240,7 @@ jobs:
               runtimeVersion.policy === "appVersion");
           const checks = {
             package: config.android?.package === "space.pamoja.afcon360.user",
+            remoteVersionSeed: config.android?.versionCode === 1,
             api: config.extra?.apiBaseUrl === "https://www.pamoja.space",
             easProject: config.extra?.eas?.projectId === expectedProjectId,
             updatesUrl: config.updates?.url === `https://u.expo.dev/${expectedProjectId}`,

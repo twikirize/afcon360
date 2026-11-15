@@ -70,6 +70,8 @@ const config: ExpoConfig = {
   },
   android: {
     package: appId,
+    // Initial EAS remote version seed; EAS auto-increments this for every managed build.
+    versionCode: 1,
     allowBackup: false,
     // Use the Android system photo/document picker instead of broad legacy storage.
     // The User app does not require full-screen overlay access.
