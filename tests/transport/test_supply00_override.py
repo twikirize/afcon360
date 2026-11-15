@@ -106,18 +106,23 @@ def _admin_page_url(app, endpoint, **values):
 
 def _make_verified_registration_profile(app, user_id):
     """Create the canonical verified identity required by driver registration."""
-    from datetime import date
+    from datetime import date, datetime, timezone
     from app.profile.models import UserProfile
 
     with app.app_context():
         user = db.session.get(User, user_id)
         assert user is not None
+        phone = f"+2567{uuid.uuid4().int % 10**8:08d}"
+        user.phone = phone
+        user.phone_verified = True
+        user.phone_verified_at = datetime.now(timezone.utc)
         profile = UserProfile(
             user_id=user.public_id,
             full_name=f"Verified Driver {uuid.uuid4().hex[:8]}",
             date_of_birth=date(1990, 1, 1),
             nationality="UG",
             email=user.email,
+            phone_number=phone,
             verification_status="verified",
         )
         db.session.add(profile)
@@ -350,7 +355,7 @@ def test_T7_register_driver_auto_approve_false_gives_F_F(app, monkeypatch):
     monkeypatch.setattr(
         SettingsService,
         "is_feature_enabled",
-        staticmethod(lambda key, default=False: False if key == "auto_approve_providers" else default),
+        staticmethod(lambda key, default=False: False if key in ("auto_approve_providers", "check_criminal_record") else True),
     )
 
     uid = uuid.uuid4().hex[:8]
@@ -405,7 +410,7 @@ def test_T8_register_driver_auto_approve_true_gives_T_F(app, monkeypatch):
     monkeypatch.setattr(
         SettingsService,
         "is_feature_enabled",
-        staticmethod(lambda key, default=False: True if key == "auto_approve_providers" else default),
+        staticmethod(lambda key, default=False: False if key == "check_criminal_record" else True),
     )
 
     uid = uuid.uuid4().hex[:8]
