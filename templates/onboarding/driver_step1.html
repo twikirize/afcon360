@@ -1,40 +1,42 @@
 {% extends 'base.html' %}
 {% block title %}Driver Onboarding — Step 1 — AFCON 360{% endblock %}
 {% block content %}
-{% set step_current=1 %}{% set step_total=3 %}{% set step_labels=['Your Details', 'Licence', 'Vehicle'] %}
+{% set step_current=1 %}{% set step_total=3 %}{% set step_labels=['Your Details', 'Licence', 'Operating Market'] %}
 <div class="onboarding-root ob-wizard">
   <div class="ob-wizard-inner">
     <a href="{{ url_for('onboarding.choose') }}" class="ob-back">← Back to paths</a>
     <h2 class="ob-wizard-title">Driver — Your Details</h2>
-    <p class="ob-wizard-sub">Let's get to know you.</p>
+    <p class="ob-wizard-sub">We use the personal details already saved in your account. You do not need to enter them again.</p>
     {% include 'onboarding/_progress_bar.html' %}
-    <form method="POST" action="{{ url_for('onboarding.driver_onboarding', step=1) }}" class="ob-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="ob-form">
       <div class="ob-field">
-        <label>Full Name <span class="ob-req">*</span></label>
-        <input type="text" name="full_name" value="{{ profile.full_name if profile else '' }}" {% if profile and profile.full_name %}readonly title="Already provided"{% endif %} required>
-        {% if profile and profile.full_name %}<p class="ob-hint">Already provided.</p>{% endif %}
+        <label>Full Name</label>
+        <div class="ob-readonly-value">{{ profile.full_name if profile and profile.full_name else 'Not added to your profile yet' }}</div>
       </div>
       <div class="ob-field">
-        <label>Date of Birth <span class="ob-req">*</span></label>
-        <input type="date" name="date_of_birth" value="{{ profile.date_of_birth.isoformat() if profile and profile.date_of_birth else '' }}" {% if profile and profile.date_of_birth %}readonly title="Already provided"{% endif %} required>
-        {% if profile and profile.date_of_birth %}<p class="ob-hint">Already provided.</p>{% endif %}
+        <label>Date of Birth</label>
+        <div class="ob-readonly-value">{{ profile.date_of_birth.isoformat() if profile and profile.date_of_birth else 'Not added to your profile yet' }}</div>
       </div>
       <div class="ob-field">
-        <label>Nationality <span class="ob-req">*</span></label>
-        <input type="text" name="nationality" value="{{ profile.nationality if profile else '' }}" {% if profile and profile.nationality %}readonly title="Already provided"{% endif %} required>
-        {% if profile and profile.nationality %}<p class="ob-hint">Already provided.</p>{% endif %}
+        <label>Nationality</label>
+        <div class="ob-readonly-value">{{ profile.nationality if profile and profile.nationality else 'Not added to your profile yet' }}</div>
       </div>
-      <div class="ob-field">
-        <label>National ID Number <span class="ob-req">*</span></label>
-        <input type="text" name="national_id_number" value="{{ profile.id_number if profile else '' }}" {% if profile and profile.id_number %}readonly title="Already provided"{% endif %} required>
-        {% if profile and profile.id_number %}<p class="ob-hint">Already provided.</p>{% endif %}
-      </div>
+      <p class="ob-hint">National ID verification is handled once through the KYC process. Driver onboarding will not ask you to enter your NIN again.</p>
       <div class="ob-form-footer">
-        <button class="ob-btn ob-btn--primary" type="submit">Continue →</button>
+        <a class="ob-btn ob-btn--secondary" href="{{ url_for('profile.edit_profile') }}">Review profile details</a>
+        <form method="POST" action="{{ url_for('onboarding.driver_onboarding', step=1) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="ob-btn ob-btn--primary" type="submit">Continue →</button>
+        </form>
       </div>
-    </form>
+    </div>
   </div>
 </div>
 {% include 'onboarding/_wizard_styles.html' %}
+<style nonce="{{ csp_nonce }}">
+  .ob-readonly-value { padding: .7rem .85rem; background: #f6f8f7; border: 1px solid #dce5df; border-radius: 6px; min-height: 2.7rem; }
+  .ob-form-footer { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+  .ob-btn--secondary { display: inline-block; padding: .7rem 1rem; border: 1px solid #9aada1; border-radius: 6px; text-decoration: none; color: inherit; }
+</style>
 {% endblock %}
