@@ -272,7 +272,10 @@ jobs:
     if: >-
       ${{
         needs.classify-user-changes.outputs.native == 'true' ||
-        needs.classify-user-changes.outputs.e2e_harness == 'true' ||
+        (
+          needs.classify-user-changes.outputs.e2e_harness == 'true' &&
+          needs.classify-user-changes.outputs.ota != 'true'
+        ) ||
         (github.event_name == 'workflow_dispatch' && inputs.force_apk_rebuild == true)
       }}
     runs-on: ubuntu-24.04
