@@ -163,7 +163,7 @@ class TwilioSmsHandler(BaseChannelHandler):
 
             message = client.messages.create(**params)
 
-            logger.info(f"[Twilio SMS] Sent to {to_phone}: SID={message.sid}, Status={message.status}")
+            logger.info("[Twilio SMS] Message accepted (status=%s)", message.status)
             return {
                 'success': True,
                 'external_id': message.sid,
