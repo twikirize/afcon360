@@ -787,7 +787,10 @@ def resend_verification():
     if not current_user.is_authenticated:
         return redirect(url_for("auth.login"))
 
-    if getattr(current_user, "is_verified", False):
+    if (
+        getattr(current_user, "email_verified", False)
+        or getattr(current_user, "is_verified", False)
+    ):
         flash("Your email is already verified.", "info")
         return redirect(request.referrer or url_for("profile.account_overview"))
 
