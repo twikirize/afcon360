@@ -2,8 +2,9 @@
 """Exercise Android's visible PackageInstaller UI for AFCON360 User APKs.
 
 This intentionally does not use adb install. APKs are handed to the Android
-system installer through ACTION_VIEW, the confirmation UI is inspected with
-uiautomator, and the resulting package/session state is captured.
+system installer through ACTION_INSTALL_PACKAGE using a MediaStore content URI.
+The confirmation UI is inspected with uiautomator, and resulting package/session
+state is captured.
 """
 
 from __future__ import annotations
@@ -34,13 +35,27 @@ def run(
     check: bool = True,
     binary: bool = False,
 ) -> subprocess.CompletedProcess:
-    result = subprocess.run(
-        list(args),
-        capture_output=True,
-        text=not binary,
-        timeout=timeout,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            list(args),
+            capture_output=True,
+            text=not binary,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        stdout = error.stdout or ""
+        stderr = error.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        if check:
+            raise TestFailure(
+                f"Command timed out after {timeout}s: {' '.join(args)}\\n"
+                f"stdout: {stdout[-3000:]}\\nstderr: {stderr[-3000:]}"
+            ) from error
+        return subprocess.CompletedProcess(list(args), 124, stdout, stderr)
     if check and result.returncode != 0:
         stdout = result.stdout if isinstance(result.stdout, str) else repr(result.stdout)
         stderr = result.stderr if isinstance(result.stderr, str) else repr(result.stderr)
@@ -147,6 +162,51 @@ def set_up_installer_source(evidence: Path) -> None:
         raise TestFailure(f"Emulator shell cannot be authorized to open PackageInstaller: {verify}")
 
 
+
+
+def media_store_content_uri(remote_path: str, evidence: Path, label: str) -> str:
+    """Ask Android MediaProvider for a readable content URI for the staged APK.
+
+    PackageInstaller cannot consume a raw file:// URI. The shell MediaProvider
+    scan call returns the content:// URI that can be granted to the installer.
+    """
+    result = run(
+        [
+            "adb",
+            "shell",
+            "content",
+            "call",
+            "--uri",
+            "content://media",
+            "--method",
+            "scan_file",
+            "--arg",
+            remote_path,
+        ],
+        timeout=90,
+        check=False,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+    write_text(evidence / f"{label}-media-scan.txt", output)
+    if result.returncode != 0:
+        raise TestFailure(
+            f"MediaProvider could not create an installer URI for {remote_path} "
+            f"(exit {result.returncode}): {output[-3000:]}"
+        )
+
+    match = re.search(r"(content://[^\\s,}\\]]+)", output)
+    if not match:
+        raise TestFailure(
+            f"MediaProvider did not return a content:// URI for {remote_path}: "
+            f"{output[-3000:]}"
+        )
+    uri = match.group(1).rstrip(").'")
+    if not uri.startswith("content://"):
+        raise TestFailure(f"MediaProvider returned an invalid installer URI: {uri}")
+    write_text(evidence / f"{label}-content-uri.txt", uri + "\\n")
+    return uri
+
+
 def perform_packageinstaller_install(
     *,
     apk: Path,
@@ -158,48 +218,47 @@ def perform_packageinstaller_install(
     if not apk.is_file() or apk.stat().st_size == 0:
         raise TestFailure(f"APK fixture is missing or empty: {apk}")
 
-    # Prefer shared Download storage, but fall back to shell-owned staging if
-    # an emulator image has not mounted emulated external storage yet.
-    mkdir_result = run(
-        ["adb", "shell", "mkdir", "-p", "/sdcard/Download"],
-        timeout=20,
-        check=False,
-    )
-    if mkdir_result.returncode == 0:
-        remote = f"/sdcard/Download/{label}.apk"
-        staging_mode = "shared-download"
-    else:
-        remote = f"/data/local/tmp/{label}.apk"
-        staging_mode = "data-local-tmp-fallback"
+    # Stage the APK in shell-owned storage. Do not depend on /sdcard being
+    # mounted or responsive: some emulator images stall indefinitely while
+    # creating /sdcard/Download. MediaProvider can return a content URI for
+    # the staged file, which is what Android's installer contract requires.
+    remote = f"/data/local/tmp/{label}.apk"
     write_text(
         evidence / f"{label}-storage-staging.txt",
-        f"mode={staging_mode}\\nmkdir_exit={mkdir_result.returncode}\\n"
-        f"stdout={mkdir_result.stdout}\\nstderr={mkdir_result.stderr}\\n",
+        f"mode=data-local-tmp\\nremote={remote}\\n",
     )
-    adb("push", str(apk), remote, timeout=90)
-    remote_listing = adb("shell", "ls", "-l", remote)
+    adb("push", str(apk), remote, timeout=120)
+    remote_listing = adb("shell", "ls", "-l", remote, timeout=30)
     write_text(evidence / f"{label}-remote-apk.txt", remote_listing)
 
-    # Start the Android system's own package installer activity, without adb install.
+    content_uri = media_store_content_uri(remote, evidence, label)
+
+    # ACTION_INSTALL_PACKAGE requires a content:// URI; grant the system
+    # installer temporary read access to the APK. This opens the real installer
+    # confirmation UI and deliberately does not use adb install/pm install.
     adb("logcat", "-c")
     intent = adb(
         "shell",
         "am",
         "start",
         "-a",
-        "android.intent.action.VIEW",
+        "android.intent.action.INSTALL_PACKAGE",
         "-d",
-        f"file://{remote}",
+        content_uri,
         "-t",
         INSTALLER_MIME,
         "-f",
         "0x10000001",
-        timeout=30,
+        timeout=45,
         check=False,
     )
     write_text(evidence / f"{label}-installer-launch.txt", intent)
-    if "error" in intent.lower() or "exception" in intent.lower():
-        raise TestFailure(f"Android did not launch PackageInstaller: {intent}")
+    if re.search(r"(^|\\n)Error:", intent, flags=re.IGNORECASE) or "exception" in intent.lower():
+        capture_screenshot(evidence, f"{label}-launch-failure")
+        capture_device_state(evidence, f"{label}-launch-failure")
+        raise TestFailure(
+            f"Android did not launch PackageInstaller for {content_uri}: {intent}"
+        )
 
     tapped_install = False
     tapped_done = False
@@ -255,6 +314,8 @@ def perform_packageinstaller_install(
                 "expected_version_code": expected_version_code,
                 "installed_version_code": actual_code,
                 "package_path": package_path(package),
+                "installer_action": "android.intent.action.INSTALL_PACKAGE",
+                "installer_uri": content_uri,
                 "installer_intent": intent.strip(),
                 "install_button_tapped": tapped_install,
                 "status": "PASS",
@@ -345,7 +406,7 @@ def main() -> int:
         "android_api": api,
         "tests": results,
         "overall": "PASS",
-        "note": "Uses Android ACTION_VIEW and visible PackageInstaller UI; it does not use adb install.",
+        "note": "Uses Android ACTION_INSTALL_PACKAGE with a MediaStore content URI and visible PackageInstaller UI; it does not use adb install.",
     }
     write_text(evidence / "summary.json", json.dumps(summary, indent=2))
     print(f"USER_PACKAGEINSTALLER_UI_MATRIX_PASS: Android API {api}")
