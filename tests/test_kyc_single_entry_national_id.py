@@ -338,6 +338,19 @@ def test_national_id_submit_backfills_missing_canonical_dob(app, client, test_us
     assert resp.status_code == 302
 
     with app.app_context():
+        from app.kyc.models import KycRecord
+
+        merged = db.session.merge(test_user)
+        record = KycRecord.query.filter_by(
+            user_id=merged.id, record_type="nira_national_id"
+        ).first()
+        assert record is not None
+        assert record.scope == {
+            "full_name": "Gift Nakamya",
+            "date_of_birth": "1992-06-01",
+            "nationality": "UG",
+        }
+
         profile = get_profile_by_user(public_id)
         assert profile.date_of_birth == dt.date(1992, 6, 1)
         assert profile.full_name == "Gift Nakamya"

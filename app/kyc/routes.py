@@ -703,6 +703,22 @@ def submit_national_id():
             verification_id=None,
             reference_code=result.get("verification_id"),  # Store NIRA string here
             risk_score=watchlist.get("risk_score", 0),
+            # Retain the effective canonical identity evidence with the KYC
+            # decision. KycService's approval-time backfill uses this scope
+            # as defense in depth if the submission-side profile write was
+            # unavailable; do not duplicate the separately stored NIN.
+            scope={
+                "full_name": full_name,
+                "date_of_birth": (
+                    date_of_birth.isoformat()
+                    if hasattr(date_of_birth, "isoformat")
+                    else str(date_of_birth) if date_of_birth else None
+                ),
+                "nationality": (
+                    (canonical.nationality or "").strip()
+                    if canonical is not None and canonical.nationality else None
+                ),
+            },
             raw_response=result,
         )
         db.session.add(record)
