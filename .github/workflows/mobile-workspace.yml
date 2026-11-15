@@ -5,6 +5,7 @@ on:
     branches:
       - feat/native-user-app-integration-20261108
       - fix/native-user-apk-cache-and-e2e-20261110
+      - fix/user-release-engineering-20261115
     paths:
       - "mobile/apps/user/**"
       - "mobile/packages/**"
@@ -394,7 +395,8 @@ jobs:
           needs.classify-user-changes.outputs.e2e_harness == 'true' &&
           needs.classify-user-changes.outputs.ota != 'true'
         ) ||
-        (github.event_name == 'workflow_dispatch' && inputs.force_apk_rebuild == true)
+        (github.event_name == 'workflow_dispatch' && inputs.force_apk_rebuild == true) ||
+        (github.event_name == 'push' && github.ref_name == 'fix/user-release-engineering-20261115')
       }}
     runs-on: ubuntu-24.04
     timeout-minutes: 100
@@ -799,7 +801,7 @@ jobs:
   user-android-version-compatibility:
     name: User authenticated journey — ${{ matrix.android-label }}
     needs: user-authenticated-journey
-    if: ${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' }}
+    if: ${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' && github.ref_name != 'fix/user-release-engineering-20261115' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -1144,12 +1146,15 @@ jobs:
     name: Build signed production User APK (EAS)
     needs: [mobile-typecheck, user-authenticated-journey]
     if: >-
-      ${{ github.event_name == 'pull_request' &&
-          github.event.pull_request.head.ref == 'fix/user-release-engineering-20261115' &&
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          needs.mobile-typecheck.result == "success" &&
-          needs.user-authenticated-journey.result == "success" &&
-          needs.user-authenticated-journey.outputs.apk_ready == "true" }}
+      ${{ (
+            (github.event_name == 'push' && github.ref_name == 'fix/user-release-engineering-20261115') ||
+            (github.event_name == 'pull_request' &&
+              github.event.pull_request.head.ref == 'fix/user-release-engineering-20261115' &&
+              github.event.pull_request.head.repo.full_name == github.repository)
+          ) &&
+          needs.mobile-typecheck.result == 'success' &&
+          needs.user-authenticated-journey.result == 'success' &&
+          needs.user-authenticated-journey.outputs.apk_ready == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     defaults:
