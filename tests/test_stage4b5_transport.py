@@ -315,7 +315,7 @@ def test_driver_commit_preserves_all_canonical_identity(db_session):
     assert prof.id_number == "NID-CANONICAL-001"
 
 
-def test_driver_commit_does_not_create_canonical_profile(db_session):
+def test_driver_commit_does_not_create_canonical_profile(db_session, monkeypatch):
     """A user with no UserProfile must NOT gain one from driver onboarding.
     Canonical identity creation is not owned by the driver flow."""
     from app.auth.onboarding_routes import _commit_driver_onboarding
@@ -325,17 +325,21 @@ def test_driver_commit_does_not_create_canonical_profile(db_session):
     user = _make_user(db_session, create_profile=False)
     # This case isolates the no-profile-creation invariant. Eligibility is
     # independently covered by ProviderService identity tests.
-    ProviderService.validate_driver_eligibility = lambda self, user_id: {
-        "eligible": True,
-        "identity": {
-            "identity_verified": True,
-            "email_verified": True,
-            "phone_verified": True,
-            "age": 30,
-            "has_criminal_record": None,
-            "account_status": "active",
+    monkeypatch.setattr(
+        ProviderService,
+        "validate_driver_eligibility",
+        lambda self, user_id: {
+            "eligible": True,
+            "identity": {
+                "identity_verified": True,
+                "email_verified": True,
+                "phone_verified": True,
+                "age": 30,
+                "has_criminal_record": None,
+                "account_status": "active",
+            },
         },
-    }
+    )
     _commit_driver_onboarding(user, _driver_wizard_data())
     db_session.flush()
 
