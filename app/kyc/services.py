@@ -185,7 +185,9 @@ class KycService:
                 if profile is None:
                     return False
 
-                if (getattr(profile, "verification_status", "") or "").lower() == "verified":
+                profile_status = getattr(profile, "verification_status", "") or ""
+                profile_status = getattr(profile_status, "value", profile_status)
+                if isinstance(profile_status, str) and profile_status.lower() == "verified":
                     return False
 
                 scope = getattr(record, "scope", None) or {}
