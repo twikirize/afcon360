@@ -710,7 +710,9 @@ def submit_national_id():
             scope={
                 "full_name": full_name,
                 "date_of_birth": (
-                    date_of_birth.isoformat() if date_of_birth else None
+                    date_of_birth.isoformat()
+                    if hasattr(date_of_birth, "isoformat")
+                    else str(date_of_birth) if date_of_birth else None
                 ),
                 "nationality": (
                     (canonical.nationality or "").strip()
