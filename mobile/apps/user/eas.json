@@ -40,20 +40,6 @@
         "AFCON360_RELEASE_BUILD": "true"
       }
     },
-    "production-apk": {
-      "distribution": "internal",
-      "channel": "production",
-      "android": {
-        "buildType": "apk"
-      },
-      "autoIncrement": true,
-      "credentialsSource": "remote",
-      "environment": "production",
-      "env": {
-        "AFCON360_PREVIEW_BUILD": "false",
-        "AFCON360_RELEASE_BUILD": "true"
-      }
-    },
     "apk-share": {
       "distribution": "internal",
       "channel": "preview",
