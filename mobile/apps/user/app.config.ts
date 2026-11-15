@@ -1,9 +1,49 @@
 import type { ExpoConfig } from "expo/config";
 
 const isPreview = process.env.AFCON360_PREVIEW_BUILD === "true";
+const isReleaseBuild = process.env.AFCON360_RELEASE_BUILD === "true";
 const appId = "space.pamoja.afcon360.user" + (isPreview ? ".preview" : "");
-const easProjectId = process.env.AFCON360_USER_EAS_PROJECT_ID?.trim();
+const easProjectId =
+  process.env.AFCON360_USER_EAS_PROJECT_ID?.trim() ||
+  process.env.EAS_BUILD_PROJECT_ID?.trim();
+const isEasBuild = process.env.EAS_BUILD === "true";
 const updateChannel = isPreview ? "preview" : "production";
+
+const easProjectIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+if (easProjectId && !easProjectIdPattern.test(easProjectId)) {
+  throw new Error("AFCON360 User EAS project ID must be a valid UUID.");
+}
+if (isEasBuild && !easProjectId) {
+  throw new Error(
+    "AFCON360 User EAS builds require the dedicated EAS project ID. " +
+      "Configure AFCON360_USER_EAS_PROJECT_ID or confirm EAS_BUILD_PROJECT_ID is available."
+  );
+}
+
+const apiBaseUrl =
+  process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || "https://www.pamoja.space";
+let parsedApiBaseUrl: URL;
+try {
+  parsedApiBaseUrl = new URL(apiBaseUrl);
+} catch {
+  throw new Error("AFCON360 User API base URL must be an absolute HTTP(S) URL.");
+}
+if (!["https:", "http:"].includes(parsedApiBaseUrl.protocol)) {
+  throw new Error("AFCON360 User API base URL must use HTTP or HTTPS.");
+}
+const apiHostname = parsedApiBaseUrl.hostname.toLowerCase();
+const isLoopbackApi =
+  apiHostname === "localhost" ||
+  apiHostname.endsWith(".localhost") ||
+  apiHostname === "127.0.0.1" ||
+  apiHostname === "0.0.0.0" ||
+  apiHostname === "::1";
+if (isReleaseBuild && (parsedApiBaseUrl.protocol !== "https:" || isLoopbackApi)) {
+  throw new Error(
+    "AFCON360 production builds must use an HTTPS API endpoint and cannot target localhost."
+  );
+}
 
 const config: ExpoConfig = {
   name: isPreview ? "AFCON360 Preview" : "AFCON360",
@@ -51,7 +91,7 @@ const config: ExpoConfig = {
     ]
   ],
   extra: {
-    apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://www.pamoja.space",
+    apiBaseUrl,
     allowServerSelection: isPreview,
     ...(easProjectId ? { eas: { projectId: easProjectId } } : {})
   }

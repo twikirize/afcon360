@@ -6,11 +6,25 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "environment": "development",
+      "autoIncrement": true,
+      "credentialsSource": "remote",
+      "env": {
+        "AFCON360_PREVIEW_BUILD": "true",
+        "AFCON360_RELEASE_BUILD": "false"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "environment": "preview",
+      "autoIncrement": true,
+      "credentialsSource": "remote",
+      "env": {
+        "AFCON360_PREVIEW_BUILD": "true",
+        "AFCON360_RELEASE_BUILD": "false"
+      }
     },
     "production": {
       "distribution": "store",
@@ -18,6 +32,12 @@
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
+      },
+      "environment": "production",
+      "credentialsSource": "remote",
+      "env": {
+        "AFCON360_PREVIEW_BUILD": "false",
+        "AFCON360_RELEASE_BUILD": "true"
       }
     },
     "apk-share": {
@@ -25,6 +45,13 @@
       "channel": "preview",
       "android": {
         "buildType": "apk"
+      },
+      "environment": "preview",
+      "autoIncrement": true,
+      "credentialsSource": "remote",
+      "env": {
+        "AFCON360_PREVIEW_BUILD": "true",
+        "AFCON360_RELEASE_BUILD": "false"
       }
     }
   },

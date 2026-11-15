@@ -34,7 +34,7 @@ on:
         required: false
         default: false
       publish_preview_ota:
-        description: Publish an OTA-compatible User change to the preview channel.
+        description: Manually publish a validated OTA-compatible User change to the preview channel.
         type: boolean
         required: false
         default: false
@@ -211,10 +211,8 @@ jobs:
         needs.classify-user-changes.outputs.ota == 'true' &&
         needs.classify-user-changes.outputs.native != 'true' &&
         needs.mobile-typecheck.result == 'success' &&
-        (
-          (github.event_name == 'push' && github.ref_name == 'feat/native-user-app-integration-20261108') ||
-          (github.event_name == 'workflow_dispatch' && inputs.publish_preview_ota == true)
-        )
+        github.event_name == 'workflow_dispatch' &&
+        inputs.publish_preview_ota == true
       }}
     runs-on: ubuntu-latest
     defaults:
@@ -262,6 +260,7 @@ jobs:
         run: >-
           npx --yes eas-cli@latest update
           --branch preview
+          --environment preview
           --platform all
           --message "AFCON360 User preview OTA ${GITHUB_SHA}"
           --non-interactive
