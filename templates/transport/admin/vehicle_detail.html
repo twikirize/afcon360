@@ -7,6 +7,16 @@
 <span class="current">{{ vehicle.license_plate }}</span>
 {% endblock %}
 
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+.dd-row { padding:9px 14px; border-bottom:1px solid var(--border); font-size:0.83rem; display:flex; justify-content:space-between; gap:16px; }
+.dd-row:last-child { border-bottom:none; }
+.dd-k { color:var(--text-muted); }
+.dd-v { font-weight:600; text-align:right; }
+@media(max-width:640px) { .dd-row { flex-wrap:wrap; } .dd-v { text-align:left; } }
+</style>
+{% endblock %}
+
 {% block content %}
 {% set vehicle_class = vehicle.vehicle_class.value if vehicle.vehicle_class and vehicle.vehicle_class.value is defined else vehicle.vehicle_class %}
 <div class="page-header">
