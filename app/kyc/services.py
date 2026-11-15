@@ -174,12 +174,9 @@ class KycService:
             return False
 
         try:
-            from contextlib import nullcontext
-
-            nested = db.session.begin_nested()
             changed = False
 
-            with nested if nested is not None else nullcontext():
+            with db.session.begin_nested():
                 user = User.query.filter_by(id=record.user_id).first()
                 if user is None:
                     return False
@@ -275,7 +272,8 @@ class KycService:
 
             return changed
         except Exception:
-            db.session.rollback()
+            # The nested transaction has already rolled back its savepoint.
+            # Do not roll back the outer transaction containing the approval.
             current_app.logger.warning(
                 "Canonical profile backfill from approved KYC evidence skipped",
                 exc_info=True,
