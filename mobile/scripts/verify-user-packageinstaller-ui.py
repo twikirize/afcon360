@@ -158,8 +158,24 @@ def perform_packageinstaller_install(
     if not apk.is_file() or apk.stat().st_size == 0:
         raise TestFailure(f"APK fixture is missing or empty: {apk}")
 
-    remote = f"/sdcard/Download/{label}.apk"
-    adb("shell", "mkdir", "-p", "/sdcard/Download")
+    # Prefer shared Download storage, but fall back to shell-owned staging if
+    # an emulator image has not mounted emulated external storage yet.
+    mkdir_result = run(
+        ["adb", "shell", "mkdir", "-p", "/sdcard/Download"],
+        timeout=20,
+        check=False,
+    )
+    if mkdir_result.returncode == 0:
+        remote = f"/sdcard/Download/{label}.apk"
+        staging_mode = "shared-download"
+    else:
+        remote = f"/data/local/tmp/{label}.apk"
+        staging_mode = "data-local-tmp-fallback"
+    write_text(
+        evidence / f"{label}-storage-staging.txt",
+        f"mode={staging_mode}\\nmkdir_exit={mkdir_result.returncode}\\n"
+        f"stdout={mkdir_result.stdout}\\nstderr={mkdir_result.stderr}\\n",
+    )
     adb("push", str(apk), remote, timeout=90)
     remote_listing = adb("shell", "ls", "-l", remote)
     write_text(evidence / f"{label}-remote-apk.txt", remote_listing)
