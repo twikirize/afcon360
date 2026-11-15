@@ -689,7 +689,12 @@ def verify_email_code():
     if success:
         flash(message, "success")
         # Update session if needed
-        session['email_verified'] = True
+        session["email_verified"] = True
+        # When email verification was initiated from the phone onboarding
+        # gate, resume that step now that the account email is verified.
+        phone_resume = session.pop("post_email_verification_redirect", None)
+        if phone_resume:
+            return redirect(phone_resume)
     else:
         flash(message, "danger")
 
@@ -789,6 +794,11 @@ def resend_verification():
 
     if send_verification_email(current_user):
         flash("Verification email resent. Please check your inbox.", "success")
+        phone_verify_path = url_for("auth.verify_phone")
+        if request.referrer and phone_verify_path in request.referrer:
+            session["post_email_verification_redirect"] = phone_verify_path
+        else:
+            session.pop("post_email_verification_redirect", None)
     else:
         flash("Unable to resend verification email at this time. Please contact support.", "danger")
 
