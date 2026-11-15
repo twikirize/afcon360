@@ -12,10 +12,11 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useAuth } from "../../src/auth/AuthProvider";
-import { authClient } from "../../src/services/api";
+import { authClient, eventClient } from "../../src/services/api";
+import type { NativeEventRegistration } from "@afcon360/mobile-core";
 import { getSelectedApiBaseUrl } from "../../src/services/api";
 
 const SITE = "https://www.pamoja.space";
@@ -75,6 +76,32 @@ type FeedResponse = {
 };
 
 type LoadMode = "initial" | "refresh" | "more";
+
+type RegistrationFilter = "upcoming" | "past" | "all";
+
+function registrationEndDate(registration: NativeEventRegistration): string {
+  return (registration.event.end_date || registration.event.start_date || "").slice(0, 10);
+}
+
+function registrationIsPast(registration: NativeEventRegistration, today: string): boolean {
+  const endDate = registrationEndDate(registration);
+  return !!endDate && endDate < today;
+}
+
+function registrationLocation(registration: NativeEventRegistration): string {
+  return [registration.event.city, registration.event.country].filter(Boolean).join(", ") || "Location to be announced";
+}
+
+function registrationActivityLabel(registration: NativeEventRegistration): string {
+  return registration.status === "checked_in" ? "Attended" : "Registered";
+}
+
+function registrationCreatedLabel(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
 
 function localDateKey(): string {
   const today = new Date();
@@ -332,6 +359,14 @@ export default function UserHome() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [registrations, setRegistrations] = useState<NativeEventRegistration[]>([]);
+  const [registrationsLoading, setRegistrationsLoading] = useState(true);
+  const [registrationsError, setRegistrationsError] = useState<string | null>(null);
+  const [registrationFilter, setRegistrationFilter] = useState<RegistrationFilter>("upcoming");
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const requestInFlight = useRef(false);
 
   useEffect(() => {
@@ -384,6 +419,76 @@ export default function UserHome() {
     void loadFeedPage(1, null, "initial");
   }, [loadFeedPage]);
 
+  const loadRegistrations = useCallback(async () => {
+    setRegistrationsLoading(true);
+    setRegistrationsError(null);
+    try {
+      const result = await eventClient.listRegistrations(30, 0);
+      setRegistrations(result.items ?? []);
+    } catch (error) {
+      setRegistrationsError(error instanceof Error ? error.message : "Your event registrations are temporarily unavailable.");
+    } finally {
+      setRegistrationsLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadRegistrations();
+    }, [loadRegistrations])
+  );
+
+  const today = localDateKey();
+  const upcomingRegistrations = useMemo(() => registrations
+    .filter((registration) =>
+      registration.status !== "cancelled" && !registrationIsPast(registration, today)
+    )
+    .slice()
+    .sort((a, b) => {
+      const aDate = (a.event.start_date || "9999-12-31").slice(0, 10);
+      const bDate = (b.event.start_date || "9999-12-31").slice(0, 10);
+      return aDate.localeCompare(bDate);
+    }), [registrations, today]);
+  const pastRegistrations = useMemo(() => registrations
+    .filter((registration) => registrationIsPast(registration, today))
+    .slice()
+    .sort((a, b) => (b.event.start_date || "").localeCompare(a.event.start_date || "")),
+  [registrations, today]);
+  const recentRegistrations = useMemo(() => registrations
+    .slice()
+    .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
+    .slice(0, 5), [registrations]);
+  const visibleRegistrations = registrationFilter === "upcoming"
+    ? upcomingRegistrations
+    : registrationFilter === "past"
+      ? pastRegistrations
+      : registrations;
+  const nextEvent = upcomingRegistrations[0] ?? null;
+  const attendedCount = registrations.filter((registration) => registration.status === "checked_in").length;
+  const activeTicketCount = registrations.filter((registration) =>
+    registration.status !== "cancelled" && !registrationIsPast(registration, today)
+  ).length;
+
+  const calendarMonthLabel = calendarMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const calendarDays = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const offset = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cellCount = Math.ceil((offset + daysInMonth) / 7) * 7;
+    return Array.from({ length: cellCount }, (_, index) => {
+      const day = index - offset + 1;
+      return day >= 1 && day <= daysInMonth ? day : null;
+    });
+  }, [calendarMonth]);
+  const calendarEventDays = useMemo(() => {
+    const prefix = calendarMonth.getFullYear() + "-" + String(calendarMonth.getMonth() + 1).padStart(2, "0") + "-";
+    return new Set(registrations
+      .map((registration) => (registration.event.start_date || "").slice(0, 10))
+      .filter((value) => value.startsWith(prefix))
+      .map((value) => Number(value.slice(8, 10))));
+  }, [registrations, calendarMonth]);
+
   const currentEvents = useMemo(() => {
     const today = localDateKey();
     return feedItems.filter((item) => item.type === "event" && isCurrentEvent(item, today));
@@ -435,8 +540,11 @@ export default function UserHome() {
   }, [openEventSearch, openWebsite, router]);
 
   const onRefresh = useCallback(() => {
-    void loadFeedPage(1, null, "refresh");
-  }, [loadFeedPage]);
+    void Promise.all([
+      loadFeedPage(1, null, "refresh"),
+      loadRegistrations(),
+    ]);
+  }, [loadFeedPage, loadRegistrations]);
 
   const onLoadMore = useCallback(() => {
     if (!hasMore || loading || loadingMore || !seed) return;
@@ -449,6 +557,272 @@ export default function UserHome() {
 
   const listHeader = (
     <View style={styles.pageContent}>
+      <View style={styles.myEventsDashboard}>
+        <View style={styles.myEventsHeading}>
+          <View style={styles.myEventsHeadingCopy}>
+            <Text style={styles.dashboardEyebrow}>YOUR AFCON360 DASHBOARD</Text>
+            <Text accessibilityRole="header" style={styles.myEventsTitle}>My Events</Text>
+            <Text style={styles.myEventsSubtitle}>Your tickets, registrations, schedule and event activity.</Text>
+          </View>
+          <Pressable accessibilityRole="button" onPress={() => openService("events")} style={styles.browseEventsButton}>
+            <Text style={styles.browseEventsButtonText}>Browse events</Text>
+          </Pressable>
+        </View>
+
+        {registrationsError ? (
+          <View style={styles.registrationError}>
+            <Text style={styles.registrationErrorTitle}>Your event activity could not be loaded</Text>
+            <Text style={styles.registrationErrorText}>{registrationsError}</Text>
+            <Pressable accessibilityRole="button" onPress={() => void loadRegistrations()} style={styles.registrationRetryButton}>
+              <Text style={styles.registrationRetryText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={styles.dashboardStatsRow}>
+          <View style={styles.dashboardStatCard}>
+            <Text style={styles.dashboardStatValue}>{registrationsLoading ? "—" : upcomingRegistrations.length}</Text>
+            <Text style={styles.dashboardStatLabel}>UPCOMING</Text>
+          </View>
+          <View style={styles.dashboardStatCard}>
+            <Text style={styles.dashboardStatValue}>{registrationsLoading ? "—" : activeTicketCount}</Text>
+            <Text style={styles.dashboardStatLabel}>ACTIVE TICKETS</Text>
+          </View>
+          <View style={styles.dashboardStatCard}>
+            <Text style={styles.dashboardStatValue}>{registrationsLoading ? "—" : attendedCount}</Text>
+            <Text style={styles.dashboardStatLabel}>BADGES EARNED</Text>
+          </View>
+        </View>
+
+        <View style={styles.dashboardCard}>
+          <View style={styles.dashboardCardHeader}>
+            <View>
+              <Text style={styles.dashboardCardTitle}>Event calendar</Text>
+              <Text style={styles.dashboardCardSubtitle}>Your registered event dates</Text>
+            </View>
+            <View style={styles.calendarMonthControls}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Previous month"
+                onPress={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+                style={styles.calendarMonthButton}
+              >
+                <Text style={styles.calendarMonthButtonText}>‹</Text>
+              </Pressable>
+              <Text style={styles.calendarMonthLabel}>{calendarMonthLabel}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Next month"
+                onPress={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+                style={styles.calendarMonthButton}
+              >
+                <Text style={styles.calendarMonthButtonText}>›</Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.calendarWeekRow}>
+            {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
+              <Text key={day + index} style={styles.calendarWeekday}>{day}</Text>
+            ))}
+          </View>
+          <View style={styles.calendarGrid}>
+            {calendarDays.map((day, index) => {
+              const dateKey = day
+                ? calendarMonth.getFullYear() + "-" + String(calendarMonth.getMonth() + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0")
+                : "";
+              const isToday = dateKey === today;
+              const hasEvent = day !== null && calendarEventDays.has(day);
+              return (
+                <View key={"calendar-" + index} style={styles.calendarDayCell}>
+                  <View style={[styles.calendarDayCircle, isToday && styles.calendarDayToday, hasEvent && styles.calendarDayHasEvent]}>
+                    <Text style={[styles.calendarDayText, isToday && styles.calendarDayTodayText, hasEvent && styles.calendarDayEventText]}>
+                      {day ?? ""}
+                    </Text>
+                  </View>
+                  {hasEvent ? <View style={styles.calendarEventDot} /> : <View style={styles.calendarNoDot} />}
+                </View>
+              );
+            })}
+          </View>
+          <View style={styles.calendarLegend}>
+            <View style={styles.calendarLegendDot} />
+            <Text style={styles.calendarLegendText}>Registered event</Text>
+          </View>
+        </View>
+
+        <View style={styles.dashboardCard}>
+          <View style={styles.dashboardCardHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dashboardCardTitle}>Next event</Text>
+              <Text style={styles.dashboardCardSubtitle}>Your next registered experience</Text>
+            </View>
+            <Text style={styles.dashboardSectionIcon}>📅</Text>
+          </View>
+          {registrationsLoading ? (
+            <View style={styles.dashboardLoadingRow}>
+              <ActivityIndicator color={BRAND_GREEN} />
+              <Text style={styles.dashboardMuted}>Loading your registrations…</Text>
+            </View>
+          ) : nextEvent ? (
+            <View style={styles.nextEventContent}>
+              <Text style={styles.nextEventName}>{nextEvent.event.name || "Registered event"}</Text>
+              <Text style={styles.nextEventMeta}>📅 {displayDate(nextEvent.event.start_date)}</Text>
+              <Text style={styles.nextEventMeta}>📍 {registrationLocation(nextEvent)}</Text>
+              <Text style={styles.nextEventTicket}>{nextEvent.ticket_type} · {nextEvent.registration_reference}</Text>
+              <Pressable accessibilityRole="button" onPress={() => openService("events")} style={styles.nextEventButton}>
+                <Text style={styles.nextEventButtonText}>Open my tickets ›</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.dashboardEmpty}>
+              <Text style={styles.dashboardEmptyTitle}>No upcoming events yet</Text>
+              <Text style={styles.dashboardMuted}>When you register for an event, its date and ticket will appear here.</Text>
+              <Pressable accessibilityRole="button" onPress={() => openService("events")} style={styles.nextEventButton}>
+                <Text style={styles.nextEventButtonText}>Discover events ›</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.dashboardCard}>
+          <View style={styles.dashboardCardHeader}>
+            <View>
+              <Text style={styles.dashboardCardTitle}>Upcoming reminders</Text>
+              <Text style={styles.dashboardCardSubtitle}>The next dates on your event schedule</Text>
+            </View>
+            <Text style={styles.dashboardSectionIcon}>🔔</Text>
+          </View>
+          {registrationsLoading ? (
+            <ActivityIndicator color={BRAND_GREEN} />
+          ) : upcomingRegistrations.length ? (
+            upcomingRegistrations.slice(0, 3).map((registration) => (
+              <View key={"reminder-" + registration.registration_reference} style={styles.reminderRow}>
+                <View style={styles.reminderDateBadge}>
+                  <Text style={styles.reminderDateDay}>
+                    {registration.event.start_date ? registration.event.start_date.slice(8, 10) : "—"}
+                  </Text>
+                  <Text style={styles.reminderDateMonth}>
+                    {registration.event.start_date
+                      ? new Date(registration.event.start_date.slice(0, 10) + "T00:00:00").toLocaleDateString(undefined, { month: "short" }).toUpperCase()
+                      : "DATE"}
+                  </Text>
+                </View>
+                <View style={styles.reminderCopy}>
+                  <Text numberOfLines={1} style={styles.reminderTitle}>{registration.event.name || "Registered event"}</Text>
+                  <Text numberOfLines={1} style={styles.reminderMeta}>{displayDate(registration.event.start_date)} · {registrationLocation(registration)}</Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.dashboardMuted}>No upcoming event reminders.</Text>
+          )}
+        </View>
+
+        <View style={styles.dashboardCard}>
+          <View style={styles.dashboardCardHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dashboardCardTitle}>My registrations</Text>
+              <Text style={styles.dashboardCardSubtitle}>Review your upcoming and past event tickets</Text>
+            </View>
+            <Pressable accessibilityRole="button" onPress={() => openService("events")}>
+              <Text style={styles.dashboardLink}>All tickets ›</Text>
+            </Pressable>
+          </View>
+          <View style={styles.registrationFilters}>
+            {([
+              { key: "upcoming", label: "Upcoming", count: upcomingRegistrations.length },
+              { key: "past", label: "Past", count: pastRegistrations.length },
+              { key: "all", label: "All", count: registrations.length },
+            ] as const).map((filter) => (
+              <Pressable
+                key={filter.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected: registrationFilter === filter.key }}
+                onPress={() => setRegistrationFilter(filter.key)}
+                style={[styles.registrationFilter, registrationFilter === filter.key && styles.registrationFilterActive]}
+              >
+                <Text style={[styles.registrationFilterText, registrationFilter === filter.key && styles.registrationFilterTextActive]}>
+                  {filter.label} {filter.count}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {registrationsLoading ? (
+            <View style={styles.dashboardLoadingRow}>
+              <ActivityIndicator color={BRAND_GREEN} />
+              <Text style={styles.dashboardMuted}>Loading your event registrations…</Text>
+            </View>
+          ) : visibleRegistrations.length ? (
+            visibleRegistrations.slice(0, 5).map((registration) => (
+              <Pressable
+                key={"registration-" + registration.registration_reference}
+                accessibilityRole="button"
+                accessibilityLabel={"Open tickets for " + (registration.event.name || "registered event")}
+                onPress={() => openService("events")}
+                style={styles.registrationRow}
+              >
+                <View style={styles.registrationRowCopy}>
+                  <Text numberOfLines={1} style={styles.registrationRowTitle}>{registration.event.name || "Registered event"}</Text>
+                  <Text style={styles.registrationRowMeta}>{displayDate(registration.event.start_date)} · {registration.ticket_type}</Text>
+                  <Text style={styles.registrationRowReference}>{registration.registration_reference}</Text>
+                </View>
+                <View style={[styles.registrationStatus, registration.status === "confirmed" || registration.status === "checked_in" ? styles.registrationStatusGood : styles.registrationStatusOther]}>
+                  <Text style={[styles.registrationStatusText, registration.status === "confirmed" || registration.status === "checked_in" ? styles.registrationStatusTextGood : styles.registrationStatusTextOther]}>
+                    {registration.status.replace(/_/g, " ")}
+                  </Text>
+                </View>
+                <Text style={styles.registrationChevron}>›</Text>
+              </Pressable>
+            ))
+          ) : (
+            <View style={styles.dashboardEmpty}>
+              <Text style={styles.dashboardEmptyTitle}>
+                {registrationFilter === "past" ? "No past events" : registrationFilter === "all" ? "No registrations yet" : "No upcoming events"}
+              </Text>
+              <Text style={styles.dashboardMuted}>
+                {registrationFilter === "past"
+                  ? "Your attended events will appear here."
+                  : "Register for an event to see your tickets and schedule here."}
+              </Text>
+              {registrationFilter !== "past" ? (
+                <Pressable accessibilityRole="button" onPress={() => openService("events")} style={styles.nextEventButton}>
+                  <Text style={styles.nextEventButtonText}>Browse events ›</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.dashboardCard}>
+          <View style={styles.dashboardCardHeader}>
+            <View>
+              <Text style={styles.dashboardCardTitle}>Recent activity</Text>
+              <Text style={styles.dashboardCardSubtitle}>Your latest event registrations and attendance</Text>
+            </View>
+            <Text style={styles.dashboardSectionIcon}>↗</Text>
+          </View>
+          {registrationsLoading ? (
+            <ActivityIndicator color={BRAND_GREEN} />
+          ) : recentRegistrations.length ? (
+            recentRegistrations.map((registration) => (
+              <View key={"activity-" + registration.registration_reference} style={styles.activityRow}>
+                <View style={styles.activityIcon}>
+                  <Text style={styles.activityIconText}>{registration.status === "checked_in" ? "✓" : "🎟️"}</Text>
+                </View>
+                <View style={styles.activityCopy}>
+                  <Text numberOfLines={1} style={styles.activityTitle}>{registration.event.name || "Event registration"}</Text>
+                  <Text style={styles.activityMeta}>
+                    {registrationActivityLabel(registration)} · {registration.ticket_type} · {registrationCreatedLabel(registration.created_at)}
+                  </Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.dashboardMuted}>No activity yet. Register for an event to get started.</Text>
+          )}
+        </View>
+      </View>
+
       <View style={styles.hero}>
         <View style={styles.heroGlowLarge} />
         <View style={styles.heroGlowSmall} />
@@ -659,6 +1033,90 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: CANVAS },
   listContent: { paddingBottom: 28 },
   pageContent: { paddingBottom: 4, gap: 20 },
+  myEventsDashboard: { paddingHorizontal: 16, gap: 12 },
+  myEventsHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  myEventsHeadingCopy: { flex: 1, gap: 3 },
+  dashboardEyebrow: { color: BRAND_GREEN, fontSize: 9, fontWeight: "900", letterSpacing: 1.1 },
+  myEventsTitle: { color: INK, fontSize: 22, lineHeight: 27, fontWeight: "900", letterSpacing: -0.45 },
+  myEventsSubtitle: { color: MUTED, fontSize: 10, lineHeight: 15 },
+  browseEventsButton: { minHeight: 38, justifyContent: "center", paddingHorizontal: 12, borderRadius: 10, backgroundColor: BRAND_GREEN },
+  browseEventsButtonText: { color: WHITE, fontSize: 10, fontWeight: "900" },
+  dashboardStatsRow: { flexDirection: "row", gap: 8 },
+  dashboardStatCard: { flex: 1, minHeight: 66, justifyContent: "center", alignItems: "center", gap: 4, borderRadius: 13, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE },
+  dashboardStatValue: { color: BRAND_DARK, fontSize: 19, fontWeight: "900" },
+  dashboardStatLabel: { color: MUTED, fontSize: 7, fontWeight: "900", letterSpacing: 0.65 },
+  dashboardCard: { padding: 13, borderRadius: 15, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE, gap: 10 },
+  dashboardCardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  dashboardCardTitle: { color: INK, fontSize: 13, fontWeight: "900" },
+  dashboardCardSubtitle: { color: MUTED, fontSize: 9, lineHeight: 13, marginTop: 2 },
+  dashboardSectionIcon: { fontSize: 19 },
+  dashboardLink: { color: BRAND_GREEN, fontSize: 10, fontWeight: "900" },
+  dashboardLoadingRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dashboardMuted: { color: MUTED, fontSize: 10, lineHeight: 15 },
+  dashboardEmpty: { paddingVertical: 5, gap: 6 },
+  dashboardEmptyTitle: { color: INK, fontSize: 12, fontWeight: "900" },
+  dashboardErrorPlaceholder: { color: "#9A342D", fontSize: 10 },
+  nextEventContent: { gap: 6 },
+  nextEventName: { color: BRAND_DARK, fontSize: 16, lineHeight: 20, fontWeight: "900" },
+  nextEventMeta: { color: MUTED, fontSize: 10, lineHeight: 15 },
+  nextEventTicket: { color: "#738178", fontSize: 9, fontWeight: "700" },
+  nextEventButton: { minHeight: 38, alignSelf: "flex-start", justifyContent: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "#EAF2EB", marginTop: 2 },
+  nextEventButtonText: { color: BRAND_GREEN, fontSize: 10, fontWeight: "900" },
+  calendarMonthControls: { flexDirection: "row", alignItems: "center", gap: 6 },
+  calendarMonthButton: { width: 27, height: 27, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#F1F5F1" },
+  calendarMonthButtonText: { color: BRAND_GREEN, fontSize: 19, fontWeight: "900", lineHeight: 22 },
+  calendarMonthLabel: { minWidth: 84, textAlign: "center", color: INK, fontSize: 9, fontWeight: "900" },
+  calendarWeekRow: { flexDirection: "row" },
+  calendarWeekday: { width: "14.285%", textAlign: "center", color: MUTED, fontSize: 8, fontWeight: "900", paddingVertical: 4 },
+  calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
+  calendarDayCell: { width: "14.285%", minHeight: 38, alignItems: "center", justifyContent: "center", gap: 2 },
+  calendarDayCircle: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  calendarDayToday: { backgroundColor: BRAND_DARK },
+  calendarDayHasEvent: { borderWidth: 1, borderColor: "#D8B43B", backgroundColor: "#FFF7D8" },
+  calendarDayText: { color: INK, fontSize: 9, fontWeight: "700" },
+  calendarDayTodayText: { color: WHITE },
+  calendarDayEventText: { color: BRAND_DARK, fontWeight: "900" },
+  calendarEventDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: BRAND_GREEN },
+  calendarNoDot: { width: 4, height: 4 },
+  calendarLegend: { flexDirection: "row", alignItems: "center", gap: 6 },
+  calendarLegendDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: BRAND_GREEN },
+  calendarLegendText: { color: MUTED, fontSize: 8, fontWeight: "700" },
+  reminderRow: { minHeight: 49, flexDirection: "row", alignItems: "center", gap: 10, borderTopWidth: 1, borderTopColor: "#EFF2EF", paddingTop: 8 },
+  reminderDateBadge: { width: 39, height: 39, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF4D5" },
+  reminderDateDay: { color: BRAND_DARK, fontSize: 14, lineHeight: 16, fontWeight: "900" },
+  reminderDateMonth: { color: "#8A6A12", fontSize: 7, fontWeight: "900" },
+  reminderCopy: { flex: 1, minWidth: 0, gap: 3 },
+  reminderTitle: { color: INK, fontSize: 10, fontWeight: "900" },
+  reminderMeta: { color: MUTED, fontSize: 8 },
+  registrationFilters: { flexDirection: "row", gap: 7 },
+  registrationFilter: { minHeight: 32, alignItems: "center", justifyContent: "center", paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, borderColor: BORDER, backgroundColor: "#FAFCFA" },
+  registrationFilterActive: { backgroundColor: BRAND_DARK, borderColor: BRAND_DARK },
+  registrationFilterText: { color: MUTED, fontSize: 9, fontWeight: "800" },
+  registrationFilterTextActive: { color: WHITE },
+  registrationRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 7, borderTopWidth: 1, borderTopColor: "#EFF2EF", paddingVertical: 9 },
+  registrationRowCopy: { flex: 1, minWidth: 0, gap: 3 },
+  registrationRowTitle: { color: INK, fontSize: 10, fontWeight: "900" },
+  registrationRowMeta: { color: MUTED, fontSize: 8 },
+  registrationRowReference: { color: "#87938D", fontSize: 8, fontFamily: "monospace" },
+  registrationStatus: { maxWidth: 85, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 99 },
+  registrationStatusGood: { backgroundColor: "#E7F3E9" },
+  registrationStatusOther: { backgroundColor: "#FFF3D6" },
+  registrationStatusText: { fontSize: 7, fontWeight: "900", textTransform: "capitalize" },
+  registrationStatusTextGood: { color: BRAND_GREEN },
+  registrationStatusTextOther: { color: "#88651A" },
+  registrationChevron: { color: BRAND_GREEN, fontSize: 17, fontWeight: "900" },
+  activityRow: { flexDirection: "row", alignItems: "center", gap: 9, borderTopWidth: 1, borderTopColor: "#EFF2EF", paddingTop: 9 },
+  activityIcon: { width: 29, height: 29, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#EAF2EB" },
+  activityIconText: { color: BRAND_GREEN, fontSize: 13, fontWeight: "900" },
+  activityCopy: { flex: 1, minWidth: 0, gap: 3 },
+  activityTitle: { color: INK, fontSize: 10, fontWeight: "900" },
+  activityMeta: { color: MUTED, fontSize: 8 },
+  registrationError: { padding: 12, borderWidth: 1, borderColor: "#F1D6D2", borderRadius: 12, backgroundColor: "#FFF6F5", gap: 5 },
+  registrationErrorTitle: { color: "#9A342D", fontSize: 11, fontWeight: "900" },
+  registrationErrorText: { color: "#8D4943", fontSize: 9, lineHeight: 14 },
+  registrationRetryButton: { alignSelf: "flex-start", marginTop: 3, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#F5E3E0", borderRadius: 8 },
+  registrationRetryText: { color: "#9A342D", fontSize: 9, fontWeight: "900" },
+
   hero: {
     backgroundColor: BRAND_DARK,
     paddingHorizontal: 20,
