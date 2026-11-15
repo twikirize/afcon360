@@ -50,6 +50,23 @@ Disposition: **already incorporated / duplicate snapshot**. Keep the audit ref a
 | `integration/backend-main-consolidation-20261112` | Local tip `f095be91` is not currently available through GitHub API; branch is locally ahead by one and behind by six | Inspect the one local-only commit's changed paths and scan before pushing to a dedicated audit ref |
 | Other dangling commits | WIP, Celery, notifications, native events and infrastructure commits identified | Preserve useful commits with audit refs/tags after content and secret screening |
 
+## Additional dangling-commit review
+
+These commit objects are addressable in the GitHub repository. Their direct changes have been compared with current `main`; do not create broad branches from their old ancestry without reviewing all included commits.
+
+| Commit | Direct change | Current-main finding | Disposition |
+|---|---|---|---|
+| `9c11c3ef` | Adds bounded Celery task modules and delivery tests to the focused transport CI workflow | Current workflow already lists the corresponding task modules and Celery/notification tests, with a broader focused test target set | Direct patch is superseded; retain the commit for ancestry review because the compared history contains 31 non-main commits |
+| `a522f3c4` | Defers OCI Email credential resolution until configured delivery, with a regression test | Current OCI handler has a stronger authenticated OCI metadata validation path; the same deferral test remains, with additional fallback coverage | Superseded/evolved; do not transplant the older handler |
+| `c020b6cf` | Adds bearer-native event API tests and a service change | All seven original test cases remain in current main, with an additional paid-ticket guard test; service logic has evolved its remaining-seat handling | Already represented/evolved; no duplicate port |
+| `209c680e` | Adds PostgreSQL-version handling for H3-A baseline and regression tests | `tests/test_h3_baseline_pg_version_compat.py` has an identical blob in current main; H3-A is recorded as the active root migration path | Preserve migration history; do not create a second baseline or hand-edit migration files |
+| `1e8a8f7f` | Adds `tests/test_backup_offsite.py` to focused CI targets | Current workflow already includes the offsite backup test in its focused targets and syntax checks | Already incorporated; no cherry-pick |
+| `17830c35` | Separates Flask and Celery configuration namespaces | Current `app/celery_app.py` retains explicit `broker_url` / `result_backend` configuration and adds later constrained-worker/context handling | Superseded by current implementation; don't restore old file |
+| `317ab78c` | Loads `AuthConfiguration` before staging Twilio/OTP settings | Current owner routes already load the configuration before `SystemConfig.set(..., commit=False)` operations | Already incorporated; no cherry-pick |
+| `73dc3a48` | Removes the standalone workspace switcher and improves account dropdown context roles | Current base template uses the newer account-dropdown context component and role reset flow | Superseded by current navigation implementation; old template remains separately preserved |
+
+Some of these commit SHAs have long ancestry outside current main (e.g. 31, 250 and 33 commits in the relevant comparisons). Their direct one-file patches being superseded does **not** mean every ancestor commit is obsolete. Keep the local dangling objects and inspect their commit trees before any branch retirement.
+
 ## Constraints
 
 - Never merge this branch or a recovery source branch wholesale into `main`.
