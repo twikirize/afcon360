@@ -123,63 +123,83 @@ class ProviderService:
     # ===========================================================================
 
     def get_user_identity(self, user_id: int) -> Dict[str, Any]:
-        """
-        Get verified user identity from central identity service
+        """Read transport eligibility facts from the canonical account, profile and KYC authorities.
+
+        There is no app.identity.services.identity_service module in this
+        repository. Never fabricate verified identity data when an adapter is
+        missing: driver onboarding must use persisted account state.
         """
         try:
-            # Use identity service as single source of truth
-            from app.identity.services.identity_service import IdentityService
+            from datetime import date
+            from app.profile.services.canonical_identity import get_canonical_identity
 
-            identity = IdentityService.get_verified_identity(user_id)
-            if not identity:
+            user = db.session.get(User, user_id)
+            if not user or getattr(user, "is_deleted", False):
                 raise NotFoundError(
                     message="User identity not found",
                     resource_type="user",
                     resource_id=user_id,
-                    code="IDENTITY_NOT_FOUND"
+                    code="IDENTITY_NOT_FOUND",
                 )
 
+            canonical = get_canonical_identity(user)
+            dob = getattr(canonical, "date_of_birth", None)
+            if isinstance(dob, str):
+                try:
+                    dob = date.fromisoformat(dob)
+                except ValueError:
+                    dob = None
+            age = None
+            if dob is not None and hasattr(dob, "year"):
+                today = datetime.now(timezone.utc).date()
+                age = today.year - dob.year - (
+                    (today.month, today.day) < (dob.month, dob.day)
+                )
+
+            decisions = getattr(canonical, "kyc_decisions", {}) or {}
+            kyc_status = decisions.get("verification_status", "pending")
+            kyc_tier = int(getattr(canonical, "kyc_tier", 0) or 0)
+            raw_profile_status = getattr(canonical, "verification_status", "pending")
+            profile_status = str(
+                getattr(raw_profile_status, "value", raw_profile_status) or "pending"
+            ).lower()
+
             return {
-                'user_id': user_id,
-                'identity_verified': identity.get('identity_verified', False),
-                'email_verified': identity.get('email_verified', False),
-                'phone_verified': identity.get('phone_verified', False),
-                'kyc_status': identity.get('kyc_status', 'pending'),
-                'age': identity.get('age'),
-                'has_criminal_record': identity.get('has_criminal_record', False),
-                'account_status': identity.get('account_status', 'active'),
-                'profile': {
-                    'name': identity.get('name'),
-                    'email': identity.get('email'),
-                    'phone': identity.get('phone'),
-                    'birth_year': identity.get('birth_year')
-                }
+                "user_id": user_id,
+                # A separately verified canonical profile or verified Tier-2
+                # KYC satisfies the identity check. Profile completion alone
+                # does not; the Tier-2 Go-Live capability is still enforced
+                # independently by can_go_live().
+                "identity_verified": profile_status == "verified" or kyc_tier >= 2,
+                "email_verified": bool(getattr(user, "email_verified", False) or getattr(user, "is_verified", False)),
+                "phone_verified": bool(getattr(user, "phone_verified", False)),
+                "kyc_status": kyc_status,
+                "age": age,
+                # No authoritative criminal-screening provider exists in this
+                # repository. None means UNKNOWN and is handled fail-closed if
+                # the screening feature is enabled.
+                "has_criminal_record": None,
+                "account_status": (
+                    "active"
+                    if bool(getattr(user, "is_active", False))
+                    and not bool(getattr(user, "is_deleted", False))
+                    else "inactive"
+                ),
+                "profile": {
+                    "name": getattr(canonical, "full_name", None),
+                    "email": getattr(canonical, "email", None) or user.email,
+                    "phone": getattr(canonical, "phone", None) or user.phone,
+                    "birth_year": getattr(dob, "year", None),
+                },
             }
 
-        except ImportError:
-            # Fallback for development - mock identity service
-            logger.warning("IdentityService not found, using mock data")
-            return {
-                'user_id': user_id,
-                'identity_verified': True,
-                'email_verified': True,
-                'phone_verified': True,
-                'kyc_status': 'verified',
-                'age': 25,
-                'has_criminal_record': False,
-                'account_status': 'active',
-                'profile': {
-                    'name': f'Test User {user_id}',
-                    'email': f'user{user_id}@example.com',
-                    'phone': f'+1234567890{user_id}',
-                    'birth_year': 1995
-                }
-            }
+        except NotFoundError:
+            raise
         except Exception as e:
-            logger.error(f"Error getting user identity: {e}", exc_info=True)
+            logger.error("Error reading canonical user identity for user_id=%s: %s", user_id, e, exc_info=True)
             raise ServiceUnavailableError(
-                message="Identity service unavailable",
-                code="IDENTITY_SERVICE_UNAVAILABLE"
+                message="Canonical identity data is unavailable",
+                code="IDENTITY_SERVICE_UNAVAILABLE",
             )
 
     def validate_driver_eligibility(self, user_id: int) -> Dict[str, Any]:
@@ -213,22 +233,39 @@ class ProviderService:
                 code="PHONE_NOT_VERIFIED"
             )
 
-        # Check age requirement
-        min_driver_age = SettingsService.get_setting('min_driver_age', 21)
-        if identity.get('age') and identity['age'] < min_driver_age:
+        # Age is a driver safety/eligibility requirement. Missing DOB must
+        # not bypass it; collect the missing fact in the canonical profile.
+        min_driver_age = int(SettingsService.get_setting('min_driver_age', 21))
+        age = identity.get("age")
+        if age is None:
+            raise ValidationError(
+                message="Date of birth is required to confirm driver age eligibility",
+                details={"age": None, "minimum_age": min_driver_age},
+                code="AGE_NOT_AVAILABLE",
+            )
+        if age < min_driver_age:
             raise ValidationError(
                 message=f"Must be at least {min_driver_age} years old",
-                details={'age': identity['age'], 'minimum_age': min_driver_age},
-                code="AGE_REQUIREMENT_NOT_MET"
+                details={"age": age, "minimum_age": min_driver_age},
+                code="AGE_REQUIREMENT_NOT_MET",
             )
 
-        # Check criminal record
-        if SettingsService.is_feature_enabled('check_criminal_record') and identity.get('has_criminal_record'):
-            raise ValidationError(
-                message="Cannot register due to criminal record",
-                details={'has_criminal_record': True},
-                code="CRIMINAL_RECORD_FOUND"
-            )
+        # Criminal screening must never assume a clean result. No screening
+        # provider is currently integrated, so an enabled check with no
+        # authoritative result fails closed rather than defaulting to False.
+        if SettingsService.is_feature_enabled('check_criminal_record'):
+            criminal_result = identity.get('has_criminal_record')
+            if criminal_result is None:
+                raise ServiceUnavailableError(
+                    message="Criminal-record screening is enabled but no authoritative screening result is available.",
+                    code="CRIMINAL_SCREENING_UNAVAILABLE",
+                )
+            if criminal_result:
+                raise ValidationError(
+                    message="Cannot register due to criminal record",
+                    details={'has_criminal_record': True},
+                    code="CRIMINAL_RECORD_FOUND"
+                )
 
         # Check account status
         if identity.get('account_status') != 'active':
@@ -1015,7 +1052,29 @@ class ProviderService:
                     code="VEHICLE_REGISTRATION_FAILED"
                 )
 
-            # Commit transaction
+            # Vehicle ownership and active driver assignment are separate
+            # concepts. A driver-owned vehicle must converge through the
+            # canonical assignment history service so DriverProfile.current_vehicle
+            # and supply eligibility can resolve it immediately.
+            if owner_type == "driver":
+                vehicle = db.session.get(Vehicle, result["vehicle_id"])
+                if vehicle is None:
+                    raise ServiceUnavailableError(
+                        message="Registered vehicle could not be reloaded for assignment",
+                        code="VEHICLE_ASSIGNMENT_UNAVAILABLE",
+                    )
+                from app.transport.models import assign_driver_to_vehicle
+
+                assign_driver_to_vehicle(
+                    driver,
+                    vehicle,
+                    reason="driver_vehicle_registration",
+                    authorized_by=driver.user,
+                    notes="Initial driver self-registration",
+                )
+
+            # The canonical assignment helper commits its history row and the
+            # pending vehicle resource in the same SQLAlchemy session.
             db.session.commit()
 
             # Cache the vehicle

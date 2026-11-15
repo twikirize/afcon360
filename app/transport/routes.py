@@ -2961,9 +2961,44 @@ def vehicles_new():
 @module_enabled_required("transport")
 @login_required
 @require_profile_completion
-@require_kyc_tier(3)  # Tier 3 required to register a vehicle
 def register_vehicle():
-    """Register a vehicle for transport service"""
+    """Register a vehicle for transport service.
+
+    Driver-owned vehicle registration follows the Tier-2 driver go-live KYC
+    threshold and remains unavailable until the DriverProfile is approved.
+    A non-driver personal vehicle keeps the existing Tier-3 threshold.
+    """
+    svc = get_provider_service()
+    driver = svc.get_driver_profile(current_user.id)
+
+    # Driver-owned vehicles are a post-approval step. Do not send a pending
+    # driver through KYC upgrade just to discover they are not approved yet.
+    if driver:
+        status = getattr(driver.compliance_status, "value", driver.compliance_status)
+        if str(status).lower() != "approved":
+            flash(
+                "Your driver profile must be approved before you can register a vehicle.",
+                "info",
+            )
+            return redirect(url_for("transport.driver_dashboard"))
+
+    required_tier = 2 if driver else 3
+
+    from app.auth.kyc_compliance import calculate_kyc_tier
+    if calculate_kyc_tier(current_user.id)["tier"] < required_tier:
+        session["kyc_redirect_url"] = request.url
+        session["required_tier"] = required_tier
+        flash(
+            "Complete the required identity verification before registering this vehicle.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "kyc.upgrade",
+                purpose="driver" if driver else None,
+            )
+        )
+
     if request.method == "GET":
         return render_template(
             "transport/register_vehicle.html",
@@ -2981,9 +3016,6 @@ def register_vehicle():
         return redirect(url_for("transport.register_vehicle"))
 
     try:
-        svc = get_provider_service()
-        driver = svc.get_driver_profile(current_user.id)
-
         # Vehicle ownership is independent of driver-workspace participation.
         # Approved drivers register against their DriverProfile; users without
         # a driver profile may register a personally owned vehicle directly.

@@ -14,10 +14,14 @@
 <div class="kyc-upgrade-wrapper">
 
   <div class="kyc-header">
-    <div class="kyc-badge">KYC Compliance</div>
-    <h1>Available Upgrades</h1>
+    <div class="kyc-badge">{{ 'Driver onboarding' if driver_purpose else 'KYC Compliance' }}</div>
+    <h1>{{ 'Driver Identity Verification' if driver_purpose else 'Available Upgrades' }}</h1>
     <p class="kyc-subtitle">
-      Current level: <strong>{{ current_tier_name }} (Tier {{ current_tier }})</strong>
+      {% if driver_purpose %}
+        Complete Tier 2 identity verification to meet the driver go-live requirement. Higher tiers are not required for this step.
+      {% else %}
+        Current level: <strong>{{ current_tier_name }} (Tier {{ current_tier }})</strong>
+      {% endif %}
     </p>
   </div>
 
@@ -74,8 +78,13 @@
     <div class="kyc-status-card kyc-status--verified">
       <div class="kyc-status-icon">✓</div>
       <div>
-        <strong>You are fully verified</strong>
-        <p>No further upgrades are available at this time.</p>
+        {% if driver_purpose %}
+          <strong>Driver identity requirement met</strong>
+          <p>Your account already meets the Tier 2 identity verification threshold for driver go-live.</p>
+        {% else %}
+          <strong>You are fully verified</strong>
+          <p>No further upgrades are available at this time.</p>
+        {% endif %}
       </div>
     </div>
   {% endif %}

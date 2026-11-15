@@ -147,7 +147,7 @@ def _requirement_fill_url(req: str):
     """Return the URL of the form where a missing requirement is filled in."""
     dedicated = {
         "phone_verified": lambda: url_for("auth.verify_phone"),
-        "full_name": lambda: url_for("auth.verify_phone"),
+        "full_name": lambda: url_for("profile.edit_profile"),
         "national_id": lambda: url_for("kyc.verify_national_id_page"),
         "selfie": lambda: url_for("kyc.upload", preselect="selfie"),
         "proof_of_address": lambda: url_for("kyc.verify_address"),
@@ -320,9 +320,17 @@ def upgrade():
 
     current = calculate_kyc_tier(effective.id)
     current_tier = current["tier"]
+    driver_purpose = request.args.get("purpose") == "driver"
 
     available_upgrades = []
-    for tier in range(current_tier + 1, TIER_5_CORPORATE + 1):
+    target_tiers = (
+        [TIER_2_STANDARD]
+        if driver_purpose and current_tier < TIER_2_STANDARD
+        else []
+        if driver_purpose
+        else range(current_tier + 1, TIER_5_CORPORATE + 1)
+    )
+    for tier in target_tiers:
         can_upgrade, missing = can_upgrade_to_tier(effective.id, tier)
         info = TIER_REQUIREMENTS[tier]
         available_upgrades.append({
@@ -351,6 +359,7 @@ def upgrade():
         current_tier_name=TIER_REQUIREMENTS[current_tier]["name"],
         available_upgrades=available_upgrades,
         TIER_INFO=TIER_INFO,
+        driver_purpose=driver_purpose,
     )
 
 
@@ -500,6 +509,18 @@ def verify_national_id_page():
         show_collection
         and (canonical is None or not (canonical.full_name or "").strip())
     )
+    canonical_id_type = (
+        getattr(canonical.id_type, "value", canonical.id_type)
+        if canonical is not None else None
+    )
+    canonical_nin = (
+        (canonical.id_number or "").strip().upper()
+        if canonical is not None and canonical_id_type == "national_id" else ""
+    )
+    masked_nin = (
+        ("*" * max(0, len(canonical_nin) - 4)) + canonical_nin[-4:]
+        if canonical_nin else None
+    )
 
     return render_template(
         "kyc/verify_national_id.html",
@@ -508,6 +529,8 @@ def verify_national_id_page():
         existing=existing,
         canonical=canonical,
         collect_identity=collect_identity,
+        has_canonical_nin=bool(canonical_nin),
+        masked_nin=masked_nin,
         today=datetime.now(timezone.utc).date().isoformat() if collect_identity else None,
     )
 
@@ -526,7 +549,7 @@ def submit_national_id():
       4. Create KycRecord
       5. Generate compliance report
     """
-    id_number   = request.form.get("id_number",   "").strip().upper()
+    submitted_id_number = request.form.get("id_number", "").strip().upper()
 
     # Bidirectional canonical identity (single entry): shared personal facts
     # (full name / DOB) come from ONE legitimate source. Profile-first users
@@ -537,6 +560,19 @@ def submit_national_id():
         canonical = get_canonical_identity(current_user)
     except Exception:
         canonical = None
+
+    # A canonical profile NIN is authoritative. Never accept a replacement
+    # from the browser when one already exists; when absent, KYC is the sole
+    # collection point for this evidence value.
+    canonical_id_type = (
+        getattr(canonical.id_type, "value", canonical.id_type)
+        if canonical is not None else None
+    )
+    canonical_nin = (
+        (canonical.id_number or "").strip().upper()
+        if canonical is not None and canonical_id_type == "national_id" else ""
+    )
+    id_number = canonical_nin or submitted_id_number
 
     kyc_first = not (canonical is not None and (canonical.full_name or "").strip())
     if kyc_first:
