@@ -282,6 +282,33 @@ jobs:
             /tmp/afcon360-user-missing-eas-id.err
           echo "PASS EAS build config fails when update-project linkage is missing."
 
+      - name: Verify the two supported User App update methods
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const settings = fs.readFileSync("apps/user/app/(service)/settings.tsx", "utf8");
+          const config = fs.readFileSync("apps/user/app.config.ts", "utf8");
+          const checks = {
+            otaCheck: settings.includes("Updates.checkForUpdateAsync()"),
+            otaDownload: settings.includes("Updates.fetchUpdateAsync()"),
+            otaApply: settings.includes("Updates.reloadAsync()"),
+            otaAutomaticOnLaunch: config.includes('checkAutomatically: "ON_LOAD"'),
+            nativeBinaryHandoff: settings.includes("https://www.pamoja.space/download") &&
+              settings.includes("Linking.openURL(officialDownloadsUrl)"),
+            methodOneVisible: settings.includes("Method 1 · Compatible app updates"),
+            methodTwoVisible: settings.includes("Method 2 · Full app update"),
+            noRestrictedSelfInstaller:
+              !settings.includes("REQUEST_INSTALL_PACKAGES") &&
+              !settings.includes("PackageInstaller.Session") &&
+              !config.includes("REQUEST_INSTALL_PACKAGES")
+          };
+          for (const [name, passed] of Object.entries(checks)) {
+            console.log(`${passed ? "PASS" : "FAIL"} User update contract: ${name}`);
+          }
+          if (Object.values(checks).some((passed) => !passed)) process.exit(1);
+          NODE
+
       - name: Type-check User application
         run: pnpm user:typecheck
 
