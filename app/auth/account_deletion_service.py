@@ -68,8 +68,8 @@ REQUIRED_ACKNOWLEDGEMENTS = {
         "law and does not cancel money I owe."
     ),
     "privacy_notice": (
-        "I have read the account-closure notice and privacy notice and "
-        "understand my data-protection rights."
+        "I have read the account-closure notice and the current mobile privacy "
+        "notice, including any draft or review status displayed on that page."
     ),
 }
 
