@@ -563,3 +563,50 @@ def test_enabled_criminal_screening_fails_closed_without_result(db_session, monk
         ProviderService().validate_driver_eligibility(user.id)
 
     assert excinfo.value.code == "CRIMINAL_SCREENING_UNAVAILABLE"
+
+
+def test_driver_eligibility_requires_canonical_date_of_birth(db_session, monkeypatch):
+    from app.transport.services.provider_service import ProviderService
+    from app.transport.services.settings_service import SettingsService
+    from app.utils.exceptions import ValidationError
+
+    user = _make_user(db_session)
+    profile = _make_canonical_profile(db_session, user, date_of_birth=None)
+    profile.verification_status = "verified"
+    monkeypatch.setattr(
+        SettingsService,
+        "is_feature_enabled",
+        staticmethod(lambda feature_key, default=False: False),
+    )
+    monkeypatch.setattr(
+        SettingsService,
+        "get_setting",
+        staticmethod(lambda key, default=None: default),
+    )
+
+    with pytest.raises(ValidationError) as excinfo:
+        ProviderService().validate_driver_eligibility(user.id)
+
+    assert excinfo.value.code == "AGE_NOT_AVAILABLE"
+
+
+def test_feature_flag_cache_uses_shared_cache_ttl(monkeypatch):
+    import app.transport.services.settings_service as settings_module
+    from app.transport.services.settings_service import SettingsService
+
+    cached = {}
+    SettingsService.is_feature_enabled.cache_clear()
+    monkeypatch.setattr(settings_module, "get_cached", lambda key: None)
+    monkeypatch.setattr(settings_module, "get_setting", lambda key, default=None: True)
+
+    def _capture_cache(key, value, ttl=300):
+        cached.update(key=key, value=value, ttl=ttl)
+        return True
+
+    monkeypatch.setattr(settings_module, "set_cached", _capture_cache)
+    try:
+        assert SettingsService.is_feature_enabled("require_phone_verification") is True
+        assert cached["value"] is True
+        assert cached["ttl"] == SettingsService.CACHE_TTL
+    finally:
+        SettingsService.is_feature_enabled.cache_clear()
