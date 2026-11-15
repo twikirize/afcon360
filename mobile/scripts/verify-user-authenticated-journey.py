@@ -684,7 +684,9 @@ def main() -> None:
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
-    wait_for_text(f"Welcome back, {USERNAME}", "Your AFCON 360 overview for today", timeout=45, label="restored authenticated session")
+    # The native app restores to its actual User dashboard ("My Events").
+    # The backend evidence check separately verifies the identity endpoint after relaunch.
+    wait_for_text("YOUR AFCON360 DASHBOARD", "My Events", timeout=45, label="restored authenticated dashboard after app relaunch")
     save_screen("10-session-restored")
     mark_stage("session_restored")
 
