@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
 import { useRouter } from "expo-router";
@@ -101,10 +101,10 @@ function AppUpdateControls() {
     }}>
       <View style={{ gap: 3 }}>
         <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "900" }}>
-          App version and updates
+          Method 1 · Compatible app updates
         </Text>
         <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
-          Keep this installation current without reinstalling the APK for ordinary app improvements.
+          Receive compatible JavaScript and asset improvements over the air. Changes to native code, permissions or SDKs require a full app update using Method 2 below.
         </Text>
       </View>
 
@@ -199,6 +199,49 @@ function AppUpdateControls() {
 export default function UserAppSettings() {
   const router = useRouter();
   const appVersion = Constants.expoConfig?.version ?? "Unknown";
+  const isPreviewDistribution =
+    Constants.expoConfig?.extra?.allowServerSelection === true;
+  const androidPackage =
+    Constants.expoConfig?.android?.package ?? "space.pamoja.afcon360.user";
+  const isProductionAndroidStoreBuild =
+    Platform.OS === "android" && !isPreviewDistribution;
+
+  const openNativeAppUpdate = async () => {
+    const officialDownloadsUrl = "https://www.pamoja.space/apps";
+    const playStoreWebUrl =
+      "https://play.google.com/store/apps/details?id=" +
+      encodeURIComponent(androidPackage);
+    const primaryUrl = isProductionAndroidStoreBuild
+      ? "market://details?id=" + encodeURIComponent(androidPackage)
+      : officialDownloadsUrl;
+    const fallbackUrl = isProductionAndroidStoreBuild
+      ? playStoreWebUrl
+      : officialDownloadsUrl;
+
+    try {
+      await Linking.openURL(primaryUrl);
+    } catch {
+      try {
+        await Linking.openURL(fallbackUrl);
+      } catch {
+        Alert.alert(
+          "Update page unavailable",
+          "AFCON360 could not open the official update destination. Open this address in your browser: " +
+            fallbackUrl
+        );
+      }
+    }
+  };
+
+  const nativeUpdateDescription =
+    Platform.OS === "android"
+      ? isProductionAndroidStoreBuild
+        ? "For full Android releases that change native code, open the official Google Play listing. Google Play manages the download, signature verification and installation."
+        : "For a full APK update, open Pamoja's official app page, download the signed APK and approve the installation in Android's system installer."
+      : "For full iOS releases that change native code, open Pamoja's official app page and continue to the App Store.";
+
+  const nativeUpdateActionLabel =
+    isProductionAndroidStoreBuild ? "Open Google Play" : "Open official app page";
 
   const shareApp = async () => {
     const url = "https://www.pamoja.space/apps";
@@ -232,7 +275,35 @@ export default function UserAppSettings() {
           Check for a compatible AFCON360 update. Updates are downloaded securely and applied when you restart the app.
         </Text>
         <AppUpdateControls />
-      </Panel>      <Panel>
+      </Panel>
+      <Panel>
+        <SectionTitle>Method 2 · Full app update</SectionTitle>
+        <Text style={styles.sectionHint}>
+          Use this route when an update needs a new native Android or iOS binary, such as native code, permissions, SDK or dependency changes. This is separate from OTA updates and always hands installation to the official store or Android system installer for user confirmation.
+        </Text>
+        <View style={styles.actionRow}>
+          <View style={styles.actionIcon}>
+            <Text style={styles.actionIconText}>⬆</Text>
+          </View>
+          <View style={styles.actionCopy}>
+            <Text style={styles.actionTitle}>
+              {isProductionAndroidStoreBuild ? "Google Play release" : "Official app distribution"}
+            </Text>
+            <Text style={styles.actionDescription}>{nativeUpdateDescription}</Text>
+          </View>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={nativeUpdateActionLabel}
+          onPress={() => void openNativeAppUpdate()}
+          style={[styles.actionRow, { justifyContent: "center", backgroundColor: "#E7F1E9", borderRadius: 11, borderTopWidth: 0, paddingHorizontal: 12 }]}
+        >
+          <Text style={{ color: "#175D37", fontSize: 12, fontWeight: "900" }}>
+            {nativeUpdateActionLabel} ↗
+          </Text>
+        </Pressable>
+      </Panel>
+      <Panel>
         <SectionTitle>Connection</SectionTitle>
         <Text style={styles.sectionHint}>
           Manage which AFCON360 server this app connects to. This option appears only in preview installations.
