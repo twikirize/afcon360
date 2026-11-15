@@ -2863,15 +2863,15 @@ def create_app(config_object=None) -> Flask:
         from flask import flash, session
 
         from app.auth.account_deletion_service import (
-            ACCOUNT_CLOSURE_GRACE_DAYS,
             REQUIRED_ACKNOWLEDGEMENTS,
+            _grace_days,
         )
 
         def _render_form(status_code=200, error=None):
             return render_template(
                 'mobile_apps/delete-account.html',
                 acknowledgements=REQUIRED_ACKNOWLEDGEMENTS,
-                grace_days=ACCOUNT_CLOSURE_GRACE_DAYS,
+                grace_days=_grace_days(),
             ), status_code
 
         if request.method == 'POST' and not current_user.is_authenticated:
