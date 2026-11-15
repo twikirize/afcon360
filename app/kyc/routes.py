@@ -500,6 +500,14 @@ def verify_national_id_page():
         show_collection
         and (canonical is None or not (canonical.full_name or "").strip())
     )
+    canonical_nin = (
+        (canonical.id_number or "").strip().upper()
+        if canonical is not None else ""
+    )
+    masked_nin = (
+        ("*" * max(0, len(canonical_nin) - 4)) + canonical_nin[-4:]
+        if canonical_nin else None
+    )
 
     return render_template(
         "kyc/verify_national_id.html",
@@ -508,6 +516,8 @@ def verify_national_id_page():
         existing=existing,
         canonical=canonical,
         collect_identity=collect_identity,
+        has_canonical_nin=bool(canonical_nin),
+        masked_nin=masked_nin,
         today=datetime.now(timezone.utc).date().isoformat() if collect_identity else None,
     )
 
@@ -526,7 +536,7 @@ def submit_national_id():
       4. Create KycRecord
       5. Generate compliance report
     """
-    id_number   = request.form.get("id_number",   "").strip().upper()
+    submitted_id_number = request.form.get("id_number", "").strip().upper()
 
     # Bidirectional canonical identity (single entry): shared personal facts
     # (full name / DOB) come from ONE legitimate source. Profile-first users
@@ -537,6 +547,15 @@ def submit_national_id():
         canonical = get_canonical_identity(current_user)
     except Exception:
         canonical = None
+
+    # A canonical profile NIN is authoritative. Never accept a replacement
+    # from the browser when one already exists; when absent, KYC is the sole
+    # collection point for this evidence value.
+    canonical_nin = (
+        (canonical.id_number or "").strip().upper()
+        if canonical is not None else ""
+    )
+    id_number = canonical_nin or submitted_id_number
 
     kyc_first = not (canonical is not None and (canonical.full_name or "").strip())
     if kyc_first:
