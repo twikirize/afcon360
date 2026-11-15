@@ -214,6 +214,12 @@ jobs:
             fs.readFileSync("/tmp/afcon360-user-production-config.json", "utf8")
           );
           const expectedProjectId = "00000000-0000-4000-8000-000000000001";
+          const runtimeVersion = config.runtimeVersion;
+          const runtimeVersionIsAppVersionPolicy =
+            runtimeVersion === "1.0.1" ||
+            (runtimeVersion &&
+              typeof runtimeVersion === "object" &&
+              runtimeVersion.policy === "appVersion");
           const checks = {
             package: config.android?.package === "space.pamoja.afcon360.user",
             api: config.extra?.apiBaseUrl === "https://www.pamoja.space",
@@ -221,7 +227,7 @@ jobs:
             updatesUrl: config.updates?.url === `https://u.expo.dev/${expectedProjectId}`,
             productionChannel:
               config.updates?.requestHeaders?.["expo-channel-name"] === "production",
-            runtimeVersion: config.runtimeVersion === "1.0.1"
+            runtimeVersionIsAppVersionPolicy
           };
           for (const [name, passed] of Object.entries(checks)) {
             console.log(`${passed ? "PASS" : "FAIL"} production config: ${name}`);
