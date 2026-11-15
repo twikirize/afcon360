@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ActivityIndicator, Alert, Linking, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
+import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { AppScreen, PageHeader, Panel, SectionTitle, palette } from "@afcon360/mobile-ui";
 import { SERVER_SELECTION_ENABLED } from "../../src/services/api";
