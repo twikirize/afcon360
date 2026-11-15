@@ -1320,6 +1320,16 @@ def request_account_deletion(
         DataSubjectRequestStatus,
         DataSubjectRequestType,
     )
+    from app.identity.models.user import User
+
+    locked_user = User.query.filter_by(id=user.id).with_for_update().first()
+    if locked_user is None or not locked_user.is_active or locked_user.is_deleted:
+        raise AccountDeletionError(
+            "account_inactive",
+            "This account is already inactive or cannot be closed from this session.",
+            403,
+        )
+    user = locked_user
 
     existing = (
         DataSubjectRequest.query.filter(
@@ -1609,7 +1619,7 @@ def cancel_account_closure(token: str) -> dict:
     try:
         payload = _serializer().loads(
             token,
-            max_age=(_grace_days() * 86400) + 3600,
+            max_age=366 * 86400,
         )
     except SignatureExpired as exc:
         raise AccountDeletionError(
@@ -1640,10 +1650,14 @@ def cancel_account_closure(token: str) -> dict:
     )
     from app.identity.models.user import User
 
-    request_row = DataSubjectRequest.query.filter_by(
-        public_id=request_public_id,
-        request_type=DataSubjectRequestType.DELETION,
-    ).first()
+    request_row = (
+        DataSubjectRequest.query.filter_by(
+            public_id=request_public_id,
+            request_type=DataSubjectRequestType.DELETION,
+        )
+        .with_for_update()
+        .first()
+    )
     if request_row is None:
         raise AccountDeletionError(
             "closure_request_not_found",
@@ -1651,14 +1665,22 @@ def cancel_account_closure(token: str) -> dict:
             404,
         )
 
-    user = User.query.filter_by(public_id=user_public_id).first()
-    if user is None or str(user.public_id) != str(request_row.user.public_id):
+    user = (
+        User.query.filter_by(
+            id=request_row.user_id,
+            public_id=user_public_id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if user is None:
         raise AccountDeletionError(
             "cancellation_link_invalid",
             "This cancellation link does not match the closure request.",
             400,
         )
 
+    now = _now()
     if request_row.status == DataSubjectRequestStatus.COMPLETED or getattr(user, "is_deleted", False):
         raise AccountDeletionError(
             "closure_already_completed",
@@ -1678,8 +1700,15 @@ def cancel_account_closure(token: str) -> dict:
             "request_public_id": str(request_row.public_id),
         }
 
+    grace_until = _as_aware(request_row.sla_due_at)
+    if grace_until is None or now >= grace_until:
+        raise AccountDeletionError(
+            "closure_grace_period_expired",
+            "The account-closure grace period has ended. Contact AFCON360 support.",
+            410,
+        )
+
     details = _parse_json(request_row.request_details)
-    now = _now()
     try:
         _restore_public_content(details.get("content_state") or {}, now)
         user.is_active = True
@@ -1725,14 +1754,63 @@ def cancel_account_closure(token: str) -> dict:
     }
 
 
+def _scrub_closure_request_record(request_row, details: dict, now: datetime) -> None:
+    """Remove requester identifiers and the recoverable pre-closure snapshot."""
+    acknowledgements = details.get("acknowledgements") or {}
+    safe_details = {
+        "schema_version": details.get("schema_version", 1),
+        "notice_version": details.get("notice_version"),
+        "requested_at": details.get("requested_at"),
+        "grace_days": details.get("grace_days"),
+        "grace_until": details.get("grace_until"),
+        "acknowledgements": acknowledgements,
+        "finalized_at": now.isoformat(),
+        "outcome": "completed",
+    }
+
+    # Keyed identity matching is retained only when explicitly enabled with a
+    # dedicated key after a separate privacy/legal approval.
+    if _fingerprint_enabled() and _fingerprint_pepper():
+        fingerprints = details.get("closure_fingerprint")
+        if isinstance(fingerprints, dict):
+            safe_details["closure_fingerprint"] = fingerprints
+
+    request_row.requester_email = (
+        f"closed-{str(request_row.public_id)}@anonymized.invalid"
+    )
+    request_row.requester_name = "Closed account"
+    request_row.request_details = _json_dumps(safe_details)
+    request_row.scope = (
+        "Account closure completed; direct requester identifiers and the "
+        "recoverable pre-closure snapshot have been anonymized."
+    )
+
+
 def finalize_account_closure(request_row, details: dict | None = None) -> dict:
-    """Permanently anonymize a due closure and close the request record."""
-    from app.admin.compliance.models import DataSubjectRequestStatus
+    """Permanently anonymize a due closure and close the request record.
+
+    The request row is locked for the full transaction. PROCESSING is not
+    committed separately: a failure rolls back to PENDING so the scheduler can
+    retry it instead of leaving an unprocessable row behind.
+    """
+    from app.admin.compliance.models import (
+        DataSubjectRequest,
+        DataSubjectRequestStatus,
+    )
     from app.identity.models.user import User
 
+    request_id = getattr(request_row, "id", None)
+    locked_request = (
+        DataSubjectRequest.query.filter_by(id=request_id)
+        .with_for_update()
+        .first()
+    )
+    if locked_request is None:
+        return {"missing_request": True}
+
+    request_row = locked_request
     details = details if details is not None else _parse_json(request_row.request_details)
     now = _now()
-    user = db.session.get(User, request_row.user_id)
 
     if request_row.status == DataSubjectRequestStatus.COMPLETED:
         return {
@@ -1744,8 +1822,26 @@ def finalize_account_closure(request_row, details: dict | None = None) -> dict:
             "request_public_id": str(request_row.public_id),
             "cancelled": True,
         }
+    if request_row.status not in (
+        DataSubjectRequestStatus.PENDING,
+        DataSubjectRequestStatus.PROCESSING,
+    ):
+        return {
+            "request_public_id": str(request_row.public_id),
+            "not_pending": True,
+        }
+
+    grace_until = _as_aware(request_row.sla_due_at)
+    if grace_until is not None and grace_until > now:
+        return {
+            "request_public_id": str(request_row.public_id),
+            "not_due": True,
+        }
+
+    user = db.session.get(User, request_row.user_id)
 
     if user is None:
+        _scrub_closure_request_record(request_row, details, now)
         request_row.status = DataSubjectRequestStatus.COMPLETED
         request_row.completed_at = now
         request_row.response_data = _json_dumps(
@@ -1755,6 +1851,7 @@ def finalize_account_closure(request_row, details: dict | None = None) -> dict:
         return {"request_public_id": str(request_row.public_id), "identity_missing": True}
 
     if getattr(user, "is_deleted", False):
+        _scrub_closure_request_record(request_row, details, now)
         request_row.status = DataSubjectRequestStatus.COMPLETED
         request_row.completed_at = now
         request_row.response_data = _json_dumps(
@@ -1790,12 +1887,13 @@ def finalize_account_closure(request_row, details: dict | None = None) -> dict:
             "case_number": open_case.case_number,
         }
 
-    if request_row.status == DataSubjectRequestStatus.PENDING:
-        request_row.status = DataSubjectRequestStatus.PROCESSING
-        db.session.commit()
+    # Keep this state in the same transaction as anonymization. If anything
+    # fails, rollback restores PENDING (or the prior legacy PROCESSING state).
+    request_row.status = DataSubjectRequestStatus.PROCESSING
 
     try:
         summary, mobile_session_ids = _anonymize_identity(user, now)
+        _scrub_closure_request_record(request_row, details, now)
         request_row.status = DataSubjectRequestStatus.COMPLETED
         request_row.completed_at = now
         request_row.response_data = _json_dumps(
@@ -1812,7 +1910,7 @@ def finalize_account_closure(request_row, details: dict | None = None) -> dict:
         logger.exception("Account-closure finalization failed")
         raise AccountDeletionError(
             "closure_finalization_failed",
-            "AFCON360 could not finalize the account closure.",
+            "AFCON360 could not finalize the account closure. The request will be retried.",
             503,
         ) from exc
 
@@ -1859,7 +1957,12 @@ def finalize_due_account_closures(limit: int = 50) -> dict:
             db.session.query(DataSubjectRequest.id)
             .filter(
                 DataSubjectRequest.request_type == DataSubjectRequestType.DELETION,
-                DataSubjectRequest.status == DataSubjectRequestStatus.PENDING,
+                DataSubjectRequest.status.in_(
+                    (
+                        DataSubjectRequestStatus.PENDING,
+                        DataSubjectRequestStatus.PROCESSING,
+                    )
+                ),
                 DataSubjectRequest.sla_due_at.is_not(None),
                 DataSubjectRequest.sla_due_at <= now,
             )
