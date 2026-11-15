@@ -1750,18 +1750,16 @@ class DriverVehicleSwitchResource(Resource):
 # ===========================================================================
 
 class DriverAdminOnlineOverrideResource(Resource):
-    """POST /api/transport/drivers/<int:driver_id>/admin-online-override
+    """POST /api/transport/drivers/<string:driver_code>/admin-online-override.
 
-    Authorized-admin control: grant or revoke the per-driver online
-    override.  Owner / super_admin / admin / transport_admin only.
-    Blocked drivers cannot
-    be override-enabled.  All go-live requirement gates (KYC, compliance
-    approval, licence, vehicle) are bypassed while the override is active.
+    The public driver code is resolved to the internal profile ID inside
+    this resource. Internal database IDs are not part of the API contract.
     """
 
     @transport_admin_required
-    def post(self, driver_id):
+    def post(self, driver_code):
         from app.auth.helpers import has_global_role
+        from app.transport.models import DriverProfile
         from app.transport.services.provider_service import get_provider_service
         from app.utils.exceptions import (
             NotFoundError as _NotFound,
@@ -1770,6 +1768,13 @@ class DriverAdminOnlineOverrideResource(Resource):
 
         if not has_global_role(current_user, "owner", "super_admin", "admin", "transport_admin"):
             return {"success": False, "error": "not authorized"}, 403
+
+        driver = DriverProfile.query.filter_by(
+            driver_code=driver_code,
+            is_deleted=False,
+        ).first()
+        if driver is None:
+            return {"success": False, "error": "driver not found"}, 404
 
         data = request.get_json(silent=True) or {}
         raw_enabled = data.get("enabled")
@@ -1786,12 +1791,24 @@ class DriverAdminOnlineOverrideResource(Resource):
 
         try:
             result = get_provider_service().set_admin_online_override(
-                driver_id=driver_id,
+                driver_id=driver.id,
                 enabled=enabled,
                 actor_user_id=current_user.id,
                 reason=reason,
             )
-            return result, 200
+            response = dict(result) if isinstance(result, dict) else {"result": result}
+            for private_key in ("driver_id", "user_id", "admin_user_id"):
+                response.pop(private_key, None)
+
+            data_payload = response.get("data")
+            if isinstance(data_payload, dict):
+                data_payload = dict(data_payload)
+                for private_key in ("driver_id", "user_id", "admin_user_id"):
+                    data_payload.pop(private_key, None)
+                response["data"] = data_payload
+
+            response["driver_code"] = driver_code
+            return response, 200
         except _NotFound:
             return {"success": False, "error": "driver not found"}, 404
         except _Validation as e:
@@ -1799,7 +1816,7 @@ class DriverAdminOnlineOverrideResource(Resource):
         except Exception as e:
             db.session.rollback()
             logger.error(
-                f"admin override error for driver {driver_id}: {e}",
+                f"admin override error for driver {driver_code}: {e}",
                 exc_info=True,
             )
             return {"success": False, "error": "could not set override"}, 500
