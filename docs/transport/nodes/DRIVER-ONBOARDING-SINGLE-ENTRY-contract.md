@@ -61,6 +61,7 @@ Source trace on the base commit established:
 10. Replace fabricated Transport identity data with a read-only projection from the existing canonical User/UserProfile/KYC authorities. Driver-profile participation must not be mislabeled as KYC approval: actual KYC remains enforced by the existing Tier-2 Go-Live check. Continue to enforce active account, verified email, conditional phone verification, a known date of birth and minimum driver age, and fail closed when criminal screening is enabled but no authoritative screening result exists.
 11. Correct the `set_cached` argument from `timeout` to `ttl` in Transport SettingsService.
 12. Add focused regression tests in node-owned test files. Update only local test helpers if the stricter real account-state contract requires them; do not change shared fixtures.
+13. Wire the new regression tests and changed Python/Jinja files into the existing backend PostgreSQL CI workflow so the PR compiles the edited modules, parses the edited templates, and executes the new phone, driver eligibility, KYC, cache, and vehicle-assignment tests.
 
 ## 4. Scope-Out
 
@@ -112,6 +113,11 @@ Run from a clean backend checkout with the project's configured environment and 
 4. Relevant existing transport and KYC route tests identified by search.
 5. `python -m compileall app/auth app/transport app/kyc`
 6. Confirm by source/test assertions that Driver onboarding creates no Vehicle and no wallet/booking/passenger resource; separate driver vehicle registration does create one active history assignment.
+7. Confirm the backend `transport-request-first-tests` workflow compiles the changed auth/KYC/transport modules, parses the changed Jinja templates, and executes:
+   - `tests/test_phone_verification.py`
+   - `tests/test_registration_phone_persistence.py`
+   - `tests/test_stage4b5_transport.py`
+   - `tests/test_phase_c1_vehicle_ownership.py::TestDriverVehicleRegistrationAssignment`
 7. Confirm by tests that signup phone remains unverified until phone OTP success; email resend leads to the email code form; phone OTP is distinct; NIN is not re-entered when canonical; missing canonical NIN is collected once; the driver upgrade screen contains no Tier 3–5 offers; and non-driver vehicle registration still has Tier-3 enforcement.
 8. Confirm the mock identity branch is absent and a missing criminal-screening authority fails closed when the feature is enabled.
 9. Confirm no migration, schema, wallet, mobile or shared-fixture diff exists.
