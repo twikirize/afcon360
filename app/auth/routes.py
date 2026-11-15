@@ -859,6 +859,9 @@ def send_phone_verification():
         return redirect(request.referrer or url_for("auth.verify_phone"))
 
     profile = get_profile_by_user(current_user.public_id)
+    # A failed resend must not leave the previous successful-send UI state
+    # visible as though a fresh code had just been delivered.
+    session.pop("phone_verification_code_sent", None)
     result = PhoneVerificationService.request_code(
         user=current_user,
         profile=profile,
