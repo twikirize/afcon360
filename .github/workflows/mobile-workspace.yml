@@ -624,6 +624,7 @@ jobs:
         working-directory: mobile
         env:
           AFCON360_PREVIEW_BUILD: "true"
+          AFCON360_E2E_BUILD: "true"
           EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: pnpm --filter "@afcon360/user-app" exec expo prebuild --platform android --no-install --clean
       - name: Allow private-network HTTP only in this disposable preview APK
@@ -692,6 +693,7 @@ jobs:
           # Re-evaluate the dynamic Expo config during Metro/Gradle bundling too,
           # so the embedded manifest retains preview-only server selection.
           AFCON360_PREVIEW_BUILD: "true"
+          AFCON360_E2E_BUILD: "true"
           EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: ./gradlew --no-daemon --stacktrace assembleRelease
       - name: Save fresh APK under the source-keyed cache key

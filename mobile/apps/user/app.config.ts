@@ -7,6 +7,7 @@ const easProjectId =
   process.env.AFCON360_USER_EAS_PROJECT_ID?.trim() ||
   process.env.EAS_BUILD_PROJECT_ID?.trim();
 const isEasBuild = process.env.EAS_BUILD === "true";
+const isE2EBuild = process.env.AFCON360_E2E_BUILD === "true";
 const updateChannel = isPreview ? "preview" : "production";
 
 const easProjectIdPattern =
@@ -53,7 +54,9 @@ const config: ExpoConfig = {
   scheme: isPreview ? "afcon360-preview" : "afcon360",
   version: "1.0.1",
   runtimeVersion: { policy: "appVersion" },
-  updates: easProjectId
+  updates: isE2EBuild
+    ? { enabled: false }
+    : easProjectId
     ? {
         url: `https://u.expo.dev/${easProjectId}`,
         requestHeaders: { "expo-channel-name": updateChannel },

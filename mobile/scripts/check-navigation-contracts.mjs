@@ -10,7 +10,7 @@ const approved = [
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/tourism")', 'label="Explore tourism on website"'],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/tournament")', 'label="Explore matches on website"'],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/onboarding/choose")', 'label="Become a partner on website"'],
-  ["apps/user/app/(tabs)/index.tsx", "WebBrowser.openBrowserAsync(target)", 'Host an event on website'],
+  ["apps/user/app/(tabs)/index.tsx", "WebBrowser.openBrowserAsync(target)", "safeSameOriginUrl(path, SITE)"],
   ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")', 'label="Continue driver registration on website"'],
   ["apps/user/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", 'label="Back to AFCON360 website home"'],
   ["apps/driver/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", 'label="Back to AFCON360 website home"'],
@@ -23,12 +23,12 @@ const approved = [
 
 const nativeInternalRoutes = [
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/events" as never)'],
-  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/stays" as never)'],
-  ["apps/user/app/(tabs)/index.tsx", 'router.push("/(service)/ride" as never)'],
-  ["apps/user/app/(tabs)/index.tsx", 'pathname: "/(service)/events"'],
-  ["apps/user/app/(tabs)/index.tsx", 'router.push("/(service)/stays" as never)'],
-  ["apps/user/app/(tabs)/index.tsx", 'router.push("/(tabs)/wallet" as never)'],
-  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/ride" as never)'],
+  ["apps/user/app/(tabs)/explore.tsx", "router.push('/(service)/stays' as never)"],
+  ["apps/user/app/(tabs)/index.tsx", "router.push('/(service)/ride' as never)"],
+  ["apps/user/app/(tabs)/index.tsx", "pathname: '/(service)/events'"],
+  ["apps/user/app/(tabs)/index.tsx", "router.push('/(service)/stays' as never)"],
+  ["apps/user/app/(tabs)/index.tsx", "router.push('/(tabs)/wallet' as never)"],
+  ["apps/user/app/(tabs)/explore.tsx", "router.push('/(service)/ride' as never)"],
   ["apps/user/app/(tabs)/activity.tsx", 'pathname: "/(service)/ride-status/[reference]"'],
   ["apps/user/app/(tabs)/account.tsx", 'router.push("/(service)/delete-account" as never)'],
   ["apps/user/app/login.tsx", 'router.push("/server-settings" as never)'],
@@ -89,7 +89,9 @@ for (const [relative, snippet] of [...nativeInternalRoutes, ...nativeResetRoutes
 }
 
 const requiredWebsiteHandoffLabels = [
-  ["apps/user/app/(tabs)/index.tsx", "Tourism · website"],
+  ["apps/user/app/(tabs)/index.tsx", "safeSameOriginUrl(path, SITE)"],
+  ["apps/user/src/components/ServiceGrid.tsx", "accessibilityLabel: 'Adventure and tourism on Pamoja website'"],
+  ["apps/user/src/components/MyEventsOverview.tsx", 'accessibilityLabel="Host an event on Pamoja website"'],
   ["apps/user/app/(tabs)/account.tsx", "Opens on Pamoja website"],
 ];
 for (const [relative, visibleLabel] of requiredWebsiteHandoffLabels) {
