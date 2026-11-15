@@ -591,8 +591,16 @@ def main() -> None:
     )
     save_screen("02-dashboard-menu")
     tap_text("Close menu")
-    wait_for_text("My Events", "Event Calendar", "Upcoming Reminders", "Tickets & Badges", timeout=35, label="website-matched native User dashboard overview")
+    wait_for_text("My Events", "Event Calendar", timeout=35, label="website-matched native User dashboard overview")
     save_screen("03-home")
+
+    # These overview panels continue below the calendar inside the vertical
+    # dashboard feed. Scroll to each before asserting it exists in the UI tree.
+    tap_text_scrolling("Upcoming Reminders")
+    wait_for_text("Upcoming Reminders", timeout=12, label="User upcoming reminders panel")
+    tap_text_scrolling("Tickets & Badges")
+    wait_for_text("Tickets & Badges", timeout=12, label="User tickets and badges panel")
+    save_screen("03-home-details")
     mark_stage("authenticated_home")
 
     mark_stage("activity_navigation_started")
