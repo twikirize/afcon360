@@ -41,18 +41,43 @@ from app.transport.models import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_user(db_session, suffix=None):
+def _make_user(db_session, suffix=None, *, create_profile=True):
+    from datetime import datetime, timezone
     from app.identity.models.user import User
+    from app.profile.models import UserProfile
+
     suffix = suffix or uuid.uuid4().hex[:8]
+    email = f"s4b5_{suffix}@example.com"
+    phone = f"+2567{uuid.uuid4().int % 10**8:08d}"
     user = User(
         public_id=str(uuid.uuid4()),
         username=f"s4b5_{suffix}",
-        email=f"s4b5_{suffix}@example.com",
+        email=email,
+        phone=phone,
     )
     user.set_password("TestPassword123!")
     user.is_active = True
+    user.is_verified = True
+    user.email_verified = True
+    user.email_verified_at = datetime.now(timezone.utc)
+    user.phone_verified = True
+    user.phone_verified_at = datetime.now(timezone.utc)
     db_session.add(user)
     db_session.flush()
+
+    # Transport onboarding now reads real identity state; it must not fall
+    # back to the removed fabricated IdentityService response.
+    if create_profile:
+        db_session.add(UserProfile(
+            user_id=user.public_id,
+            full_name=f"Stage 4B-5 Driver {suffix}",
+            date_of_birth=date(1990, 1, 1),
+            nationality="UG",
+            email=email,
+            phone_number=phone,
+            verification_status="verified",
+        ))
+        db_session.flush()
     return user
 
 
@@ -295,8 +320,22 @@ def test_driver_commit_does_not_create_canonical_profile(db_session):
     Canonical identity creation is not owned by the driver flow."""
     from app.auth.onboarding_routes import _commit_driver_onboarding
     from app.profile.models import UserProfile
+    from app.transport.services.provider_service import ProviderService
 
-    user = _make_user(db_session)
+    user = _make_user(db_session, create_profile=False)
+    # This case isolates the no-profile-creation invariant. Eligibility is
+    # independently covered by ProviderService identity tests.
+    ProviderService.validate_driver_eligibility = lambda self, user_id: {
+        "eligible": True,
+        "identity": {
+            "identity_verified": True,
+            "email_verified": True,
+            "phone_verified": True,
+            "age": 30,
+            "has_criminal_record": None,
+            "account_status": "active",
+        },
+    }
     _commit_driver_onboarding(user, _driver_wizard_data())
     db_session.flush()
 
