@@ -49,7 +49,7 @@ jobs:
           set -euo pipefail
           test -n "${EXPO_TOKEN:-}" || { echo "::error::EXPO_TOKEN is unavailable to this diagnostic workflow."; exit 1; }
           test -n "${AFCON360_USER_EAS_PROJECT_ID:-}" || { echo "::error::AFCON360_USER_EAS_PROJECT_ID is unavailable."; exit 1; }
-          npx --yes eas-cli@latest build:view "a3d45d0f-f08e-4b89-b8ba-92902370edfa" --json > "$RUNNER_TEMP/afcon360-user-eas-failure.json"
+          npx --yes eas-cli@latest build:view "a3052852-c0be-4e37-85e1-155ce9ea1282" --json > "$RUNNER_TEMP/afcon360-user-eas-failure.json"
           node - "$RUNNER_TEMP/afcon360-user-eas-failure.json" "$RUNNER_TEMP/afcon360-user-eas-log-url.txt" <<'NODE'
           const fs = require("node:fs");
           const raw = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
