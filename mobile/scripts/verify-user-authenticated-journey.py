@@ -580,7 +580,7 @@ def main() -> None:
     time.sleep(0.5)
     tap_text("Sign in securely", require_enabled=True)
 
-    wait_for_text("Welcome to Pamoja", f"Good to see you, {USERNAME}.", timeout=45, label="authenticated User home")
+    wait_for_text("YOUR AFCON360 DASHBOARD", "My Events", timeout=45, label="authenticated User home")
     save_screen("02-home")
     mark_stage("authenticated_home")
 
