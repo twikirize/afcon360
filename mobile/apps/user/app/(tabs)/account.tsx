@@ -156,6 +156,11 @@ export default function Account() {
                 {user?.email_verified ? "EMAIL VERIFIED" : "EMAIL NOT VERIFIED"}
               </Text>
             </View>
+            <View style={[styles.statusPill, user?.mfa_enabled ? styles.verifiedPill : styles.pendingPill]}>
+              <Text style={[styles.statusText, user?.mfa_enabled ? styles.verifiedText : styles.pendingText]}>
+                {user?.mfa_enabled ? "2-STEP ENABLED" : "2-STEP NOT ENABLED"}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -229,15 +234,60 @@ export default function Account() {
         />
       </AccountMenuSection>
 
+      {user?.contexts && user.contexts.length > 0 ? (
+        <AccountMenuSection
+          title="Your workspaces"
+          description="Personal and organisation access associated with your AFCON360 identity"
+        >
+          {user.contexts.map((context, index) => (
+            <View
+              key={(context.public_id || context.type) + ":" + context.label}
+              style={[styles.contextRow, index < user.contexts!.length - 1 && styles.contextRowDivider]}
+            >
+              <View style={styles.contextIcon}>
+                <Text style={styles.contextIconText}>{context.type === "individual" ? "◎" : "▦"}</Text>
+              </View>
+              <View style={styles.contextCopy}>
+                <Text style={styles.contextName}>{context.label}</Text>
+                <Text style={styles.contextMeta}>
+                  {context.type === "individual" ? "Personal account" : (context.role || context.type.replace(/_/g, " "))}
+                </Text>
+              </View>
+            </View>
+          ))}
+          <WebsiteMenuRow
+            title="Switch account or workspace"
+            description="Open the Pamoja dashboard to change your active personal or organisation workspace"
+            symbol="⇄"
+            onPress={() => void openWebsite("/dashboard")}
+            last
+          />
+        </AccountMenuSection>
+      ) : null}
+
+      <AccountMenuSection
+        title="Partner with Pamoja"
+        description="Access opportunities to provide services and grow with the platform"
+      >
+        <WebsiteMenuRow
+          title="Become a partner"
+          description="Explore partner onboarding and available service-provider opportunities"
+          symbol="＋"
+          onPress={() => void openWebsite("/onboarding/choose")}
+          last
+        />
+      </AccountMenuSection>
+
       <AccountMenuSection
         title="Dashboard"
         description="Open your AFCON360 activity and available workspaces"
       >
         <WebsiteMenuRow
           title="Open dashboard"
-          description="View your registrations, activity, wallet and available module dashboards"
+          description="View your event schedule, registrations, tickets, activity and discovery feed"
           symbol="▦"
-          onPress={() => void openWebsite("/dashboard")}
+          onPress={() => router.push("/(tabs)/index" as never)}
+          external={false}
           last
         />
       </AccountMenuSection>
@@ -344,6 +394,13 @@ const styles = StyleSheet.create({
   pendingPill: { backgroundColor: "rgba(255,204,0,0.16)" },
   verifiedText: { color: "#B9F0CB" },
   pendingText: { color: "#FFE28A" },
+  contextRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 11, paddingHorizontal: 12, paddingVertical: 9 },
+  contextRowDivider: { borderBottomWidth: 1, borderBottomColor: palette.border },
+  contextIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#E7F1E9" },
+  contextIconText: { color: "#175D37", fontSize: 19, fontWeight: "900" },
+  contextCopy: { flex: 1, minWidth: 0, gap: 2 },
+  contextName: { color: palette.ink, fontSize: 12, fontWeight: "900" },
+  contextMeta: { color: palette.muted, fontSize: 10, textTransform: "capitalize" },
   section: { gap: 9 },
   sectionHeading: { gap: 3 },
   sectionTitle: { color: palette.ink, fontSize: 14, fontWeight: "900", letterSpacing: 0.3 },
