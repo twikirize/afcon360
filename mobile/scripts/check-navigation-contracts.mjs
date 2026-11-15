@@ -7,7 +7,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const approved = [
   ["apps/user/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', 'label="Privacy notice (website)"'],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/tourism")', 'label="Explore tourism on website"'],
-  ["apps/user/app/(tabs)/index.tsx", "WebBrowser.openBrowserAsync(target)", 'accessibilityLabel="Tourism · website"'],
+  ["apps/user/app/(tabs)/index.tsx", "WebBrowser.openBrowserAsync(target)", null],
   ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")', 'label="Continue driver registration on website"'],
   ["apps/user/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", 'label="Back to AFCON360 website home"'],
   ["apps/driver/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", 'label="Back to AFCON360 website home"'],
@@ -82,7 +82,7 @@ for (const [relative, snippet] of [...nativeInternalRoutes, ...nativeResetRoutes
 }
 
 const requiredWebsiteHandoffLabels = [
-  ["apps/user/app/(tabs)/index.tsx", "Tourism · website"],
+  ["apps/user/src/components/ServiceGrid.tsx", "Adventure and tourism on website"],
 ];
 for (const [relative, visibleLabel] of requiredWebsiteHandoffLabels) {
   const source = fs.readFileSync(path.join(root, relative), "utf8");
@@ -105,7 +105,7 @@ for (const [relative, snippet, visibleLabel] of approved) {
   expected.set(key, (expected.get(key) ?? 0) + 1);
   const source = fs.readFileSync(key, "utf8");
   if (!source.includes(snippet)) throw new Error(`Approved external navigation changed or disappeared: ${relative}\nExpected: ${snippet}`);
-  if (!source.includes(visibleLabel)) throw new Error(`External browser handoff must be visibly labelled as a website action: ${relative}\nExpected: ${visibleLabel}`);
+  if (visibleLabel && !source.includes(visibleLabel)) throw new Error(`External browser handoff must be visibly labelled as a website action: ${relative}\nExpected: ${visibleLabel}`);
 }
 
 const violations = [];
