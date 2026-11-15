@@ -4,15 +4,21 @@
 <section style="max-width:780px;margin:0 auto;padding:32px 18px 56px;line-height:1.7">
   <p style="color:#087a4b;font-weight:800;letter-spacing:.12em;text-transform:uppercase">Account and privacy controls</p>
   <h1>Request AFCON360 account deletion</h1>
-  <p>This page is the web route for customers and drivers who wish to request closure of an AFCON360 account. You can also start deletion inside the User or Driver app under Account.</p>
+  <p>This page is the web route for customers, providers and drivers who wish to close an AFCON360 account. You can also start closure inside the User or Driver app under Account.</p>
+
   <h2>What happens when you submit a request?</h2>
   <ul>
-    <li>Your sign-in is disabled and active website/mobile device sessions are revoked.</li>
-    <li>Direct account and general-profile identifiers are anonymized, and active MFA, recovery, PIN and personal API credentials are invalidated.</li>
-    <li>Some KYC/AML, wallet-ledger, booking, safety, dispute and audit records may be retained only where required for applicable legal, financial or safety obligations.</li>
-    <li>AFCON360 does not promise that statutory or financial records are erased where retention is legally required. The approved privacy notice will state the applicable categories and retention periods.</li>
+    <li>Your account is disabled immediately and active website and mobile sessions are revoked.</li>
+    <li>Your profile and public content are hidden during a {{ grace_days }}-day grace period.</li>
+    <li>You can cancel before the grace period ends using the link sent to your account email. Cancelling restores sign-in and account access.</li>
+    <li>At closure, direct account and general-profile identifiers are anonymized, and active MFA, recovery, PIN and personal API credentials are invalidated.</li>
+    <li>Wallet balances and pending payouts must be resolved before closure. Closure does not refund, transfer or cancel any outstanding financial obligation.</li>
+    <li>KYC/AML, wallet-ledger, booking, safety, dispute and audit records may be retained for up to 10 years, and fraud, security and audit records for up to 15 years, where required by law or legitimate safety obligations.</li>
+    <li>AFCON360 does not promise that statutory, financial or safety records are erased where retention is legally required.</li>
+    <li>If you later create a new account, it starts as a new identity and is subject to compliance review.</li>
   </ul>
-  <p>Re-enter your current password and, when enabled, your authenticator/backup code. Type the confirmation phrase exactly. This verifies your intent; it does not transfer, refund or close any outstanding financial obligation.</p>
+
+  <p>Re-enter your current password and, when enabled, your authenticator or backup code. Type the confirmation phrase exactly. Then tick every acknowledgement below. This verifies your intent; it does not transfer, refund or close any outstanding financial obligation.</p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for category, message in messages %}
@@ -35,13 +41,24 @@
         <label class="form-label" for="delete-confirm">Type DELETE MY ACCOUNT</label>
         <input class="form-control" id="delete-confirm" name="confirmation" required maxlength="32" autocomplete="off">
       </div>
-      <button class="btn btn-danger" type="submit">Submit account deletion request</button>
+
+      <fieldset class="mb-3" style="border:1px solid #d7dde5;border-radius:10px;padding:16px">
+        <legend style="font-size:1rem;font-weight:700;padding:0 6px">Required acknowledgements</legend>
+        {% for key, text in acknowledgements.items() %}
+        <label style="display:flex;align-items:flex-start;gap:10px;margin:0 0 12px">
+          <input type="checkbox" name="{{ key }}" required style="margin-top:4px">
+          <span>{{ text }}</span>
+        </label>
+        {% endfor %}
+      </fieldset>
+
+      <button class="btn btn-danger" type="submit">Start {{ grace_days }}-day account closure</button>
     </form>
   {% else %}
-    <p>You must sign in to verify ownership before requesting deletion.</p>
+    <p>You must sign in to verify ownership before requesting closure.</p>
     <a class="btn btn-primary" href="{{ url_for('auth.login', next=request.url) }}">Sign in to continue</a>
   {% endif %}
-  <p class="mt-4"><a href="/apps/privacy">Read the mobile privacy notice (working draft)</a></p>
+  <p class="mt-4"><a href="/apps/privacy">Read the mobile privacy notice</a></p>
   <p><a href="/apps">Back to AFCON360 Apps</a></p>
 </section>
 {% endblock %}
