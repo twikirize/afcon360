@@ -191,6 +191,7 @@ def test_standard_and_compliance_approval_backfill_before_profile_is_verified(
 ):
     from app.audit.forensic_audit import ForensicAuditService
     from app.kyc import services
+    from app.notifications import signals
 
     observations = []
     current = {"record": None, "user": None, "profile": None}
@@ -236,6 +237,7 @@ def test_standard_and_compliance_approval_backfill_before_profile_is_verified(
         "log_completion",
         staticmethod(lambda **_kwargs: None),
     )
+    monkeypatch.setattr(signals.kyc_approved, "send", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         services.ComplianceLogger,
         "log_decision",
