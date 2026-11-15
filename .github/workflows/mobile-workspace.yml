@@ -1146,12 +1146,8 @@ jobs:
     name: Build signed production User APK (EAS)
     needs: [mobile-typecheck, user-authenticated-journey]
     if: >-
-      ${{ (
-            (github.event_name == 'push' && github.ref_name == 'fix/user-release-engineering-20261115') ||
-            (github.event_name == 'pull_request' &&
-              github.event.pull_request.head.ref == 'fix/user-release-engineering-20261115' &&
-              github.event.pull_request.head.repo.full_name == github.repository)
-          ) &&
+      ${{ github.event_name == 'push' &&
+          github.ref_name == 'feat/native-user-app-integration-20261108' &&
           needs.mobile-typecheck.result == 'success' &&
           needs.user-authenticated-journey.result == 'success' &&
           needs.user-authenticated-journey.outputs.apk_ready == 'true' }}
@@ -1256,8 +1252,25 @@ jobs:
           test -x "$AAPT"
           "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/afcon360-user-production.apk" | tee "$RUNNER_TEMP/afcon360-user-apk-signature.txt"
           "$AAPT" dump badging "$GITHUB_WORKSPACE/afcon360-user-production.apk" > "$RUNNER_TEMP/afcon360-user-apk-badging.txt"
-          grep -F "package: name='space.pamoja.afcon360.user'" "$RUNNER_TEMP/afcon360-user-apk-badging.txt"
-          grep -F "versionName='1.0.1'" "$RUNNER_TEMP/afcon360-user-apk-badging.txt"
+          BADGING="$RUNNER_TEMP/afcon360-user-apk-badging.txt"
+          grep -F "package: name='space.pamoja.afcon360.user'" "$BADGING"
+          grep -F "versionName='1.0.1'" "$BADGING"
+          VERSION_CODE="$(sed -n "s/^package:.*versionCode:'\\([^']*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
+          MINIMUM="$(sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
+          TARGET="$(sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
+          test -n "$VERSION_CODE" && test "$VERSION_CODE" -ge 1
+          test "$MINIMUM" = "24"
+          test -n "$TARGET" && test "$TARGET" -ge 36
+          CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/afcon360-user-apk-signature.txt" | head -n 1)"
+          test -n "$CERT_SHA256"
+          {
+            echo "package=space.pamoja.afcon360.user"
+            echo "version_name=1.0.1"
+            echo "version_code=$VERSION_CODE"
+            echo "min_sdk=$MINIMUM"
+            echo "target_sdk=$TARGET"
+            echo "signing_certificate_sha256=$CERT_SHA256"
+          } > "$GITHUB_WORKSPACE/afcon360-user-production-build-info.txt"
           sha256sum "$GITHUB_WORKSPACE/afcon360-user-production.apk" | tee "$GITHUB_WORKSPACE/afcon360-user-production.apk.sha256"
 
       - name: Upload signed production User APK
@@ -1267,6 +1280,7 @@ jobs:
           path: |
             afcon360-user-production.apk
             afcon360-user-production.apk.sha256
+            afcon360-user-production-build-info.txt
           if-no-files-found: error
           retention-days: 30
 
