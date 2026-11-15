@@ -248,7 +248,10 @@ class KycService:
                             user_id=record.user_id,
                             record_type="address_verification",
                         )
-                        .filter(KycRecord.status.in_(("approved", "verified")))
+                        .filter(
+                            KycRecord.is_deleted.is_(False),
+                            KycRecord.status.in_(("approved", "verified")),
+                        )
                         .order_by(KycRecord.created_at.desc(), KycRecord.id.desc())
                         .first()
                     )
