@@ -63,20 +63,14 @@
       <form method="POST" action="{{ url_for('auth.verify_phone') }}" id="verify-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <div class="mb-3">
-          <label for="full_name" class="form-label">Full name (optional)</label>
-          <input type="text" class="form-control form-control-lg" id="full_name" name="full_name"
-                 placeholder="John William Doe"
-                 value="{{ profile.full_name if profile else '' }}">
-          <div class="form-text">
-            {% if phone_verification_transport == 'sms' %}
-              This confirms control of the phone number.
-            {% else %}
-              The code is sent to your already-verified account email. Entering it marks this phone number verified in AFCON360; it does not independently prove handset possession. SMS verification can be enabled after a provider is configured.
-            {% endif %}
-            You can update your legal name separately in your profile and KYC details.
-          </div>
-        </div>
+        <p class="form-text mb-3">
+          {% if phone_verification_transport == 'sms' %}
+            The code confirms control of the phone number.
+          {% else %}
+            The code is sent to your already-verified account email. Entering it marks this phone number verified in AFCON360; it does not independently prove handset possession. SMS verification can be enabled after a provider is configured.
+          {% endif %}
+          Your personal identity details are managed separately in your profile and KYC.
+        </p>
 
         <div class="mb-3">
           <label for="code" class="form-label">Verification code</label>
