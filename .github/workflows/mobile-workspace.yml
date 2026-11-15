@@ -148,7 +148,7 @@ jobs:
         run: echo "key=$USER_APK_SOURCE_KEY" >> "$GITHUB_OUTPUT"
       - name: Restore source-keyed User E2E APK
         id: user-apk-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: mobile-e2e-cache/
           key: ${{ steps.user-apk-key.outputs.key }}
@@ -190,12 +190,12 @@ jobs:
 
       - name: Save validated User APK under current source key
         if: steps.validate-user-apk.outputs.reusable == 'true' && steps.user-apk-cache.outputs['cache-hit'] != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: mobile-e2e-cache/
           key: ${{ steps.user-apk-key.outputs.key }}
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -399,7 +399,7 @@ jobs:
           EOF
       - name: Persist fresh User APK immediately
         if: steps.validate-user-apk.outputs.reusable != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: mobile-e2e-cache/
           key: ${{ steps.user-apk-key.outputs.key }}
@@ -630,7 +630,7 @@ jobs:
           echo "Verified the same source APK ($ACTUAL_SHA) for ${{ matrix.android-label }}."
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
