@@ -8,7 +8,6 @@ from contextlib import nullcontext
 from datetime import date
 from types import SimpleNamespace
 
-import pytest
 
 from app.extensions import db
 from app.identity.models.user import User
