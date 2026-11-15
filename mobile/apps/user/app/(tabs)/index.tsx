@@ -219,22 +219,22 @@ export default function UserHome() {
         <View style={styles.pageContent}>
           <Header />
 
-          <SearchBar
-            value={search}
-            onChangeText={setSearch}
-            onSubmit={handleSearchSubmit}
-            placeholder='Search highlights'
-            recentSearches={recentSearches}
-            onRecentPress={handleRecentPress}
-            onClearRecent={handleClearRecent}
-          />
-
           <HeroParallax
             scrollY={scrollY}
             featured={featuredItem}
             baseUrl={apiBaseUrl}
             onFeaturedPress={() => featuredItem && openTrendingItem(featuredItem)}
             onExplore={() => router.push('/(tabs)/explore' as never)}
+          />
+
+          <SearchBar
+            value={search}
+            onChangeText={setSearch}
+            onSubmit={handleSearchSubmit}
+            placeholder='Search events, stays, rides and more'
+            recentSearches={recentSearches}
+            onRecentPress={handleRecentPress}
+            onClearRecent={handleClearRecent}
           />
 
           <SectionHeader
@@ -298,7 +298,7 @@ export default function UserHome() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface.canvas },
   scrollContent: { paddingBottom: 28 },
-  pageContent: { paddingHorizontal: 16, paddingTop: 8, gap: 20 },
+  pageContent: { paddingHorizontal: 18, paddingTop: 10, gap: 22 },
   errorState: { padding: 16, borderRadius: 16, backgroundColor: colors.status.errorBg, gap: 10 },
   errorTitle: { color: colors.status.error, fontSize: 14, fontWeight: '900' },
   errorBody: { color: '#8D4943', fontSize: 12, lineHeight: 17 },
