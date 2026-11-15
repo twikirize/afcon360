@@ -254,12 +254,9 @@ def driver_onboarding(step: int = 1):
         data = session["driver_onboarding"]
 
         if step == 1:
-            data["step1"] = {
-                "full_name": request.form.get("full_name", "").strip(),
-                "date_of_birth": request.form.get("date_of_birth"),
-                "nationality": request.form.get("nationality", "").strip(),
-                "national_id_number": request.form.get("national_id_number", "").strip(),
-            }
+            # Personal identity is read-only here. It is owned by UserProfile
+            # and must not be copied into a driver-onboarding session snapshot.
+            data["step1"] = {}
             session["driver_onboarding"] = data
             return redirect(url_for("onboarding.driver_onboarding", step=2))
 
@@ -268,6 +265,7 @@ def driver_onboarding(step: int = 1):
                 "licence_number": request.form.get("licence_number", "").strip(),
                 "licence_expiry": request.form.get("licence_expiry"),
                 "licence_class": request.form.get("licence_class", "").strip(),
+                "licence_document_url": None,
             }
             # Handle file upload for licence
             licence_file = request.files.get("licence_document")
@@ -288,11 +286,6 @@ def driver_onboarding(step: int = 1):
 
         elif step == 3:
             data["step3"] = {
-                "vehicle_make": request.form.get("vehicle_make", "").strip(),
-                "vehicle_model": request.form.get("vehicle_model", "").strip(),
-                "vehicle_year": request.form.get("vehicle_year"),
-                "plate_number": request.form.get("plate_number", "").strip(),
-                "vehicle_type": request.form.get("vehicle_type", "").strip(),
                 "operating_country_code": request.form.get(
                     "operating_country_code", ""
                 ).strip().upper(),
@@ -417,6 +410,11 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
             driver_metadata={
                 "operating_country_code": operating_country_code,
                 "operating_country_verified": False,
+                # The licence number and expiry have dedicated DriverProfile
+                # columns. Class and the uploaded evidence reference have no
+                # dedicated columns, so retain them in the existing metadata.
+                "licence_class": (step2.get("licence_class") or "").strip() or None,
+                "licence_document_url": step2.get("licence_document_url") or None,
             },
         )
         db.session.add(driver)
