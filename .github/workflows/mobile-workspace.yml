@@ -213,7 +213,25 @@ jobs:
           const config = JSON.parse(
             fs.readFileSync("/tmp/afcon360-user-production-config.json", "utf8")
           );
+          const eas = JSON.parse(fs.readFileSync("apps/user/eas.json", "utf8"));
           const expectedProjectId = "00000000-0000-4000-8000-000000000001";
+          const expectedProfiles = {
+            development: "development",
+            preview: "preview",
+            production: "production",
+            "apk-share": "preview"
+          };
+          for (const [name, environment] of Object.entries(expectedProfiles)) {
+            const profile = eas.build?.[name];
+            const valid =
+              profile?.autoIncrement === true &&
+              profile?.credentialsSource === "remote" &&
+              profile?.environment === environment &&
+              profile?.env?.AFCON360_PREVIEW_BUILD === (name === "production" ? "false" : "true") &&
+              profile?.env?.AFCON360_RELEASE_BUILD === (name === "production" ? "true" : "false");
+            console.log(`${valid ? "PASS" : "FAIL"} EAS build profile: ${name}`);
+            if (!valid) process.exit(1);
+          }
           const runtimeVersion = config.runtimeVersion;
           const runtimeVersionIsAppVersionPolicy =
             runtimeVersion === "1.0.1" ||
