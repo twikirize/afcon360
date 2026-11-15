@@ -25,6 +25,13 @@ export default function Explore() {
       <ActionButton label="Explore tourism on website" onPress={() => WebBrowser.openBrowserAsync(SITE + "/tourism")} />
       <ServiceTile title="Events" description="Discover events and registrations." symbol="🎟️" />
       <ActionButton label="Discover events and tickets" onPress={() => router.push("/(service)/events" as never)} />
+      <ServiceTile title="Matches" description="Follow tournament information, match schedules and competition updates." symbol="🏆" />
+      <ActionButton label="Explore matches on website" onPress={() => WebBrowser.openBrowserAsync(SITE + "/tournament")} />
+    </Panel>
+    <Panel>
+      <SectionTitle>Partner with Pamoja</SectionTitle>
+      <ServiceTile title="Become a partner" description="Explore service-provider onboarding and opportunities to work with Pamoja." symbol="🤝" />
+      <ActionButton label="Become a partner on website" onPress={() => WebBrowser.openBrowserAsync(SITE + "/onboarding/choose")} />
     </Panel>
   </AppScreen>;
 }
