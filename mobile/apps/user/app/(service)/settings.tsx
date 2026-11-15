@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
 import { useRouter } from "expo-router";
@@ -199,52 +199,31 @@ function AppUpdateControls() {
 export default function UserAppSettings() {
   const router = useRouter();
   const appVersion = Constants.expoConfig?.version ?? "Unknown";
-  const isPreviewDistribution =
-    Constants.expoConfig?.extra?.allowServerSelection === true;
-  const androidPackage =
-    Constants.expoConfig?.android?.package ?? "space.pamoja.afcon360.user";
-  const isProductionAndroidStoreBuild =
-    Platform.OS === "android" && !isPreviewDistribution;
 
   const openNativeAppUpdate = async () => {
-    const officialDownloadsUrl = "https://www.pamoja.space/apps";
-    const playStoreWebUrl =
-      "https://play.google.com/store/apps/details?id=" +
-      encodeURIComponent(androidPackage);
-    const primaryUrl = isProductionAndroidStoreBuild
-      ? "market://details?id=" + encodeURIComponent(androidPackage)
-      : officialDownloadsUrl;
-    const fallbackUrl = isProductionAndroidStoreBuild
-      ? playStoreWebUrl
-      : officialDownloadsUrl;
-
+    const officialDownloadsUrl = "https://www.pamoja.space/download";
     try {
-      await Linking.openURL(primaryUrl);
+      await Linking.openURL(officialDownloadsUrl);
     } catch {
       try {
-        await Linking.openURL(fallbackUrl);
+        await WebBrowser.openBrowserAsync(officialDownloadsUrl);
       } catch {
         Alert.alert(
           "Update page unavailable",
-          "AFCON360 could not open the official update destination. Open this address in your browser: " +
-            fallbackUrl
+          "AFCON360 could not open the official downloads page. Open this address in your browser: " +
+            officialDownloadsUrl
         );
       }
     }
   };
 
   const nativeUpdateDescription =
-    Platform.OS === "android"
-      ? isProductionAndroidStoreBuild
-        ? "For full Android releases that change native code, open the official Google Play listing. Google Play manages the download, signature verification and installation."
-        : "For a full APK update, open Pamoja's official app page, download the signed APK and approve the installation in Android's system installer."
-      : "For full iOS releases that change native code, open Pamoja's official app page and continue to the App Store.";
+    "Use Pamoja's official downloads page for full Android and iOS releases. Official store links appear when configured; any pre-Play Android APKs are clearly labelled as internal previews. Android requires user confirmation before an APK can be installed.";
 
-  const nativeUpdateActionLabel =
-    isProductionAndroidStoreBuild ? "Open Google Play" : "Open official app page";
+  const nativeUpdateActionLabel = "Open official downloads";
 
   const shareApp = async () => {
-    const url = "https://www.pamoja.space/apps";
+    const url = "https://www.pamoja.space/download";
     try {
       await Share.share({ message: "AFCON360 — official app information and downloads. " + url, url });
     } catch {
@@ -287,7 +266,7 @@ export default function UserAppSettings() {
           </View>
           <View style={styles.actionCopy}>
             <Text style={styles.actionTitle}>
-              {isProductionAndroidStoreBuild ? "Google Play release" : "Official app distribution"}
+              "Official app distribution"
             </Text>
             <Text style={styles.actionDescription}>{nativeUpdateDescription}</Text>
           </View>
