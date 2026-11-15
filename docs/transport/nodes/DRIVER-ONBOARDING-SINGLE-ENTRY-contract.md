@@ -51,9 +51,9 @@ Source trace on the base commit established:
 4. Keep Driver Step 2 licence number, expiry, class and uploaded-document reference in the DriverProfile's existing metadata/fields without a migration.
 5. Change Driver Step 3 to collect only the operating country/market. Keep driver onboarding resource-free: no Vehicle, booking, wallet or passenger resource is created there.
 6. Make NIN collection single-entry:
-   - if canonical `UserProfile.id_number` exists, show a masked read-only value and use that server-side for NIRA submission;
+   - if canonical `UserProfile.id_number` exists with `id_type == national_id`, show a masked read-only value and use that server-side for NIRA submission;
    - otherwise, allow NIN entry on the KYC page only;
-   - do not copy KYC evidence back into canonical profile identity in this node;
+   - do not copy the submitted NIN evidence (`KycRecord.id_number`) back into `UserProfile.id_number`; preserve any existing KYC-first full-name/date-of-birth behavior;
    - preserve the existing pending/verified duplicate-submission guard.
 7. Add a driver-purpose KYC-upgrade path that exposes only the Tier-2 requirements needed by Driver Go-Live. Preserve the general KYC upgrade page for other uses.
 8. Set the vehicle-registration KYC threshold by owner path: Tier 2 for a user with a DriverProfile; Tier 3 for a non-driver personal vehicle owner. A driver may register only after their DriverProfile is approved, consistent with the existing ProviderService rule.
@@ -92,7 +92,7 @@ Source trace on the base commit established:
 - Commit creates DriverProfile and Transport provider intention only.
 
 ### KYC and vehicle registration
-- KYC National ID POST uses canonical `id_number` when present; otherwise it requires the submitted NIN.
+- KYC National ID POST uses canonical `id_number` only when canonical `id_type` is `national_id`; otherwise it requires the submitted NIN.
 - Driver-purpose upgrade is selected by `purpose=driver` and ends at Tier 2; general upgrades remain unchanged.
 - Driver-owned vehicle registration requires Tier 2 and approved DriverProfile; non-driver personal registration requires Tier 3.
 - Driver-owned vehicle registration creates exactly one active assignment through `assign_driver_to_vehicle(driver, vehicle, reason, authorized_by, notes)`.
@@ -144,7 +144,7 @@ Passing the automated commands is necessary but not sufficient. The owner must v
 - [ ] Driver Step 1 contains no editable duplicate identity/NIN inputs and reflects canonical profile data read-only.
 - [ ] Driver Step 2 persists licence number, expiry, class and optional document reference.
 - [ ] Driver Step 3 asks only for operating market; the initial commit remains resource-free.
-- [ ] KYC NIN is read-only/masked when canonical NIN exists and is collected only when it is absent; POST cannot override a canonical NIN.
+- [ ] KYC NIN is read-only/masked when canonical `id_type` is `national_id`; passport/driver-licence numbers are never mistaken for NIN; POST cannot override a canonical NIN.
 - [ ] Driver-purpose KYC upgrade shows only Tier-2 driver requirements and a clear completed state once Tier 2 is met.
 - [ ] Driver vehicle registration enforces Tier 2 plus approved DriverProfile; non-driver personal vehicle registration continues to enforce Tier 3.
 - [ ] A registered driver-owned vehicle is assigned by the canonical history service and becomes DriverProfile.current_vehicle.
