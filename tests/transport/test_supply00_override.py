@@ -86,6 +86,19 @@ def _make_role_user(app, label, role_name):
 
 
 # ============================================================================
+def _admin_override_url(app, driver_id):
+    """Build the admin override URL using the driver's public code."""
+    from app.transport.models import DriverProfile
+
+    with app.app_context():
+        driver = DriverProfile.query.filter_by(
+            id=driver_id,
+            is_deleted=False,
+        ).first()
+        assert driver is not None, f"Driver {driver_id} was not found"
+        return f"/api/transport/drivers/{driver.driver_code}/admin-online-override"
+
+
 # T1: claim + release preserves flags
 # ============================================================================
 def test_T1_claim_release_preserves_flags(app):
@@ -414,7 +427,7 @@ def test_T9_admin_enables_override_populates_metadata(app, admin_client):
         db.session.commit()
 
     resp = admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "test T9"},
     )
     assert resp.status_code == 200
@@ -454,7 +467,7 @@ def test_T10_override_lets_driver_go_online(app, admin_client):
         db.session.commit()
 
     admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "T10"},
     )
 
@@ -493,11 +506,11 @@ def test_T11_disable_override_forces_offline_if_no_longer_eligible(app, admin_cl
         db.session.commit()
 
     admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "T11 on"},
     )
     resp = admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": False, "reason": "T11 off"},
     )
     assert resp.status_code == 200
@@ -526,7 +539,7 @@ def test_T12_override_on_suspended_driver_refused(app, admin_client):
         db.session.commit()
 
     resp = admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "T12"},
     )
     assert resp.status_code == 422
@@ -557,7 +570,7 @@ def test_T13_override_audit_persists(app, admin_client):
         db.session.commit()
 
     admin_client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "T13"},
     )
 
@@ -591,7 +604,7 @@ def test_T14_override_requires_admin(app, client):
         _login_client(client, drv.user)
 
     resp = client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": "should fail"},
     )
     # Web-style decorator redirects unauthorized API callers (302) instead
@@ -632,7 +645,7 @@ def test_T15_role_can_use_override(app, client, role_name):
         _login_client(client, role_user)
 
     resp = client.post(
-        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        _admin_override_url(app, drv_id),
         json={"enabled": True, "reason": f"T15 {role_name}"},
     )
     assert resp.status_code == 200, f"role {role_name} must be accepted"

@@ -3636,17 +3636,16 @@ def reject_driver(driver_id):
     return redirect(url_for("transport_admin.list_drivers"))
 
 
-@transport_admin_bp.route("/drivers/<int:driver_id>/detail", methods=["GET"])
+@transport_admin_bp.route("/drivers/<string:driver_code>/detail", methods=["GET"])
 @module_enabled_required("transport")
 @login_required
 @transport_admin_required
-def admin_driver_detail(driver_id):
-    """Admin driver detail page -- profile, compliance, vehicle, and the
-    admin online override control (SUPPLY-00).
-    """
-    driver = db.session.get(DriverProfile, driver_id)
-    if not driver or driver.is_deleted:
-        abort(404)
+def admin_driver_detail(driver_code):
+    """Admin driver detail page resolved by the public driver code."""
+    driver = DriverProfile.query.filter_by(
+        driver_code=driver_code,
+        is_deleted=False,
+    ).first_or_404()
 
     meta = driver.driver_metadata or {}
     override = meta.get("admin_online_override") if isinstance(meta, dict) else None
@@ -3683,6 +3682,33 @@ def list_vehicles():
         logger.error(f"Error listing vehicles for user_id={_uid()}: {e}", exc_info=True)
         flash("Unable to load vehicles", "danger")
         return redirect(url_for("transport.home"))
+
+
+@transport_admin_bp.route("/vehicles/<string:vehicle_ref>/detail", methods=["GET"])
+@module_enabled_required("transport")
+@login_required
+@role_required("admin")
+def admin_vehicle_detail(vehicle_ref):
+    """Read-only vehicle detail page using an opaque QR reference.
+
+    Older records without a QR hash remain reachable through their unique
+    license plate. Internal database IDs are never accepted as references.
+    """
+    vehicle = Vehicle.query.filter_by(
+        qr_code_hash=vehicle_ref,
+        is_deleted=False,
+    ).first()
+
+    if vehicle is None:
+        vehicle = Vehicle.query.filter_by(
+            license_plate=vehicle_ref,
+            is_deleted=False,
+        ).first_or_404()
+
+    return render_template(
+        "transport/admin/vehicle_detail.html",
+        vehicle=vehicle,
+    )
 
 
 @transport_admin_bp.route("/vehicles/<int:vehicle_id>/approve", methods=["POST"])

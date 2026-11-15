@@ -325,7 +325,7 @@ Two independent checks, both must pass:
 
 **Gap:** the service method `set_admin_online_override` itself carries **no** authorization check — only `@monitor_endpoint` and `@rate_limit("driver_status_update", limit=60, period=60)` (`app/transport/services/provider_service.py:1434-1442`). The boundary is the route, not the service. Any future internal caller bypasses the WHO axis entirely.
 
-Route: `POST /api/transport/drivers/<int:driver_id>/admin-online-override` (`app/transport/api/routes.py:132-133`).
+Route: `POST /api/transport/drivers/<string:driver_code>/admin-online-override` (`app/transport/api/routes.py`). The public driver code is resolved to the internal DriverProfile ID inside the resource before the service call.
 
 ### 6.2 Axis 2 — WHAT (which gates are overridable)
 
