@@ -826,8 +826,7 @@ def deactivate_account():
 @auth_bp.route("/delete-account", endpoint="delete_account")
 @login_required
 def delete_account():
-    flash("Account deletion is currently unavailable. Please contact support.", "warning")
-    return redirect(request.referrer or url_for("profile.account_overview"))
+    return redirect(url_for("mobile_apps_delete_account"))
 
 @auth_bp.route("/send-phone-verification", methods=["POST"], endpoint="send_phone_verification")
 @login_required

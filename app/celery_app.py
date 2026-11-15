@@ -88,6 +88,7 @@ def make_celery(app=None):
             "app.events.tasks",
             "app.tasks.transport_recovery",
             "app.tasks.transport_permission_purge",
+            "app.tasks.account_closure",
             # add future task modules here
         ],
     )
@@ -166,6 +167,12 @@ def make_celery(app=None):
         "transport-permission-purge-expired": {
             "task": "app.tasks.transport_permission_purge.purge_expired_transport_permissions",
             "schedule": 86400.0,  # once per day
+        },
+
+        # --- Account closure finalization (hourly) ---
+        "account-finalize-due-closures": {
+            "task": "account.finalize_due_closures",
+            "schedule": 3600.0,  # every hour
         },
 
         # --- Events onsale: auto-release expired ticket holds ---

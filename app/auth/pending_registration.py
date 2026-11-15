@@ -702,6 +702,13 @@ def _create_verified_user(
     except Exception as e:
         logger.warning("Signup notification failed for %s: %s", email, e)
 
+    # Flag returning identity for compliance review
+    try:
+        from app.auth.account_deletion_service import flag_returning_identity
+        flag_returning_identity(user)
+    except Exception:
+        logger.exception("Returning-identity flag check failed for verified signup")
+
     return user, False
 
 

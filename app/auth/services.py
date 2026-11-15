@@ -424,6 +424,15 @@ def register_user(
                 "is_active": user.is_active
             }
         )
+
+        # Flag returning identity for compliance review
+        try:
+            from app.auth.account_deletion_service import flag_returning_identity
+            flag_returning_identity(user)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Returning-identity flag check failed for new registration"
+            )
     except Exception as e:
         db.session.rollback()
         ForensicAuditService.log_completion(

@@ -1055,61 +1055,9 @@ def download_data():
 @profile_bp.route("/account/danger/delete", methods=["POST"])
 @login_required
 def delete_account():
-    """Permanently delete account (requires owner approval for verified users)."""
-    from app.identity.models.user import User
-    from app.audit.comprehensive_audit import AuditService, AuditSeverity
-    from app.extensions import db
-    
-    confirm = request.form.get('confirm_delete')
-    if confirm != 'DELETE MY ACCOUNT':
-        flash('Please type "DELETE MY ACCOUNT" exactly to confirm.', 'danger')
-        return redirect(url_for('profile.account_danger'))
-    
-    user = User.query.filter_by(public_id=str(current_user.public_id)).first()
-    if not user:
-        flash('User not found.', 'danger')
-        return redirect(url_for('profile.account_danger'))
-    
-    # Prevent owner from deleting themselves
-    if user.is_app_owner():
-        flash('Owner account cannot be deleted.', 'danger')
-        return redirect(url_for('profile.account_danger'))
-    
-    # For verified users, mark for deletion instead of immediate delete
-    if user.is_verified or user.kyc_level > 0:
-        user.is_deleted = True
-        user.deleted_at = datetime.now(timezone.utc)
-        user.email = f'deleted_{user.public_id}@deleted.local'
-        user.username = f'deleted_{user.public_id}'
-        user.phone = None
-        db.session.commit()
-        
-        AuditService.security(
-            event_type='account_deletion_requested',
-            severity=AuditSeverity.WARNING,
-            description=f'Verified user {user.public_id} requested account deletion (soft delete)',
-            user_id=user.id,
-            ip_address=request.remote_addr,
-        )
-        
-        logout_user()
-        flash('Account deletion requested. Your data has been anonymized and scheduled for permanent removal.', 'info')
-    else:
-        # Unverified users can be hard deleted
-        user_id = user.id
-        public_id = user.public_id
-        db.session.delete(user)
-        db.session.commit()
-        
-        AuditService.security(
-            event_type='account_deleted',
-            severity=AuditSeverity.WARNING,
-            description=f'Unverified user {public_id} deleted their account',
-            user_id=user_id,
-            ip_address=request.remote_addr,
-        )
-        
-        logout_user()
-        flash('Your account has been permanently deleted.', 'info')
-    
-    return redirect(url_for('auth.login'))
+    """Retire the legacy bypass; closure now runs through the canonical flow."""
+    flash(
+        'Review the account-closure notice and confirm the request on the account-closure page.',
+        'info',
+    )
+    return redirect(url_for('mobile_apps_delete_account'))

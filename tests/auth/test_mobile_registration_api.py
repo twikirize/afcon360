@@ -395,7 +395,7 @@ def test_native_account_deletion_delegates_to_shared_account_closure_service(cli
     from app.auth import mobile_api
     from app.auth import account_deletion_service
 
-    user = SimpleNamespace(id=72, public_id="delete-user-public-id")
+    user = SimpleNamespace(id=72, public_id="delete-user-public-id", is_active=True)
     context = {
         "user": user,
         "record": {"session_id": "device-session-delete-123", "client": "user"},
@@ -410,7 +410,7 @@ def test_native_account_deletion_delegates_to_shared_account_closure_service(cli
 
     def fake_delete(**kwargs):
         captured.update(kwargs)
-        return {"status": "anonymized", "message": "Account closure accepted."}
+        return {"status": "scheduled", "message": "Account closure scheduled."}
 
     monkeypatch.setattr(account_deletion_service, "request_account_deletion", fake_delete)
 
@@ -421,17 +421,20 @@ def test_native_account_deletion_delegates_to_shared_account_closure_service(cli
             "password": "CurrentPassword#2026",
             "confirmation": "DELETE MY ACCOUNT",
             "mfa_code": "123456",
+            "acknowledgements": {"understand_closure": True, "grace_period": True},
         },
     )
 
     assert response.status_code == 200
-    assert response.get_json()["data"]["status"] == "anonymized"
+    assert response.get_json()["data"]["status"] == "scheduled"
     assert captured["user"] is user
     assert captured["password"] == "CurrentPassword#2026"
     assert captured["confirmation"] == "DELETE MY ACCOUNT"
     assert captured["mfa_code"] == "123456"
     assert "ip_address" in captured
     assert "user_agent" in captured
+    assert captured.get("surface") == "mobile"
+    assert captured.get("acknowledgements") == {"understand_closure": True, "grace_period": True}
 
 
 def test_native_token_issuance_stores_only_token_digests(monkeypatch):

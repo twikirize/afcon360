@@ -2856,15 +2856,32 @@ def create_app(config_object=None) -> Flask:
         """Public account-deletion resource required by mobile store policies.
 
         GET explains the process and links to sign-in. POST requires an
-        authenticated owner, recent password proof, and MFA where enrolled.
+        authenticated owner, recent password proof, MFA where enrolled, and
+        acknowledgement of every closure notice.
         """
         from flask_login import current_user, logout_user
         from flask import flash, session
+
+        from app.auth.account_deletion_service import (
+            ACCOUNT_CLOSURE_GRACE_DAYS,
+            REQUIRED_ACKNOWLEDGEMENTS,
+        )
+
+        def _render_form(status_code=200, error=None):
+            return render_template(
+                'mobile_apps/delete-account.html',
+                acknowledgements=REQUIRED_ACKNOWLEDGEMENTS,
+                grace_days=ACCOUNT_CLOSURE_GRACE_DAYS,
+            ), status_code
 
         if request.method == 'POST' and not current_user.is_authenticated:
             return redirect(url_for('auth.login', next=request.url))
 
         if request.method == 'POST':
+            acknowledgements = {
+                key: request.form.get(key) == 'on'
+                for key in REQUIRED_ACKNOWLEDGEMENTS
+            }
             try:
                 from app.auth.account_deletion_service import (
                     AccountDeletionError,
@@ -2877,22 +2894,57 @@ def create_app(config_object=None) -> Flask:
                     mfa_code=(request.form.get('mfa_code') or '').strip(),
                     ip_address=request.remote_addr,
                     user_agent=request.headers.get('User-Agent'),
+                    acknowledgements=acknowledgements,
+                    surface='web',
                 )
             except AccountDeletionError as exc:
                 flash(exc.message, 'danger')
-                return render_template('mobile_apps/delete-account.html'), exc.status_code
+                return _render_form(exc.status_code)
             except Exception:
                 db.session.rollback()
                 current_app.logger.exception("Website account deletion service failed")
                 flash("AFCON360 could not complete the request. Please try again or contact support.", "danger")
-                return render_template('mobile_apps/delete-account.html'), 503
+                return _render_form(503)
 
             logout_user()
             session.clear()
-            flash(result.get("message") or "Your account deletion request was completed.", "success")
-            return redirect(url_for('mobile_apps_delete_account'))
+            return render_template(
+                'mobile_apps/delete-account-scheduled.html',
+                result=result,
+            )
 
-        return render_template('mobile_apps/delete-account.html')
+        return _render_form()
+
+    @app.route(
+        '/delete-account/cancel/<token>',
+        methods=['GET', 'POST'],
+        endpoint='account_closure_cancel',
+    )
+    def account_closure_cancel(token):
+        """Cancel a pending closure from the signed grace-period link."""
+        from flask import flash
+
+        from app.auth.account_deletion_service import (
+            AccountDeletionError,
+            cancel_account_closure,
+        )
+
+        if request.method == 'POST':
+            try:
+                result = cancel_account_closure(token)
+            except AccountDeletionError as exc:
+                return render_template(
+                    'mobile_apps/delete-account-cancel.html',
+                    token=token,
+                    error=exc.message,
+                ), exc.status_code
+            flash(result.get('message') or 'Your account closure was cancelled.', 'success')
+            return redirect(url_for('auth.login'))
+
+        return render_template(
+            'mobile_apps/delete-account-cancel.html',
+            token=token,
+        )
 
     @app.route('/api/csrf-token', methods=['GET'])
     @csrf.exempt
