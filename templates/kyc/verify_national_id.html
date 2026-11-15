@@ -119,7 +119,16 @@
     </div>
     {% endif %}
 
-    {# NIN field - the only evidence collected here #}
+    {# Use canonical NIN when present; otherwise this is the one collection point. #}
+    {% if has_canonical_nin %}
+    <div class="form-group">
+      <label>National Identification Number (NIN)</label>
+      <div class="canonical-identity">
+        <span class="canonical-value form-control--mono">{{ masked_nin }}</span>
+      </div>
+      <span class="form-hint">This number is already saved in your profile and cannot be changed in this verification step.</span>
+    </div>
+    {% else %}
     <div class="form-group">
       <label for="id_number">
         National Identification Number (NIN)
@@ -136,6 +145,7 @@
         required
       >
     </div>
+    {% endif %}
 
     <div class="kyc-consent">
       <label class="checkbox-label">
