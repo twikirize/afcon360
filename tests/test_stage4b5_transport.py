@@ -379,15 +379,36 @@ def test_driver_commit_converts_license_expiry_to_datetime(db_session):
     assert driver.license_expiry.date() == date(2030, 12, 31)
 
 
-def test_driver_commit_accepts_string_dob_without_type_error(db_session):
+def test_driver_commit_accepts_string_dob_without_type_error(db_session, monkeypatch):
     """Committing driver onboarding with a raw string DOB (the exact HTML
     form shape that previously raised ``TypeError``) must succeed. Driver
-    onboarding never assigns the string to UserProfile.date_of_birth."""
+    onboarding never assigns the string to UserProfile.date_of_birth.
+
+    Eligibility is stubbed because this test isolates the wizard's data
+    boundary. Missing-DOB rejection is covered by the dedicated eligibility
+    test; production validation is not weakened.
+    """
     from app.auth.onboarding_routes import _commit_driver_onboarding
     from app.profile.models import get_profile_by_user
+    from app.transport.services.provider_service import ProviderService
 
     user = _make_user(db_session)
     _make_canonical_profile(db_session, user, date_of_birth=None)
+    monkeypatch.setattr(
+        ProviderService,
+        "validate_driver_eligibility",
+        lambda self, user_id: {
+            "eligible": True,
+            "identity": {
+                "identity_verified": True,
+                "email_verified": True,
+                "phone_verified": True,
+                "age": 30,
+                "has_criminal_record": None,
+                "account_status": "active",
+            },
+        },
+    )
 
     wizard = _driver_wizard_data()
     wizard["step1"]["date_of_birth"] = "1995-05-05"  # raw HTML string
