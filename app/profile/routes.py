@@ -354,9 +354,38 @@ def edit_profile():
             current_app.logger.error(f"Profile update error: {e}")
             flash('An error occurred. Please try again.', 'danger')
 
-    completion = profile.get_completion_percentage() if profile else 0
     completion_breakdown = profile.get_completion_breakdown() if profile else {}
     is_verified = profile and profile.verification_status == 'verified'
+
+    # Canonical contact verification (Identity Center): User.email_verified /
+    # User.phone_verified are authoritative because verification flows update
+    # the User row while legacy UserProfile flag copies may lag. The editor
+    # displays the real verification state and never recomputes it from the
+    # lagging copy.
+    user_row = User.query.filter_by(public_id=str(current_user.public_id)).first()
+    user_email = (getattr(user_row, 'email', None) or (profile.email if profile else None)) if user_row else (profile.email if profile else None)
+    user_phone = (getattr(user_row, 'phone', None) or (profile.phone_number if profile else None)) if user_row else (profile.phone_number if profile else None)
+    user_email_verified = bool(
+        getattr(user_row, 'email_verified', False)
+        or getattr(user_row, 'email_verified_at', None) is not None
+    ) if user_row else False
+    user_phone_verified = bool(
+        getattr(user_row, 'phone_verified', False)
+        or getattr(user_row, 'phone_verified_at', None) is not None
+    ) if user_row else False
+
+    # Truthful completion: recompute from the breakdown after overriding the
+    # email/phone entries with the canonical flags so the ring and checklist
+    # agree with the displayed verification state.
+    if completion_breakdown:
+        if 'email_verified' in completion_breakdown:
+            completion_breakdown['email_verified']['completed'] = user_email_verified
+        if 'phone_verified' in completion_breakdown:
+            completion_breakdown['phone_verified']['completed'] = user_phone_verified
+        completion = sum(
+            item['weight'] for item in completion_breakdown.values()
+            if item.get('completed')
+        )
 
     kyc_info = {}
     try:
@@ -371,6 +400,10 @@ def edit_profile():
         'is_verified': is_verified,
         'kyc_info': kyc_info,
         'current_user': current_user,
+        'user_email': user_email,
+        'user_email_verified': user_email_verified,
+        'user_phone': user_phone,
+        'user_phone_verified': user_phone_verified,
     }
 
     if request.args.get('_pane') == '1':

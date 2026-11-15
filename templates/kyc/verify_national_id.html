@@ -62,15 +62,22 @@
   <form class="kyc-form" method="POST" action="{{ url_for('kyc.submit_national_id') }}" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    {% if collect_identity %}
-    {# KYC-first identity entry: the canonical bank has no full name yet. This
-       form is the first legitimate source, so the shared facts are entered
-       once here and written to the canonical profile (bidirectional single
-       entry). #}
+    {% if collect_identity or collect_dob %}
+    {# Missing canonical facts are collected here once and written to the
+       canonical profile (bidirectional single entry). Facts already held in
+       the bank render read-only below - never re-asked, never overwritten. #}
     <div class="kyc-info-strip">
       <span>🔒 Your name and date of birth are entered here once and saved to your profile for all KYC.</span>
     </div>
 
+    {% if not collect_identity %}
+    <div class="canonical-identity">
+      <div class="canonical-row">
+        <span class="canonical-label">Full name</span>
+        <span class="canonical-value">{{ canonical_full_name }}</span>
+      </div>
+    </div>
+    {% else %}
     <div class="form-group">
       <label for="full_name">
         Full name
@@ -87,20 +94,31 @@
         required
       >
     </div>
+    {% endif %}
 
+    {% if not collect_dob %}
+    <div class="canonical-identity">
+      <div class="canonical-row">
+        <span class="canonical-label">Date of birth</span>
+        <span class="canonical-value">{{ canonical.date_of_birth or '—' }}</span>
+      </div>
+    </div>
+    {% else %}
     <div class="form-group">
       <label for="date_of_birth">
         Date of birth
-        <span class="form-hint">Optional — as shown on your National ID</span>
+        <span class="form-hint">As shown on your National ID — saved to your profile once</span>
       </label>
       <input
         type="date"
         id="date_of_birth"
         name="date_of_birth"
         class="form-control"
+        required
         {% if today %}max="{{ today }}"{% endif %}
       >
     </div>
+    {% endif %}
     {% else %}
     {# Canonical identity - read-only summary from the identity bank. #}
     <div class="kyc-info-strip">

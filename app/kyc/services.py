@@ -157,6 +157,79 @@ class KycService:
             return None
 
     @staticmethod
+    def _backfill_profile_from_kyc_record(record) -> bool:
+        """Backfill missing canonical UserProfile facts at KYC approval time.
+
+        Single-entry rule (Identity Center): only blank/missing canonical
+        values are ever written, never an overwrite. Immutable identity facts
+        (date_of_birth, nationality) are written only while the profile is
+        still unverified - once verified they are immutable everywhere.
+        Address facts (address / city) are editable after verification, so an
+        address-proof record may fill them whenever missing.
+
+        Facts collected at submission time are carried on the record's
+        ``scope`` JSON (the NIRA flow stores date_of_birth / nationality
+        there); address-proof records carry their facts in their own columns.
+
+        Fail-soft: a backfill error never blocks the approval itself.
+        """
+        try:
+            user = User.query.filter_by(id=record.user_id).first()
+            if not user:
+                return False
+            profile = get_profile_by_user(user)
+            if profile is None:
+                return False
+
+            changed = False
+            scope = record.scope if isinstance(record.scope, dict) else {}
+            profile_verified = profile.verification_status == "verified"
+
+            dob_raw = scope.get("date_of_birth")
+            if dob_raw and not profile_verified and profile.date_of_birth is None:
+                try:
+                    profile.date_of_birth = datetime.strptime(
+                        str(dob_raw), "%Y-%m-%d"
+                    ).date()
+                    changed = True
+                except ValueError:
+                    pass
+
+            nationality = (scope.get("nationality") or "").strip()
+            if (
+                nationality
+                and not profile_verified
+                and not (profile.nationality or "").strip()
+            ):
+                profile.nationality = nationality[:64]
+                changed = True
+
+            if record.record_type == "address_verification":
+                address_parts = [
+                    part for part in ((record.address_line1 or "").strip(),
+                                      (record.address_line2 or "").strip())
+                    if part
+                ]
+                address = " ".join(address_parts)
+                if address and not (profile.address or "").strip():
+                    profile.address = address[:256]
+                    changed = True
+                if (record.city or "").strip() and not (profile.city or "").strip():
+                    profile.city = record.city.strip()[:128]
+                    changed = True
+
+            if changed:
+                db.session.add(profile)
+                db.session.commit()
+            return changed
+        except Exception:
+            db.session.rollback()
+            current_app.logger.warning(
+                "Canonical backfill from KYC record skipped", exc_info=True
+            )
+            return False
+
+    @staticmethod
     def approve_kyc(record_id: int, reviewer_id: int, kyc_level: int = 2,
                     ip_address: Optional[str] = None, user_agent: Optional[str] = None):
         """
@@ -192,6 +265,11 @@ class KycService:
         _user = User.query.filter_by(id=record.user_id).first()
         profile = get_profile_by_user(_user) if _user else None
         if profile:
+            # Backfill missing canonical identity facts BEFORE the profile is
+            # marked verified - once verified, those fields are immutable and
+            # a missing value could never be completed through any flow.
+            KycService._backfill_profile_from_kyc_record(record)
+            profile = get_profile_by_user(_user) if _user else profile
             profile.verification_status = "verified"
             profile.rejected_reason = None
             profile.verified_by = str(reviewer_id)
@@ -628,6 +706,11 @@ class KycService:
         _user = User.query.filter_by(id=record.user_id).first()
         profile = get_profile_by_user(_user) if _user else None
         if profile:
+            # Backfill missing canonical identity facts BEFORE the profile is
+            # marked verified - once verified, those fields are immutable and
+            # a missing value could never be completed through any flow.
+            KycService._backfill_profile_from_kyc_record(record)
+            profile = get_profile_by_user(_user) if _user else profile
             profile.verification_status = "verified"
             profile.rejected_reason = None
             profile.verified_by = str(reviewer_id)

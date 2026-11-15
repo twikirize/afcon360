@@ -408,6 +408,40 @@ def verify_address():
                 country=country,
                 record_type='address_verification'
             )
+            # Single-entry harmonization: the address the user just proved is
+            # also the canonical home address. Fill only MISSING profile
+            # values (never overwrite); fail-soft so the evidence record
+            # above is never lost. Country stays untouched: kyc_records
+            # stores an ISO-2 code while UserProfile.country is free text.
+            try:
+                from app.profile.models import UserProfile, get_profile_by_user
+
+                profile = get_profile_by_user(current_user.public_id)
+                if profile is None:
+                    fallback = getattr(current_user, "username", None) or "AFCON 360 User"
+                    profile = UserProfile(user_id=current_user.public_id, full_name=fallback)
+                    db.session.add(profile)
+                    db.session.flush()
+                address_parts = [
+                    part for part in ((address_line1 or "").strip(),
+                                      (address_line2 or "").strip())
+                    if part
+                ]
+                address = " ".join(address_parts)
+                changed = False
+                if address and not (profile.address or "").strip():
+                    profile.address = address[:256]
+                    changed = True
+                if (city or "").strip() and not (profile.city or "").strip():
+                    profile.city = city.strip()[:128]
+                    changed = True
+                if changed:
+                    db.session.commit()
+            except Exception:
+                db.session.rollback()
+                current_app.logger.warning(
+                    "Profile address backfill from address proof skipped", exc_info=True
+                )
             flash('Address verification submitted successfully!', 'success')
             return redirect(url_for('kyc.index'))
         except Exception as e:
@@ -495,20 +529,20 @@ def verify_national_id_page():
 
     # Bidirectional canonical identity (single entry): personal identity lives
     # ONCE in the UserProfile identity bank. Profile-first users already hold
-    # the shared facts there (shown read-only). KYC-first users have no profile
-    # name yet, so this form collects the missing shared facts and the first
-    # legitimate source becomes canonical (written to UserProfile, never
-    # re-asked). Do NOT redirect to the profile editor for a missing name.
+    # the shared facts there (shown read-only). Missing facts are collected
+    # here once and written to UserProfile, never re-asked afterwards. Do NOT
+    # redirect to the profile editor for a missing name.
     try:
         canonical = get_canonical_identity(current_user)
     except Exception:
         canonical = None
 
+    canonical_full_name = (canonical.full_name or "").strip() if canonical is not None else ""
+    canonical_dob = canonical.date_of_birth if canonical is not None else None
+
     show_collection = not already_verified and not pending_review
-    collect_identity = bool(
-        show_collection
-        and (canonical is None or not (canonical.full_name or "").strip())
-    )
+    collect_identity = bool(show_collection and not canonical_full_name)
+    collect_dob = bool(show_collection and not canonical_dob)
     canonical_id_type = (
         getattr(canonical.id_type, "value", canonical.id_type)
         if canonical is not None else None
@@ -529,9 +563,11 @@ def verify_national_id_page():
         existing=existing,
         canonical=canonical,
         collect_identity=collect_identity,
+        collect_dob=collect_dob,
+        canonical_full_name=canonical_full_name,
         has_canonical_nin=bool(canonical_nin),
         masked_nin=masked_nin,
-        today=datetime.now(timezone.utc).date().isoformat() if collect_identity else None,
+        today=datetime.now(timezone.utc).date().isoformat() if (collect_identity or collect_dob) else None,
     )
 
 
@@ -553,9 +589,9 @@ def submit_national_id():
 
     # Bidirectional canonical identity (single entry): shared personal facts
     # (full name / DOB) come from ONE legitimate source. Profile-first users
-    # reuse their canonical UserProfile values; KYC-first users supply them on
-    # this form and the first source providing a missing fact is written to the
-    # canonical bank (never overwritten afterwards).
+    # reuse their canonical UserProfile values; missing facts are collected on
+    # this form and the first source providing a missing fact is written to
+    # the canonical bank (never overwritten afterwards).
     try:
         canonical = get_canonical_identity(current_user)
     except Exception:
@@ -580,19 +616,30 @@ def submit_national_id():
         if not full_name:
             flash_form_error("Full name is required to submit your National ID verification.")
             return redirect(url_for("kyc.verify_national_id_page"))
-        dob_raw = (request.form.get("date_of_birth") or "").strip()
-        date_of_birth = None
-        if dob_raw:
-            try:
-                # HTML date input ships YYYY-MM-DD; convert at the boundary
-                # exactly like the canonical profile editor (%Y-%m-%d).
-                date_of_birth = datetime.strptime(dob_raw, "%Y-%m-%d").date()
-            except ValueError:
-                flash_form_error("Date of birth must be in YYYY-MM-DD format.")
-                return redirect(url_for("kyc.verify_national_id_page"))
     else:
         full_name = (canonical.full_name or "").strip()
-        date_of_birth = canonical.date_of_birth
+
+    canonical_dob = canonical.date_of_birth if canonical is not None else None
+    dob_missing = canonical_dob is None
+    date_of_birth = None
+    if dob_missing:
+        # DOB is part of the canonical identity bank. When the bank is missing
+        # it, this form is a legitimate first source - and requiring it here
+        # prevents a profile being verified with a permanently missing,
+        # immutable date_of_birth.
+        dob_raw = (request.form.get("date_of_birth") or "").strip()
+        if not dob_raw:
+            flash_form_error("Date of birth is required to submit your National ID verification.")
+            return redirect(url_for("kyc.verify_national_id_page"))
+        try:
+            # HTML date input ships YYYY-MM-DD; convert at the boundary
+            # exactly like the canonical profile editor (%Y-%m-%d).
+            date_of_birth = datetime.strptime(dob_raw, "%Y-%m-%d").date()
+        except ValueError:
+            flash_form_error("Date of birth must be in YYYY-MM-DD format.")
+            return redirect(url_for("kyc.verify_national_id_page"))
+    else:
+        date_of_birth = canonical_dob
 
     name_parts = full_name.split()
     if len(name_parts) >= 2:
@@ -638,16 +685,16 @@ def submit_national_id():
         flash_form_error("Your ID could not be processed at this time. Please contact support.")
         return redirect(url_for("kyc.verify_national_id_page"))
 
-    # ── 2b. KYC-first canonical write ────────────────────────────────────────
+    # ── 2b. Canonical identity write ────────────────────────────────────────
     # Only when KYC is the first legitimate source of a missing shared fact,
     # and only AFTER format + watchlist gates have passed. The helper never
     # overwrites an existing canonical value, skips verified profiles, and
     # fails soft so the evidence record below still submits on any error.
-    if kyc_first:
+    if kyc_first or dob_missing:
         _write_canonical_identity_from_kyc(
             current_user,
-            full_name=full_name,
-            date_of_birth=date_of_birth,
+            full_name=full_name if kyc_first else None,
+            date_of_birth=date_of_birth if dob_missing else None,
         )
 
     # ── 3. Persist KycRecord ─────────────────────────────────────────────────
@@ -669,6 +716,14 @@ def submit_national_id():
             verification_id=None,
             reference_code=result.get("verification_id"),  # Store NIRA string here
             risk_score=watchlist.get("risk_score", 0),
+            # Effective identity facts carried on the record so the approval
+            # step can backfill any canonical fact that is still missing when
+            # the record is approved (defense in depth for the single-entry
+            # bank; the approval helper writes only missing values).
+            scope={
+                "full_name": full_name,
+                "date_of_birth": date_of_birth.isoformat() if date_of_birth else None,
+            },
             raw_response=result,
         )
         db.session.add(record)
