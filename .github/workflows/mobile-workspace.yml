@@ -219,18 +219,22 @@ jobs:
             development: "development",
             preview: "preview",
             production: "production",
-            "apk-share": "preview"
+            "apk-share": "preview",
+            "production-apk": "production"
           };
           for (const [name, environment] of Object.entries(expectedProfiles)) {
             const profile = eas.build?.[name];
+            const productionLike = name === "production" || name === "production-apk";
             const valid =
               profile?.autoIncrement === true &&
               profile?.credentialsSource === "remote" &&
               profile?.environment === environment &&
-              profile?.env?.AFCON360_PREVIEW_BUILD === (name === "production" ? "false" : "true") &&
-              profile?.env?.AFCON360_RELEASE_BUILD === (name === "production" ? "true" : "false");
-            console.log(`${valid ? "PASS" : "FAIL"} EAS build profile: ${name}`);
-            if (!valid) process.exit(1);
+              profile?.env?.AFCON360_PREVIEW_BUILD === (productionLike ? "false" : "true") &&
+              profile?.env?.AFCON360_RELEASE_BUILD === (productionLike ? "true" : "false");
+            const apkProfileValid = name !== "production-apk" ||
+              (profile?.distribution === "internal" && profile?.android?.buildType === "apk" && profile?.channel === "production");
+            console.log(`${valid && apkProfileValid ? "PASS" : "FAIL"} EAS build profile: ${name}`);
+            if (!valid || !apkProfileValid) process.exit(1);
           }
           const runtimeVersion = config.runtimeVersion;
           const runtimeVersionIsAppVersionPolicy =
@@ -1134,3 +1138,130 @@ jobs:
           path: android-compat-evidence/${{ matrix.android-label }}/
           if-no-files-found: warn
           retention-days: 30
+
+  
+  build-user-production-apk:
+    name: Build signed production User APK (EAS)
+    needs: [mobile-typecheck, user-authenticated-journey]
+    if: >-
+      ${{ github.event_name == "pull_request" &&
+          github.event.pull_request.head.ref == "fix/user-release-engineering-20261115" &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          needs.mobile-typecheck.result == "success" &&
+          needs.user-authenticated-journey.result == "success" &&
+          needs.user-authenticated-journey.outputs.apk_ready == "true" }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+      EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+      EXPO_NO_TELEMETRY: "1"
+    steps:
+      - name: Check out the validated User App source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Install User workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Validate production APK credentials and app identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || { echo "::error::EXPO_TOKEN repository secret is missing; no production APK was started."; exit 1; }
+          [[ "${AFCON360_USER_EAS_PROJECT_ID:-}" =~ ^[0-9a-fA-F-]{36}$ ]] || { echo "::error::AFCON360_USER_EAS_PROJECT_ID repository variable is missing or invalid."; exit 1; }
+          export AFCON360_PREVIEW_BUILD="false"
+          export AFCON360_RELEASE_BUILD="true"
+          export EAS_BUILD="true"
+          pnpm --filter @afcon360/user-app exec expo config --json > "$RUNNER_TEMP/afcon360-user-production-apk-config.json"
+          node - "$RUNNER_TEMP/afcon360-user-production-apk-config.json" <<'NODE'
+          const fs = require("node:fs");
+          const config = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const projectId = process.env.AFCON360_USER_EAS_PROJECT_ID;
+          const checks = {
+            productionPackage: config.android?.package === "space.pamoja.afcon360.user",
+            liveApi: config.extra?.apiBaseUrl === "https://www.pamoja.space",
+            productionUpdateChannel: config.updates?.requestHeaders?.["expo-channel-name"] === "production",
+            updateProject: config.extra?.eas?.projectId === projectId,
+            updateUrl: config.updates?.url === "https://u.expo.dev/" + projectId,
+            runtimeVersion: typeof config.runtimeVersion === "object" && config.runtimeVersion.policy === "appVersion"
+          };
+          for (const name of Object.keys(checks)) console.log((checks[name] ? "PASS " : "FAIL ") + name);
+          if (Object.values(checks).some((passed) => !passed)) process.exit(1);
+          NODE
+
+      - name: Build with existing production signing credentials
+        id: eas-build
+        working-directory: mobile/apps/user
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest build --platform android --profile production-apk --message "AFCON360 User production APK ${GITHUB_SHA}" --freeze-credentials --wait --json > "$RUNNER_TEMP/afcon360-user-eas-build.json"
+          node - "$RUNNER_TEMP/afcon360-user-eas-build.json" >> "$GITHUB_OUTPUT" <<'NODE'
+          const fs = require("node:fs");
+          const value = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const builds = Array.isArray(value) ? value : [value];
+          const build = builds.find((item) => String(item.platform).toUpperCase() === "ANDROID") || builds[0];
+          if (!build?.id || String(build.status).toUpperCase() !== "FINISHED") {
+            throw new Error("EAS did not finish the production APK build.");
+          }
+          console.log("build_id=" + build.id);
+          NODE
+
+      - name: Download finished APK from EAS
+        id: apk
+        working-directory: mobile/apps/user
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest build:view "${{ steps.eas-build.outputs.build_id }}" --json > "$RUNNER_TEMP/afcon360-user-eas-build-details.json"
+          node -e 'const d=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")); const b=d.build||d; const u=b.artifacts?.buildUrl; if(!u||!u.startsWith("https://")) process.exit(2); process.stdout.write(u);' "$RUNNER_TEMP/afcon360-user-eas-build-details.json" > "$RUNNER_TEMP/afcon360-user-apk-url.txt"
+          curl --fail --location --retry 3 --retry-delay 2 "$(cat "$RUNNER_TEMP/afcon360-user-apk-url.txt")" --output "$GITHUB_WORKSPACE/afcon360-user-production.apk"
+          test -s "$GITHUB_WORKSPACE/afcon360-user-production.apk"
+
+      - name: Verify production package identity and APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if ! find "$SDK_ROOT/build-tools" -type f -name apksigner -print -quit 2>/dev/null | grep -q .; then
+            test -x "$SDKMANAGER"
+            yes | "$SDKMANAGER" --licenses >/dev/null
+            "$SDKMANAGER" "build-tools;35.0.0"
+          fi
+          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/afcon360-user-production.apk" | tee "$RUNNER_TEMP/afcon360-user-apk-signature.txt"
+          "$AAPT" dump badging "$GITHUB_WORKSPACE/afcon360-user-production.apk" > "$RUNNER_TEMP/afcon360-user-apk-badging.txt"
+          grep -F "package: name='space.pamoja.afcon360.user'" "$RUNNER_TEMP/afcon360-user-apk-badging.txt"
+          grep -F "versionName='1.0.1'" "$RUNNER_TEMP/afcon360-user-apk-badging.txt"
+          sha256sum "$GITHUB_WORKSPACE/afcon360-user-production.apk" | tee "$GITHUB_WORKSPACE/afcon360-user-production.apk.sha256"
+
+      - name: Upload signed production User APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-production-apk-${{ github.run_number }}
+          path: |
+            afcon360-user-production.apk
+            afcon360-user-production.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
+
