@@ -567,6 +567,7 @@ def _suppress_public_content(user, now: datetime) -> dict:
             prop.archived_at = now
             prop.archived_reason = "account_closure"
     except Exception as exc:
+        db.session.rollback()
         logger.exception("Required account-closure data operation failed")
         raise AccountDeletionError(
             "account_closure_data_update_failed",
@@ -585,6 +586,7 @@ def _suppress_public_content(user, now: datetime) -> dict:
             state["posts"].append({"id": post.id, "status": post.status})
             post.status = "archived"
     except Exception as exc:
+        db.session.rollback()
         logger.exception("Required account-closure data operation failed")
         raise AccountDeletionError(
             "account_closure_data_update_failed",
@@ -614,6 +616,7 @@ def _suppress_public_content(user, now: datetime) -> dict:
             media.deleted_at = now
             media.is_public = False
     except Exception as exc:
+        db.session.rollback()
         logger.exception("Required account-closure data operation failed")
         raise AccountDeletionError(
             "account_closure_data_update_failed",
@@ -646,6 +649,7 @@ def _suppress_public_content(user, now: datetime) -> dict:
             fan.team_news = False
             fan.social_features_enabled = False
     except Exception as exc:
+        db.session.rollback()
         logger.exception("Required account-closure data operation failed")
         raise AccountDeletionError(
             "account_closure_data_update_failed",
@@ -664,6 +668,7 @@ def _suppress_public_content(user, now: datetime) -> dict:
             }
             host.is_active_host = False
     except Exception as exc:
+        db.session.rollback()
         logger.exception("Required account-closure data operation failed")
         raise AccountDeletionError(
             "account_closure_data_update_failed",
@@ -685,6 +690,7 @@ def _suppress_public_content(user, now: datetime) -> dict:
             }
             organizer.status = "suspended"
     except Exception as exc:
+        db.session.rollback()
         logger.exception("Required account-closure data operation failed")
         raise AccountDeletionError(
             "account_closure_data_update_failed",
@@ -705,6 +711,7 @@ def _suppress_public_content(user, now: datetime) -> dict:
             )
             membership.is_active = False
     except Exception as exc:
+        db.session.rollback()
         logger.exception("Required account-closure data operation failed")
         raise AccountDeletionError(
             "account_closure_data_update_failed",
@@ -725,6 +732,7 @@ def _suppress_public_content(user, now: datetime) -> dict:
             driver.is_online = False
             driver.is_available = False
     except Exception as exc:
+        db.session.rollback()
         logger.exception("Required account-closure data operation failed")
         raise AccountDeletionError(
             "account_closure_data_update_failed",
@@ -1832,7 +1840,7 @@ def finalize_account_closure(request_row, details: dict | None = None) -> dict:
         }
 
     grace_until = _as_aware(request_row.sla_due_at)
-    if grace_until is not None and grace_until > now:
+    if grace_until is None or grace_until > now:
         return {
             "request_public_id": str(request_row.public_id),
             "not_due": True,
