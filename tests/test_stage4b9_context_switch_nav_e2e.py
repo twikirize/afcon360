@@ -178,7 +178,8 @@ class TestContextSwitchNavE2E:
         # must still expose the user's assigned organisation and driver
         # contexts, with CSRF-protected POST forms and public identifiers.
         assert "workspace-context-switcher__summary" not in html
-        assert "Operating as" not in html
+        # "Operating as" is expected inside the account dropdown.
+        # The legacy standalone workspace switcher is checked above.
         assert 'name="csrf_token"' in html
         assert PERSONAL_ORG_MARKER in html
         assert ORG_MENU_MARKER not in html

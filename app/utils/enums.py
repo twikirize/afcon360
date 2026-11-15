@@ -283,6 +283,9 @@ class PropertyDocumentStatus(str, Enum):
 
 class AuditSeverity(str, Enum):
     INFO = 'info'
+    LOW = 'low'
+    MEDIUM = 'medium'
+    HIGH = 'high'
     WARNING = 'warning'
     CRITICAL = 'critical'
     SECURITY = 'security'
