@@ -446,6 +446,13 @@ def test_T9_admin_enables_override_populates_metadata(app, admin_client):
     assert body["data"]["is_available"] is True
     assert body["data"]["is_online"] is False
 
+    # Numeric database IDs are not accepted as public API references.
+    numeric_id_response = admin_client.post(
+        f"/api/transport/drivers/{drv_id}/admin-online-override",
+        json={"enabled": False, "reason": "numeric IDs must not resolve"},
+    )
+    assert numeric_id_response.status_code == 404
+
     with app.app_context():
         drv = db.session.get(DriverProfile, drv_id)
         assert drv.is_available is True
