@@ -202,12 +202,6 @@ def test_standard_and_compliance_approval_backfill_before_profile_is_verified(
         lambda model, _record_id: current["record"],
     )
     monkeypatch.setattr(
-        User,
-        "query",
-        property(lambda _cls: _Query(current["user"])),
-        raising=False,
-    )
-    monkeypatch.setattr(
         services,
         "get_profile_by_user",
         lambda _user: current["profile"],
@@ -261,6 +255,7 @@ def test_standard_and_compliance_approval_backfill_before_profile_is_verified(
                 verified_by=None,
                 last_reviewed_at=None,
             )
+            monkeypatch.setattr(User, "query", _Query(current["user"]))
             current["record"] = SimpleNamespace(
                 id=450,
                 user_id=45,
