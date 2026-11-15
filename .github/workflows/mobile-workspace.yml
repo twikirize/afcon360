@@ -27,6 +27,21 @@ on:
       - "mobile/.npmrc"
       - ".github/workflows/mobile-workspace.yml"
   workflow_dispatch:
+    inputs:
+      force_apk_rebuild:
+        description: Force a fresh disposable User APK build and authenticated Android test.
+        type: boolean
+        required: false
+        default: false
+      publish_preview_ota:
+        description: Publish an OTA-compatible User change to the preview channel.
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: afcon360-user-mobile-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -35,6 +50,121 @@ env:
   AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
 
 jobs:
+  classify-user-changes:
+    name: Classify User changes — OTA or native rebuild
+    runs-on: ubuntu-latest
+    outputs:
+      native: ${{ steps.classify.outputs.native }}
+      ota: ${{ steps.classify.outputs.ota }}
+      e2e_harness: ${{ steps.classify.outputs.e2e_harness }}
+    steps:
+      - name: Check out full history for reliable change detection
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed User files
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          from pathlib import PurePosixPath
+
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          base = os.environ.get("BASE_SHA", "").strip()
+          default_branch = os.environ.get("DEFAULT_BRANCH", "main").strip() or "main"
+          if not base or set(base) == {"0"}:
+              subprocess.run(["git", "fetch", "origin", default_branch], check=True)
+              base = git("merge-base", "HEAD", f"origin/{default_branch}")
+
+          if subprocess.run(
+              ["git", "cat-file", "-e", f"{base}^{{commit}}"],
+              capture_output=True,
+          ).returncode:
+              subprocess.run(["git", "fetch", "--no-tags", "origin", base], check=True)
+
+          changed = [
+              path for path in git("diff", "--name-only", f"{base}...HEAD").splitlines()
+              if path
+          ]
+
+          native_exact = {
+              "mobile/apps/user/app.config.ts",
+              "mobile/apps/user/eas.json",
+              "mobile/apps/user/package.json",
+              "mobile/package.json",
+              "mobile/pnpm-lock.yaml",
+              "mobile/pnpm-workspace.yaml",
+              "mobile/.npmrc",
+          }
+          native_prefixes = (
+              "mobile/apps/user/android/",
+              "mobile/apps/user/ios/",
+              "mobile/apps/user/plugins/",
+          )
+          native_extensions = {
+              ".java", ".kt", ".swift", ".m", ".mm", ".h", ".hpp",
+              ".c", ".cc", ".cpp", ".gradle", ".kts",
+          }
+
+          native = False
+          ota = False
+          e2e_harness = False
+
+          for path in changed:
+              parts = PurePosixPath(path).parts
+              suffix = PurePosixPath(path).suffix.lower()
+              is_native = (
+                  path in native_exact
+                  or path.endswith("/package.json")
+                  or path.endswith("/expo-module.config.json")
+                  or path.endswith("/react-native.config.js")
+                  or path.startswith(native_prefixes)
+                  or "android" in parts
+                  or "ios" in parts
+                  or suffix in native_extensions
+              )
+
+              if is_native:
+                  native = True
+              elif path.startswith(("mobile/apps/user/", "mobile/packages/")):
+                  ota = True
+              elif path.startswith("mobile/scripts/"):
+                  e2e_harness = True
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"native={str(native).lower()}\n")
+              output.write(f"ota={str(ota).lower()}\n")
+              output.write(f"e2e_harness={str(e2e_harness).lower()}\n")
+
+          if native:
+              decision = "NATIVE CHANGE: build a fresh disposable APK and run Android authenticated-journey tests."
+          elif ota:
+              decision = "OTA-COMPATIBLE CHANGE: no APK build; export/type-check the bundle and publish preview OTA only on the permanent User branch or by explicit manual dispatch."
+          elif e2e_harness:
+              decision = "TEST-HARNESS CHANGE: reuse the cached APK and rerun the authenticated journey."
+          else:
+              decision = "No User runtime, native, or E2E-harness source change detected; no APK build is needed."
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## User app delivery classification\n\n")
+              summary.write(f"- Changed files: {len(changed)}\n")
+              summary.write(f"- Native rebuild required: **{str(native).lower()}**\n")
+              summary.write(f"- OTA-compatible source changed: **{str(ota).lower()}**\n")
+              summary.write(f"- E2E harness changed: **{str(e2e_harness).lower()}**\n\n")
+              summary.write(decision + "\n")
+          print(decision)
+          print("Changed paths:")
+          for path in changed:
+              print(f" - {path}")
+          PY
+
   mobile-typecheck:
     name: Expo dependency and TypeScript checks
     runs-on: ubuntu-latest
@@ -73,8 +203,78 @@ jobs:
           pnpm --filter @afcon360/user-app exec expo export --platform android --output-dir /tmp/afcon360-user-android
           pnpm --filter @afcon360/user-app exec expo export --platform ios --output-dir /tmp/afcon360-user-ios
 
+  publish-preview-ota:
+    name: Publish User OTA update to preview channel
+    needs: [classify-user-changes, mobile-typecheck]
+    if: >-
+      ${{
+        needs.classify-user-changes.outputs.ota == 'true' &&
+        needs.classify-user-changes.outputs.native != 'true' &&
+        needs.mobile-typecheck.result == 'success' &&
+        (
+          (github.event_name == 'push' && github.ref_name == 'feat/native-user-app-integration-20261108') ||
+          (github.event_name == 'workflow_dispatch' && inputs.publish_preview_ota == true)
+        )
+      }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_NO_TELEMETRY: "1"
+      AFCON360_PREVIEW_BUILD: "true"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Check EAS publishing credentials
+        id: eas-credentials
+        shell: bash
+        run: |
+          if [ -z "${EXPO_TOKEN:-}" ] || [ -z "${AFCON360_USER_EAS_PROJECT_ID:-}" ]; then
+            echo "::warning::Preview OTA was not published. Configure the EXPO_TOKEN secret and AFCON360_USER_EAS_PROJECT_ID repository variable."
+            echo "No OTA was published because EAS publishing credentials are incomplete." >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Publish JavaScript update to the preview channel
+        if: steps.eas-credentials.outputs.ready == 'true'
+        working-directory: mobile/apps/user
+        env:
+          AFCON360_PREVIEW_BUILD: "true"
+        run: >-
+          npx --yes eas-cli@latest update
+          --branch preview
+          --platform all
+          --message "AFCON360 User preview OTA ${GITHUB_SHA}"
+          --non-interactive
+
   user-authenticated-journey:
     name: User APK — login, protected journeys, restore and logout
+    needs: classify-user-changes
+    if: >-
+      ${{
+        needs.classify-user-changes.outputs.native == 'true' ||
+        needs.classify-user-changes.outputs.e2e_harness == 'true' ||
+        (github.event_name == 'workflow_dispatch' && inputs.force_apk_rebuild == true)
+      }}
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     outputs:
@@ -160,9 +360,14 @@ jobs:
         shell: bash
         env:
           USER_APK_CACHE_MATCHED_KEY: ${{ steps.user-apk-cache.outputs.cache-matched-key }}
+          FORCE_USER_APK_REBUILD: ${{ inputs.force_apk_rebuild == true }}
         run: |
           set -euo pipefail
           echo "reusable=false" >> "$GITHUB_OUTPUT"
+          if [ "$FORCE_USER_APK_REBUILD" = "true" ]; then
+            echo "A fresh disposable User APK build was explicitly requested."
+            exit 0
+          fi
           if [ -z "$USER_APK_CACHE_MATCHED_KEY" ]; then
             echo "No cached User E2E APK was restored."
             exit 0
