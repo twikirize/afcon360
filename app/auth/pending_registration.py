@@ -602,7 +602,10 @@ def _create_verified_user(
             public_id=str(uuid.uuid4()),
             username=username,
             email=email,
+            phone=(payload.get("phone") or None),
         )
+        # Signup phone is a saved contact value only. Email OTP proves the
+        # inbox, not possession of this phone; phone flags remain unverified.
         # Password was hashed at signup time; assign directly so we never hold
         # the plaintext in Redis.
         user.password_hash = payload["password_hash"]
@@ -647,6 +650,7 @@ def _create_verified_user(
                 user_id=user.public_id,
                 full_name=payload.get("full_name") or username,
                 email=email,
+                phone_number=(payload.get("phone") or None),
                 profile_completed=False,
             )
         )
