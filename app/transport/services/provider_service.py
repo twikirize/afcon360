@@ -1038,7 +1038,29 @@ class ProviderService:
                     code="VEHICLE_REGISTRATION_FAILED"
                 )
 
-            # Commit transaction
+            # Vehicle ownership and active driver assignment are separate
+            # concepts. A driver-owned vehicle must converge through the
+            # canonical assignment history service so DriverProfile.current_vehicle
+            # and supply eligibility can resolve it immediately.
+            if owner_type == "driver":
+                vehicle = db.session.get(Vehicle, result["vehicle_id"])
+                if vehicle is None:
+                    raise ServiceUnavailableError(
+                        message="Registered vehicle could not be reloaded for assignment",
+                        code="VEHICLE_ASSIGNMENT_UNAVAILABLE",
+                    )
+                from app.transport.models import assign_driver_to_vehicle
+
+                assign_driver_to_vehicle(
+                    driver,
+                    vehicle,
+                    reason="driver_vehicle_registration",
+                    authorized_by=driver.user,
+                    notes="Initial driver self-registration",
+                )
+
+            # The canonical assignment helper commits its history row and the
+            # pending vehicle resource in the same SQLAlchemy session.
             db.session.commit()
 
             # Cache the vehicle
