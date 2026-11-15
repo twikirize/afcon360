@@ -233,13 +233,21 @@ class ProviderService:
                 code="PHONE_NOT_VERIFIED"
             )
 
-        # Check age requirement
-        min_driver_age = SettingsService.get_setting('min_driver_age', 21)
-        if identity.get('age') and identity['age'] < min_driver_age:
+        # Age is a driver safety/eligibility requirement. Missing DOB must
+        # not bypass it; collect the missing fact in the canonical profile.
+        min_driver_age = int(SettingsService.get_setting('min_driver_age', 21))
+        age = identity.get("age")
+        if age is None:
+            raise ValidationError(
+                message="Date of birth is required to confirm driver age eligibility",
+                details={"age": None, "minimum_age": min_driver_age},
+                code="AGE_NOT_AVAILABLE",
+            )
+        if age < min_driver_age:
             raise ValidationError(
                 message=f"Must be at least {min_driver_age} years old",
-                details={'age': identity['age'], 'minimum_age': min_driver_age},
-                code="AGE_REQUIREMENT_NOT_MET"
+                details={"age": age, "minimum_age": min_driver_age},
+                code="AGE_REQUIREMENT_NOT_MET",
             )
 
         # Criminal screening must never assume a clean result. No screening
