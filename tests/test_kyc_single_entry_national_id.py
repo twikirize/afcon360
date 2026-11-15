@@ -67,7 +67,10 @@ def _national_id_page(client):
 def test_national_id_form_renders_canonical_identity_read_only(app, client, test_user):
     """The NIRA form shows canonical name/DOB from UserProfile and contains no
     editable surname / given_names / date_of_birth inputs."""
-    _pair_user_with_profile(app, test_user, full_name="Gift Nakamya", dob=dt.date(1992, 6, 1))
+    _pair_user_with_profile(
+        app, test_user, full_name="Gift Nakamya",
+        dob=dt.date(1992, 6, 1), id_type=None, id_number=None,
+    )
     _login_client(client, test_user)
 
     resp = _national_id_page(client)
@@ -98,13 +101,36 @@ def test_national_id_renders_kyc_first_collection_when_identity_incomplete(app, 
     assert 'name="id_number"' in body
 
 
-def test_national_id_submit_reads_canonical_identity_and_does_not_reverse_write(app, client, test_user):
+def test_national_id_submit_reads_canonical_identity_and_does_not_reverse_write(app, client, test_user, monkeypatch):
     """POST with only the NIN creates the NIRA record using canonical identity;
     UserProfile identity is byte-for-byte unchanged afterwards."""
     public_id = _pair_user_with_profile(
-        app, test_user, full_name="Gift Nakamya", dob=dt.date(1992, 6, 1)
+        app, test_user, full_name="Gift Nakamya", dob=dt.date(1992, 6, 1),
+        id_type=None, id_number=None,
     )
     _login_client(client, test_user)
+
+    from app.kyc import routes as kyc_routes
+
+    monkeypatch.setattr(
+        kyc_routes,
+        "verify_national_id",
+        lambda **kwargs: {
+            "is_valid_format": True,
+            "auto_verified": False,
+            "manual_review_required": True,
+            "id_number": "CM1234567890AB",
+            "verification_id": "NIRA_TEST_REVIEW",
+            "risk_score": 0,
+        },
+    )
+    monkeypatch.setattr(
+        kyc_routes,
+        "check_id_against_watchlist",
+        lambda _number: {"recommended_action": "no_action", "risk_score": 0},
+    )
+    monkeypatch.setattr(kyc_routes, "generate_nira_report", lambda **_kwargs: {})
+    monkeypatch.setattr(kyc_routes, "db", db)
 
     resp = client.post(
         "/kyc/verify/national-id",
@@ -128,7 +154,7 @@ def test_national_id_submit_reads_canonical_identity_and_does_not_reverse_write(
         profile = get_profile_by_user(public_id)
         assert profile.full_name == "Gift Nakamya"
         assert profile.date_of_birth == dt.date(1992, 6, 1)
-        assert profile.id_number == "NID-SINGLE-001"
+        assert not (profile.id_number or "").strip()
 
 
 def test_national_id_submit_uses_canonical_name_for_nira_call(app, client, test_user, monkeypatch):
