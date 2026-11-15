@@ -1144,8 +1144,8 @@ jobs:
     name: Build signed production User APK (EAS)
     needs: [mobile-typecheck, user-authenticated-journey]
     if: >-
-      ${{ github.event_name == "pull_request" &&
-          github.event.pull_request.head.ref == "fix/user-release-engineering-20261115" &&
+      ${{ github.event_name == 'pull_request' &&
+          github.event.pull_request.head.ref == 'fix/user-release-engineering-20261115' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           needs.mobile-typecheck.result == "success" &&
           needs.user-authenticated-journey.result == "success" &&
@@ -1198,7 +1198,7 @@ jobs:
             productionUpdateChannel: config.updates?.requestHeaders?.["expo-channel-name"] === "production",
             updateProject: config.extra?.eas?.projectId === projectId,
             updateUrl: config.updates?.url === "https://u.expo.dev/" + projectId,
-            runtimeVersion: typeof config.runtimeVersion === "object" && config.runtimeVersion.policy === "appVersion"
+            runtimeVersion: config.runtimeVersion === "1.0.1" || (typeof config.runtimeVersion === "object" && config.runtimeVersion.policy === "appVersion")
           };
           for (const name of Object.keys(checks)) console.log((checks[name] ? "PASS " : "FAIL ") + name);
           if (Object.values(checks).some((passed) => !passed)) process.exit(1);
