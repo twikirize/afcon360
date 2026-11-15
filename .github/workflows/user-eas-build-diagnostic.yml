@@ -50,7 +50,7 @@ jobs:
           test -n "${EXPO_TOKEN:-}" || { echo "::error::EXPO_TOKEN is unavailable to this diagnostic workflow."; exit 1; }
           test -n "${AFCON360_USER_EAS_PROJECT_ID:-}" || { echo "::error::AFCON360_USER_EAS_PROJECT_ID is unavailable."; exit 1; }
           npx --yes eas-cli@latest build:view "a3d45d0f-f08e-4b89-b8ba-92902370edfa" --json > "$RUNNER_TEMP/afcon360-user-eas-failure.json"
-          node - "$RUNNER_TEMP/afcon360-user-eas-failure.json" <<'NODE'
+          node - "$RUNNER_TEMP/afcon360-user-eas-failure.json" "$RUNNER_TEMP/afcon360-user-eas-log-url.txt" <<'NODE'
           const fs = require("node:fs");
           const raw = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
           const build = raw.build || raw;
@@ -64,7 +64,7 @@ jobs:
             appVersion: build.appVersion,
             appBuildVersion: build.appBuildVersion,
             error: build.error || null,
-            logFiles: build.logFiles || [],
+            logFileCount: Array.isArray(build.logFiles) ? build.logFiles.length : 0,
             artifacts: {
               buildUrlAvailable: Boolean(build.artifacts?.buildUrl),
               buildArtifactsUrlAvailable: Boolean(build.artifacts?.buildArtifactsUrl)
@@ -72,8 +72,17 @@ jobs:
             createdAt: build.createdAt,
             completedAt: build.completedAt
           };
-          const output = JSON.stringify(summary, null, 2);
-          console.log(output);
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "## EAS build failure details\n\n```json\n" + output + "\n```\n");
+          console.log(JSON.stringify(summary, null, 2));
+          const logUrl = Array.isArray(build.logFiles) ? build.logFiles[0] : null;
+          if (logUrl && logUrl.startsWith("https://storage.googleapis.com/")) {
+            fs.writeFileSync(process.argv[3], logUrl);
+          }
           if (!summary.id || !summary.status) throw new Error("EAS did not return the expected build metadata.");
           NODE
+          if [ -s "$RUNNER_TEMP/afcon360-user-eas-log-url.txt" ]; then
+            curl --fail --location --retry 2 --retry-delay 2 "$(cat "$RUNNER_TEMP/afcon360-user-eas-log-url.txt")" --output "$RUNNER_TEMP/afcon360-user-eas-complete-hook.log"
+            echo "---- EAS Build complete hook log (last 250 lines) ----"
+            tail -n 250 "$RUNNER_TEMP/afcon360-user-eas-complete-hook.log"
+          else
+            echo "::warning::EAS did not return a downloadable build log URL."
+          fi
