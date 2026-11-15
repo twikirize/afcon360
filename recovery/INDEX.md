@@ -29,6 +29,19 @@ The currency service files and heatmap JS/CSS/template/routes were checked for c
 - The existing User and Driver app configs on `feat/native-user-app-integration-20261108` each define app-specific `development`, `preview`, `production`, and `apk-share` profiles. They are the relevant current app-level configuration candidates.
 - The uploaded `mobile/pnpm-lock.yaml` is lockfile v9 and contains workspace importers for `apps/user`, `apps/driver`, and packages. The current integration branch contains `mobile/pnpm-workspace.yaml` and app manifests but no root `mobile/pnpm-lock.yaml`; the uploaded lockfile therefore remains a source candidate to validate, not yet the authoritative workspace lock.
 
+## Backend consolidation branch review
+
+The local-only commit `f095be9177f36f2918542a3c1399782bffb079bd` (`Improvement in transport styling for mobile and css`, 2026-11-13) is already incorporated into current `main` through PR #95, merged on 2026-11-13.
+
+Verified:
+- PR #95 head was `fix/transport-mobile-css-20261113`; merge commit `50c108466df6a7f0b4eee945bcfbb9e8ad6c114d`.
+- The exact blob SHA for `static/css/modules/transport/mobile-booking.css` matches between the local-only commit and current `main`.
+- The exact blob SHA for `templates/transport/new_home.html` matches.
+- The exact blob SHA for `tests/conftest.py` matches, including the `APP_ENV=testing` assignment.
+- Remote audit ref `audit/recovery-backend-integration-20261116` points exactly to commit `f095be9177f36f2918542a3c1399782bffb079bd`.
+
+Disposition: **already incorporated / duplicate snapshot**. Keep the audit ref as evidence during recovery. Do not create another PR or re-merge these files. The local branch may be retired only after the wider local branch/worktree audit is complete and the remote audit ref remains available.
+
 ## Local material still to transfer from Windows
 
 | Source | Current finding | Action |
