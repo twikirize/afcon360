@@ -5,8 +5,11 @@ const root = path.resolve(import.meta.dirname, "..");
 
 // Every external website handoff must be reviewed and visibly labelled.
 const approved = [
-  ["apps/user/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', 'label="Privacy notice (website)"'],
+  ["apps/user/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', 'title="Privacy notice"'],
+  ["apps/user/app/(tabs)/account.tsx", "WebBrowser.openBrowserAsync(target.toString())", "Opens on Pamoja website"],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/tourism")', 'label="Explore tourism on website"'],
+  ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/tournament")', 'label="Explore matches on website"'],
+  ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/onboarding/choose")', 'label="Become a partner on website"'],
   ["apps/user/app/(tabs)/index.tsx", "WebBrowser.openBrowserAsync(target)", 'Host an event on website'],
   ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")', 'label="Continue driver registration on website"'],
   ["apps/user/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", 'label="Back to AFCON360 website home"'],
@@ -35,6 +38,8 @@ const nativeInternalRoutes = [
   ["apps/user/app/(service)/ride.tsx", "export default function RideScreen()"],
   ["apps/user/app/(service)/ride-status/[reference].tsx", "export default function RideStatusScreen()"],
   ["apps/user/app/(service)/delete-account.tsx", "export default function DeleteAccountScreen()"],
+  ["apps/user/app/(tabs)/account.tsx", 'router.push("/(service)/settings" as never)'],
+  ["apps/user/app/(service)/settings.tsx", "export default function UserAppSettings()"],
 ];
 
 const nativeResetRoutes = [
@@ -83,11 +88,39 @@ for (const [relative, snippet] of [...nativeInternalRoutes, ...nativeResetRoutes
 
 const requiredWebsiteHandoffLabels = [
   ["apps/user/app/(tabs)/index.tsx", "Tourism · website"],
+  ["apps/user/app/(tabs)/account.tsx", "Opens on Pamoja website"],
 ];
 for (const [relative, visibleLabel] of requiredWebsiteHandoffLabels) {
   const source = fs.readFileSync(path.join(root, relative), "utf8");
   if (!source.includes(visibleLabel)) {
     throw new Error(`External website handoff must be visibly labelled: ${relative} — expected ${visibleLabel}`);
+  }
+}
+
+const userAccountSource = fs.readFileSync(path.join(root, "apps/user/app/(tabs)/account.tsx"), "utf8");
+const userSettingsSource = fs.readFileSync(path.join(root, "apps/user/app/(service)/settings.tsx"), "utf8");
+if (userAccountSource.includes("AppUpdateControls") || userAccountSource.includes("Check for updates")) {
+  throw new Error("App version and update controls belong in User Settings, not the Account page.");
+}
+if (!userSettingsSource.includes("<SectionTitle>Version & updates</SectionTitle>") || !userSettingsSource.includes("<AppUpdateControls />")) {
+  throw new Error("User Settings must contain the Version & updates section and app update controls.");
+}
+
+const requiredAccountDestinations = [
+  'openWebsite("/profile/me")',
+  'openWebsite("/profile/edit")',
+  'openWebsite("/account")',
+  'openWebsite("/account/settings")',
+  'openWebsite("/account/settings#password")',
+  'openWebsite("/account/security")',
+  'openWebsite("/preferences")',
+  'openWebsite("/settings/interests")',
+  'openWebsite("/dashboard")',
+  'router.push("/(service)/settings" as never)',
+];
+for (const destination of requiredAccountDestinations) {
+  if (!userAccountSource.includes(destination)) {
+    throw new Error(`Account hub is missing a required destination: ${destination}`);
   }
 }
 
