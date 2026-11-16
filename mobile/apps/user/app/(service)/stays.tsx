@@ -54,7 +54,7 @@ function Field({
           backgroundColor: "#FFFFFF",
           borderWidth: 1,
           borderColor: palette.border,
-          borderRadius: 10,
+          borderRadius: 13,
           paddingHorizontal: 12,
           paddingVertical: 11,
           color: palette.ink,
@@ -308,9 +308,9 @@ export default function Stays() {
               style={{
                 borderWidth: 1,
                 borderColor: selectedProperty?.public_id === property.public_id ? palette.green : palette.border,
-                borderRadius: 12,
-                padding: 12,
-                gap: 6,
+                borderRadius: 18,
+                padding: 16,
+                gap: 8,
                 backgroundColor: selectedProperty?.public_id === property.public_id ? "#EFF6F0" : palette.surface,
               }}
             >
@@ -344,8 +344,8 @@ export default function Stays() {
                   style={{
                     borderWidth: 1,
                     borderColor: roomTypeToken === room.room_token ? palette.green : palette.border,
-                    borderRadius: 10,
-                    padding: 10,
+                    borderRadius: 14,
+                    padding: 13,
                     backgroundColor: roomTypeToken === room.room_token ? "#EFF6F0" : palette.surface,
                     gap: 4,
                   }}
