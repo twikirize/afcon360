@@ -617,13 +617,21 @@ export default function UserHome() {
               </View>
               <View style={styles.geminiTravelerRow}>
                 <View style={styles.geminiTravelerCircle}>
-                  <Text style={styles.geminiTravelerGlyph}>👥</Text>
+                  <View style={styles.geminiPeopleGlyph}>
+                    <View style={styles.geminiPeopleHeadLeft} />
+                    <View style={styles.geminiPeopleHeadRight} />
+                    <View style={styles.geminiPeopleBodyLeft} />
+                    <View style={styles.geminiPeopleBodyRight} />
+                  </View>
                 </View>
               </View>
             </View>
             <View style={styles.geminiHeroHillBand} />
             <View style={styles.geminiFloatingSearch}>
-              <Text style={styles.geminiSearchGlyph}>⌕</Text>
+              <View style={styles.geminiSearchIcon}>
+                <View style={styles.geminiSearchLens} />
+                <View style={styles.geminiSearchHandle} />
+              </View>
               <TextInput
                 value={search}
                 onChangeText={setSearch}
@@ -743,7 +751,11 @@ export default function UserHome() {
         >
           <View style={styles.geminiBannerLeft}>
             <View style={styles.geminiWalletIconBox}>
-              <Text style={styles.geminiWalletIcon}>◈</Text>
+              <View style={styles.geminiWalletShape}>
+                <View style={styles.geminiWalletFlap}>
+                  <View style={styles.geminiWalletDot} />
+                </View>
+              </View>
             </View>
             <View style={styles.geminiBannerCopy}>
               <Text style={styles.geminiWalletTitle}>Your Pamoja wallet</Text>
@@ -1435,9 +1447,15 @@ const styles = StyleSheet.create({
   geminiTower: { width: 12, backgroundColor: "#0E5B36", borderTopLeftRadius: 3, borderTopRightRadius: 3 },
   geminiTravelerRow: { alignItems: "center" },
   geminiTravelerCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#1E5B39", alignItems: "center", justifyContent: "center" },
-  geminiTravelerGlyph: { fontSize: 23 },
+  geminiPeopleGlyph: { width: 36, height: 30, position: "relative" },
+  geminiPeopleHeadLeft: { position: "absolute", left: 6, top: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: "#FFFFFF" },
+  geminiPeopleHeadRight: { position: "absolute", right: 5, top: 1, width: 10, height: 10, borderRadius: 5, backgroundColor: "#FFFFFF" },
+  geminiPeopleBodyLeft: { position: "absolute", left: 1, bottom: 1, width: 21, height: 13, borderTopLeftRadius: 14, borderTopRightRadius: 14, backgroundColor: "#FFFFFF" },
+  geminiPeopleBodyRight: { position: "absolute", right: 1, bottom: 1, width: 21, height: 13, borderTopLeftRadius: 14, borderTopRightRadius: 14, backgroundColor: "#FFFFFF" },
   geminiFloatingSearch: { position: "absolute", left: 12, right: 12, bottom: 14, zIndex: 25, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(255,255,255,0.88)", borderRadius: 999, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.96)", paddingHorizontal: 16, minHeight: 48, shadowColor: "#082918", shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 6 },
-  geminiSearchGlyph: { color: "#093E24", fontSize: 25, lineHeight: 28, fontWeight: "700" },
+  geminiSearchIcon: { width: 22, height: 22, position: "relative" },
+  geminiSearchLens: { position: "absolute", left: 1, top: 1, width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: "#093E24" },
+  geminiSearchHandle: { position: "absolute", right: 0, bottom: 2, width: 9, height: 2.5, borderRadius: 2, backgroundColor: "#093E24", transform: [{ rotate: "45deg" }] },
   geminiSearchInput: { flex: 1, minHeight: 44, fontSize: 13, fontWeight: "600", color: "#082918", paddingVertical: 0 },
   geminiClearSearch: { color: "#093E24", fontSize: 25, fontWeight: "500", paddingHorizontal: 2 },
   geminiScopeTabsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10, marginHorizontal: 10 },
@@ -1462,7 +1480,9 @@ const styles = StyleSheet.create({
   geminiWalletBanner: { marginHorizontal: 18, backgroundColor: "#0E5B36", borderRadius: 18, padding: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   geminiBannerLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
   geminiWalletIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.16)", alignItems: "center", justifyContent: "center" },
-  geminiWalletIcon: { color: "#FFFFFF", fontSize: 27, fontWeight: "700" },
+  geminiWalletShape: { width: 26, height: 20, borderWidth: 2, borderColor: "#FFFFFF", borderRadius: 4, position: "relative" },
+  geminiWalletFlap: { position: "absolute", right: -2, top: 4, width: 12, height: 9, borderWidth: 2, borderColor: "#FFFFFF", borderRadius: 3, backgroundColor: "#0E5B36", alignItems: "center", justifyContent: "center" },
+  geminiWalletDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: "#FFFFFF" },
   geminiBannerCopy: { flex: 1 },
   geminiWalletTitle: { fontSize: 16, fontWeight: "700", color: "#FFFFFF", marginBottom: 2 },
   geminiWalletSubtitle: { fontSize: 12, color: "rgba(255,255,255,0.82)" },
