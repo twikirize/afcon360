@@ -8,8 +8,21 @@ import {
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
-import { palette } from "@afcon360/mobile-ui";
+import { palette as basePalette } from "@afcon360/mobile-ui";
 import { PamojaScreen as AppScreen, PamojaPageHeader as PageHeader } from "../../src/components/PamojaScreen";
+
+const palette = {
+  ...basePalette,
+  canvas: "#F5F6F2",
+  surface: "#FFFFFF",
+  ink: "#122419",
+  muted: "#6C766E",
+  green: "#0E5B36",
+  greenDark: "#093E24",
+  greenSoft: "#E8F4EC",
+  border: "#E6EAE4",
+  warningSoft: "#FFF4D5",
+};
 import { useAuth } from "../../src/auth/AuthProvider";
 import { getSelectedApiBaseUrl } from "../../src/services/api";
 
