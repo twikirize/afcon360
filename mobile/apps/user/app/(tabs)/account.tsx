@@ -8,7 +8,8 @@ import {
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
-import { AppScreen, PageHeader, palette } from "@afcon360/mobile-ui";
+import { palette } from "@afcon360/mobile-ui";
+import { PamojaScreen as AppScreen, PamojaPageHeader as PageHeader } from "../../src/components/PamojaScreen";
 import { useAuth } from "../../src/auth/AuthProvider";
 import { getSelectedApiBaseUrl } from "../../src/services/api";
 
