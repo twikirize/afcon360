@@ -556,7 +556,215 @@ export default function UserHome() {
   }, [openEventSearch, search]);
 
   const listHeader = (
-    <View style={styles.pageContent}>
+    <View style={styles.geminiPage}>
+      <View style={styles.geminiPageContent}>
+        <View style={styles.geminiTopHeader}>
+          <View style={styles.geminiBrandRow}>
+            <View style={styles.geminiEmblemOuter}>
+              <View style={styles.geminiEmblemInner}>
+                <Text style={styles.geminiEmblemMark}>△</Text>
+              </View>
+            </View>
+            <Text style={styles.geminiBrandTitle}>Pamoja</Text>
+          </View>
+          <View style={styles.geminiTopActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open activity and updates"
+              style={styles.geminiCircleButton}
+              onPress={() => router.push("/(tabs)/activity" as never)}
+            >
+              <Text style={styles.geminiActionGlyph}>♧</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open account"
+              style={[styles.geminiCircleButton, styles.geminiCircleButtonMint]}
+              onPress={() => router.push("/(tabs)/account" as never)}
+            >
+              <Text style={styles.geminiActionGlyph}>●</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.geminiHeroStage}>
+          <View style={styles.geminiHeroCard}>
+            <View style={styles.geminiHeroGlowOrb} />
+            <View style={styles.geminiHeroLeft}>
+              <Text style={styles.geminiHeroEyebrow}>EAST AFRICA</Text>
+              <Text style={styles.geminiHeroTitle}>Your world,{"\n"}together.</Text>
+              <Text style={styles.geminiHeroSub}>One app. More to explore.</Text>
+              {user?.display_name ? (
+                <Text style={styles.geminiHeroGreeting}>Good to see you, {user.display_name}.</Text>
+              ) : null}
+            </View>
+            <View style={styles.geminiHeroIllustration}>
+              <View style={styles.geminiSunHalo}>
+                <View style={styles.geminiSunDot} />
+              </View>
+              <View style={styles.geminiSkyline}>
+                <View style={[styles.geminiTower, { height: 40 }]} />
+                <View style={[styles.geminiTower, { height: 58, backgroundColor: "#5D9A74" }]} />
+                <View style={[styles.geminiTower, { height: 34 }]} />
+                <View style={[styles.geminiTower, { height: 50, backgroundColor: "#498762" }]} />
+              </View>
+              <View style={styles.geminiTravelerRow}>
+                <View style={styles.geminiTravelerCircle}>
+                  <Text style={styles.geminiTravelerGlyph}>👥</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.geminiHeroHillBand} />
+            <View style={styles.geminiFloatingSearch}>
+              <Text style={styles.geminiSearchGlyph}>⌕</Text>
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                onSubmitEditing={submitSearch}
+                returnKeyType="search"
+                placeholder="Search events, tickets and experiences..."
+                placeholderTextColor="#164029"
+                style={styles.geminiSearchInput}
+                accessibilityLabel="Search Pamoja events and tickets"
+              />
+              {search.trim().length > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                  onPress={() => setSearch("")}
+                >
+                  <Text style={styles.geminiClearSearch}>×</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+          {search.trim().length > 0 ? (
+            <View style={styles.geminiScopeTabsRow}>
+              <Pressable style={[styles.geminiScopeTab, styles.geminiScopeTabActive]} onPress={() => setSearch("")}>
+                <Text style={[styles.geminiScopeText, styles.geminiScopeTextActive]}>All</Text>
+              </Pressable>
+              <Pressable style={styles.geminiScopeTab} onPress={() => openService("events")}>
+                <Text style={styles.geminiScopeText}>Events</Text>
+              </Pressable>
+              <Pressable style={styles.geminiScopeTab} onPress={() => openService("stays")}>
+                <Text style={styles.geminiScopeText}>Stays</Text>
+              </Pressable>
+              <Pressable style={styles.geminiScopeTab} onPress={() => openService("rides")}>
+                <Text style={styles.geminiScopeText}>Transport</Text>
+              </Pressable>
+              <Pressable style={styles.geminiScopeTab} onPress={() => openService("tourism")}>
+                <Text style={styles.geminiScopeText}>Adventure</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.geminiSection}>
+          <Text style={styles.geminiSectionTitle}>Make yourself feel at home</Text>
+          <View style={styles.geminiServiceGrid}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open transport and rides"
+              style={styles.geminiServiceCard}
+              onPress={() => openService("rides")}
+            >
+              <View style={styles.geminiServiceCardTop}>
+                <View style={[styles.geminiServiceIconCircle, styles.geminiMintIcon]}>
+                  <Text style={styles.geminiServiceIcon}>🚌</Text>
+                </View>
+                <Text style={styles.geminiDiagonalArrow}>↗</Text>
+              </View>
+              <Text style={styles.geminiServiceTitle}>Transport</Text>
+              <Text style={styles.geminiServiceSubtitle}>Find your ride</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Find a place to stay"
+              style={styles.geminiServiceCard}
+              onPress={() => openService("stays")}
+            >
+              <View style={styles.geminiServiceCardTop}>
+                <View style={[styles.geminiServiceIconCircle, styles.geminiPeachIcon]}>
+                  <Text style={styles.geminiServiceIcon}>🛏️</Text>
+                </View>
+                <Text style={styles.geminiDiagonalArrow}>↗</Text>
+              </View>
+              <Text style={styles.geminiServiceTitle}>Stays</Text>
+              <Text style={styles.geminiServiceSubtitle}>Find a place to stay</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Discover events and tickets"
+              style={styles.geminiServiceCard}
+              onPress={() => openService("events")}
+            >
+              <View style={styles.geminiServiceCardTop}>
+                <View style={[styles.geminiServiceIconCircle, styles.geminiPeachIcon]}>
+                  <Text style={styles.geminiServiceIcon}>🎟️</Text>
+                </View>
+                <Text style={styles.geminiDiagonalArrow}>↗</Text>
+              </View>
+              <Text style={styles.geminiServiceTitle}>Events & Tickets</Text>
+              <Text style={styles.geminiServiceSubtitle}>Events & QR passes</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Adventure and tourism on website"
+              style={styles.geminiServiceCard}
+              onPress={() => openService("tourism")}
+            >
+              <View style={styles.geminiServiceCardTop}>
+                <View style={[styles.geminiServiceIconCircle, styles.geminiMintIcon]}>
+                  <Text style={styles.geminiServiceIcon}>🧭</Text>
+                </View>
+                <Text style={styles.geminiDiagonalArrow}>↗</Text>
+              </View>
+              <Text style={styles.geminiServiceTitle}>Adventure</Text>
+              <Text style={styles.geminiServiceSubtitle}>Tours, safaris & experiences</Text>
+              <View style={styles.geminiWebsiteHint}>
+                <Text style={styles.geminiWebsiteHintText}>ON PAMOJA WEBSITE</Text>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open Pamoja wallet"
+          style={styles.geminiWalletBanner}
+          onPress={() => openService("wallet")}
+        >
+          <View style={styles.geminiBannerLeft}>
+            <View style={styles.geminiWalletIconBox}>
+              <Text style={styles.geminiWalletIcon}>◈</Text>
+            </View>
+            <View style={styles.geminiBannerCopy}>
+              <Text style={styles.geminiWalletTitle}>Your Pamoja wallet</Text>
+              <Text style={styles.geminiWalletSubtitle}>Payments, all in one place</Text>
+            </View>
+          </View>
+          <Text style={styles.geminiWalletChevron}>›</Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open your bookings and activity"
+          style={styles.geminiBookingsCard}
+          onPress={() => router.push("/(tabs)/activity" as never)}
+        >
+          <View style={styles.geminiBannerLeft}>
+            <View style={[styles.geminiServiceIconCircle, styles.geminiMintIcon]}>
+              <Text style={styles.geminiBookingsIcon}>▦</Text>
+            </View>
+            <View style={styles.geminiBannerCopy}>
+              <Text style={styles.geminiBookingsTitle}>My bookings</Text>
+              <Text style={styles.geminiBookingsSubtitle}>Manage your stays, rides and activity</Text>
+            </View>
+          </View>
+          <Text style={styles.geminiBookingsChevron}>›</Text>
+        </Pressable>
+      </View>
+
       <View style={styles.myEventsDashboard}>
         <View style={styles.myEventsHeading}>
           <View style={styles.myEventsHeadingCopy}>
@@ -839,141 +1047,52 @@ export default function UserHome() {
         </View>
       </View>
 
-      <View style={styles.hero}>
-        <View style={styles.heroGlowLarge} />
-        <View style={styles.heroGlowSmall} />
-        <View style={styles.heroTopLine}>
-          <Text style={styles.heroEyebrow}>PAMOJA · AFCON360</Text>
-          <View style={styles.heroLivePill}><View style={styles.heroLiveDot} /><Text style={styles.heroLiveText}>EAST AFRICA & BEYOND</Text></View>
-        </View>
-        <Text style={styles.heroTitle}>Welcome to <Text style={styles.heroTitleGold}>Pamoja</Text></Text>
-        <Text style={styles.heroSubtitle}>
-          Your gateway to matches, travel, tickets, and experiences across Africa and beyond.
-        </Text>
-        {user?.display_name ? <Text style={styles.heroGreeting}>Good to see you, {user.display_name}.</Text> : null}
-        <View style={styles.heroActions}>
-          <Pressable accessibilityRole="button" onPress={() => openService("events")} style={styles.heroPrimaryButton}>
-            <Text style={styles.heroPrimaryText}>Explore events</Text>
-            <Text style={styles.heroPrimaryArrow}>›</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => openService("stays")} style={styles.heroSecondaryButton}>
-            <Text style={styles.heroSecondaryText}>Find Stays & Hotels</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.serviceChipsFloat}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.serviceChips}>
-          <Pressable style={[styles.serviceChip, styles.serviceChipActive]} onPress={() => openService("events")}>
-            <Text style={styles.serviceChipIcon}>🏟️</Text><Text style={[styles.serviceChipText, styles.serviceChipTextActive]}>Events</Text>
-          </Pressable>
-          <Pressable style={styles.serviceChip} onPress={() => openService("stays")}>
-            <Text style={styles.serviceChipIcon}>🏨</Text><Text style={styles.serviceChipText}>Stays</Text>
-          </Pressable>
-          <Pressable style={styles.serviceChip} onPress={() => openService("rides")}>
-            <Text style={styles.serviceChipIcon}>🚌</Text><Text style={styles.serviceChipText}>Transport</Text>
-          </Pressable>
-          <Pressable style={styles.serviceChip} onPress={() => openService("tourism")}>
-            <Text style={styles.serviceChipIcon}>🌴</Text><Text style={styles.serviceChipText}>Tourism · website</Text>
-          </Pressable>
-          <Pressable style={styles.serviceChip} onPress={() => openService("wallet")}>
-            <Text style={styles.serviceChipIcon}>👛</Text><Text style={styles.serviceChipText}>Wallet</Text>
-          </Pressable>
-        </ScrollView>
-      </View>
-
-      <View style={styles.searchPanel}>
-        <View style={styles.searchHeading}>
-          <View>
-            <Text style={styles.searchTitle}>What would you like to discover?</Text>
-            <Text style={styles.searchSubtitle}>Search events and experiences across the region.</Text>
-          </View>
-          <Text style={styles.searchIcon}>⌕</Text>
-        </View>
-        <View style={styles.searchRow}>
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            onSubmitEditing={submitSearch}
-            returnKeyType="search"
-            placeholder="Search events, football, music, culture…"
-            placeholderTextColor="#89958D"
-            style={styles.searchInput}
-            accessibilityLabel="Search events and experiences"
-          />
-          <Pressable accessibilityRole="button" accessibilityLabel="Search events" onPress={submitSearch} style={styles.searchButton}>
-            <Text style={styles.searchButtonText}>Search</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.trendingSection}>
-        <Text style={styles.trendingLabel}>🔥  TRENDING</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trendingChips}>
-          {trendingTopics.map((topic) => (
-            <Pressable key={topic} onPress={() => openEventSearch(topic)} style={styles.trendingChip}>
-              <Text style={styles.trendingChipText}>{topic}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={styles.quickActionsGrid}>
-        <Pressable onPress={() => openService("rides")} style={styles.quickAction}>
-          <View style={[styles.quickActionIcon, { backgroundColor: "#E8F2EA" }]}><Text style={styles.quickActionEmoji}>🚘</Text></View>
-          <Text style={styles.quickActionTitle}>Book a ride</Text>
-          <Text style={styles.quickActionSub}>Move around</Text>
-        </Pressable>
-        <Pressable onPress={() => openService("stays")} style={styles.quickAction}>
-          <View style={[styles.quickActionIcon, { backgroundColor: "#FFF3D6" }]}><Text style={styles.quickActionEmoji}>🏨</Text></View>
-          <Text style={styles.quickActionTitle}>Find a stay</Text>
-          <Text style={styles.quickActionSub}>Places to rest</Text>
-        </Pressable>
-        <Pressable onPress={() => openService("events")} style={styles.quickAction}>
-          <View style={[styles.quickActionIcon, { backgroundColor: "#E8EEF9" }]}><Text style={styles.quickActionEmoji}>🎟️</Text></View>
-          <Text style={styles.quickActionTitle}>Discover events</Text>
-          <Text style={styles.quickActionSub}>Moments that matter</Text>
-        </Pressable>
-        <Pressable onPress={() => openService("wallet")} style={styles.quickAction}>
-          <View style={[styles.quickActionIcon, { backgroundColor: "#F2EAF7" }]}><Text style={styles.quickActionEmoji}>👛</Text></View>
-          <Text style={styles.quickActionTitle}>Open Wallet</Text>
-          <Text style={styles.quickActionSub}>Your payments</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.sectionBlock}>
-        <SectionHeading title="Featured Events" subtitle="Selected from currently published Pamoja events" action="View all" onAction={() => openEventSearch()} />
-        {featuredEvents.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventRail}>
-            {featuredEvents.map((item) => <EventCard key={item.feed_id} item={item} baseUrl={apiBaseUrl} onOpenWebsite={openWebsite} />)}
+      <View style={styles.geminiLowerContent}>
+        <View style={styles.trendingSection}>
+          <Text style={styles.trendingLabel}>🔥  TRENDING</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trendingChips}>
+            {trendingTopics.map((topic) => (
+              <Pressable key={topic} onPress={() => openEventSearch(topic)} style={styles.trendingChip}>
+                <Text style={styles.trendingChipText}>{topic}</Text>
+              </Pressable>
+            ))}
           </ScrollView>
-        ) : (
-          <View style={styles.sectionEmpty}>
-            <Text style={styles.sectionEmptyIcon}>✨</Text>
-            <Text style={styles.sectionEmptyTitle}>Featured events will appear here</Text>
-            <Text style={styles.sectionEmptyText}>When an organiser publishes a featured event, it will show up in this space.</Text>
-          </View>
-        )}
-      </View>
+        </View>
 
-      <View style={styles.sectionBlock}>
-        <SectionHeading title="Live & Upcoming Events" subtitle="See what is happening now and what is coming next" action="Explore" onAction={() => openEventSearch()} />
-        {liveUpcomingEvents.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventRail}>
-            {liveUpcomingEvents.map((item) => <EventCard key={"live-" + item.feed_id} item={item} baseUrl={apiBaseUrl} onOpenWebsite={openWebsite} compact />)}
-          </ScrollView>
-        ) : (
-          <View style={styles.sectionEmptyCompact}>
-            <Text style={styles.sectionEmptyIcon}>📅</Text>
-            <Text style={styles.sectionEmptyTitle}>New events are on the way</Text>
-            <Text style={styles.sectionEmptyText}>Live and upcoming events will appear here as they are published.</Text>
-          </View>
-        )}
-      </View>
+        <View style={styles.sectionBlock}>
+          <SectionHeading title="Featured Events" subtitle="Selected from currently published Pamoja events" action="View all" onAction={() => openEventSearch()} />
+          {featuredEvents.length ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventRail}>
+              {featuredEvents.map((item) => <EventCard key={item.feed_id} item={item} baseUrl={apiBaseUrl} onOpenWebsite={openWebsite} />)}
+            </ScrollView>
+          ) : (
+            <View style={styles.sectionEmpty}>
+              <Text style={styles.sectionEmptyIcon}>✨</Text>
+              <Text style={styles.sectionEmptyTitle}>Featured events will appear here</Text>
+              <Text style={styles.sectionEmptyText}>When an organiser publishes a featured event, it will show up in this space.</Text>
+            </View>
+          )}
+        </View>
 
-      <View style={styles.feedSectionHeading}>
-        <SectionHeading title="Latest from Pamoja" subtitle="Posts, announcements, stays, transport and active promotions" />
-        <View style={styles.feedLiveLabel}><View style={styles.feedLiveDot} /><Text style={styles.feedLiveText}>LIVE UPDATES</Text></View>
+        <View style={styles.sectionBlock}>
+          <SectionHeading title="Live & Upcoming Events" subtitle="See what is happening now and what is coming next" action="Explore" onAction={() => openEventSearch()} />
+          {liveUpcomingEvents.length ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventRail}>
+              {liveUpcomingEvents.map((item) => <EventCard key={"live-" + item.feed_id} item={item} baseUrl={apiBaseUrl} onOpenWebsite={openWebsite} compact />)}
+            </ScrollView>
+          ) : (
+            <View style={styles.sectionEmptyCompact}>
+              <Text style={styles.sectionEmptyIcon}>📅</Text>
+              <Text style={styles.sectionEmptyTitle}>New events are on the way</Text>
+              <Text style={styles.sectionEmptyText}>Live and upcoming events will appear here as they are published.</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.feedSectionHeading}>
+          <SectionHeading title="Latest from Pamoja" subtitle="Posts, announcements, stays, transport and active promotions" />
+          <View style={styles.feedLiveLabel}><View style={styles.feedLiveDot} /><Text style={styles.feedLiveText}>LIVE UPDATES</Text></View>
+        </View>
       </View>
     </View>
   );
@@ -1273,4 +1392,71 @@ const styles = StyleSheet.create({
   hostBannerSubtitle: { color: "rgba(255,255,255,0.82)", fontSize: 11, lineHeight: 17, maxWidth: 260 },
   hostBannerButton: { minHeight: 42, paddingHorizontal: 14, paddingVertical: 10, justifyContent: "center", borderRadius: 11, backgroundColor: BRAND_GOLD, marginTop: 3 },
   hostBannerButtonText: { color: BRAND_DARK, fontSize: 11, fontWeight: "900" },
-});
+
+  geminiPage: { flex: 1, backgroundColor: "#F5F6F2", paddingBottom: 28 },
+  geminiPageContent: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 8, gap: 14 },
+  geminiTopHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
+  geminiBrandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  geminiEmblemOuter: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#F5B700", alignItems: "center", justifyContent: "center" },
+  geminiEmblemInner: { width: 28, height: 28, borderRadius: 14, backgroundColor: "#0E5B36", alignItems: "center", justifyContent: "center" },
+  geminiEmblemMark: { color: "#F5B700", fontSize: 15, fontWeight: "900", marginTop: -2 },
+  geminiBrandTitle: { fontSize: 22, fontWeight: "800", color: "#0E5B36", letterSpacing: -0.4 },
+  geminiTopActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  geminiCircleButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E6EAE4", alignItems: "center", justifyContent: "center" },
+  geminiCircleButtonMint: { backgroundColor: "#E6EFE8", borderColor: "transparent" },
+  geminiActionGlyph: { color: "#0E5B36", fontSize: 20, fontWeight: "700" },
+  geminiHeroStage: { position: "relative", marginBottom: 4, zIndex: 10 },
+  geminiHeroCard: { backgroundColor: "#D6EBDD", borderRadius: 24, borderWidth: 1, borderColor: "rgba(255,255,255,0.85)", paddingHorizontal: 18, paddingTop: 18, paddingBottom: 80, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 204, overflow: "hidden", position: "relative" },
+  geminiHeroGlowOrb: { position: "absolute", top: -32, right: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: "rgba(252,238,226,0.55)" },
+  geminiHeroHillBand: { position: "absolute", left: 0, right: 0, bottom: 0, height: 68, backgroundColor: "rgba(30,91,57,0.72)", borderTopLeftRadius: 120, borderTopRightRadius: 80, zIndex: 1 },
+  geminiHeroLeft: { flex: 1, justifyContent: "space-between", paddingRight: 8, zIndex: 2 },
+  geminiHeroEyebrow: { fontSize: 10, fontWeight: "700", letterSpacing: 1.2, color: "#1F5C3D", marginBottom: 6 },
+  geminiHeroTitle: { fontFamily: "serif", fontSize: 25, fontWeight: "700", color: "#093E24", lineHeight: 28, marginBottom: 12 },
+  geminiHeroSub: { fontSize: 13, fontWeight: "500", color: "#214A34" },
+  geminiHeroGreeting: { fontSize: 10, fontWeight: "600", color: "#214A34", marginTop: 7 },
+  geminiHeroIllustration: { width: 118, height: 112, alignItems: "center", justifyContent: "flex-end", position: "relative", zIndex: 2 },
+  geminiSunHalo: { position: "absolute", top: 0, left: 20, width: 24, height: 24, borderRadius: 12, backgroundColor: "rgba(245,183,0,0.24)", alignItems: "center", justifyContent: "center" },
+  geminiSunDot: { width: 11, height: 11, borderRadius: 5.5, backgroundColor: "#EA8426" },
+  geminiSkyline: { flexDirection: "row", alignItems: "flex-end", gap: 5, opacity: 0.35, marginBottom: 8 },
+  geminiTower: { width: 12, backgroundColor: "#0E5B36", borderTopLeftRadius: 3, borderTopRightRadius: 3 },
+  geminiTravelerRow: { alignItems: "center" },
+  geminiTravelerCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#1E5B39", alignItems: "center", justifyContent: "center" },
+  geminiTravelerGlyph: { fontSize: 23 },
+  geminiFloatingSearch: { position: "absolute", left: 12, right: 12, bottom: 14, zIndex: 25, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(255,255,255,0.88)", borderRadius: 999, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.96)", paddingHorizontal: 16, minHeight: 48, shadowColor: "#082918", shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 6 },
+  geminiSearchGlyph: { color: "#093E24", fontSize: 25, lineHeight: 28, fontWeight: "700" },
+  geminiSearchInput: { flex: 1, minHeight: 44, fontSize: 13, fontWeight: "600", color: "#082918", paddingVertical: 0 },
+  geminiClearSearch: { color: "#093E24", fontSize: 25, fontWeight: "500", paddingHorizontal: 2 },
+  geminiScopeTabsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10, marginHorizontal: 10 },
+  geminiScopeTab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#DCE4DD" },
+  geminiScopeTabActive: { backgroundColor: "#0E5B36", borderColor: "#0E5B36" },
+  geminiScopeText: { fontSize: 11, fontWeight: "600", color: "#48524A" },
+  geminiScopeTextActive: { color: "#FFFFFF" },
+  geminiSection: { gap: 0 },
+  geminiSectionTitle: { fontFamily: "serif", fontSize: 20, fontWeight: "700", color: "#122419", marginBottom: 12 },
+  geminiServiceGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10, marginBottom: 2 },
+  geminiServiceCard: { width: "48.3%", minHeight: 118, backgroundColor: "#FFFFFF", borderRadius: 18, borderWidth: 1, borderColor: "#E6EAE4", padding: 14, justifyContent: "flex-start" },
+  geminiServiceCardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
+  geminiServiceIconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  geminiMintIcon: { backgroundColor: "#E8F4EC" },
+  geminiPeachIcon: { backgroundColor: "#FCEEE2" },
+  geminiServiceIcon: { fontSize: 19 },
+  geminiDiagonalArrow: { color: "#4A554C", fontSize: 18, transform: [{ rotate: "0deg" }] },
+  geminiServiceTitle: { fontSize: 15, fontWeight: "700", color: "#141915", marginBottom: 2 },
+  geminiServiceSubtitle: { fontSize: 11, color: "#6C766E" },
+  geminiWebsiteHint: { alignSelf: "flex-start", marginTop: 5, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, backgroundColor: "rgba(23,61,40,0.08)" },
+  geminiWebsiteHintText: { color: "#0E5B36", fontSize: 7, fontWeight: "900", letterSpacing: 0.5 },
+  geminiWalletBanner: { marginHorizontal: 18, backgroundColor: "#0E5B36", borderRadius: 18, padding: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  geminiBannerLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  geminiWalletIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.16)", alignItems: "center", justifyContent: "center" },
+  geminiWalletIcon: { color: "#FFFFFF", fontSize: 27, fontWeight: "700" },
+  geminiBannerCopy: { flex: 1 },
+  geminiWalletTitle: { fontSize: 16, fontWeight: "700", color: "#FFFFFF", marginBottom: 2 },
+  geminiWalletSubtitle: { fontSize: 12, color: "rgba(255,255,255,0.82)" },
+  geminiWalletChevron: { color: "#FFFFFF", fontSize: 24, marginLeft: 8 },
+  geminiBookingsCard: { marginHorizontal: 18, backgroundColor: "#FFFFFF", borderRadius: 18, borderWidth: 1, borderColor: "#E6EAE4", padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  geminiBookingsIcon: { fontSize: 18, color: "#0E5B36" },
+  geminiBookingsTitle: { fontSize: 15, fontWeight: "700", color: "#141915", marginBottom: 2 },
+  geminiBookingsSubtitle: { fontSize: 11, color: "#6C766E" },
+  geminiBookingsChevron: { color: "#6C766E", fontSize: 22 },
+  geminiLowerContent: { gap: 20, paddingTop: 2 },
+  });
