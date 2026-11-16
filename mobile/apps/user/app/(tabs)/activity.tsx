@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, AppState, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { palette } from "@afcon360/mobile-ui";
+import { palette as basePalette } from "@afcon360/mobile-ui";
 import {
   PamojaEmptyState as EmptyState,
   PamojaScreen as AppScreen,
@@ -10,6 +10,19 @@ import {
   PamojaSectionTitle as SectionTitle,
   PamojaStatusPill as StatusPill,
 } from "../../src/components/PamojaScreen";
+
+const palette = {
+  ...basePalette,
+  canvas: "#F5F6F2",
+  surface: "#FFFFFF",
+  ink: "#122419",
+  muted: "#6C766E",
+  green: "#0E5B36",
+  greenDark: "#093E24",
+  greenSoft: "#E8F4EC",
+  border: "#E6EAE4",
+  warningSoft: "#FFF4D5",
+};
 import { useFocusEffect } from "expo-router";
 import { authClient } from "../../src/services/api";
 
