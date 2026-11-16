@@ -574,7 +574,11 @@ export default function UserHome() {
               style={styles.geminiCircleButton}
               onPress={() => router.push("/(tabs)/activity" as never)}
             >
-              <Text style={styles.geminiActionGlyph}>♧</Text>
+              <View style={styles.geminiBellIcon}>
+                <View style={styles.geminiBellDome} />
+                <View style={styles.geminiBellBase} />
+                <View style={styles.geminiBellClapper} />
+              </View>
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -582,7 +586,10 @@ export default function UserHome() {
               style={[styles.geminiCircleButton, styles.geminiCircleButtonMint]}
               onPress={() => router.push("/(tabs)/account" as never)}
             >
-              <Text style={styles.geminiActionGlyph}>●</Text>
+              <View style={styles.geminiPersonIcon}>
+                <View style={styles.geminiPersonHead} />
+                <View style={styles.geminiPersonShoulders} />
+              </View>
             </Pressable>
           </View>
         </View>
@@ -750,7 +757,7 @@ export default function UserHome() {
           accessibilityRole="button"
           accessibilityLabel="Open your bookings and activity"
           style={styles.geminiBookingsCard}
-          onPress={() => router.push("/(tabs)/activity" as never)}
+          onPress={() => openService("stays")}
         >
           <View style={styles.geminiBannerLeft}>
             <View style={[styles.geminiServiceIconCircle, styles.geminiMintIcon]}>
@@ -758,7 +765,7 @@ export default function UserHome() {
             </View>
             <View style={styles.geminiBannerCopy}>
               <Text style={styles.geminiBookingsTitle}>My bookings</Text>
-              <Text style={styles.geminiBookingsSubtitle}>Manage your stays, rides and activity</Text>
+              <Text style={styles.geminiBookingsSubtitle}>Manage your stays and rides</Text>
             </View>
           </View>
           <Text style={styles.geminiBookingsChevron}>›</Text>
@@ -1405,6 +1412,13 @@ const styles = StyleSheet.create({
   geminiCircleButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E6EAE4", alignItems: "center", justifyContent: "center" },
   geminiCircleButtonMint: { backgroundColor: "#E6EFE8", borderColor: "transparent" },
   geminiActionGlyph: { color: "#0E5B36", fontSize: 20, fontWeight: "700" },
+  geminiBellIcon: { width: 22, height: 23, alignItems: "center", justifyContent: "center" },
+  geminiBellDome: { width: 14, height: 14, borderWidth: 1.7, borderColor: "#0E5B36", borderBottomWidth: 1, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, marginTop: 2 },
+  geminiBellBase: { width: 18, height: 2, borderRadius: 2, backgroundColor: "#0E5B36", marginTop: -1 },
+  geminiBellClapper: { width: 4, height: 3, borderRadius: 2, backgroundColor: "#0E5B36", marginTop: 1 },
+  geminiPersonIcon: { width: 22, height: 22, alignItems: "center", justifyContent: "center" },
+  geminiPersonHead: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.7, borderColor: "#0E5B36", marginBottom: 2 },
+  geminiPersonShoulders: { width: 17, height: 8, borderWidth: 1.7, borderColor: "#0E5B36", borderBottomWidth: 0, borderTopLeftRadius: 9, borderTopRightRadius: 9 },
   geminiHeroStage: { position: "relative", marginBottom: 4, zIndex: 10 },
   geminiHeroCard: { backgroundColor: "#D6EBDD", borderRadius: 24, borderWidth: 1, borderColor: "rgba(255,255,255,0.85)", paddingHorizontal: 18, paddingTop: 18, paddingBottom: 80, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 204, overflow: "hidden", position: "relative" },
   geminiHeroGlowOrb: { position: "absolute", top: -32, right: -20, width: 140, height: 140, borderRadius: 70, backgroundColor: "rgba(252,238,226,0.55)" },
