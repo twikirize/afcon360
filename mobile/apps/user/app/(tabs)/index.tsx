@@ -570,14 +570,15 @@ export default function UserHome() {
           <View style={styles.geminiTopActions}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Open activity and updates"
+              accessibilityLabel="Open recent ride activity"
               style={styles.geminiCircleButton}
               onPress={() => router.push("/(tabs)/activity" as never)}
             >
-              <View style={styles.geminiBellIcon}>
-                <View style={styles.geminiBellDome} />
-                <View style={styles.geminiBellBase} />
-                <View style={styles.geminiBellClapper} />
+              <View style={styles.geminiHistoryIcon}>
+                <View style={styles.geminiHistoryHands}>
+                  <View style={styles.geminiHistoryHandVertical} />
+                  <View style={styles.geminiHistoryHandHorizontal} />
+                </View>
               </View>
             </Pressable>
             <Pressable
@@ -637,7 +638,7 @@ export default function UserHome() {
                 onChangeText={setSearch}
                 onSubmitEditing={submitSearch}
                 returnKeyType="search"
-                placeholder="Search events, tickets and experiences..."
+                placeholder="Search events and tickets..."
                 placeholderTextColor="#164029"
                 style={styles.geminiSearchInput}
                 accessibilityLabel="Search Pamoja events and tickets"
@@ -653,25 +654,6 @@ export default function UserHome() {
               ) : null}
             </View>
           </View>
-          {search.trim().length > 0 ? (
-            <View style={styles.geminiScopeTabsRow}>
-              <Pressable style={[styles.geminiScopeTab, styles.geminiScopeTabActive]} onPress={() => setSearch("")}>
-                <Text style={[styles.geminiScopeText, styles.geminiScopeTextActive]}>All</Text>
-              </Pressable>
-              <Pressable style={styles.geminiScopeTab} onPress={() => openService("events")}>
-                <Text style={styles.geminiScopeText}>Events</Text>
-              </Pressable>
-              <Pressable style={styles.geminiScopeTab} onPress={() => openService("stays")}>
-                <Text style={styles.geminiScopeText}>Stays</Text>
-              </Pressable>
-              <Pressable style={styles.geminiScopeTab} onPress={() => openService("rides")}>
-                <Text style={styles.geminiScopeText}>Transport</Text>
-              </Pressable>
-              <Pressable style={styles.geminiScopeTab} onPress={() => openService("tourism")}>
-                <Text style={styles.geminiScopeText}>Adventure</Text>
-              </Pressable>
-            </View>
-          ) : null}
         </View>
 
         <View style={styles.geminiSection}>
@@ -777,7 +759,7 @@ export default function UserHome() {
             </View>
             <View style={styles.geminiBannerCopy}>
               <Text style={styles.geminiBookingsTitle}>My bookings</Text>
-              <Text style={styles.geminiBookingsSubtitle}>Manage your stays and rides</Text>
+              <Text style={styles.geminiBookingsSubtitle}>Manage your accommodation bookings</Text>
             </View>
           </View>
           <Text style={styles.geminiBookingsChevron}>›</Text>
@@ -1424,10 +1406,10 @@ const styles = StyleSheet.create({
   geminiCircleButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E6EAE4", alignItems: "center", justifyContent: "center" },
   geminiCircleButtonMint: { backgroundColor: "#E6EFE8", borderColor: "transparent" },
   geminiActionGlyph: { color: "#0E5B36", fontSize: 20, fontWeight: "700" },
-  geminiBellIcon: { width: 22, height: 23, alignItems: "center", justifyContent: "center" },
-  geminiBellDome: { width: 14, height: 14, borderWidth: 1.7, borderColor: "#0E5B36", borderBottomWidth: 1, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, marginTop: 2 },
-  geminiBellBase: { width: 18, height: 2, borderRadius: 2, backgroundColor: "#0E5B36", marginTop: -1 },
-  geminiBellClapper: { width: 4, height: 3, borderRadius: 2, backgroundColor: "#0E5B36", marginTop: 1 },
+  geminiHistoryIcon: { width: 21, height: 21, borderRadius: 11, borderWidth: 1.8, borderColor: "#0E5B36", alignItems: "center", justifyContent: "center" },
+  geminiHistoryHands: { width: 10, height: 10, position: "relative" },
+  geminiHistoryHandVertical: { position: "absolute", left: 4, top: 0, width: 1.8, height: 5.5, borderRadius: 2, backgroundColor: "#0E5B36" },
+  geminiHistoryHandHorizontal: { position: "absolute", left: 4, top: 4, width: 5, height: 1.8, borderRadius: 2, backgroundColor: "#0E5B36" },
   geminiPersonIcon: { width: 22, height: 22, alignItems: "center", justifyContent: "center" },
   geminiPersonHead: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.7, borderColor: "#0E5B36", marginBottom: 2 },
   geminiPersonShoulders: { width: 17, height: 8, borderWidth: 1.7, borderColor: "#0E5B36", borderBottomWidth: 0, borderTopLeftRadius: 9, borderTopRightRadius: 9 },
