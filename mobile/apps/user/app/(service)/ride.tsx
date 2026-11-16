@@ -12,15 +12,15 @@ import {
 import { useRouter } from "expo-router";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import * as Location from "expo-location";
+import { palette } from "@afcon360/mobile-ui";
 import {
-  ActionButton,
-  AppScreen,
-  PageHeader,
-  Panel,
-  SectionTitle,
-  StatusPill,
-  palette
-} from "@afcon360/mobile-ui";
+  PamojaActionButton as ActionButton,
+  PamojaScreen as AppScreen,
+  PamojaPageHeader as PageHeader,
+  PamojaPanel as Panel,
+  PamojaSectionTitle as SectionTitle,
+  PamojaStatusPill as StatusPill,
+} from "../../src/components/PamojaScreen";
 import { authClient } from "../../src/services/api";
 import { MobileAuthError } from "@afcon360/mobile-core";
 
