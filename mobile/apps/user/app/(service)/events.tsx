@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
+import { palette } from "@afcon360/mobile-ui";
 import {
-  ActionButton,
-  AppScreen,
-  PageHeader,
-  Panel,
-  SectionTitle,
-  StatusPill,
-  palette,
-} from "@afcon360/mobile-ui";
+  PamojaActionButton as ActionButton,
+  PamojaScreen as AppScreen,
+  PamojaPageHeader as PageHeader,
+  PamojaPanel as Panel,
+  PamojaSectionTitle as SectionTitle,
+  PamojaStatusPill as StatusPill,
+} from "../../src/components/PamojaScreen";
 import {
   NativeEventDetail,
   NativeEventRegistration,
