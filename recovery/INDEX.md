@@ -83,3 +83,35 @@ Each candidate will be classified as:
 2. Preserve for later development.
 3. Recover through a focused change / pull request.
 4. Superseded or safe to retire after confirmation.
+
+
+## Local dangling-commit inventory — 2026-11-16
+
+A read-only PowerShell audit on the Windows checkout inspected 27 candidate commit objects against the then-fetched `origin/main` commit `2f6f05d6e5c80c7a172ec90232bdc120b97fca11`.
+
+- All 27 object IDs resolved locally.
+- None was an ancestor of that `origin/main` snapshot.
+- The script's reference check covered `refs/heads`, `refs/remotes`, and `refs/tags` only. It did **not** inspect `refs/stash`, other refs, or reflogs. Therefore do not conclude that every object is wholly unreferenced until a broader reference/reflog audit is run.
+- No repository files, branches, tags, stashes, or remote refs were changed by the audit script.
+
+### Initial disposition based on changed paths and a read-only inspection of current main at the audited SHA
+
+| Candidate | Finding | Disposition |
+|---|---|---|
+| `0302f9ef`, `d8dd6eb8` | Both are WIP-style commits with the same six KYC/profile paths and identical reported change counts (299 insertions / 44 deletions), but they have different second parents. Patch identity has not yet been proved. | Keep both objects until exact patch comparison and `refs/stash` / reflog inventory. Inspect the KYC/profile changes only under an explicit contract; current AGENTS.md prohibits KYC edits without one. |
+| `1047eb74` | Production console streaming and DB/Socket.IO contract tests. Current main has `app/production_console/streaming.py`, `tests/test_db_credential_contract.py`, and `tests/test_socketio_queue_contract.py`. The current implementation uses realtime readiness guards and log redaction. | Appears represented/evolved in current main. No wholesale port; retain object until direct patch comparison. |
+| `5c8e5462`, `9ea6366f` | Twilio SMS/WhatsApp / OTP drafts. Current main has Twilio SMS handler, owner Twilio routes, and the SMS/WhatsApp owner section. | The current feature is present in evolved form. Do not restore the older drafts. Never port the two migration files from `5c8e5462`; migration governance remains unchanged. |
+| `a6a18efd` | Driver dashboard / MapLibre work and dashboard previews. Current main has the driver map, dashboard comparison, and dashboard-version paths. | Feature paths are represented in current main. Do not restore preview files or the entire old snapshot; only review any demonstrably missing functional fix. |
+| `0abb8d0f` | Model-bootstrap/favicon work. Current main has favicon assets and the model-bootstrap contract test. | Appears represented/evolved; no duplicate port without a specific missing behavior. |
+| `9b6e7b3f` | DriverProfile FK contract. Current main's model uses a table-level `ForeignKeyConstraint`, and the contract test exists. | Appears represented/evolved; no duplicate port. |
+| `1efeaad0` | Agent-onboarding server defaults and test. Current main has server defaults on the relevant status/deletion columns and the dedicated test. | Appears represented/evolved; no duplicate port. |
+| `b23b86fb` | Observability/CAS/notification ETag change. Current main's notifications unread-count route has an ETag and private cache-control response. | ETag portion is represented. CAS / app-initialization changes still require direct patch comparison before disposition. |
+| `efda0af6` | Offsite backup test (155 lines in candidate). Current main has a larger `tests/test_backup_offsite.py` with upload/download checksum verification and configuration checks. | Test coverage is present in an evolved form; no duplicate port. |
+| `62b9275f`, `c05fd34a` | Large H3 / production-console WIP snapshots; `62b9275f` touches 31 paths and contains candidate migration tooling, while `c05fd34a` includes a misplaced nested candidate migration path. | Preserve for later source inspection only. Do not merge either snapshot wholesale, do not modify root migration history, and do not transplant handwritten migration files. |
+| `89f2a526` | Adds `app/events/routes/assignment.py` (441 lines); that path is absent from current main at the audited SHA. | Preserve as an unintegrated feature candidate. Review authorization, service boundaries, idempotency, booking lifecycle, and tests before deciding whether to recover. |
+| `45f1ad5f` | Two-line Wallet payer identity change. Current main has a substantially developed Wallet marketplace invoice service, but exact behavior equivalence is not yet proved. | Preserve pending exact diff comparison; Wallet changes require an explicit contract. |
+| `23dc1b8f` | Adds 73 lines to an owner MFA recovery security test file. The exact old test path was not found on current main. | Preserve and inspect against current MFA recovery tests; do not assume coverage is missing until alternate test paths are checked. |
+| `602000bc` | WIP migration-governance guidance change in AGENTS.md. | Keep as historical policy evidence; compare to current AGENTS.md before any documentation port. |
+| `e4cf3775`, `333dca34`, `946b2b45`, `be6e7579`, `3c6f39fd`, `e6dcddf4`, `d5e29918`, `d4e91535`, `f6f2155f`, `08f79dda` | Small app-initialization, test, workflow, and documentation amendments. | Retain until the exact current-main diffs are checked; do not promote individually based only on commit titles. |
+
+These are initial content-presence checks, not proof that every old blob is byte-identical to current main. Exact patch comparison and the broader refs/reflog check remain open.
