@@ -681,7 +681,7 @@ export default function Wallet() {
                   <Text style={{ color: selectedCurrency === account.currency ? "#FFCC00" : palette.ink, fontSize: 25, fontWeight: "900" }}>
                     {account.balance} {account.currency}
                   </Text>
-                  <Text style={{ color: palette.muted, fontSize: 12 }}>
+                  <Text style={{ color: selectedCurrency === account.currency ? "rgba(255,255,255,0.78)" : palette.muted, fontSize: 12 }}>
                     Balance read directly from the Wallet ledger
                   </Text>
                 </Pressable>
