@@ -159,7 +159,7 @@ export default function Events() {
             placeholder="Search football, fan zone, concert…"
             placeholderTextColor="#87938C"
             autoCapitalize="none"
-            style={{ backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink }}
+            style={{ backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: palette.border, borderRadius: 13, padding: 12, color: palette.ink }}
           />
         </View>
         <View style={{ gap: 6 }}>
@@ -182,7 +182,7 @@ export default function Events() {
               key={event.public_id}
               onPress={() => void openEvent(event)}
               disabled={busy}
-              style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 12, padding: 12, gap: 5, backgroundColor: palette.surface }}
+              style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 18, padding: 16, gap: 7, backgroundColor: palette.surface }}
             >
               <Text style={{ color: palette.ink, fontSize: 16, fontWeight: "900" }}>{event.name}</Text>
               <Text style={{ color: palette.muted }}>{event.city}, {event.country}</Text>
@@ -210,7 +210,7 @@ export default function Events() {
             const isFree = Number(ticket.price) <= 0;
             const canRegister = isFree && ticket.is_available_now && selectedEvent.registration.state === "open";
             return (
-              <View key={ticket.ticket_token} style={{ borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10, gap: 6 }}>
+              <View key={ticket.ticket_token} style={{ borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 12, gap: 8 }}>
                 <Text style={{ color: palette.ink, fontWeight: "900" }}>{ticket.name}</Text>
                 {ticket.description ? <Text style={{ color: palette.muted }}>{ticket.description}</Text> : null}
                 <Text style={{ color: palette.ink, fontWeight: "800" }}>{ticketPrice(ticket)}</Text>
