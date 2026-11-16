@@ -5,7 +5,6 @@ on:
     branches:
       - feat/native-user-app-integration-20261108
       - feat/user-home-dashboard-redesign-20261114
-      - work/user-home-curation-20261116
     paths:
       - "mobile/apps/user/**"
       - "mobile/packages/**"
@@ -42,7 +41,7 @@ jobs:
   publish-user-preview:
     name: Validate and publish User preview update
     needs: report-ota-configuration
-    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/feat/native-user-app-integration-20261108' || github.ref == 'refs/heads/feat/user-home-dashboard-redesign-20261114' || github.ref == 'refs/heads/work/user-home-curation-20261116') && vars.AFCON360_USER_EAS_PROJECT_ID != '' }}
+    if: ${{ (github.event_name == '"'"'push'"'"' || github.event_name == '"'"'workflow_dispatch'"'"') && (github.ref == '"'"'refs/heads/feat/native-user-app-integration-20261108'"'"' || github.ref == '"'"'refs/heads/feat/user-home-dashboard-redesign-20261114'"'"') && vars.AFCON360_USER_EAS_PROJECT_ID != '"'"'"'"'"'"' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     defaults:
@@ -69,7 +68,7 @@ jobs:
           run_install: false
 
       - name: Install User workspace dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Verify Expo SDK dependency compatibility
         run: pnpm --filter @afcon360/user-app exec expo install --check

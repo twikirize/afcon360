@@ -8,13 +8,14 @@ import Animated, {
 } from "react-native-reanimated";
 import { colors, typography, spacing, radii, shadows } from "../theme/tokens";
 
-type ServiceKey = "events" | "stays" | "rides" | "adventure";
+type ServiceKey = "events" | "stays" | "rides" | "tourism";
 
 type Service = {
   key: ServiceKey;
   label: string;
   hint: string;
   icon: string;
+  isWeb?: boolean;
   bgColor: string;
   borderColor: string;
   iconBg: string;
@@ -53,14 +54,15 @@ const SERVICES: Service[] = [
     accessibilityLabel: "Mobility and rides",
   },
   {
-    key: "adventure",
+    key: "tourism",
     label: "Adventure",
-    hint: "Tours · Safaris · Experiences",
+    hint: "Tourism \u00B7 Safaris",
     icon: "\u{1F30D}",
+    isWeb: true,
     bgColor: "#F0F3E5",
     borderColor: "#E0E7C9",
     iconBg: "#E1E9C9",
-    accessibilityLabel: "Adventure, tours and experiences",
+    accessibilityLabel: "Adventure and tourism on website",
   },
 ];
 
@@ -137,6 +139,20 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: "700",
   },
+  webHint: {
+    alignSelf: "flex-start",
+    marginTop: 2,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+    backgroundColor: "rgba(23,61,40,0.08)",
+  },
+  webHintText: {
+    color: colors.brand.emerald,
+    fontSize: typography.overline.fontSize,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
 });
 
 type ServiceTileProps = {
@@ -191,7 +207,13 @@ const ServiceTile = ({ service, index, onPress }: ServiceTileProps) => {
             </View>
           </View>
           <Text style={styles.title}>{service.label}</Text>
-          <Text style={styles.hint}>{service.hint}</Text>
+          {service.isWeb ? (
+            <View style={styles.webHint}>
+              <Text style={styles.webHintText}>{service.hint + " \u2197"}</Text>
+            </View>
+          ) : (
+            <Text style={styles.hint}>{service.hint}</Text>
+          )}
         </Pressable>
       </Animated.View>
     </Animated.View>

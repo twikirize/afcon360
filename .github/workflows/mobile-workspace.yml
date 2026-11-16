@@ -60,7 +60,7 @@ jobs:
           run_install: false
 
       - name: Install workspace dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Check approved website handoffs and native account deletion
         run: pnpm navigation:check
@@ -269,7 +269,7 @@ jobs:
       - name: Install User app workspace dependencies
         if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Check User app Expo dependency compatibility
         if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile

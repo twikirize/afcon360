@@ -134,7 +134,7 @@ export default function UserHome() {
 
   const openEventSearch = useCallback((query = "") => {
     router.push({
-      pathname: "/(service)/events",
+      pathname: '/(service)/events',
       params: query ? { query } : {},
     } as never);
   }, [router]);
@@ -142,24 +142,24 @@ export default function UserHome() {
   const openService = useCallback((service: string) => {
     switch (service) {
       case "rides":
-        router.push("/(service)/ride" as never);
+        router.push('/(service)/ride' as never);
         break;
       case "stays":
-        router.push("/(service)/stays" as never);
+        router.push('/(service)/stays' as never);
         break;
       case "events":
         openEventSearch();
         break;
       case "wallet":
-        router.push("/(tabs)/wallet" as never);
+        router.push('/(tabs)/wallet' as never);
         break;
-      case "adventure":
-        router.push("/(service)/adventure" as never);
+      case "tourism":
+        openWebsite("/tourism");
         break;
       default:
-        router.push("/(tabs)/explore" as never);
+        router.push('/(tabs)/explore' as never);
     }
-  }, [openEventSearch, router]);
+  }, [openEventSearch, openWebsite, router]);
 
   const openTrendingItem = useCallback((item: FeedItem) => {
     if (item.type === "event") {
@@ -175,14 +175,14 @@ export default function UserHome() {
       return;
     }
     if (item.type === "adventure" || item.metadata?.module_label?.toLowerCase().includes("tourism") || item.metadata?.module_label?.toLowerCase().includes("adventure")) {
-      openService("adventure");
+      openWebsite("/tourism");
       return;
     }
     if (item.link_url) {
       openWebsite(item.link_url);
       return;
     }
-    router.push("/(tabs)/explore" as never);
+    router.push('/(tabs)/explore' as never);
   }, [openEventSearch, openService, openWebsite, router]);
 
   const trendingItems = useMemo(() => {
@@ -278,7 +278,7 @@ export default function UserHome() {
             featured={featuredItem}
             baseUrl={apiBaseUrl}
             onFeaturedPress={() => featuredItem && openTrendingItem(featuredItem)}
-            onExplore={() => router.push("/(tabs)/explore" as never)}
+            onExplore={() => router.push('/(tabs)/explore' as never)}
           />
 
           <SearchBar
@@ -313,7 +313,6 @@ export default function UserHome() {
                 error={registrationsError}
                 onRefresh={loadRegistrations}
                 onBrowseEvents={() => openService("events")}
-                onViewEvent={(reg) => openEventSearch(reg.event.public_id || "")}
               />
             </>
           )}
@@ -374,14 +373,13 @@ const MyEventsSection = ({
   error,
   onRefresh,
   onBrowseEvents,
-  onViewEvent,
 }: {
   registrations: NativeEventRegistration[];
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
   onBrowseEvents: () => void;
-  onViewEvent: (reg: NativeEventRegistration) => void;
+  
 }) => {
   if (loading) {
     return (
@@ -436,7 +434,7 @@ const MyEventsSection = ({
             <Text style={styles.groupCount}>{upcoming.length} event{upcoming.length !== 1 ? "s" : ""}</Text>
           </View>
           {upcoming.map((reg) => (
-            <MyEventCard key={reg.registration_reference} registration={reg} onPress={() => onViewEvent(reg)} />
+            <MyEventCard key={reg.registration_reference} registration={reg} onPress={onBrowseEvents} />
           ))}
         </View>
       )}
@@ -448,7 +446,7 @@ const MyEventsSection = ({
             <Text style={styles.groupCount}>{past.length} event{past.length !== 1 ? "s" : ""}</Text>
           </View>
           {past.map((reg) => (
-            <MyEventCard key={reg.registration_reference} registration={reg} onPress={() => onViewEvent(reg)} past />
+            <MyEventCard key={reg.registration_reference} registration={reg} onPress={onBrowseEvents} past />
           ))}
         </View>
       )}
