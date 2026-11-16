@@ -11,14 +11,14 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { palette } from "@afcon360/mobile-ui";
 import {
-  AppScreen,
-  PageHeader,
-  Panel,
-  SectionTitle,
-  StatusPill,
-  palette,
-} from "@afcon360/mobile-ui";
+  PamojaScreen as AppScreen,
+  PamojaPageHeader as PageHeader,
+  PamojaPanel as Panel,
+  PamojaSectionTitle as SectionTitle,
+  PamojaStatusPill as StatusPill,
+} from "../../src/components/PamojaScreen";
 import { useFocusEffect } from "expo-router";
 import { walletClient } from "../../src/services/api";
 import type {
