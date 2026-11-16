@@ -1393,7 +1393,7 @@ const styles = StyleSheet.create({
   hostBannerButton: { minHeight: 42, paddingHorizontal: 14, paddingVertical: 10, justifyContent: "center", borderRadius: 11, backgroundColor: BRAND_GOLD, marginTop: 3 },
   hostBannerButtonText: { color: BRAND_DARK, fontSize: 11, fontWeight: "900" },
 
-  geminiPage: { flex: 1, backgroundColor: "#F5F6F2", paddingBottom: 28 },
+  geminiPage: { backgroundColor: "#F5F6F2", paddingBottom: 28 },
   geminiPageContent: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 8, gap: 14 },
   geminiTopHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
   geminiBrandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
