@@ -10,6 +10,8 @@ import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { palette as basePalette } from "@afcon360/mobile-ui";
 import { PamojaScreen as AppScreen, PamojaPageHeader as PageHeader } from "../../src/components/PamojaScreen";
+import { useAuth } from "../../src/auth/AuthProvider";
+import { getSelectedApiBaseUrl } from "../../src/services/api";
 
 const palette = {
   ...basePalette,
@@ -23,8 +25,6 @@ const palette = {
   border: "#E6EAE4",
   warningSoft: "#FFF4D5",
 };
-import { useAuth } from "../../src/auth/AuthProvider";
-import { getSelectedApiBaseUrl } from "../../src/services/api";
 
 const WEBSITE_ACTION_LABEL = "Opens on Pamoja website";
 
