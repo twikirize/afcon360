@@ -9,6 +9,13 @@ import {
   PamojaSectionTitle as SectionTitle,
   PamojaStatusPill as StatusPill,
 } from "../../src/components/PamojaScreen";
+import {
+  AccommodationBooking,
+  AccommodationBookingQuote,
+  AccommodationProperty,
+} from "@afcon360/mobile-core";
+import { accommodationClient } from "../../src/services/api";
+import { serviceErrorMessage } from "../../src/services/service-errors";
 
 const palette = {
   ...basePalette,
@@ -22,13 +29,6 @@ const palette = {
   border: "#E6EAE4",
   warningSoft: "#FFF4D5",
 };
-import {
-  AccommodationBooking,
-  AccommodationBookingQuote,
-  AccommodationProperty,
-} from "@afcon360/mobile-core";
-import { accommodationClient } from "../../src/services/api";
-import { serviceErrorMessage } from "../../src/services/service-errors";
 
 function dateOffset(days: number): string {
   const value = new Date();
