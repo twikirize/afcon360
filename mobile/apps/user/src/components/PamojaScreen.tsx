@@ -1,13 +1,13 @@
 import React from "react";
-import type { ReactNode, ViewStyle } from "react";
+import type { ReactNode } from "react";
 import {
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  ViewStyle,
 } from "react-native";
+import type { ViewStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Tone = "green" | "gold" | "neutral";
