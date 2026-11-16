@@ -10,6 +10,14 @@ import {
   PamojaSectionTitle as SectionTitle,
   PamojaStatusPill as StatusPill,
 } from "../../src/components/PamojaScreen";
+import {
+  NativeEventDetail,
+  NativeEventRegistration,
+  NativeEventSummary,
+  NativeEventTicketType,
+} from "@afcon360/mobile-core";
+import { eventClient } from "../../src/services/api";
+import { serviceErrorMessage } from "../../src/services/service-errors";
 
 const palette = {
   ...basePalette,
@@ -23,14 +31,6 @@ const palette = {
   border: "#E6EAE4",
   warningSoft: "#FFF4D5",
 };
-import {
-  NativeEventDetail,
-  NativeEventRegistration,
-  NativeEventSummary,
-  NativeEventTicketType,
-} from "@afcon360/mobile-core";
-import { eventClient } from "../../src/services/api";
-import { serviceErrorMessage } from "../../src/services/service-errors";
 
 function displayDate(start: string | null, end: string | null): string {
   if (!start) return "Date to be announced";
