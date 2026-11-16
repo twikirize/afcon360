@@ -737,7 +737,7 @@ export default function UserHome() {
               <Text style={styles.geminiServiceTitle}>Adventure</Text>
               <Text style={styles.geminiServiceSubtitle}>Tours, safaris & experiences</Text>
               <View style={styles.geminiWebsiteHint}>
-                <Text style={styles.geminiWebsiteHintText}>ON PAMOJA WEBSITE</Text>
+                <Text style={styles.geminiWebsiteHintText}>Tourism · website</Text>
               </View>
             </Pressable>
           </View>
