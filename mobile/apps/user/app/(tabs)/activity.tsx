@@ -1,7 +1,15 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, AppState, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { AppScreen, PageHeader, Panel, SectionTitle, StatusPill, palette, EmptyState } from "@afcon360/mobile-ui";
+import { palette } from "@afcon360/mobile-ui";
+import {
+  PamojaEmptyState as EmptyState,
+  PamojaScreen as AppScreen,
+  PamojaPageHeader as PageHeader,
+  PamojaPanel as Panel,
+  PamojaSectionTitle as SectionTitle,
+  PamojaStatusPill as StatusPill,
+} from "../../src/components/PamojaScreen";
 import { useFocusEffect } from "expo-router";
 import { authClient } from "../../src/services/api";
 
