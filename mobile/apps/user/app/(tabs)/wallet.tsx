@@ -19,6 +19,18 @@ import {
   PamojaSectionTitle as SectionTitle,
   PamojaStatusPill as StatusPill,
 } from "../../src/components/PamojaScreen";
+import { useFocusEffect } from "expo-router";
+import { walletClient } from "../../src/services/api";
+import type {
+  ResolvedWalletRecipient,
+  WalletAccount,
+  WalletDepositStatus,
+  WalletPinStatus,
+  WalletTransaction,
+  WalletWithdrawalNetwork,
+  WalletWithdrawalQuote,
+  WalletWithdrawalStatus,
+} from "@afcon360/mobile-core";
 
 const palette = {
   ...basePalette,
@@ -32,18 +44,6 @@ const palette = {
   border: "#E6EAE4",
   warningSoft: "#FFF4D5",
 };
-import { useFocusEffect } from "expo-router";
-import { walletClient } from "../../src/services/api";
-import type {
-  ResolvedWalletRecipient,
-  WalletAccount,
-  WalletDepositStatus,
-  WalletPinStatus,
-  WalletTransaction,
-  WalletWithdrawalNetwork,
-  WalletWithdrawalQuote,
-  WalletWithdrawalStatus,
-} from "@afcon360/mobile-core";
 
 type WalletTab = "balance" | "deposit" | "send" | "withdraw" | "history" | "pin";
 
