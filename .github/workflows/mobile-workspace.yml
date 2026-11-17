@@ -50,6 +50,7 @@ permissions:
 
 env:
   AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+  AFCON360_USER_E2E_APK_RECIPE_VERSION: "v3"
 
 jobs:
   classify-user-changes:
@@ -496,7 +497,7 @@ jobs:
           # Bump recipe-v3 only when the disposable APK build recipe changes
           # (manifest override, Android SDK/build tools, signing mode or Gradle task).
           EAS_PROFILE_SHA256="$(sha256sum eas.json | awk '{print $1}')"
-          KEY="afcon360-user-e2e-apk-recipe-v3-native-$FINGERPRINT-eas-$EAS_PROFILE_SHA256"
+          KEY="afcon360-user-e2e-apk-recipe-${AFCON360_USER_E2E_APK_RECIPE_VERSION}-native-$FINGERPRINT-eas-$EAS_PROFILE_SHA256"
           echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
           echo "eas_profile_sha256=$EAS_PROFILE_SHA256" >> "$GITHUB_OUTPUT"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
