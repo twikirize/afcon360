@@ -614,7 +614,7 @@ def main() -> None:
     tap_text_scrolling("Uninstall AFCON360 from this device")
     wait_for_text("Uninstall AFCON360?", "Keep AFCON360", timeout=12, label="AFCON360 uninstall confirmation")
     save_screen("05a-uninstall-confirmation")
-    tap_text("Keep AFCON360")
+    tap_text("KEEP AFCON360")
     wait_for_text("App settings.", "Method 1", timeout=12, label="app remains installed after cancelling uninstall")
     mark_stage("uninstall_confirmation_cancelled")
     run_adb("shell", "input", "keyevent", "4")
