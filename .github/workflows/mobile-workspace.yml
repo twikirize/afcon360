@@ -913,8 +913,8 @@ jobs:
           ls -l /dev/kvm
           test -r /dev/kvm
           test -w /dev/kvm
-      - name: Focused Account journey gate — verify identity, uninstall cancellation and return
-        id: account_only_journey
+      - name: Focused login and primary navigation gate — sign in, Home, Activity, Wallet and Account
+        id: login_navigation_journey
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           disable-linux-hw-accel: false
@@ -925,9 +925,9 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
           disable-animations: true
           emulator-boot-timeout: 600
-          script: AFCON360_E2E_ACCOUNT_ONLY=1 python mobile/scripts/verify-user-authenticated-journey.py
+          script: AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1 python mobile/scripts/verify-user-authenticated-journey.py
       - name: Install, authenticate, test services, restore session and sign out
-        if: ${{ steps.account_only_journey.outcome == 'success' }}
+        if: ${{ steps.login_navigation_journey.outcome == 'success' }}
         id: android_journey
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
@@ -955,7 +955,7 @@ jobs:
   user-android-version-compatibility:
     name: User authenticated journey — ${{ matrix.android-label }}
     needs: user-authenticated-journey
-    if: ${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' && needs.user-authenticated-journey.outputs.apk_rebuilt == 'true' && github.ref_name != 'fix/user-release-engineering-20261115' }}
+    if: ${{ needs.user-authenticated-journey.result == 'success' && needs.user-authenticated-journey.outputs.apk_ready == 'true' && needs.user-authenticated-journey.outputs.apk_rebuilt == 'true' && github.ref_name != 'fix/user-release-engineering-20261115' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
