@@ -495,10 +495,13 @@ jobs:
           test -n "$FINGERPRINT"
           # Bump recipe-v3 only when the disposable APK build recipe changes
           # (manifest override, Android SDK/build tools, signing mode or Gradle task).
-          KEY="afcon360-user-e2e-apk-recipe-v3-native-$FINGERPRINT"
+          EAS_PROFILE_SHA256="$(sha256sum eas.json | awk '{print $1}')"
+          KEY="afcon360-user-e2e-apk-recipe-v3-native-$FINGERPRINT-eas-$EAS_PROFILE_SHA256"
           echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
+          echo "eas_profile_sha256=$EAS_PROFILE_SHA256" >> "$GITHUB_OUTPUT"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
           echo "Native Android fingerprint: $FINGERPRINT"
+          echo "EAS profile SHA-256: $EAS_PROFILE_SHA256"
           echo "Reusable APK cache key: $KEY"
       - name: Restore native-fingerprint-keyed User E2E APK
         id: user-apk-cache
@@ -516,6 +519,7 @@ jobs:
         env:
           USER_APK_CACHE_MATCHED_KEY: ${{ steps.user-apk-cache.outputs.cache-matched-key }}
           USER_APK_NATIVE_FINGERPRINT: ${{ steps.user-apk-key.outputs.fingerprint }}
+          USER_APK_EAS_PROFILE_SHA256: ${{ steps.user-apk-key.outputs.eas_profile_sha256 }}
           FORCE_USER_APK_REBUILD: ${{ inputs.force_apk_rebuild == true }}
         run: |
           set -euo pipefail
@@ -538,12 +542,17 @@ jobs:
           test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA" || exit 0
 
           CACHED_FINGERPRINT="$(sed -n 's/^native_fingerprint=//p' "$INFO" | head -n 1)"
+          CACHED_EAS_PROFILE_SHA256="$(sed -n 's/^eas_profile_sha256=//p' "$INFO" | head -n 1)"
           if [ -n "$CACHED_FINGERPRINT" ]; then
             if [ "$CACHED_FINGERPRINT" != "$USER_APK_NATIVE_FINGERPRINT" ]; then
               echo "Cached APK native fingerprint differs; build a compatible native binary."
               exit 0
             fi
-            echo "Cached APK native fingerprint matches the current Android runtime."
+            if [ "$CACHED_EAS_PROFILE_SHA256" != "$USER_APK_EAS_PROFILE_SHA256" ]; then
+              echo "EAS APK profile changed; invalidate the APK cache."
+              exit 0
+            fi
+            echo "Cached APK native fingerprint and EAS profile both match."
           else
             # One-time safe migration for older source-keyed cache entries.
             # The legacy build did not record an Expo fingerprint, so only
@@ -567,6 +576,7 @@ jobs:
               exit 0
             fi
             printf 'native_fingerprint=%s\n' "$USER_APK_NATIVE_FINGERPRINT" >> "$INFO"
+            printf 'eas_profile_sha256=%s\n' "$USER_APK_EAS_PROFILE_SHA256" >> "$INFO"
             echo "Legacy APK native inputs are unchanged; migrated it to fingerprint validation."
           fi
 
@@ -788,6 +798,7 @@ jobs:
           source_commit=$GITHUB_SHA
           cache_key=$USER_APK_CACHE_KEY
           native_fingerprint=$USER_APK_NATIVE_FINGERPRINT
+          eas_profile_sha256=$USER_APK_EAS_PROFILE_SHA256
           apk_sha256=$APK_SHA256
           EOF
       - name: Persist fresh User APK immediately
@@ -1324,7 +1335,8 @@ jobs:
           "$AAPT" dump badging "$GITHUB_WORKSPACE/afcon360-user-preview.apk" > "$RUNNER_TEMP/afcon360-user-preview-badging.txt"
           BADGING="$RUNNER_TEMP/afcon360-user-preview-badging.txt"
           grep -F "package: name='space.pamoja.afcon360.user.preview'" "$BADGING"
-          grep -F "versionName='1.0.2'" "$BADGING"
+          VERSION_NAME="$(sed -n "s/^package:.*versionName:'\\([^']*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
+          test -n "$VERSION_NAME"
           VERSION_CODE="$(sed -n "s/^package:.*versionCode:'\\([^']*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
           MINIMUM="$(sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
           TARGET="$(sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
@@ -1335,7 +1347,8 @@ jobs:
           test -n "$CERT_SHA256"
           {
             echo "package=space.pamoja.afcon360.user.preview"
-            echo "version_name=1.0.2"
+            echo "version_name=$VERSION_NAME"
+            echo "native_fingerprint=${{ needs.user-authenticated-journey.outputs.native_fingerprint }}"
             echo "version_code=$VERSION_CODE"
             echo "min_sdk=$MINIMUM"
             echo "target_sdk=$TARGET"
@@ -1354,5 +1367,5 @@ jobs:
             afcon360-user-preview.apk.sha256
             afcon360-user-preview-build-info.txt
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
 
