@@ -726,36 +726,6 @@ jobs:
           AFCON360_E2E_BUILD: "true"
           EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
         run: pnpm --filter "@afcon360/user-app" exec expo prebuild --platform android --no-install --clean
-      - name: Allow private-network HTTP only in this disposable preview APK
-        if: steps.validate-user-apk.outputs.reusable != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import re
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-          manifest = Path("mobile/apps/user/android/app/src/main/AndroidManifest.xml")
-          source = manifest.read_text(encoding="utf-8")
-          if not re.search(r"\bxmlns:android\s*=", source[:2000]):
-              raise SystemExit("Generated Android manifest is missing its android namespace declaration.")
-          app_tag = re.search(r"<application\b[^>]*>", source, flags=re.DOTALL)
-          if app_tag is None:
-              raise SystemExit("Generated Android manifest has no application element.")
-          opening = app_tag.group(0)
-          if re.search(r"\bandroid:usesCleartextTraffic\s*=", opening):
-              opening = re.sub(
-                  r"\bandroid:usesCleartextTraffic\s*=\s*[\"'][^\"']*[\"']",
-                  'android:usesCleartextTraffic="true"',
-                  opening,
-              )
-          else:
-              opening = opening[:-1] + ' android:usesCleartextTraffic="true">'
-          source = source[:app_tag.start()] + opening + source[app_tag.end():]
-          ET.fromstring(source)
-          manifest.write_text(source, encoding="utf-8")
-          print("HTTP enabled only in this disposable preview APK; runtime API validation restricts selected HTTP servers to loopback or private IPv4.")
-          PY
       - name: Configure ephemeral release signing
         if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
