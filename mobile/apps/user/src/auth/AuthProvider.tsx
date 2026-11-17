@@ -77,9 +77,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(cached.user);
             setIsOffline(true);
             setLastVerifiedAt(cached.lastVerifiedAt);
-            setRestoreError(
-              "Connection unavailable. Showing saved information until AFCON360 verifies your account again."
-            );
+            // A cached identity is an offline presentation state, not an
+            // authentication error. Let the User tabs render their cached screens.
+            setRestoreError(null);
           } else {
             setUser(null);
             setIsOffline(true);

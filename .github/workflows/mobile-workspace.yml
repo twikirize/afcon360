@@ -543,7 +543,7 @@ jobs:
         run: |
           python - <<'PY'
           import os
-          from sqlalchemy import create_engine
+          from sqlalchemy import create_engine, inspect
           from app.extensions import db
           from app.identity.models.user import User  # register the users FK target
           from app.models.system_config import SystemConfig
@@ -553,7 +553,7 @@ jobs:
           # so create the model table BEFORE create_app() is allowed to query it.
           engine = create_engine(os.environ["DATABASE_URL"], future=True)
           try:
-              existed = SystemConfig.__table__.exists(bind=engine)
+              existed = inspect(engine).has_table(SystemConfig.__tablename__)
               db.Model.metadata.create_all(
                   bind=engine,
                   tables=[SystemConfig.__table__],
