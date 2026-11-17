@@ -20,6 +20,7 @@ const checks = [
   ["Expo Updates native module remains installed", read("apps/user/package.json").includes('"expo-updates"')],
   ["Expo Updates native config plugin remains enabled", /"expo-updates"/.test(read("apps/user/app.config.ts"))],
   ["Native runtime fingerprint automatically gates OTA compatibility", /runtimeVersion:\s*\{\s*policy:\s*"fingerprint"\s*\}/.test(read("apps/user/app.config.ts"))],
+  ["Internal preview builds alone opt into Android cleartext for private laptop testing", /withPreviewCleartextTraffic/.test(read("apps/user/app.config.ts")) && /enabled:\s*isPreview/.test(read("apps/user/app.config.ts")) && /options\.enabled !== true/.test(read("apps/user/plugins/withPreviewCleartextTraffic.js")) && /android:usesCleartextTraffic/.test(read("apps/user/plugins/withPreviewCleartextTraffic.js"))],
   ["E2E OTA channel is isolated from user-facing preview", /isE2EBuild\s*\?\s*"afcon360-user-e2e"/.test(read("apps/user/app.config.ts")) && /updates: easProjectId\s*\?/.test(read("apps/user/app.config.ts"))],
   ["E2E startup waits briefly for the isolated OTA bundle", /fallbackToCacheTimeout: isE2EBuild \? 30_000 : 0/.test(read("apps/user/app.config.ts"))],
   ["Preview APK retains its user-facing preview channel", /"apk-share"[\s\S]*?"channel": "preview"[\s\S]*?"buildType": "apk"/.test(read("apps/user/eas.json"))],
