@@ -8,12 +8,20 @@ const easProjectId =
   process.env.EAS_BUILD_PROJECT_ID?.trim();
 const isEasBuild = process.env.EAS_BUILD === "true";
 const isE2EBuild = process.env.AFCON360_E2E_BUILD === "true";
-// Automated E2E runs receive their current JS bundle through an isolated
-// channel. Feature code must never publish to the user-facing preview channel.
+// CI E2E and the installable developer APK use separate isolated channels.
+// Neither publishes unreviewed feature code to the user-facing preview channel.
+const previewUpdateChannel =
+  process.env.AFCON360_UPDATE_CHANNEL?.trim() || "preview";
+if (
+  isPreview &&
+  !["preview", "user-development"].includes(previewUpdateChannel)
+) {
+  throw new Error("AFCON360 preview builds may use only preview or user-development update channels.");
+}
 const updateChannel = isE2EBuild
   ? "afcon360-user-e2e"
   : isPreview
-  ? "preview"
+  ? previewUpdateChannel
   : "production";
 
 const easProjectIdPattern =
