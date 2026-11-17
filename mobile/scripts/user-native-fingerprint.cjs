@@ -7,20 +7,27 @@
  * Run from mobile/apps/user after workspace dependencies are installed:
  *   node ../../scripts/user-native-fingerprint.cjs
  *
- * The fingerprint includes native dependencies, config plugins and native
- * project/configuration inputs. It intentionally excludes OTA-only JS/TS app
- * source and Expo config "extra" values (API origin/server-selection runtime
- * values). Bump the E2E_APK_RECIPE_VERSION in the workflow when changing the
- * disposable APK build recipe itself (e.g. manifest patch, SDK/build tools,
+ * Resolve @expo/fingerprint from the installed Expo package so the fingerprint
+ * version matches this app's SDK rather than an unpinned latest CLI download.
+ * The project's fingerprint.config.js supplies the balanced native-only
+ * policy, excluding OTA-only Expo "extra" runtime values.
+ *
+ * Bump E2E_APK_RECIPE_VERSION in mobile-workspace.yml when changing the
+ * disposable APK build recipe itself (manifest patch, SDK/build tools,
  * signing mode or Gradle invocation).
  */
 const path = require("node:path");
-const Fingerprint = require("expo/fingerprint");
 
 async function main() {
+  const expoEntry = require.resolve("expo");
+  const fingerprintPackage = require.resolve("@expo/fingerprint", {
+    paths: [path.dirname(expoEntry)]
+  });
+  const Fingerprint = require(fingerprintPackage);
+
   if (typeof Fingerprint.createProjectHashAsync !== "function") {
     throw new Error(
-      "Expo Fingerprint API is unavailable. Check the installed Expo SDK and workspace dependencies."
+      "The installed Expo SDK does not expose createProjectHashAsync from @expo/fingerprint."
     );
   }
 
