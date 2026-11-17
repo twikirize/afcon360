@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Cancel account closure — AFCON360{% endblock %}
+{% block content %}
+<section style="max-width:680px;margin:0 auto;padding:32px 18px 56px;line-height:1.7">
+  <p style="color:#087a4b;font-weight:800;letter-spacing:.12em;text-transform:uppercase">Account closure</p>
+  <h1>Cancel account closure</h1>
+
+  {% if error %}
+  <div role="alert" class="alert alert-danger">{{ error }}</div>
+  <p>If you need help restoring your account, contact AFCON360 support.</p>
+  {% else %}
+  <p>Your account is disabled and scheduled for closure. Confirming below cancels the closure and restores sign-in and account access.</p>
+  <p>This does not undo any payout, booking or financial obligation you have already agreed to.</p>
+  <form method="post" action="{{ url_for('account_closure_cancel', token=token) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-primary" type="submit">Keep my account and cancel closure</button>
+  </form>
+  <p style="font-size:.9rem;color:#4b5563;margin-top:16px">If you did not request closure, do not share this link. Contact support immediately.</p>
+  {% endif %}
+
+  <p><a href="/apps">Back to AFCON360 Apps</a></p>
+</section>
+{% endblock %}

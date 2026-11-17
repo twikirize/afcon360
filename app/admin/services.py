@@ -128,6 +128,8 @@ def get_owner_dashboard_data(user_id: int):
     RBAC roles, and system health.
     This will roll back if any part fails and logs detailed errors.
     """
+    from app.auth.account_deletion_service import account_closure_metrics
+
     # Load RBAC roles using the nested identity service call
     user_roles = load_user_roles(user_id)
 
@@ -138,6 +140,9 @@ def get_owner_dashboard_data(user_id: int):
     new_users_today = User.query.filter(
         User.created_at >= datetime.now(timezone.utc).date()
     ).count()
+
+    # Account closure metrics
+    closure = account_closure_metrics()
 
     # Organisation stats
     total_orgs = Organisation.query.count()
@@ -211,6 +216,9 @@ def get_owner_dashboard_data(user_id: int):
         "verified_users": verified_users,
         "active_users": active_users,
         "new_users_today": new_users_today,
+        "closed_accounts": closure.get("closed_accounts", 0),
+        "accounts_in_grace": closure.get("accounts_in_grace", 0),
+        "closures_due": closure.get("closures_due", 0),
         "total_orgs": total_orgs,
         "active_orgs": active_orgs,
         "pending_orgs": pending_orgs,

@@ -407,17 +407,17 @@ class TestListDriversOnline:
 
     def test_no_online_filter(self, provider_service, driver_profile):
         result = provider_service.list_drivers(page=1, per_page=25)
-        assert 'items' in result
-        assert isinstance(result['items'], list)
+        assert isinstance(result.items, list)
+        assert result.total >= 1
 
     def test_online_true_filter(self, provider_service, driver_profile):
         result = provider_service.list_drivers(page=1, per_page=25, online='true')
-        codes = [d['driver_code'] for d in result['items']]
+        codes = [d.driver_code for d in result.items]
         assert driver_profile.driver_code in codes
 
     def test_online_false_filter(self, provider_service, driver_profile):
         result = provider_service.list_drivers(page=1, per_page=25, online='false')
-        codes = [d['driver_code'] for d in result['items']]
+        codes = [d.driver_code for d in result.items]
         assert driver_profile.driver_code not in codes
 
 

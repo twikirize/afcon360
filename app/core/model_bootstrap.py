@@ -163,7 +163,7 @@ _IDENTIFIER_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 GROUP_A_EXPECTED = {
     'apicallstatus': ('SUCCESS', 'FAILURE', 'TIMEOUT', 'RATE_LIMITED',),
-    'auditseverity': ('INFO', 'WARNING', 'CRITICAL', 'SECURITY',),
+    'auditseverity': ('INFO', 'WARNING', 'CRITICAL', 'SECURITY', 'LOW', 'MEDIUM', 'HIGH',),
     'compensationmodel': ('REVENUE_SPLIT', 'FIXED_RENTAL', 'HYBRID', 'FIXED_FEE', 'PERCENTAGE', 'PER_KM', 'PER_HOUR', 'DAILY_RATE', 'WEEKLY_RATE', 'MONTHLY_RATE', 'REVENUE_SHARE',),
     'compliance_decision': ('allowed', 'blocked', 'conditional',),
     'compliance_enforcement_level': ('optional', 'conditional', 'mandatory',),

@@ -1,0 +1,76 @@
+{% extends "transport/base.html" %}
+{% block title %}Vehicles — Admin{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span>
+<span class="current">Vehicles</span>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">All Vehicles</h1>
+    <p class="page-subtitle">Transport vehicle registry</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('transport_admin.dashboard') }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Dashboard
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Vehicles</span>
+    <span class="badge badge-gray">{{ vehicles.total if vehicles else 0 }}</span>
+  </div>
+  {% if vehicles and vehicles.items %}
+  <div class="t-table-wrap">
+    <table class="t-table">
+      <thead>
+        <tr>
+          <th>License Plate</th>
+          <th>Make / Model</th>
+          <th>Class</th>
+          <th>Status</th>
+          <th>Owner</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vehicles.items %}
+        <tr>
+          <td class="td-mono">{{ v.license_plate }}</td>
+          <td>{{ v.make }} {{ v.model }}</td>
+          <td>{{ (v.vehicle_class.value if v.vehicle_class else '—')|replace('_',' ')|title }}</td>
+          <td>
+            <span class="badge badge-{{ 'green' if v.status == 'active' else 'yellow' if v.status == 'pending' else 'red' }}">
+              {{ (v.status or '—')|replace('_',' ')|title }}
+            </span>
+          </td>
+          <td>
+            {% if v.owner_type == 'driver' %}
+              <span class="badge badge-blue">Driver owner</span>
+            {% elif v.owner_type == 'organisation' %}
+              <span class="badge badge-purple">Organisation owner</span>
+            {% else %}
+              <span class="badge badge-gray">User owner</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('transport_admin.admin_vehicle_detail', vehicle_ref=(v.qr_code_hash or v.license_plate)) }}"
+               class="btn btn-secondary btn-sm">
+              <i class="fa-solid fa-sliders"></i> Manage
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding:24px; text-align:center; color:var(--text-muted);">
+    No vehicles found.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

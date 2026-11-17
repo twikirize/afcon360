@@ -35,7 +35,11 @@
       {% if not email_verified %}
       <div class="alert alert-warning" role="alert">
         Verify your account email before continuing with phone verification.
-        <a href="{{ url_for('auth.resend_verification') }}">Resend the email verification link</a>.
+        <a href="{{ url_for('auth.resend_verification') }}">Resend the email verification code</a>.
+      </div>
+      {% elif phone_verified %}
+      <div class="alert alert-success" role="status">
+        Your phone number has already been verified.
       </div>
       {% elif not phone_number %}
       <form method="POST" action="{{ url_for('auth.send_phone_verification') }}" id="send-form" class="d-grid mb-3">
@@ -56,27 +60,22 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="phone_number" value="{{ phone_number }}">
         <button type="submit" class="btn btn-lg" style="background-color: #006400; color: #fff;">
-          Resend verification code
+          {{ 'Resend verification code' if phone_code_sent else 'Send verification code' }}
         </button>
       </form>
 
+      {% if phone_code_sent %}
       <form method="POST" action="{{ url_for('auth.verify_phone') }}" id="verify-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <div class="mb-3">
-          <label for="full_name" class="form-label">Full name (optional)</label>
-          <input type="text" class="form-control form-control-lg" id="full_name" name="full_name"
-                 placeholder="John William Doe"
-                 value="{{ profile.full_name if profile else '' }}">
-          <div class="form-text">
-            {% if phone_verification_transport == 'sms' %}
-              This confirms control of the phone number.
-            {% else %}
-              The code is sent to your already-verified account email. Entering it marks this phone number verified in AFCON360; it does not independently prove handset possession. SMS verification can be enabled after a provider is configured.
-            {% endif %}
-            You can update your legal name separately in your profile and KYC details.
-          </div>
-        </div>
+        <p class="form-text mb-3">
+          {% if phone_verification_transport == 'sms' %}
+            The code confirms control of the phone number.
+          {% else %}
+            The code was sent to your already-verified account email. Entering it records AFCON360's interim phone-verification status; it does not independently prove handset possession.
+          {% endif %}
+          Your personal identity details are managed separately in your profile and KYC.
+        </p>
 
         <div class="mb-3">
           <label for="code" class="form-label">Verification code</label>
@@ -99,19 +98,10 @@
           </button>
         </div>
       </form>
-
-      <div class="text-center">
-        <p class="mb-1 text-secondary">
-          Code expires in 5 minutes.
-        </p>
-        <form method="POST" action="{{ url_for('auth.send_phone_verification') }}" class="d-inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="phone_number" value="{{ phone_number }}">
-          <button type="submit" class="btn btn-link text-decoration-none">
-            Didn't get it? Resend code
-          </button>
-        </form>
-      </div>
+      <p class="text-center text-secondary small mb-0">The code expires in 5 minutes.</p>
+      {% else %}
+      <p class="text-secondary small">Send a phone-verification code to your verified account email, or by SMS when an SMS provider is configured. The code entry field will appear after the code is sent.</p>
+      {% endif %}
       {% endif %}
 
       <hr class="my-4">
