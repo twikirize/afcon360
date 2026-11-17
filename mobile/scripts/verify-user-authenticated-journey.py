@@ -272,6 +272,54 @@ def tap_text(
     )
 
 
+def wait_for_text_scrolling(
+    *needles: str,
+    timeout: int = 35,
+    label: str = "screen section",
+    max_swipes: int = 8,
+) -> str:
+    """Wait for content inside a scroll view, swiping until it becomes visible.
+
+    UIAutomator reports only the current viewport. Long Home screens therefore
+    need a deliberate scroll before lower sections can be asserted.
+    """
+    size_output = run_adb("shell", "wm", "size")
+    sizes = re.findall(r"(\d+)x(\d+)", size_output)
+    if not sizes:
+        raise RuntimeError(f"Could not determine Android display size: {size_output.strip()}")
+    width, height = map(int, sizes[-1])
+    deadline = time.monotonic() + timeout
+    last = ""
+    swipes = 0
+
+    while time.monotonic() < deadline:
+        try:
+            last = visible_text()
+            if all(needle in last for needle in needles):
+                print(
+                    f"PASS: {label} after {swipes} scroll(s): " + " | ".join(needles),
+                    flush=True,
+                )
+                return last
+        except Exception as error:
+            last = f"{type(error).__name__}: {error}"
+
+        if swipes >= max_swipes:
+            break
+
+        x = width // 2
+        start_y = int(height * 0.82)
+        end_y = int(height * 0.36)
+        run_adb("shell", "input", "swipe", str(x), str(start_y), str(x), str(end_y), "450")
+        swipes += 1
+        time.sleep(0.6)
+
+    raise AssertionError(
+        f"Timed out waiting for {label} after {swipes} scroll(s): {needles}. "
+        f"Last visible hierarchy:\\n{last[:6000]}"
+    )
+
+
 def tap_text_scrolling(value: str, *, max_swipes: int = 6) -> None:
     """Scroll a long native screen until an exact action is visible, then tap it."""
     size_output = run_adb("shell", "wm", "size")
@@ -580,8 +628,20 @@ def main() -> None:
     time.sleep(0.5)
     tap_text("Sign in securely", require_enabled=True)
 
-    wait_for_text("Your world,", "My Events", timeout=45, label="authenticated Pamoja User home")
+    wait_for_text(
+        "Your world,",
+        "Good to see you, " + USERNAME + ".",
+        timeout=45,
+        label="authenticated Pamoja Home header",
+    )
     save_screen("02-home")
+    wait_for_text_scrolling(
+        "My Events",
+        "Event Calendar",
+        timeout=35,
+        label="Pamoja Home My Events overview",
+    )
+    save_screen("02a-my-events-overview")
     mark_stage("authenticated_home")
 
     mark_stage("activity_navigation_started")
@@ -699,8 +759,20 @@ def main() -> None:
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
     # The native app restores to its actual User dashboard ("My Events").
     # The backend evidence check separately verifies the identity endpoint after relaunch.
-    wait_for_text("Your world,", "My Events", timeout=45, label="restored Pamoja dashboard after app relaunch")
+    wait_for_text(
+        "Your world,",
+        "Good to see you, " + USERNAME + ".",
+        timeout=45,
+        label="restored Pamoja Home header after app relaunch",
+    )
     save_screen("10-session-restored")
+    wait_for_text_scrolling(
+        "My Events",
+        "Event Calendar",
+        timeout=35,
+        label="restored Pamoja Home My Events overview",
+    )
+    save_screen("10a-restored-my-events-overview")
     mark_stage("session_restored")
 
     tap_text("Account", last=True)
