@@ -1273,17 +1273,16 @@ jobs:
 
   
 
-  build-user-preview-apk:
-    name: Build signed User preview APK (EAS)
+  build-user-dev-apk:
+    name: Build or reuse signed User development APK
     needs: [classify-user-changes, mobile-typecheck, user-authenticated-journey]
     if: >-
-      ${{ github.event_name == 'push' &&
-          (github.ref_name == 'fix/user-release-engineering-20261115' || github.ref_name == 'feat/user-offline-first-foundation-20261117') &&
-          needs.classify-user-changes.outputs.native == 'true' &&
-          needs.mobile-typecheck.result == 'success' &&
-          needs.user-authenticated-journey.result == 'success' &&
-          needs.user-authenticated-journey.outputs.apk_ready == 'true' &&
-          needs.user-authenticated-journey.outputs.apk_rebuilt == 'true' }}
+      ${{
+        (github.event_name == 'push' &&
+         github.ref_name == 'feat/user-offline-first-foundation-20261117') ||
+        (github.event_name == 'workflow_dispatch' &&
+         github.ref_name == 'feat/user-offline-first-foundation-20261117')
+      }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     defaults:
@@ -1292,10 +1291,13 @@ jobs:
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+      AFCON360_PREVIEW_BUILD: "true"
+      AFCON360_RELEASE_BUILD: "false"
+      AFCON360_UPDATE_CHANNEL: "user-development"
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
       EXPO_NO_TELEMETRY: "1"
     steps:
-      - name: Check out the validated User App source
+      - name: Check out validated User App source
         uses: actions/checkout@v7
 
       - name: Set up Node.js
@@ -1312,113 +1314,268 @@ jobs:
       - name: Install User workspace dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Validate preview build credentials and EAS project
+      - name: Calculate signed developer APK native fingerprint and cache key
+        id: dev-apk-key
         working-directory: mobile/apps/user
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${EXPO_TOKEN:-}" || { echo "::error::EXPO_TOKEN repository secret is missing; preview APK build cannot start."; exit 1; }
-          [[ "${AFCON360_USER_EAS_PROJECT_ID:-}" =~ ^[0-9a-fA-F-]{36}$ ]] || { echo "::error::AFCON360_USER_EAS_PROJECT_ID is missing or invalid."; exit 1; }
-          npx --yes eas-cli@latest env:set --name EXPO_PUBLIC_API_BASE_URL --value "$EXPO_PUBLIC_API_BASE_URL" --environment preview --scope project --visibility plaintext --non-interactive
-          export AFCON360_PREVIEW_BUILD="true"
-          export AFCON360_RELEASE_BUILD="false"
-          export EAS_BUILD="true"
-          pnpm --filter @afcon360/user-app exec expo config --json > "$RUNNER_TEMP/afcon360-user-preview-config.json"
-          node - "$RUNNER_TEMP/afcon360-user-preview-config.json" <<'NODE'
+          FINGERPRINT="$(node ../../scripts/user-native-fingerprint.cjs)"
+          test -n "$FINGERPRINT"
+          pnpm exec expo config --json > "$RUNNER_TEMP/afcon360-user-dev-config.json"
+          VERSION_NAME="$(node -e 'const c=require(process.argv[1]); if(!c.version) process.exit(2); process.stdout.write(c.version)' "$RUNNER_TEMP/afcon360-user-dev-config.json")"
+          PROFILE_SHA256="$(node <<'NODE'
           const fs = require("node:fs");
-          const config = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          const projectId = process.env.AFCON360_USER_EAS_PROJECT_ID;
-          const checks = {
-            previewPackage: config.android?.package === "space.pamoja.afcon360.user.preview",
-            liveApi: config.extra?.apiBaseUrl === "https://www.pamoja.space",
-            previewUpdateChannel: config.updates?.requestHeaders?.["expo-channel-name"] === "preview",
-            updateProject: config.extra?.eas?.projectId === projectId,
-            updateUrl: config.updates?.url === "https://u.expo.dev/" + projectId,
-            automaticOtaCheck: config.updates?.checkAutomatically === "ON_LOAD"
-          };
-          for (const name of Object.keys(checks)) console.log((checks[name] ? "PASS " : "FAIL ") + name);
-          if (Object.values(checks).some((passed) => !passed)) process.exit(1);
+          const crypto = require("node:crypto");
+          const profile = JSON.parse(fs.readFileSync("eas.json", "utf8")).build?.["dev-apk"];
+          if (!profile) throw new Error("eas.json build.dev-apk profile is missing.");
+          const stable = value => Array.isArray(value)
+            ? value.map(stable)
+            : value && typeof value === "object"
+              ? Object.fromEntries(Object.keys(value).sort().map(k => [k, stable(value[k])]))
+              : value;
+          process.stdout.write(crypto.createHash("sha256").update(JSON.stringify(stable(profile))).digest("hex"));
           NODE
+          )"
+          VERSION_SHA256="$(printf '%s' "$VERSION_NAME" | sha256sum | awk '{print $1}')"
+          # Bump recipe-v1 only when the EAS invocation, artifact validation or signing workflow changes.
+          KEY="afcon360-user-dev-apk-recipe-v1-native-$FINGERPRINT-profile-$PROFILE_SHA256-version-$VERSION_SHA256"
+          echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
+          echo "profile_sha256=$PROFILE_SHA256" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_sha256=$VERSION_SHA256" >> "$GITHUB_OUTPUT"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "Signed developer APK native fingerprint: $FINGERPRINT"
+          echo "Developer EAS profile SHA-256: $PROFILE_SHA256"
+          echo "App version: $VERSION_NAME"
+          echo "Reusable signed APK key: $KEY"
 
-      - name: Build signed preview APK with frozen remote credentials
-        id: eas-build
+      - name: Restore signed User development APK by native fingerprint
+        id: dev-apk-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: user-dev-apk-cache/
+          key: ${{ steps.dev-apk-key.outputs.key }}
+
+      - name: Validate cached signed developer APK
+        id: validate-dev-apk
+        shell: bash
+        env:
+          CACHE_MATCHED_KEY: ${{ steps.dev-apk-cache.outputs.cache-matched-key }}
+          EXPECTED_FINGERPRINT: ${{ steps.dev-apk-key.outputs.fingerprint }}
+          EXPECTED_PROFILE_SHA256: ${{ steps.dev-apk-key.outputs.profile_sha256 }}
+          EXPECTED_VERSION_NAME: ${{ steps.dev-apk-key.outputs.version_name }}
+          FORCE_REBUILD: ${{ inputs.force_apk_rebuild == true }}
+        run: |
+          set -euo pipefail
+          echo "reusable=false" >> "$GITHUB_OUTPUT"
+          if [ "$FORCE_REBUILD" = "true" ]; then
+            echo "A signed developer APK rebuild was explicitly requested."
+            exit 0
+          fi
+          [ "$CACHE_MATCHED_KEY" = "${{ steps.dev-apk-key.outputs.key }}" ] || {
+            echo "No exact signed developer APK cache entry was restored."
+            exit 0
+          }
+          APK="user-dev-apk-cache/user-development.apk"
+          INFO="user-dev-apk-cache/build-info.txt"
+          test -s "$APK" && test -s "$INFO" || exit 0
+          EXPECTED_SHA="$(sed -n 's/^apk_sha256=//p' "$INFO" | head -n 1)"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA" || exit 0
+          grep -Fxq "native_fingerprint=$EXPECTED_FINGERPRINT" "$INFO" || exit 0
+          grep -Fxq "profile_sha256=$EXPECTED_PROFILE_SHA256" "$INFO" || exit 0
+          grep -Fxq "version_name=$EXPECTED_VERSION_NAME" "$INFO" || exit 0
+          grep -Fxq "package=space.pamoja.afcon360.user.preview" "$INFO" || exit 0
+          grep -Fxq "api=https://www.pamoja.space" "$INFO" || exit 0
+          grep -Fxq "update_channel=user-development" "$INFO" || exit 0
+          echo "Exact signed developer APK cache hit; SHA-256 verified: $ACTUAL_SHA"
+          echo "reusable=true" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure isolated User development update channel exists
         working-directory: mobile/apps/user
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes eas-cli@latest build --platform android --profile apk-share --message "AFCON360 User preview APK ${GITHUB_SHA}" --freeze-credentials --wait --json > "$RUNNER_TEMP/afcon360-user-preview-eas-build.json"
-          node - "$RUNNER_TEMP/afcon360-user-preview-eas-build.json" >> "$GITHUB_OUTPUT" <<'NODE'
+          test -n "${EXPO_TOKEN:-}" || {
+            echo "::error::EXPO_TOKEN is required for the signed User development APK and its isolated OTA channel."
+            exit 1
+          }
+          CHANNEL="user-development"
+          if ! npx --yes eas-cli@latest channel:view "$CHANNEL" --json >/dev/null 2>&1; then
+            npx --yes eas-cli@latest channel:create "$CHANNEL" --non-interactive
+          fi
+          if ! npx --yes eas-cli@latest branch:view "$CHANNEL" --json >/dev/null 2>&1; then
+            npx --yes eas-cli@latest branch:create "$CHANNEL" --non-interactive
+          fi
+          npx --yes eas-cli@latest channel:edit "$CHANNEL" --branch "$CHANNEL" --non-interactive
+
+      - name: Build signed User development APK with frozen remote credentials
+        id: eas-build
+        if: steps.validate-dev-apk.outputs.reusable != 'true'
+        working-directory: mobile/apps/user
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${AFCON360_USER_EAS_PROJECT_ID:-}" =~ ^[0-9a-fA-F-]{36}$ ]] || {
+            echo "::error::AFCON360_USER_EAS_PROJECT_ID is missing or invalid."
+            exit 1
+          }
+          EAS_BUILD=true pnpm exec expo config --json > "$RUNNER_TEMP/afcon360-user-dev-eas-config.json"
+          node - "$RUNNER_TEMP/afcon360-user-dev-eas-config.json" <<'NODE'
+          const fs = require("node:fs");
+          const c = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const expectedProject = process.env.AFCON360_USER_EAS_PROJECT_ID;
+          const checks = {
+            package: c.android?.package === "space.pamoja.afcon360.user.preview",
+            liveApi: c.extra?.apiBaseUrl === "https://www.pamoja.space",
+            updateChannel: c.updates?.requestHeaders?.["expo-channel-name"] === "user-development",
+            fingerprintRuntime: c.runtimeVersion?.policy === "fingerprint",
+            updateProject: c.extra?.eas?.projectId === expectedProject,
+            updateUrl: c.updates?.url === "https://u.expo.dev/" + expectedProject,
+            automaticOta: c.updates?.checkAutomatically === "ON_LOAD"
+          };
+          for (const [name, ok] of Object.entries(checks)) console.log((ok ? "PASS " : "FAIL ") + name);
+          if (Object.values(checks).some(ok => !ok)) process.exit(1);
+          NODE
+          npx --yes eas-cli@latest build --platform android --profile dev-apk --message "AFCON360 User development APK ${GITHUB_SHA}" --freeze-credentials --wait --json > "$RUNNER_TEMP/afcon360-user-dev-eas-build.json"
+          node - "$RUNNER_TEMP/afcon360-user-dev-eas-build.json" >> "$GITHUB_OUTPUT" <<'NODE'
           const fs = require("node:fs");
           const value = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
           const builds = Array.isArray(value) ? value : [value];
-          const build = builds.find((item) => String(item.platform).toUpperCase() === "ANDROID") || builds[0];
+          const build = builds.find(item => String(item.platform).toUpperCase() === "ANDROID") || builds[0];
           if (!build?.id || String(build.status).toUpperCase() !== "FINISHED") {
-            throw new Error("EAS did not finish the User preview APK build.");
+            throw new Error("EAS did not finish the signed User development APK build.");
           }
           console.log("build_id=" + build.id);
           NODE
 
-      - name: Download finished preview APK from EAS
+      - name: Download signed User development APK from EAS
+        if: steps.validate-dev-apk.outputs.reusable != 'true'
         working-directory: mobile/apps/user
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes eas-cli@latest build:view "${{ steps.eas-build.outputs.build_id }}" --json > "$RUNNER_TEMP/afcon360-user-preview-build-details.json"
-          node -e 'const d=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")); const b=d.build||d; const u=b.artifacts?.buildUrl; if(!u||!u.startsWith("https://")) process.exit(2); process.stdout.write(u);' "$RUNNER_TEMP/afcon360-user-preview-build-details.json" > "$RUNNER_TEMP/afcon360-user-preview-apk-url.txt"
-          curl --fail --location --retry 3 --retry-delay 2 "$(cat "$RUNNER_TEMP/afcon360-user-preview-apk-url.txt")" --output "$GITHUB_WORKSPACE/afcon360-user-preview.apk"
-          test -s "$GITHUB_WORKSPACE/afcon360-user-preview.apk"
+          npx --yes eas-cli@latest build:view "${{ steps.eas-build.outputs.build_id }}" --json > "$RUNNER_TEMP/afcon360-user-dev-build-details.json"
+          node - "$RUNNER_TEMP/afcon360-user-dev-build-details.json" > "$RUNNER_TEMP/afcon360-user-dev-apk-url.txt" <<'NODE'
+          const fs = require("node:fs");
+          const d = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const b = d.build || d;
+          const u = b.artifacts?.buildUrl;
+          if (!u || !u.startsWith("https://")) throw new Error("EAS build has no HTTPS APK artifact URL.");
+          process.stdout.write(u);
+          NODE
+          mkdir -p user-dev-apk-cache
+          curl --fail --location --retry 3 --retry-delay 2 "$(cat "$RUNNER_TEMP/afcon360-user-dev-apk-url.txt")" --output user-dev-apk-cache/user-development.apk
+          test -s user-dev-apk-cache/user-development.apk
 
-      - name: Verify preview package, Android compatibility and signing
+      - name: Install Android build tools for signed APK verification
         shell: bash
         run: |
           set -euo pipefail
-          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          if ! find "$SDK_ROOT/build-tools" -type f -name apksigner -print -quit 2>/dev/null | grep -q .; then
-            test -x "$SDKMANAGER"
-            yes | "$SDKMANAGER" --licenses >/dev/null
-            "$SDKMANAGER" "build-tools;35.0.0"
-          fi
-          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          APKSIGNER="$BUILD_TOOLS/apksigner"
-          AAPT="$BUILD_TOOLS/aapt"
-          test -x "$APKSIGNER"
-          test -x "$AAPT"
-          "$APKSIGNER" verify --verbose --print-certs "$GITHUB_WORKSPACE/afcon360-user-preview.apk" | tee "$RUNNER_TEMP/afcon360-user-preview-signature.txt"
-          "$AAPT" dump badging "$GITHUB_WORKSPACE/afcon360-user-preview.apk" > "$RUNNER_TEMP/afcon360-user-preview-badging.txt"
-          BADGING="$RUNNER_TEMP/afcon360-user-preview-badging.txt"
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" "platform-tools" "build-tools;37.0.0"
+          echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
+
+      - name: Verify signed developer APK and record cache metadata
+        id: verify-dev-apk
+        shell: bash
+        env:
+          EXPECTED_FINGERPRINT: ${{ steps.dev-apk-key.outputs.fingerprint }}
+          EXPECTED_PROFILE_SHA256: ${{ steps.dev-apk-key.outputs.profile_sha256 }}
+          EXPECTED_VERSION_NAME: ${{ steps.dev-apk-key.outputs.version_name }}
+          USER_DEV_APK_CACHE_KEY: ${{ steps.dev-apk-key.outputs.key }}
+          CACHE_REUSED: ${{ steps.validate-dev-apk.outputs.reusable }}
+        run: |
+          set -euo pipefail
+          APK="user-dev-apk-cache/user-development.apk"
+          INFO="user-dev-apk-cache/build-info.txt"
+          test -s "$APK"
+          apksigner verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/afcon360-user-dev-signature.txt"
+          aapt dump badging "$APK" > "$RUNNER_TEMP/afcon360-user-dev-badging.txt"
+          BADGING="$RUNNER_TEMP/afcon360-user-dev-badging.txt"
           grep -F "package: name='space.pamoja.afcon360.user.preview'" "$BADGING"
           VERSION_NAME="$(sed -n "s/^package:.*versionName:'\\([^']*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
-          test -n "$VERSION_NAME"
           VERSION_CODE="$(sed -n "s/^package:.*versionCode:'\\([^']*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
           MINIMUM="$(sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
           TARGET="$(sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
+          test "$VERSION_NAME" = "$EXPECTED_VERSION_NAME"
           test -n "$VERSION_CODE" && test "$VERSION_CODE" -ge 1
           test "$MINIMUM" = "24"
           test -n "$TARGET" && test "$TARGET" -ge 36
-          CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/afcon360-user-preview-signature.txt" | head -n 1)"
+          CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/afcon360-user-dev-signature.txt" | head -n 1)"
           test -n "$CERT_SHA256"
-          {
-            echo "package=space.pamoja.afcon360.user.preview"
-            echo "version_name=$VERSION_NAME"
-            echo "native_fingerprint=${{ needs.user-authenticated-journey.outputs.native_fingerprint }}"
-            echo "version_code=$VERSION_CODE"
-            echo "min_sdk=$MINIMUM"
-            echo "target_sdk=$TARGET"
-            echo "signing_certificate_sha256=$CERT_SHA256"
-            echo "api=https://www.pamoja.space"
-            echo "update_channel=preview"
-          } > "$GITHUB_WORKSPACE/afcon360-user-preview-build-info.txt"
-          sha256sum "$GITHUB_WORKSPACE/afcon360-user-preview.apk" | tee "$GITHUB_WORKSPACE/afcon360-user-preview.apk.sha256"
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          if [ "$CACHE_REUSED" = "true" ]; then
+            grep -Fxq "signing_certificate_sha256=$CERT_SHA256" "$INFO"
+            grep -Fxq "apk_sha256=$APK_SHA256" "$INFO"
+          else
+            {
+              echo "app=user"
+              echo "package=space.pamoja.afcon360.user.preview"
+              echo "version_name=$VERSION_NAME"
+              echo "version_code=$VERSION_CODE"
+              echo "min_sdk=$MINIMUM"
+              echo "target_sdk=$TARGET"
+              echo "signing_certificate_sha256=$CERT_SHA256"
+              echo "api=https://www.pamoja.space"
+              echo "update_channel=user-development"
+              echo "native_fingerprint=$EXPECTED_FINGERPRINT"
+              echo "profile_sha256=$EXPECTED_PROFILE_SHA256"
+              echo "cache_key=$USER_DEV_APK_CACHE_KEY"
+              echo "source_commit=$GITHUB_SHA"
+              echo "apk_sha256=$APK_SHA256"
+            } > "$INFO"
+          fi
+          echo "$APK_SHA256" | tee user-dev-apk-cache/user-development.apk.sha256
+          mkdir -p "$GITHUB_WORKSPACE/user-dev-apk-artifact"
+          cp "$APK" "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-development.apk"
+          cp "$INFO" "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-development-build-info.txt"
+          cp user-dev-apk-cache/user-development.apk.sha256 "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-development.apk.sha256"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          echo "cache_reused=$CACHE_REUSED" >> "$GITHUB_OUTPUT"
+          echo "Signed User development APK verified (cache_reused=$CACHE_REUSED): $APK_SHA256"
 
-      - name: Upload signed User preview APK
+      - name: Persist signed developer APK under native fingerprint key
+        if: steps.validate-dev-apk.outputs.reusable != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: user-dev-apk-cache/
+          key: ${{ steps.dev-apk-key.outputs.key }}
+
+      - name: Upload signed User development APK
         uses: actions/upload-artifact@v7
         with:
-          name: afcon360-user-preview-apk-${{ github.run_number }}
-          path: |
-            afcon360-user-preview.apk
-            afcon360-user-preview.apk.sha256
-            afcon360-user-preview-build-info.txt
+          name: afcon360-user-development-apk-${{ github.run_number }}
+          path: user-dev-apk-artifact/
           if-no-files-found: error
           retention-days: 90
 
+      - name: Publish current User bundle to the isolated development OTA channel
+        if: needs.classify-user-changes.outputs.ota == 'true'
+        working-directory: mobile/apps/user
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          AFCON360_PREVIEW_BUILD: "true"
+          AFCON360_RELEASE_BUILD: "false"
+          AFCON360_UPDATE_CHANNEL: "user-development"
+          EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+          EXPO_NO_TELEMETRY: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHANNEL="user-development"
+          npx --yes eas-cli@latest channel:edit "$CHANNEL" --branch "$CHANNEL" --non-interactive
+          npx --yes eas-cli@latest update \
+            --branch "$CHANNEL" \
+            --environment preview \
+            --platform android \
+            --message "AFCON360 User development OTA ${GITHUB_SHA}" \
+            --non-interactive
+          echo "Published the tested feature bundle to the installable User development channel, separate from preview/release."
