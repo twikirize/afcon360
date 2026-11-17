@@ -242,11 +242,10 @@ jobs:
             if (!valid || !apkProfileValid) process.exit(1);
           }
           const runtimeVersion = config.runtimeVersion;
-          const runtimeVersionIsAppVersionPolicy =
-            runtimeVersion === "1.0.1" ||
-            (runtimeVersion &&
-              typeof runtimeVersion === "object" &&
-              runtimeVersion.policy === "appVersion");
+          const runtimeVersionIsFingerprintPolicy =
+            runtimeVersion &&
+            typeof runtimeVersion === "object" &&
+            runtimeVersion.policy === "fingerprint";
           const checks = {
             package: config.android?.package === "space.pamoja.afcon360.user",
             remoteVersionSeed: config.android?.versionCode === 1,
@@ -255,7 +254,7 @@ jobs:
             updatesUrl: config.updates?.url === `https://u.expo.dev/${expectedProjectId}`,
             productionChannel:
               config.updates?.requestHeaders?.["expo-channel-name"] === "production",
-            runtimeVersionIsAppVersionPolicy
+            runtimeVersionIsFingerprintPolicy
           };
           for (const [name, passed] of Object.entries(checks)) {
             console.log(`${passed ? "PASS" : "FAIL"} production config: ${name}`);
@@ -303,6 +302,9 @@ jobs:
             otaDownload: settings.includes("Updates.fetchUpdateAsync()"),
             otaApply: settings.includes("Updates.reloadAsync()"),
             otaAutomaticOnLaunch: config.includes('checkAutomatically: "ON_LOAD"'),
+            e2eOtaChannelIsIsolated: config.includes('"afcon360-user-e2e"'),
+            e2eOtaIsEnabled: !config.includes("updates: isE2EBuild ? { enabled: false }"),
+            nativeFingerprintRuntime: config.includes('runtimeVersion: { policy: "fingerprint" }'),
             nativeBinaryHandoff: settings.includes("https://www.pamoja.space/download") &&
               settings.includes("Linking.openURL(officialDownloadsUrl)"),
             methodOneVisible: settings.includes("Method 1 · Compatible app updates"),
@@ -395,10 +397,8 @@ jobs:
     if: >-
       ${{
         needs.classify-user-changes.outputs.native == 'true' ||
-        (
-          needs.classify-user-changes.outputs.e2e_harness == 'true' &&
-          needs.classify-user-changes.outputs.ota != 'true'
-        ) ||
+        needs.classify-user-changes.outputs.ota == 'true' ||
+        needs.classify-user-changes.outputs.e2e_harness == 'true' ||
         (github.event_name == 'workflow_dispatch' && inputs.force_apk_rebuild == true)
       }}
     runs-on: ubuntu-24.04
@@ -823,6 +823,38 @@ jobs:
           echo "Verified reusable User APK (cache_hit=${{ steps.user-apk-cache.outputs['cache-hit'] }}): $ACTUAL_SHA"
           cat mobile-e2e-evidence/user-e2e-build-info.txt
           echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: Publish current JavaScript bundle to isolated User E2E OTA channel
+        if: needs.classify-user-changes.outputs.ota == 'true'
+        working-directory: mobile/apps/user
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          AFCON360_PREVIEW_BUILD: "true"
+          AFCON360_E2E_BUILD: "true"
+          EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
+          EXPO_NO_TELEMETRY: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}" || {
+            echo "::error::EXPO_TOKEN is required to test OTA-compatible changes on the isolated E2E channel."
+            exit 1
+          }
+          CHANNEL="afcon360-user-e2e"
+          # Keep this branch/channel separate from the user-facing preview channel.
+          if ! npx --yes eas-cli@latest channel:view "$CHANNEL" --json >/dev/null 2>&1; then
+            npx --yes eas-cli@latest channel:create "$CHANNEL" --non-interactive
+          fi
+          if ! npx --yes eas-cli@latest branch:view "$CHANNEL" --json >/dev/null 2>&1; then
+            npx --yes eas-cli@latest branch:create "$CHANNEL" --non-interactive
+          fi
+          npx --yes eas-cli@latest channel:edit "$CHANNEL" --branch "$CHANNEL" --non-interactive
+          npx --yes eas-cli@latest update \
+            --branch "$CHANNEL" \
+            --environment preview \
+            --platform android \
+            --message "AFCON360 User E2E JS ${GITHUB_SHA}" \
+            --non-interactive
+          echo "Published the current OTA-compatible JS bundle to the isolated $CHANNEL channel."
       - name: Upload verified APK for independent Android compatibility matrix
         uses: actions/upload-artifact@v7
         with:
