@@ -121,6 +121,30 @@ An E2E APK configured for `127.0.0.1` is a test harness artifact, not a usable p
 
 Keep the authenticated Android journey aligned to the current Pamoja Home. It must assert the current home first, then scroll and test My Events and the remaining service journeys. Do not roll back the selected UI just to satisfy an obsolete text selector. Run relevant Android API levels and the install/upgrade PackageInstaller matrix; investigate genuine failures rather than marking them as environment noise.
 
+
+### 6.1 Reusable native APK and rebuild policy
+
+**The native APK is keyed to the native runtime fingerprint, not to each application source commit.** Use Expo Fingerprint (Android platform, balanced preset) as the compatibility/build key. Do not key the APK on the whole `mobile/apps/user/**` or `mobile/packages/**` source tree.
+
+The fingerprint configuration deliberately excludes Expo `extra` values such as the API origin and preview server-selection flags. Those are JavaScript/runtime configuration and can travel with a compatible OTA update. The EAS build profile remains part of the APK build fingerprint. The workflow keeps a disposable E2E APK cache keyed by the fingerprint and validates its SHA-256 before reuse.
+
+| Change | Native APK action |
+|---|---|
+| Screens, navigation, styling, illustrations, ordinary JavaScript/TypeScript logic, offline repositories and presentation | Reuse existing APK; type-check/export and use a compatible OTA update |
+| Backend/API implementation or data changes that do not add a native mobile dependency | No mobile APK rebuild |
+| Test assertions, Python E2E scripts, docs and workflow-only test harness changes | Reuse APK and run the relevant test harness; do not create a signed preview APK |
+| Add/remove/update a native Expo or React Native module; Expo SDK / React Native native runtime upgrade | New native fingerprint; rebuild |
+| Native config plugin, Android/iOS source, manifest, permissions, entitlements, package/bundle identity, scheme or other native-affecting Expo config | New native fingerprint; rebuild |
+| EAS APK profile/distribution/build-recipe change that changes the produced binary | Invalidate the matching APK cache/build recipe and rebuild |
+
+A dependency-manifest change is only a *candidate* native change. The fingerprint is the final decision: if it remains the same, reuse the APK. A JavaScript-only dependency or normal source edit must not force a native build merely because its commit SHA changed.
+
+Keep `runtimeVersion: { policy: "appVersion" }` as the OTA compatibility contract. **Before publishing an OTA update that depends on a changed native fingerprint, increment the app version and produce the matching native build first.** Never send JS that expects native APIs absent from an installed APK. Preview OTA publishing remains an explicit, gated action on the permanent integration branch; a feature-branch push must not publish OTA automatically.
+
+For normal PyCharm development, make changes on the active feature branch, commit/push, and let CI type-check and export the JavaScript bundle. If the native fingerprint is unchanged, the existing APK remains the test/install binary; do not rebuild it. When the fingerprint changes, CI creates and verifies a new APK and only then allows the signed preview-build gate. A forced rebuild is reserved for a deliberate rebuild/test request or a broken/missing cache—not ordinary source edits.
+
+The disposable E2E APK embeds the local test API and has OTA disabled. It is only for automated backend journeys and must never be distributed as the phone preview APK. The signed EAS preview APK is the installable phone artifact. Keep these artifacts clearly distinguished.
+
 ## 7. Required implementation sequence
 
 1. **Read-only map:** inspect current routes, API clients, AuthProvider, SecureStore use, service contracts, EAS profiles and existing tests. Record what already exists; do not duplicate it.
