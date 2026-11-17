@@ -52,13 +52,13 @@ const config: ExpoConfig = {
   name: isPreview ? "AFCON360 Preview" : "AFCON360",
   slug: "afcon360-user",
   scheme: isPreview ? "afcon360-preview" : "afcon360",
-  version: "1.0.1",
+  version: "1.0.2",
   runtimeVersion: { policy: "appVersion" },
   updates: isE2EBuild
     ? { enabled: false }
     : easProjectId
     ? {
-        url: `https://u.expo.dev/${easProjectId}`,
+        url: "https://u.expo.dev/" + easProjectId,
         requestHeaders: { "expo-channel-name": updateChannel },
         checkAutomatically: "ON_LOAD",
         fallbackToCacheTimeout: 0
@@ -88,6 +88,7 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     "expo-secure-store",
+    ["expo-sqlite", { useSQLCipher: true }],
     "expo-dev-client",
     "expo-updates",
     [

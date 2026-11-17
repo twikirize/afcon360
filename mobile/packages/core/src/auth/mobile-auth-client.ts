@@ -45,6 +45,8 @@ export class MobileAuthClient {
   private readonly api: ApiClient;
   private readonly deviceName: string;
   private refreshInFlight: Promise<boolean> | null = null;
+  private offlineReadOnly = false;
+  private offlineStateListener: ((offline: boolean) => void) | null = null;
 
   constructor(options: MobileAuthClientOptions) {
     this.client = options.client;
@@ -297,21 +299,63 @@ export class MobileAuthClient {
     return this.refreshInFlight;
   }
 
+  setOfflineStateListener(listener: ((offline: boolean) => void) | null): void {
+    this.offlineStateListener = listener;
+    listener?.(this.offlineReadOnly);
+  }
+
+  setOfflineReadOnly(offline: boolean): void {
+    if (this.offlineReadOnly === offline) return;
+    this.offlineReadOnly = offline;
+    this.offlineStateListener?.(offline);
+  }
+
+  private isOfflineSafeRead(path: string, method: string): boolean {
+    if (["GET", "HEAD", "OPTIONS"].includes(method)) return true;
+    if (path === "/api/mobile/v1/auth/logout" && method === "POST") return true;
+    if (method === "POST" && (
+      path.startsWith("/api/mobile/v1/transport/ride-options") ||
+      path.startsWith("/api/mobile/v1/transport/payment-methods/options")
+    )) return true;
+    return false;
+  }
+
+  async hasStoredCredentials(): Promise<boolean> {
+    return Boolean(await this.store.getAccessToken() || await this.store.getRefreshToken());
+  }
+
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const method = String(options.method ?? "GET").toUpperCase();
+    if (this.offlineReadOnly && !this.isOfflineSafeRead(path, method)) {
+      throw new MobileAuthError(
+        "This action needs a live AFCON360 connection. Your saved offline information is read-only.",
+        "offline_read_only"
+      );
+    }
+
     try {
       return await this.api.request<T>(path, options);
     } catch (error) {
+      let failure = error;
       if (error instanceof ApiError && error.status === 401 && !path.endsWith("/auth/refresh")) {
-        const refreshed = await this.refresh();
-        if (refreshed) return this.api.request<T>(path, options);
+        try {
+          if (await this.refresh()) return await this.api.request<T>(path, options);
+        } catch (refreshError) {
+          failure = refreshError;
+        }
       }
-      throw await this.envelopeError(error);
+      const normalized = await this.envelopeError(failure);
+      if (normalized.status == null || normalized.status >= 500 || [408, 425, 429].includes(normalized.status)) {
+        this.setOfflineReadOnly(true);
+      }
+      throw normalized;
     }
   }
 
   async getMe(): Promise<MobileIdentity> {
     const response = await this.request<Envelope<MobileIdentity>>("/api/mobile/v1/auth/me");
     if (!response.data) throw new MobileAuthError("Your account details could not be loaded.", "identity_response_invalid");
+    this.setOfflineReadOnly(false);
     return response.data;
   }
 

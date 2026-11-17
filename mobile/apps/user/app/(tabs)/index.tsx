@@ -1,22 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { authClient, getSelectedApiBaseUrl } from '../../src/services/api';
+import { getSelectedApiBaseUrl } from '../../src/services/api';
+import { useAuth } from '../../src/auth/AuthProvider';
+import { userOfflineRepository } from '../../src/offline/repositories';
 import { TrendingRail, TrendingSkeleton } from '../../src/components/TrendingRail';
 import { SectionHeader } from '../../src/components/SectionHeader';
 import { MyEventsOverview } from '../../src/components/MyEventsOverview';
 import { GeminiHomeTop } from '../../src/components/GeminiHomeTop';
-import type { FeedItem, FeedResponse, LoadMode } from '../../src/types/feed';
+import type { FeedItem, LoadMode } from '../../src/types/feed';
 import { safeSameOriginUrl } from '../../src/utils/feedUtils';
 import { colors } from '../../src/theme/tokens';
 
 const SITE = 'https://www.pamoja.space';
-const PAGE_SIZE = 10;
 
 export default function UserHome() {
   const router = useRouter();
+  const { user, isOffline, lastVerifiedAt, offlineStorageError, retryRestoreSession } = useAuth();
   const [search, setSearch] = useState('');
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [apiBaseUrl, setApiBaseUrl] = useState(SITE);
@@ -28,6 +30,7 @@ export default function UserHome() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [cachedFeedAt, setCachedFeedAt] = useState<number | null>(null);
   const requestInFlight = useRef(false);
 
   useEffect(() => {
@@ -55,25 +58,70 @@ export default function UserHome() {
     if (mode === 'more') setLoadingMore(true);
     setFeedError(null);
 
+    let cachedEntry = null as Awaited<ReturnType<typeof userOfflineRepository.readHomeFeed>> | null;
+    if (nextPage === 1 && user?.public_id) {
+      try {
+        cachedEntry = await userOfflineRepository.readHomeFeed(user.public_id);
+        if (cachedEntry) {
+          const saved = cachedEntry.value;
+          setFeedItems(Array.isArray(saved.items) ? saved.items : []);
+          setPage(typeof saved.page === 'number' ? saved.page : 1);
+          setSeed(saved.seed || '');
+          setHasMore(false);
+          setCachedFeedAt(cachedEntry.storedAt);
+          if (mode === 'initial') setLoading(false);
+        }
+      } catch {
+        cachedEntry = null;
+      }
+    }
+
+    if (isOffline) {
+      setHasMore(false);
+      setFeedError(cachedEntry
+        ? 'Offline mode. Showing your saved Pamoja highlights.'
+        : 'Pamoja highlights have not been saved on this device yet. Reconnect to load them.');
+      requestInFlight.current = false;
+      setLoading(false);
+      setRefreshing(false);
+      setLoadingMore(false);
+      return;
+    }
+
+    if (cachedEntry?.isFresh && mode === 'initial') {
+      requestInFlight.current = false;
+      setLoading(false);
+      setRefreshing(false);
+      setLoadingMore(false);
+      setFeedError(null);
+      return;
+    }
+
     try {
-      const params = new URLSearchParams({
-        page: String(nextPage),
-        per_page: String(PAGE_SIZE),
-        layout: 'mixed',
-      });
-      if (nextSeed) params.set('seed', nextSeed);
-      const response = await authClient.request<FeedResponse>('/api/home/feed?' + params.toString());
+      const response = await userOfflineRepository.refreshHomeFeed(
+        user?.public_id ?? null,
+        nextPage,
+        nextSeed
+      );
       const incoming = Array.isArray(response.items) ? response.items : [];
       if (response.error) setFeedError(response.error);
       setFeedItems((current) => mode === 'more' ? mergeFeedItems(current, incoming) : incoming);
       setPage(typeof response.page === 'number' ? response.page : nextPage);
       setSeed(response.seed || nextSeed || '');
       setHasMore(Boolean(response.has_more));
+      setCachedFeedAt(null);
     } catch (error) {
-      setFeedError(error instanceof Error ? error.message : 'Pamoja highlights are temporarily unavailable.');
-      if (mode !== 'more') {
-        setFeedItems([]);
+      if (cachedEntry && nextPage === 1) {
+        const saved = cachedEntry.value;
+        setFeedItems(Array.isArray(saved.items) ? saved.items : []);
+        setPage(typeof saved.page === 'number' ? saved.page : 1);
+        setSeed(saved.seed || '');
         setHasMore(false);
+        setCachedFeedAt(cachedEntry.storedAt);
+        setFeedError('Connection unavailable. Showing your saved Pamoja highlights.');
+      } else {
+        setFeedError(error instanceof Error ? error.message : 'Pamoja highlights are temporarily unavailable.');
+        if (mode !== 'more') setHasMore(false);
       }
     } finally {
       requestInFlight.current = false;
@@ -81,7 +129,7 @@ export default function UserHome() {
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [mergeFeedItems]);
+  }, [isOffline, mergeFeedItems, user?.public_id]);
 
   useEffect(() => {
     void loadFeedPage(1, null, 'initial');
@@ -198,6 +246,25 @@ export default function UserHome() {
         keyboardShouldPersistTaps='handled'
       >
         <View style={styles.pageContent}>
+          {(isOffline || offlineStorageError) ? (
+            <View style={styles.offlineNotice}>
+              <View style={styles.offlineNoticeCopy}>
+                <Text style={styles.offlineNoticeTitle}>
+                  {isOffline ? 'Offline mode' : 'Offline cache unavailable'}
+                </Text>
+                <Text style={styles.offlineNoticeBody}>
+                  {cachedFeedAt
+                    ? 'Saved highlights from ' + new Date(cachedFeedAt).toLocaleString()
+                    : lastVerifiedAt
+                      ? 'Account last verified ' + new Date(lastVerifiedAt).toLocaleString()
+                      : (offlineStorageError || 'Reconnect to refresh your information.')}
+                </Text>
+              </View>
+              <Pressable onPress={() => void retryRestoreSession()} accessibilityRole='button'>
+                <Text style={styles.offlineNoticeAction}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : null}
           <GeminiHomeTop
             search={search}
             onSearchChange={setSearch}
@@ -293,4 +360,9 @@ const styles = StyleSheet.create({
   },
   inlineErrorText: { flex: 1, color: colors.status.error, fontSize: 11, fontWeight: '700' },
   inlineRetry: { color: colors.status.error, fontSize: 12, fontWeight: '900', padding: 6 },
+  offlineNotice: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: 12, borderRadius: 14, backgroundColor: '#FFF4D5', borderWidth: 1, borderColor: '#F0D99A' },
+  offlineNoticeCopy: { flex: 1, gap: 3 },
+  offlineNoticeTitle: { color: '#755316', fontSize: 12, fontWeight: '900' },
+  offlineNoticeBody: { color: '#755316', fontSize: 11, lineHeight: 15 },
+  offlineNoticeAction: { color: '#5B4312', fontSize: 12, fontWeight: '900', padding: 8 },
 });

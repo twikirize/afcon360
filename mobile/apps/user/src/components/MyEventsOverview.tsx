@@ -1,7 +1,8 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { eventClient } from "../services/api";
+import { useAuth } from "../auth/AuthProvider";
+import { userOfflineRepository } from "../offline/repositories";
 import type { NativeEventRegistration } from "@afcon360/mobile-core";
 
 type RegistrationFilter = "upcoming" | "past" | "all";
@@ -74,6 +75,8 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
   const [registrations, setRegistrations] = useState<NativeEventRegistration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
+  const { user, isOffline } = useAuth();
   const [filter, setFilter] = useState<RegistrationFilter>("upcoming");
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
@@ -83,17 +86,52 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
   const loadRegistrations = useCallback(async () => {
     setLoading(true);
     setError(null);
+    let cached = null as Awaited<ReturnType<typeof userOfflineRepository.readEventRegistrations>> | null;
+    if (user?.public_id) {
+      try {
+        cached = await userOfflineRepository.readEventRegistrations(user.public_id);
+        if (cached) {
+          setRegistrations(cached.value.items ?? []);
+          setCachedAt(cached.storedAt);
+          if (isOffline || cached.isFresh) {
+            setError(isOffline
+              ? 'Offline mode. Saved event registrations are not live-verified.'
+              : null);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {
+        cached = null;
+      }
+    }
+
+    if (isOffline) {
+      setError('Event registrations are not available offline on this device yet.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const result = await eventClient.listRegistrations(50, 0);
+      if (!user?.public_id) throw new Error("Sign in to view your event registrations.");
+      const result = await userOfflineRepository.refreshEventRegistrations(user.public_id);
       setRegistrations(result.items ?? []);
+      setCachedAt(null);
+      setError(null);
     } catch (cause) {
-      setError(cause instanceof Error
-        ? cause.message
-        : "Your event registrations could not be loaded.");
+      if (cached) {
+        setRegistrations(cached.value.items ?? []);
+        setCachedAt(cached.storedAt);
+        setError('Connection unavailable. Showing saved registrations; ticket status is not live-verified.');
+      } else {
+        setError(cause instanceof Error
+          ? cause.message
+          : "Your event registrations could not be loaded.");
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isOffline, user?.public_id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -427,6 +465,7 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
         {loading ? (
           <ActivityIndicator color={BLUE} />
         ) : error ? (
+          {cachedAt !== null ? <Text style={quiet}>Saved {new Date(cachedAt).toLocaleString()} · status is not live-verified</Text> : null}
           <Text style={{ color: "#A3332B", fontSize: 12, lineHeight: 18 }}>{error}</Text>
         ) : visibleRegistrations.length ? visibleRegistrations.slice(0, 8).map(item => (
           <View
