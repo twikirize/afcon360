@@ -557,6 +557,13 @@ def save_failure_diagnostics() -> None:
             f"{type(error).__name__}: {error}\n", encoding="utf-8",
         )
 
+    app_pid = run_adb("shell", "pidof", PACKAGE, check=False).strip().split()
+    capture("failure-process.txt", "shell", "pidof", PACKAGE)
+    if app_pid:
+        # App-specific logs are small and remain useful even when emulator
+        # services generate thousands of unrelated logcat records.
+        capture("failure-app-logcat.txt", "logcat", "-d", f"--pid={app_pid[0]}", "-v", "threadtime")
+        capture("failure-app-process-status.txt", "shell", "cat", f"/proc/{app_pid[0]}/status")
     capture("failure-logcat-full.txt", "logcat", "-b", "all", "-d", "-t", "4000")
     capture(
         "failure-logcat-errors.txt", "logcat", "-d", "-t", "4000",
@@ -565,9 +572,9 @@ def save_failure_diagnostics() -> None:
         "ActivityManager:E", "installd:E", "*:S",
     )
     capture("failure-foreground-activity.txt", "shell", "dumpsys", "activity", "activities")
+    capture("failure-activity-top.txt", "shell", "dumpsys", "activity", "top")
     capture("failure-focused-window.txt", "shell", "dumpsys", "window", "windows")
     capture("failure-package-path.txt", "shell", "pm", "path", PACKAGE)
-    capture("failure-process.txt", "shell", "pidof", PACKAGE)
     capture("failure-ui-dump-command.txt", "shell", "uiautomator", "dump", UI_XML)
     capture("failure-ui-hierarchy.xml", "shell", "cat", UI_XML)
 
@@ -687,9 +694,9 @@ def main() -> None:
         timeout=45,
         label="authenticated Pamoja Home header",
     )
-    account_only = os.environ.get("AFCON360_E2E_ACCOUNT_ONLY", "").strip().lower() in {"1", "true", "yes"}
-    if account_only:
-        save_screen("02-home-account-only")
+    login_navigation_only = os.environ.get("AFCON360_E2E_LOGIN_NAVIGATION_ONLY", "").strip().lower() in {"1", "true", "yes"}
+    if login_navigation_only:
+        save_screen("02-home-login-navigation-gate")
     else:
         save_screen("02-home")
         wait_for_text_scrolling(
@@ -701,29 +708,44 @@ def main() -> None:
         save_screen("02a-my-events-overview")
     mark_stage("authenticated_home")
 
-    if not account_only:
-        mark_stage("activity_navigation_started")
-        tap_text("Activity", last=True)
-        wait_for_text("Your rides and bookings.", "No rides yet", timeout=35, label="authenticated ride activity")
-        save_screen("03-activity")
-        mark_stage("activity_screen")
+    mark_stage("activity_navigation_started")
+    tap_text("Activity", last=True)
+    wait_for_text("Your rides and bookings.", "No rides yet", timeout=35, label="authenticated ride activity")
+    save_screen("03-activity")
+    mark_stage("activity_screen")
 
-        mark_stage("wallet_navigation_started")
-        tap_text("Wallet", last=True)
-        wait_for_text(
-            "Your money, clearly managed.", "Wallet accounts", "No Wallet account is active yet.",
-            timeout=35, label="authenticated Wallet read views",
-        )
-        save_screen("04-wallet")
-        mark_stage("wallet_screen")
+    mark_stage("wallet_navigation_started")
+    tap_text("Wallet", last=True)
+    wait_for_text(
+        "Your money, clearly managed.", "Wallet accounts", "No Wallet account is active yet.",
+        timeout=35, label="authenticated Wallet read views",
+    )
+    save_screen("04-wallet")
+    mark_stage("wallet_screen")
 
     tap_text("Account", last=True)
-    wait_for_text("Your account.", timeout=25, label="authenticated account")
-    account_text = visible_text()
+    account_text = wait_for_text("Your account.", timeout=25, label="authenticated account")
     if USERNAME not in account_text and os.environ.get("AFCON360_E2E_EMAIL", "native-e2e@afcon360.test") not in account_text:
         raise AssertionError("The authenticated account screen did not display the synthetic user's identity.")
     save_screen("05-account")
     mark_stage("account_screen")
+
+    if login_navigation_only:
+        tap_text("Home", last=True)
+        wait_for_text(
+            "Your world,",
+            "Good to see you, " + USERNAME + ".",
+            timeout=25,
+            label="return to Home after primary tab navigation",
+        )
+        save_screen("05-home-after-tab-navigation")
+        mark_stage("login_navigation_gate_passed")
+        print(
+            "USER_ANDROID_E2E_LOGIN_NAVIGATION_PASS: authenticated login, Home, Activity, "
+            "Wallet, Account identity, and return to Home.",
+            flush=True,
+        )
+        return
 
     # Verify an intentional uninstall has an AFCON360 confirmation first.
     # Cancel the app's prompt; never remove the test APK from the emulator.
@@ -759,14 +781,6 @@ def main() -> None:
         )
     save_screen("05b-account-restored-after-uninstall-cancel")
     mark_stage("account_restored_after_uninstall_cancel")
-
-    if account_only:
-        print(
-            "USER_ANDROID_E2E_ACCOUNT_PASS: login, Account identity, uninstall cancellation, "
-            "installed package retained, and Account heading restored.",
-            flush=True,
-        )
-        return
 
     tap_text("Explore", last=True)
     wait_for_text("Make more of the journey.", "Rides", label="Explore services")
