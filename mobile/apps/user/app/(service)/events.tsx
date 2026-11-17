@@ -10,6 +10,7 @@ import {
   PamojaSectionTitle as SectionTitle,
   PamojaStatusPill as StatusPill,
 } from "../../src/components/PamojaScreen";
+import { ServiceHeroAccent } from "../../src/components/ServiceHeroAccent";
 import {
   NativeEventDetail,
   NativeEventRegistration,
@@ -158,6 +159,8 @@ export default function Events() {
         title="Be there for the moments."
         description="Discover published events, check ticket availability and register for free tickets in AFCON360."
       />
+
+      <ServiceHeroAccent serviceKey="events" title="Discover events" subtitle="Search, register, get QR tickets" />
 
       {error ? <Panel><Text style={{ color: "#9A342D", lineHeight: 20 }}>{error}</Text></Panel> : null}
       {notice ? <Panel><Text style={{ color: palette.green, lineHeight: 20, fontWeight: "800" }}>{notice}</Text></Panel> : null}

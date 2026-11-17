@@ -21,6 +21,7 @@ import {
   PamojaSectionTitle as SectionTitle,
   PamojaStatusPill as StatusPill,
 } from "../../src/components/PamojaScreen";
+import { ServiceHeroAccent } from "../../src/components/ServiceHeroAccent";
 import { authClient } from "../../src/services/api";
 import { MobileAuthError } from "@afcon360/mobile-core";
 
@@ -872,6 +873,8 @@ export default function RideScreen() {
         title="Your ride, your game!"
         description="Book match-day shuttles, airport transfers and everyday rides through the same AFCON360 booking process available on the website."
       />
+
+      <ServiceHeroAccent serviceKey="rides" title="Book your ride" subtitle="Pickup, destination, fare & payment" />
 
       <Progress stage={stage} />
 

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Alert, ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
+import { Alert, ActivityIndicator, Pressable, Text, TextInput, View, Image, StyleSheet, ScrollView } from "react-native";
 import { palette as basePalette } from "@afcon360/mobile-ui";
 import {
   PamojaActionButton as ActionButton,
@@ -9,6 +9,9 @@ import {
   PamojaSectionTitle as SectionTitle,
   PamojaStatusPill as StatusPill,
 } from "../../src/components/PamojaScreen";
+import { ServiceHeroAccent } from "../../src/components/ServiceHeroAccent";
+import { PropertyCard } from "../../src/components/PropertyCard";
+import { StaysFiltersBottomSheet, type StaysFilters } from "../../src/components/StaysFilters";
 import {
   AccommodationBooking,
   AccommodationBookingQuote,
@@ -16,6 +19,8 @@ import {
 } from "@afcon360/mobile-core";
 import { accommodationClient } from "../../src/services/api";
 import { serviceErrorMessage } from "../../src/services/service-errors";
+import { userOfflineRepository, type WishlistItem } from "../../src/offline/repositories";
+import { useAuth } from "../../src/auth/AuthProvider";
 
 const palette = {
   ...basePalette,
@@ -53,8 +58,8 @@ function Field({
   keyboardType?: "default" | "numeric";
 }) {
   return (
-    <View style={{ gap: 6 }}>
-      <Text style={{ color: palette.ink, fontWeight: "700", fontSize: 13 }}>{label}</Text>
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -63,16 +68,7 @@ function Field({
         keyboardType={keyboardType}
         autoCapitalize="none"
         autoCorrect={false}
-        style={{
-          backgroundColor: "#FFFFFF",
-          borderWidth: 1,
-          borderColor: palette.border,
-          borderRadius: 13,
-          paddingHorizontal: 12,
-          paddingVertical: 11,
-          color: palette.ink,
-          fontSize: 15,
-        }}
+        style={styles.input}
       />
     </View>
   );
@@ -100,6 +96,7 @@ function bookingCanCancel(booking: AccommodationBooking): boolean {
 }
 
 export default function Stays() {
+  const { user } = useAuth();
   const [properties, setProperties] = useState<AccommodationProperty[]>([]);
   const [bookings, setBookings] = useState<AccommodationBooking[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<AccommodationProperty | null>(null);
@@ -118,6 +115,56 @@ export default function Stays() {
   const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Filters & view
+  const [filters, setFilters] = useState<StaysFilters>({});
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+
+  // Wishlist
+  const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
+  const [wishlistLoading, setWishlistLoading] = useState(true);
+
+  const loadWishlist = useCallback(async () => {
+    if (!user?.public_id) { setWishlist([]); setWishlistLoading(false); return; }
+    setWishlistLoading(true);
+    try {
+      const cached = await userOfflineRepository.readWishlist(user.public_id);
+      setWishlist(cached?.value?.items ?? []);
+    } catch {
+      setWishlist([]);
+    } finally {
+      setWishlistLoading(false);
+    }
+  }, [user?.public_id]);
+
+  const toggleWishlist = useCallback(async (property: AccommodationProperty) => {
+    if (!user?.public_id) return;
+    const isWishlisted = wishlist.some((w) => w.propertyId === property.public_id);
+    try {
+      if (isWishlisted) {
+        await userOfflineRepository.removeFromWishlist(user.public_id, property.public_id);
+        setWishlist((prev) => prev.filter((w) => w.propertyId !== property.public_id));
+      } else {
+        const item: WishlistItem = {
+          propertyId: property.public_id,
+          propertyTitle: property.title,
+          propertyCity: property.city,
+          propertyCountry: property.country,
+          propertyImage: property.main_image,
+          propertyStartingPrice: property.starting_price,
+          propertyCurrency: property.currency,
+          addedAt: Date.now(),
+        };
+        await userOfflineRepository.addToWishlist(user.public_id, item);
+        setWishlist((prev) => [item, ...prev.filter((w) => w.propertyId !== property.public_id)]);
+      }
+    } catch {
+      // Wishlist is best-effort; don't block the UI
+    }
+  }, [user?.public_id, wishlist]);
+
+  const isWishlisted = (propertyId: string) => wishlist.some((w) => w.propertyId === propertyId);
 
   const loadBookings = useCallback(async () => {
     setBookingsLoading(true);
@@ -153,7 +200,30 @@ export default function Stays() {
   useEffect(() => {
     void loadProperties();
     void loadBookings();
-  }, [loadProperties, loadBookings]);
+    void loadWishlist();
+  }, [loadProperties, loadBookings, loadWishlist]);
+
+  // Client-side filtering
+  const filteredProperties = useMemo(() => {
+    let result = properties;
+    if (filters.priceMin != null) {
+      result = result.filter((p) => Number(p.starting_price) >= filters.priceMin!);
+    }
+    if (filters.priceMax != null) {
+      result = result.filter((p) => Number(p.starting_price) <= filters.priceMax!);
+    }
+    if (filters.minRating != null) {
+      result = result.filter((p) => p.rating >= filters.minRating!);
+    }
+    if (filters.propertyTypes?.length) {
+      result = result.filter((p) => filters.propertyTypes!.includes(p.property_type));
+    }
+    if (filters.amenities?.length) {
+      // Note: API doesn't return amenities yet; this is a placeholder for future
+      // result = result.filter((p) => filters.amenities!.every((a) => p.amenities?.includes(a)));
+    }
+    return result;
+  }, [properties, filters]);
 
   const chooseProperty = (property: AccommodationProperty) => {
     setSelectedProperty(property);
@@ -304,49 +374,98 @@ export default function Stays() {
         description="Discover bookable stays, review an AFCON360 price quote and pay from your Wallet."
       />
 
-      {error ? <Panel><Text style={{ color: "#9A342D", lineHeight: 20 }}>{error}</Text></Panel> : null}
-      {notice ? <Panel><Text style={{ color: palette.green, lineHeight: 20, fontWeight: "700" }}>{notice}</Text></Panel> : null}
+      <ServiceHeroAccent serviceKey="stays" title="Find your stay" subtitle="Search, compare, book & manage" />
+
+      {error ? <Panel><Text style={styles.errorText}>{error}</Text></Panel> : null}
+      {notice ? <Panel><Text style={styles.noticeText}>{notice}</Text></Panel> : null}
 
       <Panel>
-        <SectionTitle>Find accommodation</SectionTitle>
+        <View style={styles.searchHeader}>
+          <SectionTitle>Find accommodation</SectionTitle>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={filtersVisible ? "Close filters" : "Open filters"}
+            onPress={() => setFiltersVisible(true)}
+            style={styles.filterButton}
+          >
+            <Text style={styles.filterButtonText}>Filters {Object.keys(filters).length ? `(${Object.keys(filters).length})` : ""}</Text>
+          </Pressable>
+        </View>
         <Field label="Property, city or destination" value={query} onChangeText={setQuery} placeholder="Search Kampala, Nairobi, hotel…" />
         <ActionButton label={loading ? "Searching stays…" : "Search stays"} disabled={loading || busy} onPress={() => void loadProperties(query)} />
         {loading ? (
-          <ActivityIndicator color={palette.green} />
-        ) : properties.length ? (
-          properties.map((property) => (
-            <Pressable
-              key={property.public_id}
-              onPress={() => chooseProperty(property)}
-              style={{
-                borderWidth: 1,
-                borderColor: selectedProperty?.public_id === property.public_id ? palette.green : palette.border,
-                borderRadius: 18,
-                padding: 16,
-                gap: 8,
-                backgroundColor: selectedProperty?.public_id === property.public_id ? "#EFF6F0" : palette.surface,
-              }}
-            >
-              <Text style={{ color: palette.ink, fontSize: 16, fontWeight: "900" }}>{property.title}</Text>
-              <Text style={{ color: palette.muted }}>{property.city}, {property.country}</Text>
-              <Text style={{ color: palette.ink, fontWeight: "700" }}>From {money(property.starting_price, property.currency)} per night</Text>
-              {property.rating > 0 ? <Text style={{ color: palette.muted }}>Rating {property.rating.toFixed(1)} · {property.review_count} reviews</Text> : null}
-              {property.room_types.length ? <Text style={{ color: palette.muted }}>{property.room_types.length} room type(s)</Text> : null}
-            </Pressable>
-          ))
+          <ActivityIndicator color={palette.green} size="large" style={styles.centered} />
+        ) : filteredProperties.length ? (
+          <View style={viewMode === "grid" ? styles.grid : styles.list}>
+            {viewMode === "grid" ? (
+              <ScrollView horizontal={false} contentContainerStyle={styles.gridContent} showsVerticalScrollIndicator={false}>
+                {filteredProperties.map((property) => (
+                  <PropertyCard
+                    key={property.public_id}
+                    property={property}
+                    selected={selectedProperty?.public_id === property.public_id}
+                    onPress={() => chooseProperty(property)}
+                    onWishlist={() => toggleWishlist(property)}
+                    isWishlisted={isWishlisted(property.public_id)}
+                  />
+                ))}
+              </ScrollView>
+            ) : (
+              filteredProperties.map((property) => (
+                <PropertyCard
+                  key={property.public_id}
+                  property={property}
+                  selected={selectedProperty?.public_id === property.public_id}
+                  onPress={() => chooseProperty(property)}
+                  onWishlist={() => toggleWishlist(property)}
+                  isWishlisted={isWishlisted(property.public_id)}
+                />
+              ))
+            )}
+          </View>
         ) : error ? null : (
-          <Text style={{ color: palette.muted }}>No bookable properties were found. Try another city or search term.</Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>🏨</Text>
+            <Text style={styles.emptyTitle}>No properties found</Text>
+            <Text style={styles.emptyBody}>
+              {query ? "Try a different search term or clear filters." : "No bookable properties available right now."}
+            </Text>
+            <Pressable onPress={() => { setQuery(""); setFilters({}); void loadProperties(); }} style={styles.emptyButton}>
+              <Text style={styles.emptyButtonText}>Clear search & filters</Text>
+            </Pressable>
+          </View>
         )}
+        <View style={styles.viewToggle}>
+          <Pressable
+            onPress={() => setViewMode("list")}
+            style={[styles.viewButton, viewMode === "list" && styles.viewButtonActive]}
+          >
+            <Text style={{ fontSize: 18 }}>☰</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setViewMode("grid")}
+            style={[styles.viewButton, viewMode === "grid" && styles.viewButtonActive]}
+          >
+            <Text style={{ fontSize: 18 }}>⊞</Text>
+          </Pressable>
+        </View>
       </Panel>
 
       {selectedProperty ? (
         <Panel>
           <SectionTitle>{selectedProperty.title}</SectionTitle>
-          <Text style={{ color: palette.muted, lineHeight: 20 }}>{selectedProperty.description || selectedProperty.summary}</Text>
-          <Text style={{ color: palette.ink, fontWeight: "700" }}>{selectedProperty.address || `${selectedProperty.city}, ${selectedProperty.country}`}</Text>
+          {selectedProperty.main_image ? (
+            <Image
+              source={{ uri: selectedProperty.main_image }}
+              style={styles.propertyImage}
+              resizeMode="cover"
+            />
+          ) : null}
+          <Text style={styles.description}>{selectedProperty.description || selectedProperty.summary}</Text>
+          <Text style={styles.address}>{selectedProperty.address || `${selectedProperty.city}, ${selectedProperty.country}`}</Text>
           {selectedProperty.room_types.length ? (
-            <View style={{ gap: 8 }}>
-              <Text style={{ color: palette.ink, fontWeight: "800" }}>Choose a room</Text>
+            <View style={styles.roomTypes}>
+              <Text style={styles.roomTypesTitle}>Choose a room</Text>
               {selectedProperty.room_types.map((room) => (
                 <Pressable
                   key={room.room_token}
@@ -363,9 +482,9 @@ export default function Stays() {
                     gap: 4,
                   }}
                 >
-                  <Text style={{ color: palette.ink, fontWeight: "800" }}>{room.name}</Text>
-                  <Text style={{ color: palette.muted }}>{room.max_guests} guests · {room.beds} bed(s) · {room.total_units} units</Text>
-                  <Text style={{ color: palette.ink }}>{money(room.base_price_per_night, room.currency)} per night</Text>
+                  <Text style={styles.roomName}>{room.name}</Text>
+                  <Text style={styles.roomDetails}>{room.max_guests} guests · {room.beds} bed(s) · {room.total_units} units</Text>
+                  <Text style={styles.roomPrice}>{money(room.base_price_per_night, room.currency)} per night</Text>
                 </Pressable>
               ))}
             </View>
@@ -381,26 +500,26 @@ export default function Stays() {
       {quote ? (
         <Panel>
           <SectionTitle>Review your booking</SectionTitle>
-          <Text style={{ color: palette.ink, fontSize: 21, fontWeight: "900" }}>{money(quote.total, quote.currency)}</Text>
-          <Text style={{ color: palette.muted }}>{quote.nights} night(s) · {quote.num_guests} guest(s) · {quote.rooms_requested} room(s)</Text>
-          <View style={{ gap: 4 }}>
-            <Text style={{ color: palette.muted }}>Nightly rate: {money(quote.nightly_rate, quote.currency)}</Text>
-            <Text style={{ color: palette.muted }}>Subtotal: {money(quote.subtotal, quote.currency)}</Text>
-            <Text style={{ color: palette.muted }}>Cleaning fee: {money(quote.cleaning_fee, quote.currency)}</Text>
-            <Text style={{ color: palette.muted }}>Service fee: {money(quote.service_fee, quote.currency)}</Text>
-            <Text style={{ color: palette.muted }}>Taxes: {money(quote.taxes, quote.currency)}</Text>
-            <Text style={{ color: palette.ink, fontWeight: "800" }}>
+          <Text style={styles.totalPrice}>{money(quote.total, quote.currency)}</Text>
+          <Text style={styles.bookingMeta}>{quote.nights} night(s) · {quote.num_guests} guest(s) · {quote.rooms_requested} room(s)</Text>
+          <View style={styles.breakdown}>
+            <Text style={styles.breakdownRow}><Text style={styles.breakdownLabel}>Nightly rate:</Text> <Text>{money(quote.nightly_rate, quote.currency)}</Text></Text>
+            <Text style={styles.breakdownRow}><Text style={styles.breakdownLabel}>Subtotal:</Text> <Text>{money(quote.subtotal, quote.currency)}</Text></Text>
+            <Text style={styles.breakdownRow}><Text style={styles.breakdownLabel}>Cleaning fee:</Text> <Text>{money(quote.cleaning_fee, quote.currency)}</Text></Text>
+            <Text style={styles.breakdownRow}><Text style={styles.breakdownLabel}>Service fee:</Text> <Text>{money(quote.service_fee, quote.currency)}</Text></Text>
+            <Text style={styles.breakdownRow}><Text style={styles.breakdownLabel}>Taxes:</Text> <Text>{money(quote.taxes, quote.currency)}</Text></Text>
+            <Text style={styles.walletBalance}>
               Wallet balance: {quote.wallet_available_balance ? money(quote.wallet_available_balance, quote.currency) : "No matching Wallet found"}
             </Text>
             <StatusPill tone={quote.wallet_payment_available ? "green" : "gold"}>
               {quote.wallet_payment_available ? "Wallet can cover this booking" : "Wallet payment unavailable"}
             </StatusPill>
-            <Text style={{ color: palette.muted, fontSize: 11 }}>Quote expires {new Date(quote.expires_at).toLocaleTimeString()}.</Text>
+            <Text style={styles.quoteExpiry}>Quote expires {new Date(quote.expires_at).toLocaleTimeString()}.</Text>
           </View>
           <Field label="Transaction PIN" value={pin} onChangeText={setPin} placeholder="Enter your Wallet PIN" keyboardType="numeric" />
           <Field label="Special requests (optional)" value={specialRequests} onChangeText={setSpecialRequests} placeholder="Share arrival or accessibility requests" />
           <ActionButton label={busy ? "Confirming booking…" : "Review and pay from Wallet"} disabled={busy} onPress={confirmBooking} />
-          <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 17 }}>
+          <Text style={styles.disclaimer}>
             AFCON360 rechecks the property, dates and price on the server before charging your Wallet. The app does not calculate the booking total.
           </Text>
         </Panel>
@@ -408,25 +527,89 @@ export default function Stays() {
 
       <Panel>
         <SectionTitle>Your accommodation bookings</SectionTitle>
-        {bookingsError ? <Text style={{ color: "#9A342D", lineHeight: 20 }}>Booking history is unavailable: {bookingsError}</Text> : null}
+        {bookingsError ? <Text style={styles.errorText}>Booking history is unavailable: {bookingsError}</Text> : null}
         {bookingsLoading ? <ActivityIndicator color={palette.green} /> : null}
         {!bookingsLoading && bookings.length ? bookings.map((booking) => (
-          <View key={booking.booking_reference} style={{ borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10, gap: 6 }}>
-            <Text style={{ color: palette.ink, fontWeight: "900" }}>{booking.property.title || "Accommodation booking"}</Text>
-            <Text style={{ color: palette.muted }}>{booking.booking_reference}</Text>
-            <Text style={{ color: palette.muted }}>{booking.check_in} → {booking.check_out}</Text>
-            <Text style={{ color: palette.ink, fontWeight: "700" }}>{money(booking.amount, booking.currency)}</Text>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          <View key={booking.booking_reference} style={styles.bookingRow}>
+            <Text style={styles.bookingTitle}>{booking.property.title || "Accommodation booking"}</Text>
+            <Text style={styles.bookingRef}>{booking.booking_reference}</Text>
+            <Text style={styles.bookingDates}>{booking.check_in} → {booking.check_out}</Text>
+            <Text style={styles.bookingAmount}>{money(booking.amount, booking.currency)}</Text>
+            <View style={styles.bookingPills}>
               <StatusPill tone={booking.status === "confirmed" ? "green" : "gold"}>{booking.status}</StatusPill>
               <StatusPill tone={booking.payment_status === "paid" ? "green" : "gold"}>{booking.payment_status}</StatusPill>
             </View>
             {bookingCanCancel(booking) ? <ActionButton label={busy ? "Processing…" : "Request cancellation"} disabled={busy} onPress={() => cancelBooking(booking)} /> : null}
           </View>
         )) : bookingsError || bookingsLoading ? null : (
-          <Text style={{ color: palette.muted }}>Your accommodation bookings will appear here.</Text>
+          <Text style={styles.emptyText}>Your accommodation bookings will appear here.</Text>
         )}
         <ActionButton label={bookingsLoading ? "Refreshing bookings…" : "Refresh bookings"} disabled={bookingsLoading} onPress={() => void loadBookings()} />
       </Panel>
+
+      <StaysFiltersBottomSheet
+        visible={filtersVisible}
+        onClose={() => setFiltersVisible(false)}
+        onApply={setFilters}
+        initialFilters={filters}
+        properties={properties}
+      />
     </AppScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  field: { gap: 6 },
+  fieldLabel: { color: "#122419", fontWeight: "700", fontSize: 13 },
+  input: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E6EAE4",
+    borderRadius: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    color: "#122419",
+    fontSize: 15,
+  },
+  errorText: { color: "#9A342D", lineHeight: 20 },
+  noticeText: { color: "#0E5B36", lineHeight: 20, fontWeight: "700" },
+  searchHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  filterButton: { backgroundColor: "#E8F4EC", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  filterButtonText: { color: "#0E5B36", fontSize: 12, fontWeight: "800" },
+  centered: { alignSelf: "center", marginVertical: 16 },
+  list: { gap: 12 },
+  grid: { gap: 12 },
+  gridContent: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  viewToggle: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 8 },
+  viewButton: { width: 40, height: 40, borderRadius: 10, backgroundColor: "#F5F6F2", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#E6EAE4" },
+  viewButtonActive: { backgroundColor: "#0E5B36", borderColor: "#0E5B36" },
+  emptyState: { alignItems: "center", padding: 32, gap: 10 },
+  emptyIcon: { fontSize: 48 },
+  emptyTitle: { color: "#122419", fontSize: 16, fontWeight: "900" },
+  emptyBody: { color: "#6C766E", fontSize: 13, lineHeight: 18, textAlign: "center" },
+  emptyButton: { marginTop: 8, backgroundColor: "#E8F4EC", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  emptyButtonText: { color: "#0E5B36", fontWeight: "800" },
+  propertyImage: { width: "100%", height: 200, borderRadius: 14, marginBottom: 12 },
+  description: { color: "#6C766E", lineHeight: 20, marginBottom: 8 },
+  address: { color: "#122419", fontWeight: "700", marginBottom: 12 },
+  roomTypes: { gap: 8, marginBottom: 12 },
+  roomTypesTitle: { color: "#122419", fontWeight: "800", marginBottom: 4 },
+  roomName: { color: "#122419", fontWeight: "800" },
+  roomDetails: { color: "#6C766E" },
+  roomPrice: { color: "#122419" },
+  totalPrice: { color: "#122419", fontSize: 21, fontWeight: "900", marginBottom: 4 },
+  bookingMeta: { color: "#6C766E", marginBottom: 12 },
+  breakdown: { gap: 4 },
+  breakdownRow: { flexDirection: "row", justifyContent: "space-between", color: "#6C766E" },
+  breakdownLabel: { fontWeight: "700" },
+  walletBalance: { color: "#122419", fontWeight: "800", marginTop: 8 },
+  quoteExpiry: { color: "#6C766E", fontSize: 11 },
+  disclaimer: { color: "#6C766E", fontSize: 11, lineHeight: 17, marginTop: 8 },
+  bookingRow: { borderTopWidth: 1, borderTopColor: "#E6EAE4", paddingTop: 10, gap: 6 },
+  bookingTitle: { color: "#122419", fontWeight: "900" },
+  bookingRef: { color: "#6C766E" },
+  bookingDates: { color: "#6C766E" },
+  bookingAmount: { color: "#122419", fontWeight: "700" },
+  bookingPills: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  emptyText: { color: "#6C766E" },
+});

@@ -45,9 +45,27 @@ async function saveBestEffort<T>(
 
 const HOME_FEED_KEY = "home.feed.page1.v1";
 const EVENT_REGISTRATIONS_KEY = "events.registrations.summary.v1";
+const WISHLIST_KEY = "stays.wishlist.v1";
 const HOME_FEED_TTL_MS = 15 * 60 * 1000;
 const EVENT_REGISTRATIONS_TTL_MS = 5 * 60 * 1000;
+const WISHLIST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type WishlistItem = {
+  propertyId: string;
+  propertyTitle: string;
+  propertyCity: string;
+  propertyCountry: string;
+  propertyImage: string | null;
+  propertyStartingPrice: string;
+  propertyCurrency: string;
+  addedAt: number;
+};
+
+export type WishlistData = {
+  items: WishlistItem[];
+  updatedAt: number;
+};
 
 export const userOfflineRepository = {
   async readHomeFeed(userPublicId: string): Promise<CachedSnapshot<FeedResponse> | null> {
@@ -109,5 +127,41 @@ export const userOfflineRepository = {
       EVENT_REGISTRATIONS_TTL_MS
     );
     return summary;
+  },
+
+  async readWishlist(userPublicId: string): Promise<CachedSnapshot<WishlistData> | null> {
+    return snapshot(await readOfflineCache<WishlistData>(
+      await scopeFor(userPublicId),
+      WISHLIST_KEY,
+      MAX_STALE_MS
+    ));
+  },
+
+  async addToWishlist(userPublicId: string, item: WishlistItem): Promise<WishlistData> {
+    const cached = await this.readWishlist(userPublicId);
+    const existing = cached?.value ?? { items: [], updatedAt: Date.now() };
+    const filtered = existing.items.filter((i) => i.propertyId !== item.propertyId);
+    const updated: WishlistData = {
+      items: [{ ...item, addedAt: Date.now() }, ...filtered],
+      updatedAt: Date.now(),
+    };
+    await saveBestEffort(await scopeFor(userPublicId), WISHLIST_KEY, updated, WISHLIST_TTL_MS);
+    return updated;
+  },
+
+  async removeFromWishlist(userPublicId: string, propertyId: string): Promise<WishlistData> {
+    const cached = await this.readWishlist(userPublicId);
+    const existing = cached?.value ?? { items: [], updatedAt: Date.now() };
+    const updated: WishlistData = {
+      items: existing.items.filter((i) => i.propertyId !== propertyId),
+      updatedAt: Date.now(),
+    };
+    await saveBestEffort(await scopeFor(userPublicId), WISHLIST_KEY, updated, WISHLIST_TTL_MS);
+    return updated;
+  },
+
+  async clearWishlist(userPublicId: string): Promise<void> {
+    const empty: WishlistData = { items: [], updatedAt: Date.now() };
+    await saveBestEffort(await scopeFor(userPublicId), WISHLIST_KEY, empty, WISHLIST_TTL_MS);
   },
 };
