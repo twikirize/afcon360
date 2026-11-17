@@ -7,23 +7,20 @@
  * Run from mobile/apps/user after workspace dependencies are installed:
  *   node ../../scripts/user-native-fingerprint.cjs
  *
- * Resolve @expo/fingerprint from the installed Expo package so the fingerprint
- * version matches this app's SDK rather than an unpinned latest CLI download.
- * The project's fingerprint.config.js supplies the balanced native-only
- * policy, excluding OTA-only Expo "extra" runtime values.
- *
- * Bump E2E_APK_RECIPE_VERSION in mobile-workspace.yml when changing the
- * disposable APK build recipe itself (manifest patch, SDK/build tools,
- * signing mode or Gradle invocation).
+ * Resolve @expo/fingerprint from the User app's own dependency graph so the
+ * fingerprint implementation matches this project's installed Expo SDK.
+ * fingerprint.config.js preserves the balanced native checks while excluding
+ * OTA-only Expo "extra" runtime values.
  */
 const path = require("node:path");
+const { createRequire } = require("node:module");
 
 async function main() {
-  const expoEntry = require.resolve("expo");
-  const fingerprintPackage = require.resolve("@expo/fingerprint", {
-    paths: [path.dirname(expoEntry)]
-  });
-  const Fingerprint = require(fingerprintPackage);
+  const appRequire = createRequire(path.join(process.cwd(), "package.json"));
+  const expoEntry = appRequire.resolve("expo");
+  const expoRequire = createRequire(expoEntry);
+  const fingerprintEntry = expoRequire.resolve("@expo/fingerprint");
+  const Fingerprint = expoRequire(fingerprintEntry);
 
   if (typeof Fingerprint.createProjectHashAsync !== "function") {
     throw new Error(
@@ -31,7 +28,7 @@ async function main() {
     );
   }
 
-  const fingerprintConfig = require(path.join(process.cwd(), "fingerprint.config.js"));
+  const fingerprintConfig = appRequire("./fingerprint.config.js");
   const hash = await Fingerprint.createProjectHashAsync(process.cwd(), {
     ...fingerprintConfig,
     platforms: ["android"]
