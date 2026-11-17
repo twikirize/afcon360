@@ -79,9 +79,9 @@ The server-selection capability already exists in the selected baseline. It is c
 - `mobile/apps/user/app/(service)/settings.tsx` displays the Connection section and links to `/server-settings`.
 - `mobile/apps/user/app/server-settings.tsx` allows the user to choose public Pamoja or enter a reachable preview/staging API origin; it calls `GET /api/health/ping` before saving.
 - `mobile/apps/user/src/services/api.ts` stores the selected origin under `afcon360.user.api-base-url` using SecureStore and gates manual server selection with `SERVER_SELECTION_ENABLED`.
-- `mobile/apps/user/app.config.ts` enables server selection only for preview builds; the normal default API is `https://www.pamoja.space`.
+- `mobile/apps/user/app.config.ts` enables server selection only for internal preview/development builds (including `user-development`); the normal default API is `https://www.pamoja.space`.
 
-Keep this facility available while the owner is configuring and testing laptop/hotspot/staging connections. Do not remove it during the APK rebuild. Keep it restricted to internal preview builds. Production must use the approved HTTPS production endpoint; production users must not be able to redirect the app to arbitrary servers.
+Keep this facility available while the owner is configuring and testing laptop/hotspot/staging connections. Do not remove it during the APK rebuild. Keep it restricted to internal preview/development builds. Production must use the approved HTTPS production endpoint; production users must not be able to redirect the app to arbitrary servers.
 
 Preserve and test these safeguards:
 - public/remote endpoints use HTTPS;
@@ -165,7 +165,7 @@ The disposable E2E APK embeds the local test API and is only for automated backe
 ## 7. Required implementation sequence
 
 1. **Read-only map:** inspect current routes, API clients, AuthProvider, SecureStore use, service contracts, EAS profiles and existing tests. Record what already exists; do not duplicate it.
-2. **Build/release baseline:** prove the current preview APK configuration, package/version/signing/API endpoint and authenticated start-up.
+2. **Build/release baseline:** prove the signed developer APK configuration, package/version/signing/API endpoint and authenticated start-up; keep the protected preview and production profiles separate.
 3. **Connectivity contract:** preserve the preview server selector and health test; add clear connection state and safe reconnect behaviour.
 4. **Local data layer:** select a supported database/encryption approach only after native compatibility and threat-model review. Add schema/versioning, account/environment scoping and a small read-cache slice.
 5. **Sync foundation:** implement pull cursors, stale indicators, idempotent outbox semantics and retry/backoff for safe operations only.
@@ -217,7 +217,7 @@ The User app is ready for public-release consideration only when:
 - reconnect/sync is idempotent and never invents transaction success;
 - account/session/device transitions do not leak cached user data;
 - Android versioning, signing, install and upgrade flows are proven;
-- preview APK and release APK/AAB configurations are demonstrably correct;
+- signed User development APK, protected preview APK and release APK/AAB configurations are demonstrably correct;
 - authenticated online/offline/reconnect journeys and relevant CI pass;
 - the owner approves the release gate.
 
