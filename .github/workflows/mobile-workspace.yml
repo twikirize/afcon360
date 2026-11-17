@@ -100,6 +100,7 @@ jobs:
               "mobile/apps/user/app.config.ts",
               "mobile/apps/user/eas.json",
               "mobile/apps/user/package.json",
+              "mobile/apps/user/fingerprint.config.js",
               "mobile/package.json",
               "mobile/pnpm-lock.yaml",
               "mobile/pnpm-workspace.yaml",
@@ -137,7 +138,7 @@ jobs:
                   native = True
               elif path.startswith(("mobile/apps/user/", "mobile/packages/")):
                   ota = True
-              elif path.startswith("mobile/scripts/"):
+              elif path.startswith("mobile/scripts/") or path == ".github/workflows/mobile-workspace.yml":
                   e2e_harness = True
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
@@ -146,7 +147,7 @@ jobs:
               output.write(f"e2e_harness={str(e2e_harness).lower()}\n")
 
           if native:
-              decision = "NATIVE CHANGE: build a fresh disposable APK and run Android authenticated-journey tests."
+              decision = "NATIVE INPUT CHANGE: compare the Expo native fingerprint; rebuild the APK only when the fingerprint changes."
           elif ota:
               decision = "OTA-COMPATIBLE CHANGE: no APK build; export/type-check the bundle and publish preview OTA only on the permanent User branch or by explicit manual dispatch."
           elif e2e_harness:
@@ -397,13 +398,14 @@ jobs:
           needs.classify-user-changes.outputs.e2e_harness == 'true' &&
           needs.classify-user-changes.outputs.ota != 'true'
         ) ||
-        (github.event_name == 'workflow_dispatch' && inputs.force_apk_rebuild == true) ||
-        (github.event_name == 'push' && (github.ref_name == 'fix/user-release-engineering-20261115' || github.ref_name == 'feat/user-offline-first-foundation-20261117'))
+        (github.event_name == 'workflow_dispatch' && inputs.force_apk_rebuild == true)
       }}
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     outputs:
       apk_ready: ${{ steps.stage_user_apk.outputs.ready }}
+      apk_rebuilt: ${{ steps.validate-user-apk.outputs.reusable != 'true' }}
+      native_fingerprint: ${{ steps.user-apk-key.outputs.fingerprint }}
     services:
       postgres:
         image: postgres:15
@@ -464,27 +466,56 @@ jobs:
           echo "Backend test source: $(git rev-parse HEAD)"
           echo "Backend branch: $(git branch --show-current)"
 
+      - name: Set up Node.js for native fingerprinting and APK reuse
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+      - name: Set up pnpm for native fingerprinting and APK reuse
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+      - name: Install User workspace dependencies for native fingerprinting
+        working-directory: mobile
+        run: pnpm install --no-frozen-lockfile
+
       - name: Prepare User APK cache directory
         run: mkdir -p mobile-e2e-cache
-      - name: Calculate User APK cache key before prebuild
+      - name: Calculate Expo native fingerprint and APK cache key
         id: user-apk-key
+        working-directory: mobile/apps/user
         env:
-          USER_APK_SOURCE_KEY: afcon360-user-e2e-apk-v2-${{ hashFiles('mobile/apps/user/**', 'mobile/packages/**', 'mobile/package.json', 'mobile/pnpm-lock.yaml', 'mobile/pnpm-workspace.yaml', 'mobile/.npmrc') }}
-        run: echo "key=$USER_APK_SOURCE_KEY" >> "$GITHUB_OUTPUT"
-      - name: Restore source-keyed User E2E APK
+          AFCON360_PREVIEW_BUILD: "true"
+          AFCON360_E2E_BUILD: "true"
+          EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
+        shell: bash
+        run: |
+          set -euo pipefail
+          FINGERPRINT="$(node ../../scripts/user-native-fingerprint.cjs)"
+          test -n "$FINGERPRINT"
+          # Bump recipe-v3 only when the disposable APK build recipe changes
+          # (manifest override, Android SDK/build tools, signing mode or Gradle task).
+          KEY="afcon360-user-e2e-apk-recipe-v3-native-$FINGERPRINT"
+          echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "Native Android fingerprint: $FINGERPRINT"
+          echo "Reusable APK cache key: $KEY"
+      - name: Restore native-fingerprint-keyed User E2E APK
         id: user-apk-cache
         uses: actions/cache/restore@v5
         with:
           path: mobile-e2e-cache/
           key: ${{ steps.user-apk-key.outputs.key }}
           restore-keys: |
-            afcon360-user-e2e-apk-v2-1988c0098f079cb6af616af1df3c7d7fdd162b6673c7244378497c428549b5a8
+            afcon360-user-e2e-apk-recipe-v3-native-
+            afcon360-user-e2e-apk-v2-
 
-      - name: Validate cached User APK against current native source
+      - name: Validate cached User APK against native fingerprint
         id: validate-user-apk
         shell: bash
         env:
           USER_APK_CACHE_MATCHED_KEY: ${{ steps.user-apk-cache.outputs.cache-matched-key }}
+          USER_APK_NATIVE_FINGERPRINT: ${{ steps.user-apk-key.outputs.fingerprint }}
           FORCE_USER_APK_REBUILD: ${{ inputs.force_apk_rebuild == true }}
         run: |
           set -euo pipefail
@@ -506,19 +537,44 @@ jobs:
           ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
           test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA" || exit 0
 
-          SOURCE_COMMIT="$(sed -n 's/^source_commit=//p' "$INFO" | head -n 1)"
-          test -n "$SOURCE_COMMIT" || exit 0
-          git fetch --no-tags --depth=1 origin "$SOURCE_COMMIT"
-          if git diff --quiet "$SOURCE_COMMIT" "$GITHUB_SHA" -- \
-            mobile/apps/user mobile/packages mobile/package.json \
-            mobile/pnpm-lock.yaml mobile/pnpm-workspace.yaml mobile/.npmrc; then
-            echo "Verified cached APK against unchanged native User app source at $SOURCE_COMMIT."
-            echo "reusable=true" >> "$GITHUB_OUTPUT"
+          CACHED_FINGERPRINT="$(sed -n 's/^native_fingerprint=//p' "$INFO" | head -n 1)"
+          if [ -n "$CACHED_FINGERPRINT" ]; then
+            if [ "$CACHED_FINGERPRINT" != "$USER_APK_NATIVE_FINGERPRINT" ]; then
+              echo "Cached APK native fingerprint differs; build a compatible native binary."
+              exit 0
+            fi
+            echo "Cached APK native fingerprint matches the current Android runtime."
           else
-            echo "Cached APK source differs from current User app files; a fresh disposable CI APK is required."
+            # One-time safe migration for older source-keyed cache entries.
+            # The legacy build did not record an Expo fingerprint, so only
+            # reuse it when every known native/build input is unchanged.
+            SOURCE_COMMIT="$(sed -n 's/^source_commit=//p' "$INFO" | head -n 1)"
+            test -n "$SOURCE_COMMIT" || exit 0
+            git fetch --no-tags --depth=1 origin "$SOURCE_COMMIT"
+            if ! git diff --quiet "$SOURCE_COMMIT" "$GITHUB_SHA" -- \
+              mobile/apps/user/app.config.ts \
+              mobile/apps/user/eas.json \
+              mobile/apps/user/package.json \
+              mobile/apps/user/fingerprint.config.js \
+              mobile/apps/user/plugins \
+              mobile/apps/user/android \
+              mobile/apps/user/ios \
+              mobile/package.json \
+              mobile/pnpm-lock.yaml \
+              mobile/pnpm-workspace.yaml \
+              mobile/.npmrc \
+              'mobile/packages/*/package.json'; then
+              echo "Legacy APK cannot be proven native-compatible; build a fresh APK."
+              exit 0
+            fi
+            printf 'native_fingerprint=%s\n' "$USER_APK_NATIVE_FINGERPRINT" >> "$INFO"
+            echo "Legacy APK native inputs are unchanged; migrated it to fingerprint validation."
           fi
 
-      - name: Save validated User APK under current source key
+          echo "reusable=true" >> "$GITHUB_OUTPUT"
+          echo "Verified reusable APK SHA-256: $ACTUAL_SHA"
+
+      - name: Save validated User APK under its native fingerprint key
         if: steps.validate-user-apk.outputs.reusable == 'true' && steps.user-apk-cache.outputs['cache-hit'] != 'true'
         uses: actions/cache/save@v5
         with:
@@ -591,17 +647,6 @@ jobs:
           cat mobile-e2e-evidence/backend.log
           echo "::error::Disposable AFCON360 API did not become healthy."
           exit 1
-      - name: Set up Node.js
-        if: steps.validate-user-apk.outputs.reusable != 'true'
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22.13.1"
-      - name: Set up pnpm
-        if: steps.validate-user-apk.outputs.reusable != 'true'
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.12.4
-          run_install: false
       - name: Set up Java
         if: steps.validate-user-apk.outputs.reusable != 'true'
         uses: actions/setup-java@v6
@@ -719,6 +764,7 @@ jobs:
         shell: bash
         env:
           USER_APK_CACHE_KEY: ${{ steps.user-apk-key.outputs.key }}
+          USER_APK_NATIVE_FINGERPRINT: ${{ steps.user-apk-key.outputs.fingerprint }}
         run: |
           set -euo pipefail
           APK="$(find mobile/apps/user/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
@@ -742,6 +788,7 @@ jobs:
           api_origin=http://127.0.0.1:5000
           source_commit=$GITHUB_SHA
           cache_key=$USER_APK_CACHE_KEY
+          native_fingerprint=$USER_APK_NATIVE_FINGERPRINT
           apk_sha256=$APK_SHA256
           EOF
       - name: Persist fresh User APK immediately
@@ -821,7 +868,7 @@ jobs:
   user-android-version-compatibility:
     name: User authenticated journey — ${{ matrix.android-label }}
     needs: user-authenticated-journey
-    if: ${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' && github.ref_name != 'fix/user-release-engineering-20261115' }}
+    if: ${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' && needs.user-authenticated-journey.outputs.apk_rebuilt == 'true' && github.ref_name != 'fix/user-release-engineering-20261115' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -1165,13 +1212,15 @@ jobs:
 
   build-user-preview-apk:
     name: Build signed User preview APK (EAS)
-    needs: [mobile-typecheck, user-authenticated-journey]
+    needs: [classify-user-changes, mobile-typecheck, user-authenticated-journey]
     if: >-
       ${{ github.event_name == 'push' &&
           (github.ref_name == 'fix/user-release-engineering-20261115' || github.ref_name == 'feat/user-offline-first-foundation-20261117') &&
+          needs.classify-user-changes.outputs.native == 'true' &&
           needs.mobile-typecheck.result == 'success' &&
           needs.user-authenticated-journey.result == 'success' &&
-          needs.user-authenticated-journey.outputs.apk_ready == 'true' }}
+          needs.user-authenticated-journey.outputs.apk_ready == 'true' &&
+          needs.user-authenticated-journey.outputs.apk_rebuilt == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     defaults:
