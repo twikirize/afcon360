@@ -669,7 +669,7 @@ def main() -> None:
 
     # Verify an intentional uninstall has an AFCON360 confirmation first.
     # Cancel the app's prompt; never remove the test APK from the emulator.
-    tap_text_scrolling("App settings")
+    tap_text_scrolling("Version & updates")
     wait_for_text("App settings.", "Method 1", timeout=25, label="app installation settings")
     tap_text_scrolling("Uninstall AFCON360 from this device")
     wait_for_text("Uninstall AFCON360?", "Keep AFCON360", timeout=12, label="AFCON360 uninstall confirmation")
