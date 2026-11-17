@@ -139,7 +139,9 @@ The fingerprint configuration deliberately excludes Expo `extra` values such as 
 
 A dependency-manifest change is only a *candidate* native change. The fingerprint is the final decision: if it remains the same, reuse the APK. A JavaScript-only dependency or normal source edit must not force a native build merely because its commit SHA changed.
 
-Keep `runtimeVersion: { policy: "appVersion" }` as the OTA compatibility contract. **Before publishing an OTA update that depends on a changed native fingerprint, increment the app version and produce the matching native build first.** Never send JS that expects native APIs absent from an installed APK. Preview OTA publishing remains an explicit, gated action on the permanent integration branch; a feature-branch push must not publish OTA automatically.
+Use `runtimeVersion: { policy: "fingerprint" }` as the OTA compatibility contract. The runtime value changes whenever the native fingerprint changes, so an OTA bundle requiring a new native API cannot be delivered to an older binary merely because someone forgot to bump the app version. A new native fingerprint requires a matching APK before a compatible OTA is published.
+
+The automated E2E APK keeps OTA enabled but uses the isolated `afcon360-user-e2e` channel and branch. CI publishes the current feature-branch JavaScript bundle there before running the cached APK. This channel is for disposable automated testing only and is never the user-facing preview channel. User-facing preview OTA publication remains explicit and gated on the protected integration branch; a feature-branch push must never publish to that channel.
 
 For normal PyCharm development, make changes on the active feature branch, commit/push, and let CI type-check and export the JavaScript bundle. If the native fingerprint is unchanged, the existing APK remains the test/install binary; do not rebuild it. When the fingerprint changes, CI creates and verifies a new APK and only then allows the signed preview-build gate. A forced rebuild is reserved for a deliberate rebuild/test request or a broken/missing cache—not ordinary source edits.
 
