@@ -1500,6 +1500,8 @@ jobs:
           EXPECTED_FINGERPRINT: ${{ steps.dev-apk-key.outputs.fingerprint }}
           EXPECTED_PROFILE_SHA256: ${{ steps.dev-apk-key.outputs.profile_sha256 }}
           EXPECTED_VERSION_NAME: ${{ steps.dev-apk-key.outputs.version_name }}
+          EXPECTED_SIGNING_CERT_SHA256: "370321f504eab36a4cdd188bc90bb851f468288190bec6de883eeef05ccb3119"
+          MINIMUM_UPDATE_VERSION_CODE: "8"
           USER_DEV_APK_CACHE_KEY: ${{ steps.dev-apk-key.outputs.key }}
           CACHE_REUSED: ${{ steps.validate-dev-apk.outputs.reusable }}
         run: |
@@ -1516,11 +1518,21 @@ jobs:
           MINIMUM="$(sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
           TARGET="$(sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
           test "$VERSION_NAME" = "$EXPECTED_VERSION_NAME"
-          test -n "$VERSION_CODE" && test "$VERSION_CODE" -ge 1
+          test -n "$VERSION_CODE" && test "$VERSION_CODE" -ge "$MINIMUM_UPDATE_VERSION_CODE" || {
+            echo "::error::This APK must upgrade the existing installed preview app (versionCode 7); expected versionCode >= 8, received $VERSION_CODE."
+            exit 1
+          }
           test "$MINIMUM" = "24"
           test -n "$TARGET" && test "$TARGET" -ge 36
           CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/afcon360-user-dev-signature.txt" | head -n 1)"
           test -n "$CERT_SHA256"
+          if [ "$CERT_SHA256" != "$EXPECTED_SIGNING_CERT_SHA256" ]; then
+            echo "::error::Signing certificate mismatch. Refusing to publish an APK that cannot update the existing signed preview installation."
+            echo "Expected existing certificate: $EXPECTED_SIGNING_CERT_SHA256"
+            echo "Actual new certificate: $CERT_SHA256"
+            exit 1
+          fi
+          echo "PASS: signing certificate matches the existing installable preview APK."
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
           if [ "$CACHE_REUSED" = "true" ]; then
             grep -Fxq "signing_certificate_sha256=$CERT_SHA256" "$INFO"
