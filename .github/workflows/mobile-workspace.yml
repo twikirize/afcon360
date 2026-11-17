@@ -43,7 +43,9 @@ on:
 
 concurrency:
   group: afcon360-user-mobile-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Let an in-flight native build finish and save its fingerprint-keyed APK.
+  # New pushes queue and can reuse that binary if their native fingerprint is unchanged.
+  cancel-in-progress: false
 
 permissions:
   contents: read
