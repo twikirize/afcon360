@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
 import * as WebBrowser from "expo-web-browser";
@@ -232,6 +232,38 @@ export default function UserAppSettings() {
     }
   };
 
+  const openAndroidUninstallSettings = async () => {
+    try {
+      // Android owns the package removal and final system confirmation.
+      // AFCON360 never attempts to remove its own package programmatically.
+      await Linking.openSettings();
+    } catch {
+      Alert.alert(
+        "Android app settings unavailable",
+        "Open Android Settings, choose Apps, select AFCON360, then choose Uninstall. Android will ask you to confirm."
+      );
+    }
+  };
+
+  const requestUninstall = () => {
+    if (Platform.OS !== "android") {
+      Alert.alert(
+        "Remove AFCON360",
+        "On iPhone or iPad, remove AFCON360 from the Home Screen or from Settings > General > iPhone Storage."
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Uninstall AFCON360?",
+      "This removes AFCON360 and its saved offline information from this phone. Your AFCON360 account and server-held wallet records, bookings, tickets and transactions remain on AFCON360. You can restore them by reinstalling and signing in. Continue to Android's app settings, where Android will ask you to confirm the uninstall.",
+      [
+        { text: "Keep AFCON360", style: "cancel" },
+        { text: "Continue to Android settings", style: "destructive", onPress: () => void openAndroidUninstallSettings() }
+      ]
+    );
+  };
+
   return (
     <AppScreen>
       <PageHeader
@@ -314,6 +346,26 @@ export default function UserAppSettings() {
         </Pressable>
       </Panel>
 
+      {Platform.OS === "android" ? (
+        <Panel>
+          <SectionTitle>Remove from this phone</SectionTitle>
+          <Text style={styles.sectionHint}>
+            Choose this only when you deliberately want to remove AFCON360 from this device. Your online account and server records are not deleted.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Uninstall AFCON360 from this device"
+            onPress={requestUninstall}
+            style={styles.dangerButton}
+          >
+            <Text style={styles.dangerButtonText}>Uninstall AFCON360 from this device</Text>
+          </Pressable>
+          <Text style={styles.sectionHint}>
+            AFCON360 asks first. Android then opens its own app settings and requires you to choose Uninstall and confirm there. You can cancel either step.
+          </Text>
+        </Panel>
+      ) : null}
+
       <Text style={styles.footer}>AFCON360 · App version and installation settings.</Text>
     </AppScreen>
   );
@@ -375,5 +427,17 @@ const styles = StyleSheet.create({
   actionTitle: { color: palette.ink, fontSize: 12, fontWeight: "900" },
   actionDescription: { color: palette.muted, fontSize: 10, lineHeight: 15 },
   actionArrow: { color: palette.muted, fontSize: 21, fontWeight: "700" },
+  dangerButton: {
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "#E8B8B2",
+    backgroundColor: "#FFF1EF",
+    paddingHorizontal: 14,
+    paddingVertical: 11
+  },
+  dangerButtonText: { color: "#9A332B", fontSize: 12, fontWeight: "900" },
   footer: { color: palette.muted, textAlign: "center", fontSize: 10, paddingBottom: 4 }
 });

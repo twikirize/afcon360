@@ -542,17 +542,31 @@ jobs:
         working-directory: backend-main
         run: |
           python - <<'PY'
-          from app import create_app
+          import os
+          from sqlalchemy import create_engine
           from app.extensions import db
+          from app.identity.models.user import User  # register the users FK target
           from app.models.system_config import SystemConfig
+
+          # create_app() reads SystemConfig during startup. The disposable
+          # migration-built test DB can lag backend main by this additive table,
+          # so create the model table BEFORE create_app() is allowed to query it.
+          engine = create_engine(os.environ["DATABASE_URL"], future=True)
+          try:
+              existed = SystemConfig.__table__.exists(bind=engine)
+              db.Model.metadata.create_all(
+                  bind=engine,
+                  tables=[SystemConfig.__table__],
+                  checkfirst=True,
+              )
+          finally:
+              engine.dispose()
 
           app = create_app()
           with app.app_context():
-              existed = db.inspect(db.engine).has_table(SystemConfig.__tablename__)
-              SystemConfig.__table__.create(bind=db.engine, checkfirst=True)
               created = SystemConfig.initialize_defaults()
               print(
-                  "E2E SystemConfig schema ready: "
+                  "E2E SystemConfig schema ready before app startup: "
                   f"table_preexisting={existed}, defaults_created={created}"
               )
           PY
@@ -779,6 +793,7 @@ jobs:
           test -r /dev/kvm
           test -w /dev/kvm
       - name: Install, authenticate, test services, restore session and sign out
+        id: android_journey
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           disable-linux-hw-accel: false
@@ -791,7 +806,7 @@ jobs:
           emulator-boot-timeout: 600
           script: python mobile/scripts/verify-user-authenticated-journey.py
       - name: Verify server-side logout and protected API evidence
-        if: always()
+        if: ${{ steps.android_journey.outcome == 'success' }}
         run: python mobile/scripts/mobile-user-e2e-backend.py assert
       - name: Upload User Android journey evidence
         if: always()

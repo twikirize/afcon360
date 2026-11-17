@@ -580,7 +580,7 @@ def main() -> None:
     time.sleep(0.5)
     tap_text("Sign in securely", require_enabled=True)
 
-    wait_for_text("YOUR AFCON360 DASHBOARD", "My Events", timeout=45, label="authenticated User home")
+    wait_for_text("Your world,", "My Events", timeout=45, label="authenticated Pamoja User home")
     save_screen("02-home")
     mark_stage("authenticated_home")
 
@@ -606,6 +606,19 @@ def main() -> None:
         raise AssertionError("The authenticated account screen did not display the synthetic user's identity.")
     save_screen("05-account")
     mark_stage("account_screen")
+
+    # Verify an intentional uninstall has an AFCON360 confirmation first.
+    # Cancel the app's prompt; never remove the test APK from the emulator.
+    tap_text_scrolling("App settings")
+    wait_for_text("App settings.", "Method 1", timeout=25, label="app installation settings")
+    tap_text_scrolling("Uninstall AFCON360 from this device")
+    wait_for_text("Uninstall AFCON360?", "Keep AFCON360", timeout=12, label="AFCON360 uninstall confirmation")
+    save_screen("05a-uninstall-confirmation")
+    tap_text("Keep AFCON360")
+    wait_for_text("App settings.", "Method 1", timeout=12, label="app remains installed after cancelling uninstall")
+    mark_stage("uninstall_confirmation_cancelled")
+    run_adb("shell", "input", "keyevent", "4")
+    wait_for_text("Your account.", timeout=20, label="return to account after uninstall test")
 
     tap_text("Explore", last=True)
     wait_for_text("Make more of the journey.", "Rides", label="Explore services")
@@ -686,7 +699,7 @@ def main() -> None:
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
     # The native app restores to its actual User dashboard ("My Events").
     # The backend evidence check separately verifies the identity endpoint after relaunch.
-    wait_for_text("YOUR AFCON360 DASHBOARD", "My Events", timeout=45, label="restored authenticated dashboard after app relaunch")
+    wait_for_text("Your world,", "My Events", timeout=45, label="restored Pamoja dashboard after app relaunch")
     save_screen("10-session-restored")
     mark_stage("session_restored")
 

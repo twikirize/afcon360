@@ -17,6 +17,13 @@ const checks = [
   ["Home feed cache is accessed through a repository", /readHomeFeed/.test(read("apps/user/src/offline/repositories.ts")) && /refreshHomeFeed/.test(read("apps/user/src/offline/repositories.ts"))],
   ["My Events cache excludes ticket QR payloads", /qr_code:\s*""/.test(read("apps/user/src/offline/repositories.ts"))],
   ["Selected Pamoja Home composition remains intact", /GeminiHomeTop/.test(read("apps/user/app/(tabs)/index.tsx")) && /MyEventsOverview/.test(read("apps/user/app/(tabs)/index.tsx"))],
+  ["Expo Updates native module remains installed", read("apps/user/package.json").includes('"expo-updates"')],
+  ["Expo Updates native config plugin remains enabled", /"expo-updates"/.test(read("apps/user/app.config.ts"))],
+  ["Only the disposable E2E binary disables OTA", /updates: isE2EBuild\s*\?\s*\{\s*enabled: false\s*\}/.test(read("apps/user/app.config.ts")) && /checkAutomatically: "ON_LOAD"/.test(read("apps/user/app.config.ts"))],
+  ["Preview APK uses the OTA preview channel and APK distribution", /"apk-share"[\s\S]*?"channel": "preview"[\s\S]*?"buildType": "apk"/.test(read("apps/user/eas.json"))],
+  ["Manual OTA update flow still checks, downloads and reloads updates", /Updates\.checkForUpdateAsync/.test(read("apps/user/app/(service)/settings.tsx")) && /Updates\.fetchUpdateAsync/.test(read("apps/user/app/(service)/settings.tsx")) && /Updates\.reloadAsync/.test(read("apps/user/app/(service)/settings.tsx"))],
+  ["Android uninstall uses an explicit in-app confirmation", /Uninstall AFCON360\?/.test(read("apps/user/app/(service)/settings.tsx")) && /Linking\.openSettings/.test(read("apps/user/app/(service)/settings.tsx"))],
+  ["React Native Foojay resolver can use Gradle Plugin Portal", /gradlePluginPortal\(\)/.test(read("apps/user/plugins/withReactNativeGradlePluginPortal.js"))],
   ["Active offline foundation branch is included in CI", /feat\/user-offline-first-foundation-20261117/.test(read("../.github/workflows/mobile-workspace.yml"))],
 ];
 

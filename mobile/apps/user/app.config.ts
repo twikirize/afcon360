@@ -87,6 +87,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    "./plugins/withReactNativeGradlePluginPortal",
     "expo-secure-store",
     ["expo-sqlite", { useSQLCipher: true }],
     "expo-dev-client",
