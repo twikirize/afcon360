@@ -137,9 +137,26 @@ jobs:
 
               if is_native:
                   native = True
-              elif path.startswith(("mobile/apps/user/", "mobile/packages/")):
+
+              # Source/config/package edits can contain JS payload changes as
+              # well as native inputs. Run both paths: the fingerprint decides
+              # whether a binary rebuild is required; OTA carries compatible
+              # runtime code after the authenticated journey passes.
+              ota_paths = (
+                  path.startswith(("mobile/apps/user/", "mobile/packages/"))
+                  or path in {
+                      "mobile/package.json",
+                      "mobile/pnpm-lock.yaml",
+                      "mobile/pnpm-workspace.yaml",
+                  }
+              )
+              if ota_paths and path not in {
+                  "mobile/apps/user/eas.json",
+                  "mobile/apps/user/fingerprint.config.js",
+              }:
                   ota = True
-              elif path.startswith("mobile/scripts/") or path == ".github/workflows/mobile-workspace.yml":
+
+              if path.startswith("mobile/scripts/") or path == ".github/workflows/mobile-workspace.yml":
                   e2e_harness = True
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
