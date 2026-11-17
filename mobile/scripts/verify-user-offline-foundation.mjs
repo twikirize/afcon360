@@ -34,6 +34,10 @@ const checks = [
   ["Android uninstall uses an explicit in-app confirmation", /Uninstall AFCON360\?/.test(read("apps/user/app/(service)/settings.tsx")) && /Linking\.openSettings/.test(read("apps/user/app/(service)/settings.tsx"))],
   ["React Native Foojay resolver can use Gradle Plugin Portal", /gradlePluginPortal\(\)/.test(read("apps/user/plugins/withReactNativeGradlePluginPortal.js"))],
   ["Account-to-settings journey taps the real Version & updates action, not the App settings section heading", /tap_text_scrolling\("Version & updates"\)/.test(read("scripts/verify-user-authenticated-journey.py"))],
+  ["Account return restores the scroll position before asserting the heading", /def wait_for_text_scrolling_to_top/.test(read("scripts/verify-user-authenticated-journey.py")) && /wait_for_text_scrolling_to_top\(\s*"Your account\."/s.test(read("scripts/verify-user-authenticated-journey.py"))],
+  ["Focused Account-only E2E mode runs before broader service journeys", /AFCON360_E2E_ACCOUNT_ONLY/.test(read("scripts/verify-user-authenticated-journey.py")) && /USER_ANDROID_E2E_ACCOUNT_PASS/.test(read("scripts/verify-user-authenticated-journey.py"))],
+  ["CI runs the focused Account gate before the full authenticated journey", /name: Focused Account journey gate[\s\S]*?id: account_only_journey[\s\S]*?AFCON360_E2E_ACCOUNT_ONLY=1/.test(read("../.github/workflows/mobile-workspace.yml"))],
+  ["Full authenticated journey is gated on a successful Account-only run", /name: Install, authenticate, test services, restore session and sign out\s+if: \$\{\{ steps\.account_only_journey\.outcome == 'success' \}\}/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Android journey scrolls Home to assert My Events instead of expecting the entire page in one viewport", /wait_for_text_scrolling/.test(read("scripts/verify-user-authenticated-journey.py")) && !/wait_for_text\("Your world,",\s*"My Events"/.test(read("scripts/verify-user-authenticated-journey.py"))],
   ["Active offline foundation branch is included in CI", /feat\/user-offline-first-foundation-20261117/.test(read("../.github/workflows/mobile-workspace.yml"))],
 ];
