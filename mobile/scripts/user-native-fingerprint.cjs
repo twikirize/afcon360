@@ -14,6 +14,7 @@
  * disposable APK build recipe itself (e.g. manifest patch, SDK/build tools,
  * signing mode or Gradle invocation).
  */
+const path = require("node:path");
 const Fingerprint = require("expo/fingerprint");
 
 async function main() {
@@ -23,9 +24,10 @@ async function main() {
     );
   }
 
+  const fingerprintConfig = require(path.join(process.cwd(), "fingerprint.config.js"));
   const hash = await Fingerprint.createProjectHashAsync(process.cwd(), {
-    platforms: ["android"],
-    preset: "balanced"
+    ...fingerprintConfig,
+    platforms: ["android"]
   });
 
   if (typeof hash !== "string" || !/^[a-f0-9]{20,}$/i.test(hash)) {
