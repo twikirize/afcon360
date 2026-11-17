@@ -1266,10 +1266,12 @@ jobs:
     needs: [classify-user-changes, mobile-typecheck, user-authenticated-journey]
     if: >-
       ${{
-        (github.event_name == 'push' &&
-         github.ref_name == 'feat/user-offline-first-foundation-20261117') ||
-        (github.event_name == 'workflow_dispatch' &&
-         github.ref_name == 'feat/user-offline-first-foundation-20261117')
+        (github.event_name == 'push' ||
+         github.event_name == 'workflow_dispatch') &&
+        github.ref_name == 'feat/user-offline-first-foundation-20261117' &&
+        needs.mobile-typecheck.result == 'success' &&
+        needs.user-authenticated-journey.result == 'success' &&
+        needs.user-authenticated-journey.outputs.apk_ready == 'true'
       }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -1347,6 +1349,7 @@ jobs:
 
       - name: Validate cached signed developer APK
         id: validate-dev-apk
+        working-directory: .
         shell: bash
         env:
           CACHE_MATCHED_KEY: ${{ steps.dev-apk-cache.outputs.cache-matched-key }}
@@ -1453,9 +1456,10 @@ jobs:
           if (!u || !u.startsWith("https://")) throw new Error("EAS build has no HTTPS APK artifact URL.");
           process.stdout.write(u);
           NODE
-          mkdir -p user-dev-apk-cache
-          curl --fail --location --retry 3 --retry-delay 2 "$(cat "$RUNNER_TEMP/afcon360-user-dev-apk-url.txt")" --output user-dev-apk-cache/user-development.apk
-          test -s user-dev-apk-cache/user-development.apk
+          APK_PATH="$GITHUB_WORKSPACE/user-dev-apk-cache/user-development.apk"
+          mkdir -p "$(dirname "$APK_PATH")"
+          curl --fail --location --retry 3 --retry-delay 2 "$(cat "$RUNNER_TEMP/afcon360-user-dev-apk-url.txt")" --output "$APK_PATH"
+          test -s "$APK_PATH"
 
       - name: Install Android build tools for signed APK verification
         shell: bash
@@ -1473,6 +1477,7 @@ jobs:
 
       - name: Verify signed developer APK and record cache metadata
         id: verify-dev-apk
+        working-directory: .
         shell: bash
         env:
           EXPECTED_FINGERPRINT: ${{ steps.dev-apk-key.outputs.fingerprint }}
