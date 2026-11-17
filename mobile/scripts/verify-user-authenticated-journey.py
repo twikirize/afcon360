@@ -672,7 +672,7 @@ def main() -> None:
     tap_text_scrolling("Version & updates")
     wait_for_text("App settings.", "Method 1", timeout=25, label="app installation settings")
     tap_text_scrolling("Uninstall AFCON360 from this device")
-    wait_for_text("Uninstall AFCON360?", "Keep AFCON360", timeout=12, label="AFCON360 uninstall confirmation")
+    wait_for_text("Uninstall AFCON360?", timeout=12, label="AFCON360 uninstall confirmation")
     save_screen("05a-uninstall-confirmation")
     tap_text("KEEP AFCON360")
     wait_for_text("App settings.", "Method 1", timeout=12, label="app remains installed after cancelling uninstall")
