@@ -506,15 +506,12 @@ jobs:
           set -euo pipefail
           FINGERPRINT="$(node ../../scripts/user-native-fingerprint.cjs)"
           test -n "$FINGERPRINT"
-          # Bump recipe-v3 only when the disposable APK build recipe changes
-          # (manifest override, Android SDK/build tools, signing mode or Gradle task).
-          EAS_PROFILE_SHA256="$(sha256sum eas.json | awk '{print $1}')"
-          KEY="afcon360-user-e2e-apk-recipe-${AFCON360_USER_E2E_APK_RECIPE_VERSION}-native-$FINGERPRINT-eas-$EAS_PROFILE_SHA256"
+          # Bump the recipe version only when the disposable APK build recipe
+          # changes (manifest override, SDK/build tools, signing mode or Gradle task).
+          KEY="afcon360-user-e2e-apk-recipe-${AFCON360_USER_E2E_APK_RECIPE_VERSION}-native-$FINGERPRINT"
           echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
-          echo "eas_profile_sha256=$EAS_PROFILE_SHA256" >> "$GITHUB_OUTPUT"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
           echo "Native Android fingerprint: $FINGERPRINT"
-          echo "EAS profile SHA-256: $EAS_PROFILE_SHA256"
           echo "Reusable APK cache key: $KEY"
       - name: Restore native-fingerprint-keyed User E2E APK
         id: user-apk-cache
@@ -532,7 +529,6 @@ jobs:
         env:
           USER_APK_CACHE_MATCHED_KEY: ${{ steps.user-apk-cache.outputs.cache-matched-key }}
           USER_APK_NATIVE_FINGERPRINT: ${{ steps.user-apk-key.outputs.fingerprint }}
-          USER_APK_EAS_PROFILE_SHA256: ${{ steps.user-apk-key.outputs.eas_profile_sha256 }}
           FORCE_USER_APK_REBUILD: ${{ inputs.force_apk_rebuild == true }}
         run: |
           set -euo pipefail
@@ -555,17 +551,12 @@ jobs:
           test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA" || exit 0
 
           CACHED_FINGERPRINT="$(sed -n 's/^native_fingerprint=//p' "$INFO" | head -n 1)"
-          CACHED_EAS_PROFILE_SHA256="$(sed -n 's/^eas_profile_sha256=//p' "$INFO" | head -n 1)"
           if [ -n "$CACHED_FINGERPRINT" ]; then
             if [ "$CACHED_FINGERPRINT" != "$USER_APK_NATIVE_FINGERPRINT" ]; then
               echo "Cached APK native fingerprint differs; build a compatible native binary."
               exit 0
             fi
-            if [ "$CACHED_EAS_PROFILE_SHA256" != "$USER_APK_EAS_PROFILE_SHA256" ]; then
-              echo "EAS APK profile changed; invalidate the APK cache."
-              exit 0
-            fi
-            echo "Cached APK native fingerprint and EAS profile both match."
+            echo "Cached APK native fingerprint matches the Android runtime."
           else
             # One-time safe migration for older source-keyed cache entries.
             # The legacy build did not record an Expo fingerprint, so only
@@ -575,7 +566,6 @@ jobs:
             git fetch --no-tags --depth=1 origin "$SOURCE_COMMIT"
             if ! git diff --quiet "$SOURCE_COMMIT" "$GITHUB_SHA" -- \
               mobile/apps/user/app.config.ts \
-              mobile/apps/user/eas.json \
               mobile/apps/user/package.json \
               mobile/apps/user/plugins \
               mobile/apps/user/android \
@@ -589,7 +579,6 @@ jobs:
               exit 0
             fi
             printf 'native_fingerprint=%s\n' "$USER_APK_NATIVE_FINGERPRINT" >> "$INFO"
-            printf 'eas_profile_sha256=%s\n' "$USER_APK_EAS_PROFILE_SHA256" >> "$INFO"
             echo "Legacy APK native inputs are unchanged; migrated it to fingerprint validation."
           fi
 
@@ -819,7 +808,6 @@ jobs:
           source_commit=$GITHUB_SHA
           cache_key=$USER_APK_CACHE_KEY
           native_fingerprint=$USER_APK_NATIVE_FINGERPRINT
-          eas_profile_sha256=$USER_APK_EAS_PROFILE_SHA256
           apk_sha256=$APK_SHA256
           EOF
       - name: Persist fresh User APK immediately
