@@ -79,9 +79,9 @@ The server-selection capability already exists in the selected baseline. It is c
 - `mobile/apps/user/app/(service)/settings.tsx` displays the Connection section and links to `/server-settings`.
 - `mobile/apps/user/app/server-settings.tsx` allows the user to choose public Pamoja or enter a reachable preview/staging API origin; it calls `GET /api/health/ping` before saving.
 - `mobile/apps/user/src/services/api.ts` stores the selected origin under `afcon360.user.api-base-url` using SecureStore and gates manual server selection with `SERVER_SELECTION_ENABLED`.
-- `mobile/apps/user/app.config.ts` enables server selection only for preview builds; the normal default API is `https://www.pamoja.space`.
+- `mobile/apps/user/app.config.ts` enables server selection only for internal preview/development builds (including `user-development`); the normal default API is `https://www.pamoja.space`.
 
-Keep this facility available while the owner is configuring and testing laptop/hotspot/staging connections. Do not remove it during the APK rebuild. Keep it restricted to internal preview builds. Production must use the approved HTTPS production endpoint; production users must not be able to redirect the app to arbitrary servers.
+Keep this facility available while the owner is configuring and testing laptop/hotspot/staging connections. Do not remove it during the APK rebuild. Keep it restricted to internal preview/development builds. Production must use the approved HTTPS production endpoint; production users must not be able to redirect the app to arbitrary servers.
 
 Preserve and test these safeguards:
 - public/remote endpoints use HTTPS;
@@ -121,10 +121,53 @@ An E2E APK configured for `127.0.0.1` is a test harness artifact, not a usable p
 
 Keep the authenticated Android journey aligned to the current Pamoja Home. It must assert the current home first, then scroll and test My Events and the remaining service journeys. Do not roll back the selected UI just to satisfy an obsolete text selector. Run relevant Android API levels and the install/upgrade PackageInstaller matrix; investigate genuine failures rather than marking them as environment noise.
 
+
+### 6.1 Reusable native APK and rebuild policy
+
+**The installable developer APK is keyed to the native runtime fingerprint, not to each application source commit.** Use Expo Fingerprint (Android platform, balanced preset plus the OTA-only Expo `extra` skip) as the native compatibility/build key. Do not key either APK on the whole `mobile/apps/user/**` or `mobile/packages/**` source tree.
+
+There are two intentionally different APKs:
+
+| Artifact | Purpose | API and update channel |
+|---|---|---|
+| Disposable E2E APK | Automated Android journey against the synthetic CI backend; never install on a user's phone | Emulator-local API; isolated `afcon360-user-e2e` OTA channel |
+| Signed User development APK | The installable APK for laptop/PyCharm feature development and phone testing | Live Pamoja API by default, preview server selector enabled, isolated `user-development` OTA channel |
+
+The user-facing `preview` channel remains separate and is only updated by the explicit protected-branch/manual release workflow. Production remains on its own `production` channel. Feature-branch code must never publish to either of those channels automatically.
+
+The signed `user-development` APK enables Android cleartext networking only for internal preview builds so the existing server selector can reach a laptop API on a trusted local network. The selector permits plain HTTP only for private IPv4 addresses on port 5000 and recommends HTTPS for all public servers. The production configuration does not enable this permission. Never use production credentials or financial information over a plain-HTTP laptop connection.
+
+**Cache keys and reuse rules**
+
+- Disposable E2E APK: build-recipe version + Android native fingerprint. EAS distribution profiles are not inputs to this Gradle-built test APK.
+- Signed development APK: build-recipe version + Android native fingerprint + the `dev-apk` EAS profile hash + app version. The cached APK is checked against its SHA-256, package identity, version, update channel and signing certificate before reuse.
+- An unchanged key means reuse the same signed APK, attach it to the CI run, and do not start a new EAS native build.
+- A changed native fingerprint, developer APK profile, app version or explicit force-rebuild request invalidates the signed APK cache. Only then does CI request a new signed EAS build.
+- E2E test APK and signed developer APK fingerprints are calculated separately because they intentionally use different API origins and update channels.
+
+| Change | Native APK action |
+|---|---|
+| Screens, navigation, styling, illustrations, ordinary JavaScript/TypeScript logic, offline repositories and presentation | Reuse signed developer APK; publish a compatible OTA to `user-development` after type-check and authenticated E2E pass |
+| Backend/API implementation or data changes that do not add a native mobile dependency | No mobile APK rebuild |
+| Test assertions, Python E2E scripts, docs and workflow-only test harness changes | Reuse APKs and run the relevant checks; do not trigger an EAS native build |
+| Add/remove/update a native Expo or React Native module; Expo SDK / React Native native runtime upgrade | New native fingerprint; build and sign a replacement APK |
+| Native config plugin, Android/iOS source, manifest, permissions, entitlements, package/bundle identity, scheme or other native-affecting Expo config (including preview-only private HTTP manifest permission) | New native fingerprint; build and sign a replacement APK |
+| Developer APK EAS profile or app version change | Invalidate the signed developer APK cache; build only the signed developer artifact, unless the native fingerprint also changed |
+
+A dependency-manifest or workflow classification is only a *candidate* rebuild trigger. **The native fingerprint is the final decision.** If the fingerprint and signed developer APK profile/version remain the same, reuse the APK. A JavaScript-only dependency or normal source edit must not force a native build merely because its commit SHA changed.
+
+Use `runtimeVersion: { policy: "fingerprint" }` as the OTA compatibility contract. The runtime value changes whenever the native fingerprint changes, preventing an OTA bundle that expects a new native API from being delivered to an older binary because someone forgot to bump the app version.
+
+The automated E2E APK keeps OTA enabled on the isolated `afcon360-user-e2e` channel. CI publishes the current feature-branch JavaScript bundle there before launching the cached APK. The signed developer APK uses the separate `user-development` channel. After the authenticated E2E journey passes, CI publishes the tested feature bundle to that channel; the already-installed signed APK receives it through Expo Updates on launch. Neither channel is the user-facing preview/release channel.
+
+For normal PyCharm development, work on `feat/user-offline-first-foundation-20261117`, then push. CI type-checks and bundles the app, runs the relevant authenticated journey, reuses the signed developer APK when its key is unchanged, and publishes compatible JS changes to `user-development`. You install the signed developer APK once. For a native fingerprint change, CI creates a replacement signed APK; install that replacement before using updates that depend on the new native runtime.
+
+The disposable E2E APK embeds the local test API and is only for automated backend journeys; it must never be distributed as the phone APK. The signed User development APK embeds the live Pamoja API and is the artifact to install for feature testing. A forced rebuild is reserved for deliberate recovery or explicit requests, not ordinary source edits.
+
 ## 7. Required implementation sequence
 
 1. **Read-only map:** inspect current routes, API clients, AuthProvider, SecureStore use, service contracts, EAS profiles and existing tests. Record what already exists; do not duplicate it.
-2. **Build/release baseline:** prove the current preview APK configuration, package/version/signing/API endpoint and authenticated start-up.
+2. **Build/release baseline:** prove the signed developer APK configuration, package/version/signing/API endpoint and authenticated start-up; keep the protected preview and production profiles separate.
 3. **Connectivity contract:** preserve the preview server selector and health test; add clear connection state and safe reconnect behaviour.
 4. **Local data layer:** select a supported database/encryption approach only after native compatibility and threat-model review. Add schema/versioning, account/environment scoping and a small read-cache slice.
 5. **Sync foundation:** implement pull cursors, stale indicators, idempotent outbox semantics and retry/backoff for safe operations only.
@@ -176,7 +219,7 @@ The User app is ready for public-release consideration only when:
 - reconnect/sync is idempotent and never invents transaction success;
 - account/session/device transitions do not leak cached user data;
 - Android versioning, signing, install and upgrade flows are proven;
-- preview APK and release APK/AAB configurations are demonstrably correct;
+- signed User development APK, protected preview APK and release APK/AAB configurations are demonstrably correct;
 - authenticated online/offline/reconnect journeys and relevant CI pass;
 - the owner approves the release gate.
 

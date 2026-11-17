@@ -675,7 +675,16 @@ def main() -> None:
     wait_for_text("Uninstall AFCON360?", timeout=12, label="AFCON360 uninstall confirmation")
     save_screen("05a-uninstall-confirmation")
     tap_text("KEEP AFCON360")
-    wait_for_text("App settings.", "Method 1", timeout=12, label="app remains installed after cancelling uninstall")
+    # The settings screen may remain scrolled below its heading after the
+    # native confirmation closes. Verify the actual invariant instead:
+    # Android still resolves the installed package after cancellation.
+    installed_package = run_adb("shell", "pm", "path", PACKAGE).strip()
+    if not installed_package.startswith("package:"):
+        raise AssertionError(
+            "AFCON360 was not found as an installed Android package after "
+            "cancelling the uninstall confirmation: " + installed_package
+        )
+    print("PASS: AFCON360 remains installed after cancelling uninstall", flush=True)
     mark_stage("uninstall_confirmation_cancelled")
     run_adb("shell", "input", "keyevent", "4")
     wait_for_text("Your account.", timeout=20, label="return to account after uninstall test")

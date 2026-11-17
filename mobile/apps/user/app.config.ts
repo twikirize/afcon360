@@ -8,7 +8,21 @@ const easProjectId =
   process.env.EAS_BUILD_PROJECT_ID?.trim();
 const isEasBuild = process.env.EAS_BUILD === "true";
 const isE2EBuild = process.env.AFCON360_E2E_BUILD === "true";
-const updateChannel = isPreview ? "preview" : "production";
+// CI E2E and the installable developer APK use separate isolated channels.
+// Neither publishes unreviewed feature code to the user-facing preview channel.
+const previewUpdateChannel =
+  process.env.AFCON360_UPDATE_CHANNEL?.trim() || "preview";
+if (
+  isPreview &&
+  !["preview", "user-development"].includes(previewUpdateChannel)
+) {
+  throw new Error("AFCON360 preview builds may use only preview or user-development update channels.");
+}
+const updateChannel = isE2EBuild
+  ? "afcon360-user-e2e"
+  : isPreview
+  ? previewUpdateChannel
+  : "production";
 
 const easProjectIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -53,15 +67,17 @@ const config: ExpoConfig = {
   slug: "afcon360-user",
   scheme: isPreview ? "afcon360-preview" : "afcon360",
   version: "1.0.2",
-  runtimeVersion: { policy: "appVersion" },
-  updates: isE2EBuild
-    ? { enabled: false }
-    : easProjectId
+  // Native fingerprint changes produce a new runtime version automatically.
+  // JS/TS-only changes keep the same runtime and remain OTA-compatible.
+  runtimeVersion: { policy: "fingerprint" },
+  updates: easProjectId
     ? {
         url: "https://u.expo.dev/" + easProjectId,
         requestHeaders: { "expo-channel-name": updateChannel },
         checkAutomatically: "ON_LOAD",
-        fallbackToCacheTimeout: 0
+        // The CI-only channel waits briefly for the just-published test bundle;
+        // user-facing builds retain immediate startup with background download.
+        fallbackToCacheTimeout: isE2EBuild ? 30_000 : 0
       }
     : undefined,
   orientation: "default",
@@ -87,6 +103,10 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    [
+      "./plugins/withPreviewCleartextTraffic",
+      { enabled: isPreview }
+    ],
     "./plugins/withReactNativeGradlePluginPortal",
     "expo-secure-store",
     ["expo-sqlite", { useSQLCipher: true }],
