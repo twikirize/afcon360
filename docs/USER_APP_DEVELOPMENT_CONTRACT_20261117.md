@@ -135,6 +135,8 @@ There are two intentionally different APKs:
 
 The user-facing `preview` channel remains separate and is only updated by the explicit protected-branch/manual release workflow. Production remains on its own `production` channel. Feature-branch code must never publish to either of those channels automatically.
 
+The signed `user-development` APK enables Android cleartext networking only for internal preview builds so the existing server selector can reach a laptop API on a trusted local network. The selector permits plain HTTP only for private IPv4 addresses on port 5000 and recommends HTTPS for all public servers. The production configuration does not enable this permission. Never use production credentials or financial information over a plain-HTTP laptop connection.
+
 **Cache keys and reuse rules**
 
 - Disposable E2E APK: build-recipe version + Android native fingerprint. EAS distribution profiles are not inputs to this Gradle-built test APK.
@@ -149,7 +151,7 @@ The user-facing `preview` channel remains separate and is only updated by the ex
 | Backend/API implementation or data changes that do not add a native mobile dependency | No mobile APK rebuild |
 | Test assertions, Python E2E scripts, docs and workflow-only test harness changes | Reuse APKs and run the relevant checks; do not trigger an EAS native build |
 | Add/remove/update a native Expo or React Native module; Expo SDK / React Native native runtime upgrade | New native fingerprint; build and sign a replacement APK |
-| Native config plugin, Android/iOS source, manifest, permissions, entitlements, package/bundle identity, scheme or other native-affecting Expo config | New native fingerprint; build and sign a replacement APK |
+| Native config plugin, Android/iOS source, manifest, permissions, entitlements, package/bundle identity, scheme or other native-affecting Expo config (including preview-only private HTTP manifest permission) | New native fingerprint; build and sign a replacement APK |
 | Developer APK EAS profile or app version change | Invalidate the signed developer APK cache; build only the signed developer artifact, unless the native fingerprint also changed |
 
 A dependency-manifest or workflow classification is only a *candidate* rebuild trigger. **The native fingerprint is the final decision.** If the fingerprint and signed developer APK profile/version remain the same, reuse the APK. A JavaScript-only dependency or normal source edit must not force a native build merely because its commit SHA changed.
