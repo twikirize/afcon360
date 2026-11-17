@@ -6,9 +6,6 @@ module.exports = {
   // manifest. They can be delivered by a compatible OTA update and must not
   // cause an Android binary rebuild.
   sourceSkips: ["ExpoConfigExtraSection"],
-  // Keep build-profile and this fingerprint policy file as explicit cache inputs.
-  extraSources: [
-    { type: "file", filePath: "eas.json" },
-    { type: "file", filePath: "fingerprint.config.js" }
-  ]
+  // Keep the policy itself observable in the generated fingerprint.
+  extraSources: [{ type: "file", filePath: "fingerprint.config.js" }]
 };
