@@ -465,8 +465,14 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
         {loading ? (
           <ActivityIndicator color={BLUE} />
         ) : error ? (
-          {cachedAt !== null ? <Text style={quiet}>Saved {new Date(cachedAt).toLocaleString()} · status is not live-verified</Text> : null}
-          <Text style={{ color: "#A3332B", fontSize: 12, lineHeight: 18 }}>{error}</Text>
+          <>
+            {cachedAt !== null ? (
+              <Text style={quiet}>
+                Saved {new Date(cachedAt).toLocaleString()} · status is not live-verified
+              </Text>
+            ) : null}
+            <Text style={{ color: "#A3332B", fontSize: 12, lineHeight: 18 }}>{error}</Text>
+          </>
         ) : visibleRegistrations.length ? visibleRegistrations.slice(0, 8).map(item => (
           <View
             key={item.registration_reference}
