@@ -163,6 +163,9 @@ export default function UserHome() {
       case 'wallet':
         router.push('/(tabs)/wallet' as never);
         break;
+      case 'adventure':
+        router.push('/(service)/adventure' as never);
+        break;
       case 'tourism':
         openWebsite('/tourism');
         break;

@@ -2,6 +2,7 @@ import React from "react";
 import { Pressable, Text, View, StyleSheet } from "react-native";
 import { useAuth } from "../auth/AuthProvider";
 import { SearchBar } from "./SearchBar";
+import { ServiceEntry, getServiceConfig } from "./ServiceEntry";
 
 type GeminiHomeTopProps = {
   search: string;
@@ -14,45 +15,6 @@ type GeminiHomeTopProps = {
   onOpenActivity: () => void;
   onOpenAccount: () => void;
 };
-
-function ServiceCard({
-  title,
-  subtitle,
-  icon,
-  peach,
-  website,
-  onPress,
-}: {
-  title: string;
-  subtitle: string;
-  icon: string;
-  peach?: boolean;
-  website?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={website ? "Adventure and tourism on Pamoja website" : title}
-      onPress={onPress}
-      style={({ pressed }) => [styles.serviceCard, pressed && styles.pressed]}
-    >
-      <View style={styles.serviceCardTop}>
-        <View style={[styles.serviceIconCircle, peach ? styles.peachIcon : styles.mintIcon]}>
-          <Text style={styles.serviceIcon}>{icon}</Text>
-        </View>
-        <Text style={styles.diagonalArrow}>↗</Text>
-      </View>
-      <Text style={styles.serviceTitle}>{title}</Text>
-      <Text style={styles.serviceSubtitle}>{subtitle}</Text>
-      {website ? (
-        <View style={styles.websiteHint}>
-          <Text style={styles.websiteHintText}>TOURISM · WEBSITE</Text>
-        </View>
-      ) : null}
-    </Pressable>
-  );
-}
 
 export function GeminiHomeTop({
   search,
@@ -158,52 +120,15 @@ export function GeminiHomeTop({
       <View style={styles.serviceSection}>
         <Text style={styles.sectionTitle}>Make yourself feel at home</Text>
         <View style={styles.serviceGrid}>
-          <ServiceCard title="Transport" subtitle="Find your ride" icon="🚌" onPress={() => onServicePress("rides")} />
-          <ServiceCard title="Stays" subtitle="Find a place to stay" icon="🛏️" peach onPress={() => onServicePress("stays")} />
-          <ServiceCard title="Events & Tickets" subtitle="Events & QR passes" icon="🎟️" peach onPress={() => onServicePress("events")} />
-          <ServiceCard title="Adventure" subtitle="Tours, safaris & experiences" icon="🧭" website onPress={() => onServicePress("tourism")} />
+          <ServiceEntry key="rides" onPress={() => onServicePress("rides")} index={0} />
+          <ServiceEntry key="stays" onPress={() => onServicePress("stays")} index={1} />
+          <ServiceEntry key="events" onPress={() => onServicePress("events")} index={2} />
+          <ServiceEntry key="adventure" onPress={() => onServicePress("adventure")} index={3} />
         </View>
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Open Pamoja wallet"
-        onPress={() => onServicePress("wallet")}
-        style={({ pressed }) => [styles.walletBanner, pressed && styles.pressed]}
-      >
-        <View style={styles.bannerLeft}>
-          <View style={styles.walletIconBox}>
-            <View style={styles.walletShape}>
-              <View style={styles.walletFlap}>
-                <View style={styles.walletDot} />
-              </View>
-            </View>
-          </View>
-          <View style={styles.bannerCopy}>
-            <Text style={styles.walletTitle}>Your Pamoja wallet</Text>
-            <Text style={styles.walletSubtitle}>Payments, all in one place</Text>
-          </View>
-        </View>
-        <Text style={styles.walletChevron}>›</Text>
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Open your accommodation bookings"
-        onPress={() => onServicePress("stays")}
-        style={({ pressed }) => [styles.bookingsCard, pressed && styles.pressed]}
-      >
-        <View style={styles.bannerLeft}>
-          <View style={[styles.serviceIconCircle, styles.mintIcon]}>
-            <Text style={styles.bookingsIcon}>▦</Text>
-          </View>
-          <View style={styles.bannerCopy}>
-            <Text style={styles.bookingsTitle}>My bookings</Text>
-            <Text style={styles.bookingsSubtitle}>Manage your accommodation bookings</Text>
-          </View>
-        </View>
-        <Text style={styles.bookingsChevron}>›</Text>
-      </Pressable>
+      <ServiceEntry key="wallet" variant="banner" onPress={() => onServicePress("wallet")} />
+      <ServiceEntry key="stays" variant="banner" onPress={() => onServicePress("stays")} />
     </View>
   );
 }
@@ -251,31 +176,6 @@ const styles = StyleSheet.create({
   serviceSection: { gap: 0 },
   sectionTitle: { fontFamily: "serif", fontSize: 20, fontWeight: "700", color: "#122419", marginBottom: 12 },
   serviceGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10, marginBottom: 2 },
-  serviceCard: { width: "48.3%", minHeight: 118, backgroundColor: "#FFFFFF", borderRadius: 18, borderWidth: 1, borderColor: "#E6EAE4", padding: 14, justifyContent: "flex-start" },
-  serviceCardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
-  serviceIconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  mintIcon: { backgroundColor: "#E8F4EC" },
-  peachIcon: { backgroundColor: "#FCEEE2" },
-  serviceIcon: { fontSize: 19 },
-  diagonalArrow: { color: "#4A554C", fontSize: 18, transform: [{ rotate: "0deg" }] },
-  serviceTitle: { fontSize: 15, fontWeight: "700", color: "#141915", marginBottom: 2 },
-  serviceSubtitle: { fontSize: 11, color: "#6C766E" },
-  websiteHint: { alignSelf: "flex-start", marginTop: 5, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, backgroundColor: "rgba(23,61,40,0.08)" },
-  websiteHintText: { color: "#0E5B36", fontSize: 7, fontWeight: "900", letterSpacing: 0.5 },
-  walletBanner: { backgroundColor: "#0E5B36", borderRadius: 18, padding: 15, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  bannerLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
-  walletIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.16)", alignItems: "center", justifyContent: "center" },
-  walletShape: { width: 26, height: 20, borderWidth: 2, borderColor: "#FFFFFF", borderRadius: 4, position: "relative" },
-  walletFlap: { position: "absolute", right: -2, top: 4, width: 12, height: 9, borderWidth: 2, borderColor: "#FFFFFF", borderRadius: 3, backgroundColor: "#0E5B36", alignItems: "center", justifyContent: "center" },
-  walletDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: "#FFFFFF" },
-  bannerCopy: { flex: 1 },
-  walletTitle: { fontSize: 16, fontWeight: "700", color: "#FFFFFF", marginBottom: 2 },
-  walletSubtitle: { fontSize: 12, color: "rgba(255,255,255,0.82)" },
-  walletChevron: { color: "#FFFFFF", fontSize: 24, marginLeft: 8 },
-  bookingsCard: { backgroundColor: "#FFFFFF", borderRadius: 18, borderWidth: 1, borderColor: "#E6EAE4", padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  bookingsIcon: { fontSize: 18, color: "#0E5B36" },
-  bookingsTitle: { fontSize: 15, fontWeight: "700", color: "#141915", marginBottom: 2 },
-  bookingsSubtitle: { fontSize: 11, color: "#6C766E" },
-  bookingsChevron: { color: "#6C766E", fontSize: 22 },
-  pressed: { opacity: 0.82 },
 });
+
+export default GeminiHomeTop;
