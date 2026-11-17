@@ -555,7 +555,6 @@ jobs:
               mobile/apps/user/app.config.ts \
               mobile/apps/user/eas.json \
               mobile/apps/user/package.json \
-              mobile/apps/user/fingerprint.config.js \
               mobile/apps/user/plugins \
               mobile/apps/user/android \
               mobile/apps/user/ios \
