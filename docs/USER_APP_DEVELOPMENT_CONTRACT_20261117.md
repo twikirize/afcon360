@@ -126,7 +126,7 @@ Keep the authenticated Android journey aligned to the current Pamoja Home. It mu
 
 **The native APK is keyed to the native runtime fingerprint, not to each application source commit.** Use Expo Fingerprint (Android platform, balanced preset) as the compatibility/build key. Do not key the APK on the whole `mobile/apps/user/**` or `mobile/packages/**` source tree.
 
-The fingerprint configuration deliberately excludes Expo `extra` values such as the API origin and preview server-selection flags. Those are JavaScript/runtime configuration and can travel with a compatible OTA update. The EAS build profile remains part of the APK build fingerprint. The workflow keeps a disposable E2E APK cache keyed by the fingerprint and validates its SHA-256 before reuse.
+The fingerprint configuration deliberately excludes Expo `extra` values such as the API origin and preview server-selection flags. Those are JavaScript/runtime configuration and can travel with a compatible OTA update. The reusable APK cache key combines the native runtime fingerprint with a separate EAS profile hash and a manually versioned E2E build-recipe key. The workflow validates the cached APK's SHA-256 and both key inputs before reuse.
 
 | Change | Native APK action |
 |---|---|
