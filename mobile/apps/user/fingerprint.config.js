@@ -1,11 +1,11 @@
-/** @type {import("expo/fingerprint").Config} */
+/** @type {import("@expo/fingerprint").Config} */
 module.exports = {
-  // Hash the native runtime surface, not every JavaScript/TypeScript source file.
+  // Use Expo's balanced native checks, plus the OTA-only runtime "extra" skip.
+  // Balanced mask: 57859; ExpoConfigExtraSection: 4096; combined: 61955.
+  // This leaves plugins, app identity/scheme, native dependencies and native
+  // project configuration in the fingerprint.
   preset: "balanced",
-  // API origin and preview server-selection flags live in Expo's JS runtime
-  // manifest. They can be delivered by a compatible OTA update and must not
-  // cause an Android binary rebuild.
-  sourceSkips: ["ExpoConfigExtraSection"],
+  sourceSkips: 61955,
   // Keep the policy itself observable in the generated fingerprint.
   extraSources: [{ type: "file", filePath: "fingerprint.config.js" }]
 };
