@@ -662,10 +662,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Install User app workspace dependencies
-        if: steps.validate-user-apk.outputs.reusable != 'true'
-        working-directory: mobile
-        run: pnpm install --no-frozen-lockfile
       - name: Check User app Expo dependency compatibility
         if: steps.validate-user-apk.outputs.reusable != 'true'
         working-directory: mobile
