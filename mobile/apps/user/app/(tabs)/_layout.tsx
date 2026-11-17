@@ -27,7 +27,16 @@ export default function UserTabs() {
       borderTopColor: palette.border,
       backgroundColor: palette.surface
     },
-    tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 21, fontWeight: "700" }}>{symbols[route.name] ?? "•"}</Text>
+    tabBarIcon: ({ color, focused }) => (
+      <View style={{
+        backgroundColor: focused ? "#FCEEE2" : "transparent",
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 2,
+      }}>
+        <Text style={{ color, fontSize: 20, fontWeight: "700" }}>{symbols[route.name] ?? "•"}</Text>
+      </View>
+    )
   })}>
     <Tabs.Screen name="index" options={{ title: "Home" }} />
     <Tabs.Screen name="explore" options={{ title: "Explore" }} />

@@ -11,14 +11,14 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { palette as basePalette } from "@afcon360/mobile-ui";
 import {
-  AppScreen,
-  PageHeader,
-  Panel,
-  SectionTitle,
-  StatusPill,
-  palette,
-} from "@afcon360/mobile-ui";
+  PamojaScreen as AppScreen,
+  PamojaPageHeader as PageHeader,
+  PamojaPanel as Panel,
+  PamojaSectionTitle as SectionTitle,
+  PamojaStatusPill as StatusPill,
+} from "../../src/components/PamojaScreen";
 import { useFocusEffect } from "expo-router";
 import { walletClient } from "../../src/services/api";
 import type {
@@ -31,6 +31,19 @@ import type {
   WalletWithdrawalQuote,
   WalletWithdrawalStatus,
 } from "@afcon360/mobile-core";
+
+const palette = {
+  ...basePalette,
+  canvas: "#F5F6F2",
+  surface: "#FFFFFF",
+  ink: "#122419",
+  muted: "#6C766E",
+  green: "#0E5B36",
+  greenDark: "#093E24",
+  greenSoft: "#E8F4EC",
+  border: "#E6EAE4",
+  warningSoft: "#FFF4D5",
+};
 
 type WalletTab = "balance" | "deposit" | "send" | "withdraw" | "history" | "pin";
 
@@ -57,15 +70,15 @@ function Button({
       disabled={disabled}
       onPress={onPress}
       style={{
-        backgroundColor: secondary ? "#EEF3F0" : palette.green,
-        borderRadius: 12,
+        backgroundColor: secondary ? "#E8F4EC" : "#0E5B36",
+        borderRadius: 14,
         paddingVertical: 13,
         paddingHorizontal: 16,
         alignItems: "center",
         opacity: disabled ? 0.45 : 1,
       }}
     >
-      <Text style={{ color: secondary ? palette.ink : "#FFFFFF", fontWeight: "800" }}>
+      <Text style={{ color: secondary ? "#093E24" : "#FFFFFF", fontWeight: "800" }}>
         {label}
       </Text>
     </Pressable>
@@ -104,8 +117,8 @@ function Field({
         style={{
           backgroundColor: "#FFFFFF",
           borderWidth: 1,
-          borderColor: "#DCE5DF",
-          borderRadius: 10,
+          borderColor: "#E6EAE4",
+          borderRadius: 13,
           paddingHorizontal: 12,
           paddingVertical: 12,
           color: palette.ink,
@@ -665,22 +678,23 @@ export default function Wallet() {
                   style={{
                     borderWidth: selectedCurrency === account.currency ? 2 : 1,
                     borderColor: selectedCurrency === account.currency ? palette.green : "#E1E8E3",
-                    borderRadius: 12,
-                    padding: 14,
+                    borderRadius: 16,
+                    padding: 15,
                     marginTop: 8,
-                    gap: 7,
+                    gap: 8,
+                    backgroundColor: selectedCurrency === account.currency ? "#093E24" : "#FFFFFF",
                   }}
                 >
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={{ color: palette.ink, fontWeight: "900" }}>{account.currency}</Text>
+                    <Text style={{ color: selectedCurrency === account.currency ? "#FFFFFF" : palette.ink, fontWeight: "900" }}>{account.currency}</Text>
                     <StatusPill tone={account.is_frozen ? "gold" : "green"}>
                       {account.is_frozen ? "Restricted" : "Active"}
                     </StatusPill>
                   </View>
-                  <Text style={{ color: palette.ink, fontSize: 25, fontWeight: "900" }}>
+                  <Text style={{ color: selectedCurrency === account.currency ? "#FFCC00" : palette.ink, fontSize: 25, fontWeight: "900" }}>
                     {account.balance} {account.currency}
                   </Text>
-                  <Text style={{ color: palette.muted, fontSize: 12 }}>
+                  <Text style={{ color: selectedCurrency === account.currency ? "rgba(255,255,255,0.78)" : palette.muted, fontSize: 12 }}>
                     Balance read directly from the Wallet ledger
                   </Text>
                 </Pressable>

@@ -12,17 +12,30 @@ import {
 import { useRouter } from "expo-router";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import * as Location from "expo-location";
+import { palette as basePalette } from "@afcon360/mobile-ui";
 import {
-  ActionButton,
-  AppScreen,
-  PageHeader,
-  Panel,
-  SectionTitle,
-  StatusPill,
-  palette
-} from "@afcon360/mobile-ui";
+  PamojaActionButton as ActionButton,
+  PamojaScreen as AppScreen,
+  PamojaPageHeader as PageHeader,
+  PamojaPanel as Panel,
+  PamojaSectionTitle as SectionTitle,
+  PamojaStatusPill as StatusPill,
+} from "../../src/components/PamojaScreen";
 import { authClient } from "../../src/services/api";
 import { MobileAuthError } from "@afcon360/mobile-core";
+
+const palette = {
+  ...basePalette,
+  canvas: "#F5F6F2",
+  surface: "#FFFFFF",
+  ink: "#122419",
+  muted: "#6C766E",
+  green: "#0E5B36",
+  greenDark: "#093E24",
+  greenSoft: "#E8F4EC",
+  border: "#E6EAE4",
+  warningSoft: "#FFF4D5",
+};
 
 type LocationSource = "search" | "gps" | "map";
 
@@ -160,13 +173,13 @@ type ReverseResponse = {
 
 type Stage = "where" | "choose" | "confirm" | "match";
 
-const BRAND = "#0E6B4F";
-const BRAND_DARK = "#0A4E3A";
-const BRAND_SOFT = "#E6F2ED";
-const YELLOW = "#F6C744";
-const INK = "#0C1512";
-const MUTED = "#77857F";
-const LINE = "#E2E8E4";
+const BRAND = "#0E5B36";
+const BRAND_DARK = "#093E24";
+const BRAND_SOFT = "#E8F4EC";
+const YELLOW = "#F5B700";
+const INK = "#122419";
+const MUTED = "#6C766E";
+const LINE = "#E6EAE4";
 const RED = "#B42318";
 
 const MAP_HTML = [
@@ -183,7 +196,7 @@ const MAP_HTML = [
   "  var pins={pickup:null,dropoff:null},line=null;",
   "  function send(value){if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify(value));}",
   "  function icon(side){return L.divIcon({className:'',html:'<div class=\"pin '+side+'\"></div>',iconSize:[22,22],iconAnchor:[11,11]});}",
-  "  function refresh(){if(line){map.removeLayer(line);line=null;} var p=pins.pickup,d=pins.dropoff; if(p&&d){line=L.polyline([[p.lat,p.lng],[d.lat,d.lng]],{color:'#0e6b4f',weight:4,dashArray:'8 8',opacity:.9}).addTo(map);map.fitBounds(line.getBounds(),{padding:[34,34],maxZoom:15});}else if(p){map.setView([p.lat,p.lng],15);}else if(d){map.setView([d.lat,d.lng],15);}}",
+  "  function refresh(){if(line){map.removeLayer(line);line=null;} var p=pins.pickup,d=pins.dropoff; if(p&&d){line=L.polyline([[p.lat,p.lng],[d.lat,d.lng]],{color:'#0E5B36',weight:4,dashArray:'8 8',opacity:.9}).addTo(map);map.fitBounds(line.getBounds(),{padding:[34,34],maxZoom:15});}else if(p){map.setView([p.lat,p.lng],15);}else if(d){map.setView([d.lat,d.lng],15);}}",
   "  window.__afconSetPin=function(p){var side=p.side;if(!side)return;if(!p.value){if(pins[side])map.removeLayer(pins[side]);pins[side]=null;refresh();return;}var v=p.value;if(pins[side]){pins[side].setLatLng([v.latitude,v.longitude]);}else{pins[side]=L.marker([v.latitude,v.longitude],{draggable:true,icon:icon(side)}).addTo(map);pins[side].on('dragend',function(){var ll=pins[side].getLatLng();send({type:'map_drag',side:side,latitude:ll.lat,longitude:ll.lng});});}refresh();};",
   "  map.on('click',function(e){send({type:'map_tap',latitude:e.latlng.lat,longitude:e.latlng.lng});});",
   "  setTimeout(function(){map.invalidateSize();send({type:'map_ready'});},250);",

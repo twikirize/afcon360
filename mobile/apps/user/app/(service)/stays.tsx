@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { palette as basePalette } from "@afcon360/mobile-ui";
 import {
-  ActionButton,
-  AppScreen,
-  PageHeader,
-  Panel,
-  SectionTitle,
-  StatusPill,
-  palette,
-} from "@afcon360/mobile-ui";
+  PamojaActionButton as ActionButton,
+  PamojaScreen as AppScreen,
+  PamojaPageHeader as PageHeader,
+  PamojaPanel as Panel,
+  PamojaSectionTitle as SectionTitle,
+  PamojaStatusPill as StatusPill,
+} from "../../src/components/PamojaScreen";
 import {
   AccommodationBooking,
   AccommodationBookingQuote,
@@ -16,6 +16,19 @@ import {
 } from "@afcon360/mobile-core";
 import { accommodationClient } from "../../src/services/api";
 import { serviceErrorMessage } from "../../src/services/service-errors";
+
+const palette = {
+  ...basePalette,
+  canvas: "#F5F6F2",
+  surface: "#FFFFFF",
+  ink: "#122419",
+  muted: "#6C766E",
+  green: "#0E5B36",
+  greenDark: "#093E24",
+  greenSoft: "#E8F4EC",
+  border: "#E6EAE4",
+  warningSoft: "#FFF4D5",
+};
 
 function dateOffset(days: number): string {
   const value = new Date();
@@ -54,7 +67,7 @@ function Field({
           backgroundColor: "#FFFFFF",
           borderWidth: 1,
           borderColor: palette.border,
-          borderRadius: 10,
+          borderRadius: 13,
           paddingHorizontal: 12,
           paddingVertical: 11,
           color: palette.ink,
@@ -308,9 +321,9 @@ export default function Stays() {
               style={{
                 borderWidth: 1,
                 borderColor: selectedProperty?.public_id === property.public_id ? palette.green : palette.border,
-                borderRadius: 12,
-                padding: 12,
-                gap: 6,
+                borderRadius: 18,
+                padding: 16,
+                gap: 8,
                 backgroundColor: selectedProperty?.public_id === property.public_id ? "#EFF6F0" : palette.surface,
               }}
             >
@@ -344,8 +357,8 @@ export default function Stays() {
                   style={{
                     borderWidth: 1,
                     borderColor: roomTypeToken === room.room_token ? palette.green : palette.border,
-                    borderRadius: 10,
-                    padding: 10,
+                    borderRadius: 14,
+                    padding: 13,
                     backgroundColor: roomTypeToken === room.room_token ? "#EFF6F0" : palette.surface,
                     gap: 4,
                   }}
