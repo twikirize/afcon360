@@ -30,9 +30,11 @@ async function main() {
     );
   }
 
-  const fingerprintConfig = appRequire("./fingerprint.config.js");
+  // Expo Fingerprint automatically loads fingerprint.config.js from the
+  // project root and normalizes named SourceSkips into its SDK enum bitmask.
+  // Do not pass the raw config object again as runtime options: that would
+  // override the normalized values and produce a different fingerprint.
   const hash = await Fingerprint.createProjectHashAsync(process.cwd(), {
-    ...fingerprintConfig,
     platforms: ["android"],
     silent: true
   });
