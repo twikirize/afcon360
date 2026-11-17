@@ -11,12 +11,12 @@ type Props = {
   onOpenWebsite: (path: string) => void;
 };
 
-const BLUE = "#28633C";
-const BLUE_SOFT = "#EAF2EB";
-const INK = "#17261D";
-const MUTED = "#6D7B73";
-const BORDER = "#E2E9E3";
-const CANVAS = "#F4F7F4";
+const BLUE = "#0E5B36";
+const BLUE_SOFT = "#E8F4EC";
+const INK = "#122419";
+const MUTED = "#6C766E";
+const BORDER = "#E6EAE4";
+const CANVAS = "#F5F6F2";
 const WHITE = "#FFFFFF";
 
 function localDateKey(value: Date): string {
@@ -163,8 +163,8 @@ export function MyEventsOverview({ onOpenEvents, onOpenWebsite }: Props) {
     <View style={{ gap: 15 }}>
       <View
         style={{
-          backgroundColor: "#EAF1FF",
-          borderColor: "#C9DAFF",
+          backgroundColor: "#E8F4EC",
+          borderColor: "#D6EBDD",
           borderWidth: 1,
           borderRadius: 15,
           padding: 15,

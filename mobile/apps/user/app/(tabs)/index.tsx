@@ -1,20 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedScrollHandler,
-} from 'react-native-reanimated';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { authClient, getSelectedApiBaseUrl } from '../../src/services/api';
-import { HeroParallax } from '../../src/components/HeroParallax';
-import { ServiceGrid } from '../../src/components/ServiceGrid';
 import { TrendingRail, TrendingSkeleton } from '../../src/components/TrendingRail';
-import { SearchBar } from '../../src/components/SearchBar';
 import { SectionHeader } from '../../src/components/SectionHeader';
-import { Header } from '../../src/components/Header';
 import { MyEventsOverview } from '../../src/components/MyEventsOverview';
+import { GeminiHomeTop } from '../../src/components/GeminiHomeTop';
 import type { FeedItem, FeedResponse, LoadMode } from '../../src/types/feed';
 import { safeSameOriginUrl } from '../../src/utils/feedUtils';
 import { colors } from '../../src/theme/tokens';
@@ -36,13 +29,6 @@ export default function UserHome() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [feedError, setFeedError] = useState<string | null>(null);
   const requestInFlight = useRef(false);
-
-  const scrollY = useSharedValue(0);
-  const onScroll = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
-    },
-  });
 
   useEffect(() => {
     let mounted = true;
@@ -171,18 +157,12 @@ export default function UserHome() {
     ].some((value) => typeof value === 'string' && value.toLowerCase().includes(term)));
   }, [feedItems, search]);
 
-  const featuredItem = useMemo(() => {
-    const pinned = feedItems.find((item) => item.is_pinned);
-    if (pinned) return pinned;
-    return feedItems.find((item) => item.type === 'ad') ?? null;
-  }, [feedItems]);
-
   const handleSearchSubmit = useCallback((text: string) => {
     const term = text.trim();
-    if (term && !recentSearches.includes(term)) {
-      setRecentSearches((prev) => [term, ...prev.slice(0, 4)]);
-    }
-  }, [recentSearches]);
+    if (!term) return;
+    setRecentSearches((prev) => prev.includes(term) ? prev : [term, ...prev.slice(0, 4)]);
+    openEventSearch(term);
+  }, [openEventSearch]);
 
   const handleRecentPress = useCallback((text: string) => {
     setSearch(text);
@@ -204,9 +184,7 @@ export default function UserHome() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <Animated.ScrollView
-        onScroll={onScroll}
-        scrollEventThrottle={16}
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
@@ -220,38 +198,22 @@ export default function UserHome() {
         keyboardShouldPersistTaps='handled'
       >
         <View style={styles.pageContent}>
-          <Header />
+          <GeminiHomeTop
+            search={search}
+            onSearchChange={setSearch}
+            onSearchSubmit={handleSearchSubmit}
+            recentSearches={recentSearches}
+            onRecentPress={handleRecentPress}
+            onClearRecent={handleClearRecent}
+            onServicePress={openService}
+            onOpenActivity={() => router.push('/(tabs)/activity' as never)}
+            onOpenAccount={() => router.push('/(tabs)/account' as never)}
+          />
 
           <MyEventsOverview
             onOpenEvents={() => openEventSearch()}
             onOpenWebsite={openWebsite}
           />
-
-          <SearchBar
-            value={search}
-            onChangeText={setSearch}
-            onSubmit={handleSearchSubmit}
-            placeholder='Search highlights'
-            recentSearches={recentSearches}
-            onRecentPress={handleRecentPress}
-            onClearRecent={handleClearRecent}
-          />
-
-          <HeroParallax
-            scrollY={scrollY}
-            featured={featuredItem}
-            baseUrl={apiBaseUrl}
-            onFeaturedPress={() => featuredItem && openTrendingItem(featuredItem)}
-            onExplore={() => router.push('/(tabs)/explore' as never)}
-          />
-
-          <SectionHeader
-            title='Explore services'
-            subtitle='ALL IN ONE PLACE'
-            index={0}
-          />
-
-          <ServiceGrid onServicePress={openService} />
 
           <SectionHeader
             title='Trending'
@@ -298,7 +260,7 @@ export default function UserHome() {
             </View>
           ) : null}
         </View>
-      </Animated.ScrollView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
