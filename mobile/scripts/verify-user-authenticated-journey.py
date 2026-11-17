@@ -320,6 +320,59 @@ def wait_for_text_scrolling(
     )
 
 
+
+def wait_for_text_scrolling_to_top(
+    *needles: str,
+    timeout: int = 20,
+    label: str = "screen heading",
+    max_swipes: int = 8,
+) -> str:
+    """Scroll a long native screen back to its top before asserting its heading.
+
+    UIAutomator exposes only the current viewport. A previous action may have
+    scrolled Account down to Version & updates; after returning from Android
+    Settings, restore the viewport before asserting the Account heading.
+    """
+    size_output = run_adb("shell", "wm", "size")
+    sizes = re.findall(r"(\d+)x(\d+)", size_output)
+    if not sizes:
+        raise RuntimeError(f"Could not determine Android display size: {size_output.strip()}")
+    width, height = map(int, sizes[-1])
+    deadline = time.monotonic() + timeout
+    last = ""
+    swipes = 0
+
+    while time.monotonic() < deadline:
+        try:
+            last = visible_text()
+            if all(needle in last for needle in needles):
+                print(
+                    f"PASS: {label} at page top after {swipes} upward scroll(s): "
+                    + " | ".join(needles),
+                    flush=True,
+                )
+                return last
+        except Exception as error:
+            last = f"{type(error).__name__}: {error}"
+
+        if swipes >= max_swipes:
+            break
+
+        # Swipe downward through the content to move the viewport back up.
+        # Keep the gesture inside the page body, clear of the bottom tab bar.
+        x = width // 2
+        start_y = int(height * 0.32)
+        end_y = int(height * 0.72)
+        run_adb("shell", "input", "swipe", str(x), str(start_y), str(x), str(end_y), "450")
+        swipes += 1
+        time.sleep(0.6)
+
+    raise AssertionError(
+        f"Timed out restoring {label} after {swipes} upward scroll(s): {needles}. "
+        f"Last visible hierarchy:\n{last[:6000]}"
+    )
+
+
 def tap_text_scrolling(value: str, *, max_swipes: int = 6) -> None:
     """Scroll a long native screen until an exact action is visible, then tap it."""
     size_output = run_adb("shell", "wm", "size")
@@ -634,30 +687,35 @@ def main() -> None:
         timeout=45,
         label="authenticated Pamoja Home header",
     )
-    save_screen("02-home")
-    wait_for_text_scrolling(
-        "My Events",
-        "Event Calendar",
-        timeout=35,
-        label="Pamoja Home My Events overview",
-    )
-    save_screen("02a-my-events-overview")
+    account_only = os.environ.get("AFCON360_E2E_ACCOUNT_ONLY", "").strip().lower() in {"1", "true", "yes"}
+    if account_only:
+        save_screen("02-home-account-only")
+    else:
+        save_screen("02-home")
+        wait_for_text_scrolling(
+            "My Events",
+            "Event Calendar",
+            timeout=35,
+            label="Pamoja Home My Events overview",
+        )
+        save_screen("02a-my-events-overview")
     mark_stage("authenticated_home")
 
-    mark_stage("activity_navigation_started")
-    tap_text("Activity", last=True)
-    wait_for_text("Your rides and bookings.", "No rides yet", timeout=35, label="authenticated ride activity")
-    save_screen("03-activity")
-    mark_stage("activity_screen")
+    if not account_only:
+        mark_stage("activity_navigation_started")
+        tap_text("Activity", last=True)
+        wait_for_text("Your rides and bookings.", "No rides yet", timeout=35, label="authenticated ride activity")
+        save_screen("03-activity")
+        mark_stage("activity_screen")
 
-    mark_stage("wallet_navigation_started")
-    tap_text("Wallet", last=True)
-    wait_for_text(
-        "Your money, clearly managed.", "Wallet accounts", "No Wallet account is active yet.",
-        timeout=35, label="authenticated Wallet read views",
-    )
-    save_screen("04-wallet")
-    mark_stage("wallet_screen")
+        mark_stage("wallet_navigation_started")
+        tap_text("Wallet", last=True)
+        wait_for_text(
+            "Your money, clearly managed.", "Wallet accounts", "No Wallet account is active yet.",
+            timeout=35, label="authenticated Wallet read views",
+        )
+        save_screen("04-wallet")
+        mark_stage("wallet_screen")
 
     tap_text("Account", last=True)
     wait_for_text("Your account.", timeout=25, label="authenticated account")
@@ -687,7 +745,28 @@ def main() -> None:
     print("PASS: AFCON360 remains installed after cancelling uninstall", flush=True)
     mark_stage("uninstall_confirmation_cancelled")
     run_adb("shell", "input", "keyevent", "4")
-    wait_for_text("Your account.", timeout=20, label="return to account after uninstall test")
+    restored_account_text = wait_for_text_scrolling_to_top(
+        "Your account.",
+        timeout=20,
+        label="return to Account after uninstall test",
+    )
+    if USERNAME not in restored_account_text and os.environ.get(
+        "AFCON360_E2E_EMAIL", "native-e2e@afcon360.test"
+    ) not in restored_account_text:
+        raise AssertionError(
+            "The Account screen did not restore the authenticated synthetic user's identity "
+            "after cancelling uninstall."
+        )
+    save_screen("05b-account-restored-after-uninstall-cancel")
+    mark_stage("account_restored_after_uninstall_cancel")
+
+    if account_only:
+        print(
+            "USER_ANDROID_E2E_ACCOUNT_PASS: login, Account identity, uninstall cancellation, "
+            "installed package retained, and Account heading restored.",
+            flush=True,
+        )
+        return
 
     tap_text("Explore", last=True)
     wait_for_text("Make more of the journey.", "Rides", label="Explore services")
