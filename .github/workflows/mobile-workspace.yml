@@ -1496,7 +1496,8 @@ jobs:
           }
           test "$MINIMUM" = "24"
           test -n "$TARGET" && test "$TARGET" -ge 36
-          CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/afcon360-user-dev-signature.txt" | head -n 1)"
+          # apksigner versions print either "Signer #1 ..." or "V2 Signer: ...".
+          CERT_SHA256="$(sed -n 's/^.*certificate SHA-256 digest: //p' "$RUNNER_TEMP/afcon360-user-dev-signature.txt" | head -n 1)"
           test -n "$CERT_SHA256"
           if [ "$CERT_SHA256" != "$EXPECTED_SIGNING_CERT_SHA256" ]; then
             echo "::error::Signing certificate mismatch. Refusing to publish an APK that cannot update the existing signed preview installation."
