@@ -17,7 +17,7 @@ on:
       - "mobile/.npmrc"
       - ".github/workflows/mobile-workspace.yml"
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, reopened, ready_for_review]
     branches: [feat/native-user-app-integration-20261108]
     paths:
       - "mobile/apps/user/**"
