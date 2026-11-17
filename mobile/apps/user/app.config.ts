@@ -103,6 +103,10 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    [
+      "./plugins/withPreviewCleartextTraffic",
+      { enabled: isPreview }
+    ],
     "./plugins/withReactNativeGradlePluginPortal",
     "expo-secure-store",
     ["expo-sqlite", { useSQLCipher: true }],
