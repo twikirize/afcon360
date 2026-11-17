@@ -913,7 +913,21 @@ jobs:
           ls -l /dev/kvm
           test -r /dev/kvm
           test -w /dev/kvm
+      - name: Focused Account journey gate — verify identity, uninstall cancellation and return
+        id: account_only_journey
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          disable-linux-hw-accel: false
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: AFCON360_E2E_ACCOUNT_ONLY=1 python mobile/scripts/verify-user-authenticated-journey.py
       - name: Install, authenticate, test services, restore session and sign out
+        if: ${{ steps.account_only_journey.outcome == 'success' }}
         id: android_journey
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
