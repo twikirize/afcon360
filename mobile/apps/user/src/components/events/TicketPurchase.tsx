@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Alert, ActivityIndicator, Pressable, Text, TextInput, View, StyleSheet } from "react-native";
-import { colors, spacing, radii, typography } from "../theme/tokens";
+import { colors, spacing, radii, typography } from "../../theme/tokens";
 import {
   PamojaActionButton as ActionButton,
   PamojaPanel as Panel,
   PamojaSectionTitle as SectionTitle,
   PamojaStatusPill as StatusPill,
 } from "../PamojaScreen";
-import { walletClient, eventClient } from "../../src/services/api";
+import { authClient, eventClient } from "../../services/api";
 import type { NativeEventTicketType, NativeEventDetail } from "@afcon360/mobile-core";
 import type { WalletAccount } from "@afcon360/mobile-core";
 
@@ -20,10 +20,6 @@ type TicketPurchaseProps = {
   onPurchase: (ticket: NativeEventTicketType) => void;
   onSetBusy: (busy: boolean) => void;
 };
-
-type PurchaseResponse =
-  | { status: "completed"; registration_reference: string; ticket_number: string; qr_code: string; amount: string; currency: string; payment_reference: string; status: string }
-  | { status: "pending"; message: string; reference: string; provider_reference: string; audit_transaction_id: string; expires_in: number };
 
 export function TicketPurchase({ event, ticket, selectedAccount, busy, onClose, onPurchase, onSetBusy }: TicketPurchaseProps) {
   const [paymentMethod, setPaymentMethod] = useState<string>("");
@@ -45,7 +41,7 @@ export function TicketPurchase({ event, ticket, selectedAccount, busy, onClose, 
     setLoadingPaymentMethods(true);
     setPaymentError(null);
     try {
-      const response = await walletClient.request<{ success: boolean; data?: { payment_methods?: Array<{ code: string; label: string; status: string; status_message?: string }> } }>(
+      const response = await authClient.request<{ success: boolean; data?: { payment_methods?: Array<{ code: string; label: string; status: string; status_message?: string }> } }>(
         "/api/mobile/v1/transport/payment-methods/options",
         {
           method: "POST",
@@ -56,7 +52,7 @@ export function TicketPurchase({ event, ticket, selectedAccount, busy, onClose, 
         }
       );
       setPaymentMethods(response.data?.payment_methods ?? []);
-      if (!(response.data?.payment_methods ?? []).some((m) => m.status === "ready")) {
+      if (!(response.data?.payment_methods ?? []).some((m: { status: string }) => m.status === "ready")) {
         setPaymentError("No payment method is currently certified and ready for this exact fare. Return to your Wallet setup or choose another available method.");
       }
     } catch (e) {
@@ -116,21 +112,19 @@ export function TicketPurchase({ event, ticket, selectedAccount, busy, onClose, 
         idempotencyKey,
       });
 
-      // Handle pending status (mobile money)
-      if ("status" in result && result.status === "pending") {
+      if ("registration_reference" in result) {
         onSetBusy(false);
-        const expiresAt = Date.now() + (result.expires_in || 300) * 1000;
-        setPendingPayment({ reference: result.reference, expiresAt });
-        setNotice(result.message);
-        await pollForRegistration(result.reference, Date.now() + (result.expires_in || 300) * 1000);
+        setNotice(`Your paid ticket is confirmed. Reference: ${result.registration_reference}.`);
+        setVisibleTicket(result.registration_reference);
+        onPurchase(ticket);
         return;
       }
 
-      // Completed (wallet payment)
       onSetBusy(false);
-      setNotice(`Your paid ticket is confirmed. Reference: ${result.registration_reference}.`);
-      setVisibleTicket(result.registration_reference);
-      onPurchase(ticket);
+      const expiresAt = Date.now() + (result.expires_in || 300) * 1000;
+      setPendingPayment({ reference: result.reference, expiresAt });
+      setNotice(result.message);
+      await pollForRegistration(result.reference, Date.now() + (result.expires_in || 300) * 1000);
     } catch (e) {
       onSetBusy(false);
       setError(serviceErrorMessage(e, "Events"));
@@ -299,39 +293,10 @@ const styles = StyleSheet.create({
   secondaryButtonText: { color: colors.brand.green, fontSize: 13, fontWeight: "800" },
 });
 
-export default TicketPurchase;
-
-function ticketPrice(ticket: NativeEventTicketType): string {
-  const amount = Number(ticket.price);
-  if (Number.isFinite(amount) && amount <= 0) return "Free";
-  if (!Number.isFinite(amount)) return `${ticket.price} ${ticket.currency}`;
-  return `${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${ticket.currency}`;
+function serviceErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message
+    ? error.message
+    : `AFCON360 could not complete the ${fallback} request.`;
 }
-
-const styles = StyleSheet.create({
-  label: { color: colors.text.ink, fontWeight: "700", fontSize: 13, marginTop: spacing.lg },
-  errorText: { color: colors.status.error, fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight },
-  helperText: { color: colors.text.muted, fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight },
-  paymentChoice: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface.white,
-  },
-  paymentSelected: { borderColor: colors.brand.green, borderWidth: 2, backgroundColor: colors.brand.greenSoft },
-  disabled: { opacity: 0.5, backgroundColor: colors.surface.canvas },
-  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.border, backgroundColor: colors.surface.white },
-  radioSelected: { borderColor: colors.brand.green, backgroundColor: colors.brand.green },
-  paymentCopy: { flex: 1, gap: 2 },
-  paymentName: { color: colors.text.ink, fontSize: 15, fontWeight: "800" },
-  pinInput: { backgroundColor: colors.surface.white, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: spacing.md },
-  pinField: { color: colors.text.ink, fontSize: 15 },
-  secondaryButton: { alignSelf: "center", marginTop: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
-  secondaryButtonText: { color: colors.brand.green, fontSize: 13, fontWeight: "800" },
-});
 
 export default TicketPurchase;

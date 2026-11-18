@@ -1,6 +1,6 @@
 import React from "react";
-import { Text, View, Alert } from "react-native";
-import { colors, spacing, radii } from "../theme/tokens";
+import { Pressable, Text, View, Alert } from "react-native";
+import { colors, spacing, radii } from "../../theme/tokens";
 import {
   PamojaPanel as Panel,
   PamojaSectionTitle as SectionTitle,
@@ -10,7 +10,7 @@ import {
   WalletField,
   WalletButton,
 } from "./WalletUI";
-import { formatDate, formatMoney } from "./types";
+import { formatDate, formatMoney, type WalletWithdrawalStatus } from "./types";
 import { NATIVE_WITHDRAWALS_ENABLED } from "./types";
 
 type WalletWithdrawProps = {
@@ -23,7 +23,7 @@ type WalletWithdrawProps = {
   withdrawalPin: string;
   withdrawalQuote: { quote_token: string; amount: string; currency: string; beneficiary_name: string; masked_phone: string; network: string; platform_fee: string; total_wallet_debit: string; available_balance: string; fee_percent: string; provider_fee: string; expires_at: string } | null;
   withdrawalReference: string | null;
-  withdrawalStatus: { reference: string; status: string; amount: string; currency: string; failure_reason?: string; manual_review_required?: boolean } | null;
+  withdrawalStatus: WalletWithdrawalStatus | null;
   busy: boolean;
   error: string | null;
   notice: string | null;

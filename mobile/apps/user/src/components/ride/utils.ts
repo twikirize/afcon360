@@ -1,4 +1,15 @@
 import type { Place, GeocodeCandidate, PlaceSearchState, PlaceSearchCacheEntry } from "./types";
+import {
+  PLACE_SEARCH_CACHE_NEGATIVE_TTL_MS,
+  PLACE_SEARCH_CACHE_POSITIVE_TTL_MS,
+  PLACE_SEARCH_CACHE_MAX_ENTRIES,
+} from "./types";
+
+export {
+  PLACE_SEARCH_CACHE_NEGATIVE_TTL_MS,
+  PLACE_SEARCH_CACHE_POSITIVE_TTL_MS,
+  PLACE_SEARCH_CACHE_MAX_ENTRIES,
+};
 
 const placeSearchCache = new Map<string, PlaceSearchCacheEntry>();
 

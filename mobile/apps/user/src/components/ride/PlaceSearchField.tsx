@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TextInput, Pressable, ActivityIndicator, StyleSheet, Keyboard } from "react-native";
-import { colors, spacing, radii, typography } from "../theme/tokens";
+import { colors, spacing, radii, typography } from "../../theme/tokens";
 import type { Place, GeocodeCandidate, PlaceSearchState } from "./types";
 import {
   normalizePlaceSearchQuery,

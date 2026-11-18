@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, Text, View, StyleSheet, TextInput } from "react-native";
-import { colors, spacing, radii, typography } from "../theme/tokens";
+import { colors, spacing, radii, typography } from "../../theme/tokens";
 import { validLocalSchedule } from "./utils";
 import type { RideSchedule } from "./types";
 

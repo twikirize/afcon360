@@ -1,6 +1,6 @@
 import React from "react";
-import { Text, View, Alert, Linking } from "react-native";
-import { colors, spacing, radii } from "../theme/tokens";
+import { Pressable, Text, View, Alert, Linking } from "react-native";
+import { colors, spacing, radii } from "../../theme/tokens";
 import {
   PamojaPanel as Panel,
   PamojaSectionTitle as SectionTitle,
@@ -10,7 +10,7 @@ import {
   WalletField,
   WalletButton,
 } from "./WalletUI";
-import { formatDate, formatMoney } from "./types";
+import { formatDate, formatMoney, type WalletDepositStatus } from "./types";
 
 type WalletDepositProps = {
   selectedCurrency: string;
@@ -19,7 +19,7 @@ type WalletDepositProps = {
   depositPaymentMethod: "mobilemoney" | "card";
   depositReference: string | null;
   depositCheckoutUrl: string | null;
-  depositStatus: { reference: string; status: string; amount: string; currency: string; payment_provider: string; message: string | null } | null;
+  depositStatus: WalletDepositStatus | null;
   busy: boolean;
   error: string | null;
   notice: string | null;

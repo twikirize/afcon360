@@ -1,6 +1,6 @@
 import React from "react";
-import { ActivityIndicator, Text, View } from "react-native";
-import { colors, spacing, radii, typography } from "../theme/tokens";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { colors, spacing, radii, typography } from "../../theme/tokens";
 import {
   PamojaActionButton as ActionButton,
   PamojaPanel as Panel,

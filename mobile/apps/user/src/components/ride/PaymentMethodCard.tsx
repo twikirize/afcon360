@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, Text, View, StyleSheet } from "react-native";
-import { colors, spacing, radii, typography, shadows } from "../theme/tokens";
+import { colors, spacing, radii, typography, shadows } from "../../theme/tokens";
 import type { PaymentMethod } from "./types";
 
 type PaymentMethodCardProps = {

@@ -1,6 +1,6 @@
 import React from "react";
-import { ActivityIndicator, Text, View, StyleSheet } from "react-native";
-import { colors, spacing, radii, typography } from "../theme/tokens";
+import { ActivityIndicator, Pressable, Text, View, StyleSheet } from "react-native";
+import { colors, spacing, radii, typography } from "../../theme/tokens";
 import {
   PamojaActionButton as ActionButton,
   PamojaPanel as Panel,
@@ -15,6 +15,7 @@ type RideConfirmProps = {
   pickup: { label: string } | null;
   dropoff: { label: string } | null;
   selectedQuote: Quote | null;
+  distanceKm: number | null;
   schedule: "now" | "later";
   scheduledAt: string;
   vip: boolean;
@@ -33,6 +34,7 @@ export function RideConfirm({
   pickup,
   dropoff,
   selectedQuote,
+  distanceKm,
   schedule,
   scheduledAt,
   vip,

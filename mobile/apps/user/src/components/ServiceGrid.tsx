@@ -23,7 +23,7 @@ export const ServiceGrid = ({ onServicePress }: { onServicePress: (key: string) 
   <View style={styles.container}>
     {EXPLORE_SERVICES.map((key, index) => (
       <View key={key} style={styles.tileWrap}>
-        <ServiceEntry key={key} onPress={() => onServicePress(key)} index={index} />
+        <ServiceEntry serviceKey={key} key={key} onPress={() => onServicePress(key)} index={index} />
       </View>
     ))}
   </View>

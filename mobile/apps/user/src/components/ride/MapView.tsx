@@ -32,6 +32,8 @@ type MapViewProps = {
   onMapError: (error: string) => void;
 };
 
+const WebViewCompat = WebView as unknown as React.ForwardRefExoticComponent<any>;
+
 export function MapView({ pickup, dropoff, onMapMessage, onMapReady, onMapError }: MapViewProps) {
   const mapRef = useRef<WebView>(null);
   const mapResolveSeq = useRef({ pickup: 0, dropoff: 0 });
@@ -60,7 +62,7 @@ export function MapView({ pickup, dropoff, onMapMessage, onMapReady, onMapError 
   }, [pickup, dropoff]);
 
   return (
-    <WebView
+    <WebViewCompat
       ref={mapRef}
       source={{ html: MAP_HTML, baseUrl: "https://www.openstreetmap.org" }}
       originWhitelist={["*"]}

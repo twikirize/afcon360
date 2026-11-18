@@ -9,6 +9,8 @@ import type {
   WalletWithdrawalStatus,
 } from "@afcon360/mobile-core";
 
+export type { WalletDepositStatus, WalletWithdrawalStatus } from "@afcon360/mobile-core";
+
 export type WalletTab = "balance" | "deposit" | "send" | "withdraw" | "history" | "pin";
 
 export type WalletState = {

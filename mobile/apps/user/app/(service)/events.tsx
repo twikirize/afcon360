@@ -268,7 +268,7 @@ export default function Events() {
         <TicketPurchase
           event={selectedEvent}
           ticket={purchaseTicket}
-          selectedAccount={walletAccount}
+          selectedAccount={walletAccount ?? undefined}
           busy={busy}
           onClose={() => setPurchaseTicket(null)}
           onPurchase={(ticket) => {

@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, Text, TextInput, View, StyleSheet } from "react-native";
-import { colors, spacing, radii, typography } from "../theme/tokens";
+import { colors, spacing, radii, typography } from "../../theme/tokens";
 
 export function WalletButton({
   label,
@@ -217,4 +217,3 @@ const styles = StyleSheet.create({
   transactionRef: { color: colors.text.muted, fontSize: 10 },
 });
 
-export default WalletUI;

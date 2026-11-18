@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as SecureStore from "expo-secure-store";
-import { Alert, Linking, AppState, ScrollView, ActivityIndicator, View } from "react-native";
+import { Alert, Linking, AppState, ScrollView, ActivityIndicator, View, Text } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { walletClient } from "../../src/services/api";
+import { walletClient } from "../../services/api";
 import type {
   ResolvedWalletRecipient,
   WalletAccount,
@@ -13,7 +13,7 @@ import type {
   WalletWithdrawalQuote,
   WalletWithdrawalStatus,
 } from "@afcon360/mobile-core";
-import { colors } from "../theme/tokens";
+import { colors } from "../../theme/tokens";
 import {
   PamojaScreen as AppScreen,
   PamojaPageHeader as PageHeader,
@@ -360,8 +360,10 @@ export function WalletScreen() {
         setDeposit((prev) => ({ ...prev, depositRequestKey: null, depositReference: null, depositCheckoutUrl: null }));
         await clearSavedDeposit();
       } else {
-        setWallet((prev)
-          { ...prev, notice: "Flutterwave has not confirmed the payment yet. Your Wallet balance has not been changed." }));
+        setWallet((prev) => ({
+          ...prev,
+          notice: "Flutterwave has not confirmed the payment yet. Your Wallet balance has not been changed."
+        }));
       }
     } catch (e) {
       setWallet((prev) => ({ ...prev, error: e instanceof Error ? e.message : "AFCON360 could not refresh the deposit status." }));

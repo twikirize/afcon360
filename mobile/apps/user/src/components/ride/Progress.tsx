@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { colors, spacing, radii, typography } from "../theme/tokens";
+import { colors, spacing, radii, typography } from "../../theme/tokens";
 import type { Stage } from "./types";
 
 const styles = StyleSheet.create({

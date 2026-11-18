@@ -1,6 +1,6 @@
 import React from "react";
 import { ActivityIndicator, Text, View, StyleSheet } from "react-native";
-import { colors, spacing, radii, typography } from "../theme/tokens";
+import { colors, spacing, radii, typography } from "../../theme/tokens";
 import {
   PamojaPanel as Panel,
   PamojaSectionTitle as SectionTitle,

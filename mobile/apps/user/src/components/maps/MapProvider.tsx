@@ -1,6 +1,6 @@
 import React from "react";
 import { Platform, View, StyleSheet } from "react-native";
-import { colors, spacing, radii } from "../theme/tokens";
+import { colors, spacing, radii } from "../../theme/tokens";
 import type { Place } from "../ride/types";
 
 // Map provider type - can be extended when native maps are available

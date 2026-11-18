@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Keyboard } from "react-native";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
-import { authClient } from "../../src/services/api";
+import { authClient } from "../../services/api";
 import { MobileAuthError } from "@afcon360/mobile-core";
-import { colors, spacing } from "../theme/tokens";
+import { colors, spacing } from "../../theme/tokens";
 import {
   PamojaScreen as AppScreen,
   PamojaPageHeader as PageHeader,
@@ -491,6 +491,7 @@ export function RideScreen() {
           pickup={pickup}
           dropoff={dropoff}
           selectedQuote={selectedQuote}
+          distanceKm={distanceKm}
           schedule={schedule}
           scheduledAt={scheduledAt}
           vip={vip}
