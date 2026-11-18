@@ -370,8 +370,15 @@ class TestCanonicalDisplay:
         assert f'legacy-{base_user.id}@legacy.example.com' not in body
         assert 'Email address' in body
         assert 'Phone verification' in body
+        assert 'readonly aria-disabled="true"' in body
+        from flask import url_for
+        with app.test_request_context():
+            verify_phone_url = url_for("auth.verify_phone")
+        assert f'href="{verify_phone_url}"' not in body
 
-    def test_profile_contact_status_ignores_stale_verified_profile_flags(self, app, client, base_user):
+    def test_profile_contact_status_ignores_stale_verified_profile_flags(
+        self, app, client, base_user
+    ):
         """A stale verified profile mirror cannot mark User contacts as verified."""
         _session_login(client, base_user)
         with app.app_context():
@@ -394,8 +401,15 @@ class TestCanonicalDisplay:
         assert 'Unverified' in body
         assert f'value="{base_user.email}"' in body
         assert f'legacy-{base_user.id}@legacy.example.com' not in body
+        from flask import url_for
+        with app.test_request_context():
+            verify_phone_url = url_for("auth.verify_phone")
+        assert f'href="{verify_phone_url}"' in body
+        assert 'readonly aria-disabled="true"' not in body
 
-    def test_verified_email_boolean_blocks_profile_editor_change_without_timestamp(self, app, client, base_user):
+    def test_verified_email_boolean_blocks_profile_editor_change_without_timestamp(
+        self, app, client, base_user
+    ):
         """The canonical verified flag enforces immutability even without its timestamp."""
         _session_login(client, base_user)
         with app.app_context():
