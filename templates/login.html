@@ -11,15 +11,17 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/global/dark-mode.css') }}">
     <style nonce="{{ csp_nonce }}">
         :root {
-            --afcon-green: #006400;
-            --afcon-light-green: #228B22;
+            --afcon-green: #1b5e20;
+            --afcon-light-green: #388e3c;
+            --afcon-lime: #c6ff00;
             --afcon-gold: #FFD700;
             --afcon-light-gold: #FFF8DC;
-            --afcon-dark: #1a1a1a;
-            --afcon-light: #f8f9fa;
+            --afcon-dark: #1a1a2e;
+            --afcon-light: #e8f5e9;
+            --afcon-accent: #4caf50;
         }
         body {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background: linear-gradient(135deg, #e8f5e9 0%, #1b5e20 100%);
             min-height: 100vh;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
@@ -34,12 +36,13 @@
             z-index: 1000;
         }
         .back-home a {
-            color: var(--afcon-green);
+            color: var(--afcon-light-green);
             text-decoration: none;
             font-weight: 500;
             padding: 8px 16px;
             border-radius: 50px;
-            background-color: white;
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             transition: all 0.3s ease;
             display: inline-flex;
@@ -47,98 +50,139 @@
             gap: 8px;
         }
         .back-home a:hover {
-            background-color: var(--afcon-green);
-            color: white;
+            background-color: var(--afcon-light-green);
+            color: var(--afcon-dark);
             transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0, 100, 0, 0.2);
+            box-shadow: 0 4px 20px rgba(56, 142, 60, 0.3);
         }
         .login-card {
             width: 100%;
-            max-width: 50%;
-            border-radius: 20px;
+            max-width: 480px;
+            border-radius: 30px;
             border: none;
-            box-shadow: 0 15px 35px rgba(0, 100, 0, 0.15);
+            box-shadow: 0 25px 50px rgba(27, 94, 32, 0.25), 0 0 0 1px rgba(27, 94, 32, 0.1);
             overflow: hidden;
-            background: white;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(232, 245, 233, 0.8));
+            backdrop-filter: blur(10px);
         }
         .login-header {
             background: linear-gradient(to right, var(--afcon-green), var(--afcon-light-green));
             color: white;
-            padding: 30px;
+            padding: 40px 35px;
             text-align: center;
-            border-bottom: 4px solid var(--afcon-gold);
+            border-bottom: 5px solid var(--afcon-gold);
+            position: relative;
+            overflow: hidden;
+        }
+        .login-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(to bottom left, rgba(255, 255, 255, 0.2), transparent);
         }
         .login-header h2 {
             font-weight: 700;
-            margin-bottom: 5px;
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
         }
         .login-header p {
             opacity: 0.9;
+            font-size: 1rem;
             margin-bottom: 0;
         }
         .login-body {
-            padding: 40px;
+            padding: 45px 35px 35px;
         }
         .form-control {
-            border-radius: 10px;
-            padding: 12px 20px;
+            border-radius: 12px;
+            padding: 14px 24px;
             border: 2px solid #e0e0e0;
             transition: all 0.3s;
-            margin-top: 4px;
+            margin-top: 6px;
+            font-size: 1rem;
         }
         .form-control:focus {
-            border-color: var(--afcon-green);
-            box-shadow: 0 0 0 0.25rem rgba(0, 100, 0, 0.25);
+            border-color: var(--afcon-light-green);
+            box-shadow: 0 0 0 0.3rem rgba(56, 142, 60, 0.25);
+            outline: none;
+        }
+        .form-control::placeholder {
+            color: #999;
+            opacity: 0.7;
         }
         .invalid-feedback {
-            margin-top: 4px;
+            margin-top: 6px;
             font-size: 0.875rem;
+            color: #b71c1c;
         }
         .form-label {
             font-weight: 600;
             color: var(--afcon-dark);
-            margin-bottom: 12px;
+            margin-bottom: 14px;
             display: block;
+            font-size: 0.875rem;
         }
         .btn-login {
             background: linear-gradient(to right, var(--afcon-green), var(--afcon-light-green));
             border: none;
             color: white;
-            padding: 14px 30px;
-            border-radius: 10px;
+            padding: 16px 40px;
+            border-radius: 12px;
             font-weight: 600;
             font-size: 1.1rem;
             width: 100%;
-            transition: all 0.3s;
-            margin-top: 10px;
+            transition: all 0.3s ease;
+            margin-top: 14px;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-login::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+        .btn-login:hover::before {
+            left: 100%;
         }
         .btn-login:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 7px 15px rgba(0, 100, 0, 0.2);
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 12px 25px rgba(27, 94, 32, 0.35), 0 0 30px rgba(56, 142, 60, 0.2);
             color: white;
         }
+        .btn-login:active {
+            transform: translateY(-2px) scale(0.98);
+        }
         .form-check-input:checked {
-            background-color: var(--afcon-green);
-            border-color: var(--afcon-green);
+            background-color: var(--afcon-light-green);
+            border-color: var(--afcon-light-green);
         }
         .form-check-input:focus {
-            border-color: var(--afcon-green);
-            box-shadow: 0 0 0 0.25rem rgba(0, 100, 0, 0.25);
+            border-color: var(--afcon-light-green);
+            box-shadow: 0 0 0 0.25rem rgba(56, 142, 60, 0.25);
         }
         .social-login {
-            margin: 25px 0;
+            margin: 35px 0;
         }
         .social-login .divider {
             display: flex;
             align-items: center;
             text-align: center;
-            margin: 20px 0;
+            margin: 25px 0;
         }
         .social-login .divider::before,
         .social-login .divider::after {
             content: '';
             flex: 1;
-            border-bottom: 1px solid #dee2e6;
+            border-bottom: 1px solid #e0e0e0;
         }
         .social-login .divider span {
             padding: 0 15px;
@@ -147,27 +191,30 @@
         }
         .social-buttons {
             display: flex;
-            gap: 15px;
+            gap: 18px;
             justify-content: center;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
         }
         .social-btn {
             flex: 1;
-            padding: 12px;
-            border-radius: 10px;
+            padding: 14px 20px;
+            border-radius: 12px;
             border: 2px solid #e0e0e0;
             background: white;
             color: var(--afcon-dark);
             font-weight: 600;
-            transition: all 0.3s;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 12px;
+            min-width: 140px;
         }
         .social-btn:hover {
             transform: translateY(-3px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
         }
         .social-btn.facebook {
             border-color: #1877f2;
@@ -195,45 +242,48 @@
         }
         .phone-id-signup {
             text-align: center;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
+            margin-top: 30px;
+            padding-top: 25px;
+            border-top: 2px solid #e0e0e0;
         }
         .phone-id-btn {
             display: inline-flex;
             align-items: center;
             gap: 10px;
-            padding: 12px 25px;
+            padding: 14px 30px;
             background: linear-gradient(to right, #1a1a1a, #333);
             color: white;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             font-weight: 600;
             transition: all 0.3s;
             text-decoration: none;
+            font-size: 0.9rem;
         }
         .phone-id-btn:hover {
             transform: translateY(-3px);
-            box-shadow: 0 7px 15px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 7px 20px rgba(0, 0, 0, 0.3);
             color: white;
         }
         .links-section {
-            margin-top: 25px;
+            margin-top: 30px;
             text-align: center;
         }
         .forgot-link {
             color: var(--afcon-light-green);
             text-decoration: none;
             font-weight: 500;
+            font-size: 0.875rem;
             transition: all 0.3s;
         }
         .forgot-link:hover {
-            color: var(--afcon-green);
+            color: var(--afcon-light-gold);
             text-decoration: underline;
         }
         .register-link {
-            color: var(--afcon-green);
+            color: var(--afcon-light-green);
             font-weight: 600;
+            font-size: 0.875rem;
             text-decoration: none;
             transition: all 0.3s;
         }
@@ -242,39 +292,37 @@
             text-decoration: underline;
         }
         .alert {
-            border-radius: 10px;
+            border-radius: 12px;
             border: none;
-            padding: 15px 20px;
+            padding: 16px 24px;
         }
         .alert-danger {
-            background-color: #ffe6e6;
-            color: #cc0000;
-            border-left: 4px solid #cc0000;
+            background-color: #ffebee;
+            color: #b71c1c;
+            border-left: 4px solid #b71c1c;
         }
         .alert-success {
-            background-color: #e6ffe6;
+            background-color: #e8f5e9;
             color: var(--afcon-green);
             border-left: 4px solid var(--afcon-green);
         }
         .alert-info {
-            background-color: #e6f7ff;
-            color: #0066cc;
-            border-left: 4px solid #0066cc;
+            background-color: #e3f2fd;
+            color: #1565c0;
+            border-left: 4px solid #1565c0;
         }
         @media (max-width: 992px) {
             .login-card {
-                max-width: 75%;
+                max-width: 90%;
             }
         }
         @media (max-width: 768px) {
             .login-card {
                 max-width: 100%;
+                border-radius: 25px;
             }
             .login-body {
-                padding: 30px 25px;
-            }
-            .social-buttons {
-                flex-direction: column;
+                padding: 35px 25px 25px;
             }
             .back-home {
                 position: relative;

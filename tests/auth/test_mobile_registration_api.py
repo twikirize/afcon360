@@ -1352,3 +1352,212 @@ def test_native_sms_mfa_invalidates_otp_when_provider_delivery_fails(app, monkey
     assert error[2] == 503
     assert stored == [("505", "735192", "2fa_login", 300)]
     assert invalidated == [("505", "2fa_login"), ("505", "2fa_login")]
+
+
+def test_account_closure_wallet_balances_are_checked_per_currency():
+    from app.auth.account_deletion_service import _has_outstanding_wallet_balance
+
+    # Positive and negative amounts in different currencies must not net off.
+    assert _has_outstanding_wallet_balance(
+        {"balances_by_currency": {"UGX": "25000", "USD": "-20"}}
+    )
+    assert not _has_outstanding_wallet_balance(
+        {"balances_by_currency": {"UGX": "0", "USD": "0"}}
+    )
+    # Unknown amounts fail closed rather than being treated as zero.
+    assert _has_outstanding_wallet_balance(
+        {"balances_by_currency": {"UGX": "not-a-number"}}
+    )
+
+
+def test_account_closure_identity_fingerprints_require_explicit_key_and_opt_in(app):
+    from app.auth.account_deletion_service import _fingerprint
+
+    with app.app_context():
+        app.config["SECRET_KEY"] = "fallback-secret-must-not-be-used"
+        app.config.pop("ACCOUNT_CLOSURE_FINGERPRINT_ENABLED", None)
+        app.config.pop("ACCOUNT_CLOSURE_FINGERPRINT_KEY", None)
+
+        assert _fingerprint("email", "person@example.test") is None
+
+        app.config["ACCOUNT_CLOSURE_FINGERPRINT_ENABLED"] = True
+        # Enabling the feature without its dedicated key still fails closed.
+        assert _fingerprint("email", "person@example.test") is None
+
+        app.config["ACCOUNT_CLOSURE_FINGERPRINT_KEY"] = "dedicated-approved-key"
+        assert _fingerprint("email", "person@example.test")
+
+
+def test_completed_account_closure_record_scrubs_requester_and_recovery_snapshot(app):
+    import json
+    from types import SimpleNamespace
+
+    from app.auth.account_deletion_service import _scrub_closure_request_record, _now
+
+    request_row = SimpleNamespace(
+        public_id="closure-request-public-id",
+        requester_email="person@example.test",
+        requester_name="A Person",
+        request_details="",
+        scope="old scope",
+    )
+    details = {
+        "schema_version": 1,
+        "notice_version": "2026-11-15",
+        "requested_at": "2026-11-15T10:00:00+00:00",
+        "grace_days": 30,
+        "grace_until": "2026-12-15T10:00:00+00:00",
+        "acknowledgements": {"understand_closure": {"accepted": True}},
+        "ip_address": "192.0.2.10",
+        "user_agent": "Example browser",
+        "wallet_snapshot": {"balances_by_currency": {"UGX": "0"}},
+        "content_state": {"media": [{"id": 123}]},
+        "closure_fingerprint": {"email": "sensitive-keyed-hash"},
+    }
+
+    with app.app_context():
+        app.config["ACCOUNT_CLOSURE_FINGERPRINT_ENABLED"] = False
+        app.config.pop("ACCOUNT_CLOSURE_FINGERPRINT_KEY", None)
+        _scrub_closure_request_record(request_row, details, _now())
+
+    saved = json.loads(request_row.request_details)
+    assert request_row.requester_email.endswith("@anonymized.invalid")
+    assert request_row.requester_name == "Closed account"
+    assert "ip_address" not in saved
+    assert "user_agent" not in saved
+    assert "wallet_snapshot" not in saved
+    assert "content_state" not in saved
+    assert "closure_fingerprint" not in saved
+    assert saved["acknowledgements"]["understand_closure"]["accepted"] is True
+
+
+def test_account_closure_scrubs_archived_posts_and_media_identifiers(app, monkeypatch):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from app.accommodation.models.guest_identity import GuestIdentityProfile
+    from app.accommodation.models.guest_profile import GuestProfile
+    from app.accommodation.models.host_profile import HostProfile
+    from app.accommodation.models.property import Property
+    from app.auth.account_deletion_service import _anonymize_supporting_profiles
+    from app.events.models import OrganizerProfile
+    from app.fan.models import FanProfile
+    from app.feed.models import Post
+    from app.identity.models.organisation_member import OrganisationMember
+    from app.media import storage
+    from app.media.models import Media
+
+    class FakeQuery:
+        def __init__(self, rows=()):
+            self.rows = list(rows)
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def filter_by(self, **kwargs):
+            return self
+
+        def all(self):
+            return list(self.rows)
+
+        def first(self):
+            return self.rows[0] if self.rows else None
+
+    user = SimpleNamespace(id=8801)
+    post = SimpleNamespace(
+        status="published",
+        visibility="public",
+        body="A personal post that must not survive closure",
+        media_url="https://media.example.test/private-photo.jpg",
+        link_url="https://example.test/profile/8801",
+        link_title="Personal profile",
+        source_module="profile",
+        source_item_id=8801,
+        source_item_type="profile",
+        is_pinned=True,
+        author_id=user.id,
+        author_type="individual",
+    )
+    media = SimpleNamespace(
+        module="profile",
+        entity_id="user-public-8801",
+        uploaded_by=user.id,
+        storage_key="uploads/users/8801/avatar.jpg",
+        video_url="https://video.example.test/8801",
+        original_filename="obed-private-avatar.jpg",
+        file_size=12345,
+        mime_type="image/jpeg",
+        sha256_hash="a" * 64,
+        perceptual_hash="b" * 64,
+        thumbnail_url="https://media.example.test/thumb/8801.jpg",
+        urls={"original": "https://media.example.test/8801.jpg"},
+        upload_session_id="upload-session-8801",
+        processing_metadata={"source": "profile"},
+        error_message="temporary processing details",
+        failed_at=datetime.now(timezone.utc),
+        cleaned_at=None,
+        caption="Personal avatar",
+        is_deleted=False,
+        deleted_at=None,
+        is_public=True,
+    )
+
+    deleted_objects = []
+    class FakeStorage:
+        def delete(self, key):
+            deleted_objects.append(key)
+            return True
+
+    for model in (
+        FanProfile,
+        GuestProfile,
+        GuestIdentityProfile,
+        HostProfile,
+        OrganizerProfile,
+        OrganisationMember,
+        Property,
+    ):
+        monkeypatch.setattr(model, "query", FakeQuery(), raising=False)
+    monkeypatch.setattr(Post, "query", FakeQuery([post]), raising=False)
+    monkeypatch.setattr(Media, "query", FakeQuery([media]), raising=False)
+    monkeypatch.setattr(storage, "get_storage_backend", lambda: FakeStorage())
+
+    with app.app_context():
+        summary = _anonymize_supporting_profiles(
+            user,
+            datetime.now(timezone.utc),
+        )
+
+    assert summary["posts_archived"] == 1
+    assert post.status == "archived"
+    assert post.visibility == "private"
+    assert post.body == ""
+    assert post.media_url is None
+    assert post.link_url is None
+    assert post.link_title is None
+    assert post.source_module is None
+    assert post.source_item_id is None
+    assert post.source_item_type is None
+    assert post.author_id is None
+    assert post.author_type == "system"
+    assert post.is_pinned is False
+
+    assert summary["media_deleted"] == 1
+    assert deleted_objects == ["uploads/users/8801/avatar.jpg"]
+    assert media.is_deleted is True
+    assert media.is_public is False
+    assert media.storage_key is None
+    assert media.video_url is None
+    assert media.original_filename is None
+    assert media.file_size is None
+    assert media.mime_type is None
+    assert media.sha256_hash is None
+    assert media.perceptual_hash is None
+    assert media.thumbnail_url is None
+    assert media.urls == {}
+    assert media.upload_session_id is None
+    assert media.processing_metadata is None
+    assert media.error_message is None
+    assert media.uploaded_by is None
+    assert media.entity_id == "anonymized"
+    assert media.module == "anonymized"
