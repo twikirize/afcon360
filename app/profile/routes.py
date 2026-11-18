@@ -279,7 +279,10 @@ def edit_profile():
         # Email-lock guard & change handling on User model
         new_email = editable_data.get('email')
         if new_email and new_email != current_user.email:
-            if getattr(current_user, 'email_verified_at', None) is not None:
+            if (
+                bool(getattr(current_user, 'email_verified', False))
+                or getattr(current_user, 'email_verified_at', None) is not None
+            ):
                 flash('Verified email cannot be changed.', 'danger')
                 return redirect(url_for('profile.edit_profile'))
             else:
@@ -354,9 +357,40 @@ def edit_profile():
             current_app.logger.error(f"Profile update error: {e}")
             flash('An error occurred. Please try again.', 'danger')
 
-    completion = profile.get_completion_percentage() if profile else 0
     completion_breakdown = profile.get_completion_breakdown() if profile else {}
-    is_verified = profile and profile.verification_status == 'verified'
+    is_verified = bool(profile and profile.verification_status == 'verified')
+
+    # User is the canonical authority for contact values and verification.
+    # UserProfile keeps legacy mirrors for profile completion and must not
+    # override the current account verification state.
+    user_row = User.query.filter_by(public_id=str(current_user.public_id)).first()
+    user_email = user_row.email if user_row else None
+    user_email_verified = bool(
+        user_row
+        and (
+            getattr(user_row, 'email_verified', False)
+            or getattr(user_row, 'email_verified_at', None) is not None
+        )
+    )
+    user_phone_verified = bool(
+        user_row
+        and (
+            getattr(user_row, 'phone_verified', False)
+            or getattr(user_row, 'phone_verified_at', None) is not None
+        )
+    )
+
+    if completion_breakdown:
+        if 'email_verified' in completion_breakdown:
+            completion_breakdown['email_verified']['completed'] = user_email_verified
+        if 'phone_verified' in completion_breakdown:
+            completion_breakdown['phone_verified']['completed'] = user_phone_verified
+        completion = sum(
+            item['weight'] for item in completion_breakdown.values()
+            if item.get('completed')
+        )
+    else:
+        completion = 0
 
     kyc_info = {}
     try:
@@ -371,6 +405,9 @@ def edit_profile():
         'is_verified': is_verified,
         'kyc_info': kyc_info,
         'current_user': current_user,
+        'user_email': user_email,
+        'user_email_verified': user_email_verified,
+        'user_phone_verified': user_phone_verified,
     }
 
     if request.args.get('_pane') == '1':
