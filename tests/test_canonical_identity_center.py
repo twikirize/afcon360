@@ -346,6 +346,89 @@ class TestCanonicalDisplay:
         assert resp.status_code == 200
         assert "Canonical Identity User" in _body(resp)
 
+    def test_profile_contact_status_uses_canonical_user_flags(self, app, client, base_user):
+        """The User row, not lagging UserProfile mirrors, owns contact status."""
+        _session_login(client, base_user)
+        with app.app_context():
+            user = User.query.filter_by(public_id=base_user.public_id).one()
+            profile = get_profile_by_user(user.public_id)
+            profile.email = f"legacy-{base_user.id}@legacy.example.com"
+            profile.phone_number = "+255700000001"
+            profile.email_verified = False
+            profile.phone_verified = False
+            user.email_verified = True
+            user.email_verified_at = None
+            user.phone = "+256700000002"
+            user.phone_verified = True
+            user.phone_verified_at = None
+            db.session.commit()
+
+        response = client.get("/profile/edit")
+        assert response.status_code == 200
+        body = _body(response)
+        assert f'value="{base_user.email}"' in body
+        assert f'legacy-{base_user.id}@legacy.example.com' not in body
+        assert 'Email address' in body
+        assert 'Phone verification' in body
+        assert 'readonly aria-disabled="true"' in body
+        from flask import url_for
+        with app.test_request_context():
+            verify_phone_url = url_for("auth.verify_phone")
+        assert f'href="{verify_phone_url}"' not in body
+
+    def test_profile_contact_status_ignores_stale_verified_profile_flags(
+        self, app, client, base_user
+    ):
+        """A stale verified profile mirror cannot mark User contacts as verified."""
+        _session_login(client, base_user)
+        with app.app_context():
+            user = User.query.filter_by(public_id=base_user.public_id).one()
+            profile = get_profile_by_user(user.public_id)
+            user.email_verified = False
+            user.email_verified_at = None
+            user.phone = "+256700000003"
+            user.phone_verified = False
+            user.phone_verified_at = None
+            profile.email = f"legacy-{base_user.id}@legacy.example.com"
+            profile.phone_number = "+255700000004"
+            profile.email_verified = True
+            profile.phone_verified = True
+            db.session.commit()
+
+        response = client.get("/profile/edit")
+        assert response.status_code == 200
+        body = _body(response)
+        assert 'Unverified' in body
+        assert f'value="{base_user.email}"' in body
+        assert f'legacy-{base_user.id}@legacy.example.com' not in body
+        from flask import url_for
+        with app.test_request_context():
+            verify_phone_url = url_for("auth.verify_phone")
+        assert f'href="{verify_phone_url}"' in body
+        assert 'readonly aria-disabled="true"' not in body
+
+    def test_verified_email_boolean_blocks_profile_editor_change_without_timestamp(
+        self, app, client, base_user
+    ):
+        """The canonical verified flag enforces immutability even without its timestamp."""
+        _session_login(client, base_user)
+        with app.app_context():
+            user = User.query.filter_by(public_id=base_user.public_id).one()
+            user.email_verified = True
+            user.email_verified_at = None
+            original_email = user.email
+            db.session.commit()
+
+        response = client.post(
+            "/profile/edit",
+            data={"email": "replacement@example.com"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        with app.app_context():
+            user = User.query.filter_by(public_id=base_user.public_id).one()
+            assert user.email == original_email
+
     def test_driver_step1_prefills_canonical_identity(self, app, client, kyc_user):
         """Driver onboarding Step 1 prefills and locks the canonical name and
         National ID from UserProfile - it never asks to retype them."""
