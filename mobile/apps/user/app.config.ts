@@ -87,6 +87,10 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    [
+      "./plugins/withPreviewCleartextTraffic",
+      { enabled: isPreview }
+    ],
     "expo-secure-store",
     "expo-dev-client",
     "expo-updates",
