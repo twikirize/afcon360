@@ -112,6 +112,29 @@
                    value="{{ profile.display_name or '' if profile else '' }}">
             <div class="field-hint">This is what other users see. Leave blank to use your full name.</div>
           </div>
+          {# Contact email and verification are read from the canonical User row. #}
+          <div class="field-group {% if user_email_verified %}field-locked{% endif %}">
+            <label class="label-with-badge" for="email">
+              Email address
+              {% if user_email_verified %}
+                <span class="lock-notice"><i class="fas fa-check"></i> Verified</span>
+              {% else %}
+                <span class="chip-warn"><i class="fas fa-clock"></i> Unverified</span>
+              {% endif %}
+            </label>
+            <input type="email" id="email" name="email"
+                   placeholder="you@example.com"
+                   value="{{ user_email or '' }}"
+                   {% if user_email_verified %}readonly aria-disabled="true"{% endif %}>
+            {% if user_email_verified %}
+              <div class="field-hint"><i class="fas fa-info-circle"></i> Verified email cannot be changed.</div>
+            {% else %}
+              <div class="field-hint">
+                <i class="fas fa-info-circle"></i> Changing your email resets its verification.
+                <a href="{{ url_for('auth.verify_email_code') }}">Verify your email</a> to complete your profile.
+              </div>
+            {% endif %}
+          </div>
 
           {# Full name — locked after verification #}
           <div class="field-group {% if is_verified %}field-locked{% endif %}">
@@ -160,11 +183,20 @@
                       placeholder="Tell other fans about yourself — where you're from, which tournaments you've attended, what makes AFCON special to you…">{{ profile.bio or '' if profile else '' }}</textarea>
             <div class="field-hint">Shown on your public profile. Max 500 characters.</div>
           </div>
-          <div class="field-group">
-            <label for="nationality">Nationality</label>
+          <div class="field-group {% if is_verified %}field-locked{% endif %}">
+            <label class="label-with-badge" for="nationality">
+              Nationality
+              {% if is_verified %}
+                <span class="lock-notice"><i class="fas fa-lock"></i> Immutable</span>
+              {% endif %}
+            </label>
             <input type="text" id="nationality" name="nationality"
                    placeholder="e.g. Ugandan"
-                   value="{{ profile.nationality or '' if profile else '' }}">
+                   value="{{ profile.nationality or '' if profile else '' }}"
+                   {% if is_verified %}readonly aria-disabled="true"{% endif %}>
+            {% if is_verified %}
+              <div class="field-hint"><i class="fas fa-info-circle"></i> Locked after KYC verification. Contact support to dispute.</div>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -359,11 +391,11 @@
            style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--ink-2);text-decoration:none;padding:.5rem .25rem;border-bottom:1px solid var(--surface-2);">
           <i class="fas fa-user-cog" style="color:var(--gold);width:16px;text-align:center;"></i> Account & security
         </a>
-        <a href="{{ url_for('auth.verify_phone') if not (profile and profile.phone_verified) else '#' }}"
+        <a href="{{ url_for('auth.verify_phone') if not user_phone_verified else '#' }}"
            style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--ink-2);text-decoration:none;padding:.5rem .25rem;border-bottom:1px solid var(--surface-2);">
           <i class="fas fa-phone" style="color:var(--gold);width:16px;text-align:center;"></i>
           Phone verification
-          {% if profile and profile.phone_verified %}
+          {% if user_phone_verified %}
             <span class="chip-ok" style="margin-left:auto;"><i class="fas fa-check"></i></span>
           {% else %}
             <span class="chip-warn" style="margin-left:auto;"><i class="fas fa-clock"></i></span>
