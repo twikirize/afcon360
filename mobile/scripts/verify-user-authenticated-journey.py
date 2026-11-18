@@ -320,6 +320,59 @@ def wait_for_text_scrolling(
     )
 
 
+
+def wait_for_text_scrolling_to_top(
+    *needles: str,
+    timeout: int = 20,
+    label: str = "screen heading",
+    max_swipes: int = 8,
+) -> str:
+    """Scroll a long native screen back to its top before asserting its heading.
+
+    UIAutomator exposes only the current viewport. A previous action may have
+    scrolled Account down to Version & updates; after returning from Android
+    Settings, restore the viewport before asserting the Account heading.
+    """
+    size_output = run_adb("shell", "wm", "size")
+    sizes = re.findall(r"(\d+)x(\d+)", size_output)
+    if not sizes:
+        raise RuntimeError(f"Could not determine Android display size: {size_output.strip()}")
+    width, height = map(int, sizes[-1])
+    deadline = time.monotonic() + timeout
+    last = ""
+    swipes = 0
+
+    while time.monotonic() < deadline:
+        try:
+            last = visible_text()
+            if all(needle in last for needle in needles):
+                print(
+                    f"PASS: {label} at page top after {swipes} upward scroll(s): "
+                    + " | ".join(needles),
+                    flush=True,
+                )
+                return last
+        except Exception as error:
+            last = f"{type(error).__name__}: {error}"
+
+        if swipes >= max_swipes:
+            break
+
+        # Swipe downward through the content to move the viewport back up.
+        # Keep the gesture inside the page body, clear of the bottom tab bar.
+        x = width // 2
+        start_y = int(height * 0.32)
+        end_y = int(height * 0.72)
+        run_adb("shell", "input", "swipe", str(x), str(start_y), str(x), str(end_y), "450")
+        swipes += 1
+        time.sleep(0.6)
+
+    raise AssertionError(
+        f"Timed out restoring {label} after {swipes} upward scroll(s): {needles}. "
+        f"Last visible hierarchy:\n{last[:6000]}"
+    )
+
+
 def tap_text_scrolling(value: str, *, max_swipes: int = 6) -> None:
     """Scroll a long native screen until an exact action is visible, then tap it."""
     size_output = run_adb("shell", "wm", "size")
@@ -504,6 +557,13 @@ def save_failure_diagnostics() -> None:
             f"{type(error).__name__}: {error}\n", encoding="utf-8",
         )
 
+    app_pid = run_adb("shell", "pidof", PACKAGE, check=False).strip().split()
+    capture("failure-process.txt", "shell", "pidof", PACKAGE)
+    if app_pid:
+        # App-specific logs are small and remain useful even when emulator
+        # services generate thousands of unrelated logcat records.
+        capture("failure-app-logcat.txt", "logcat", "-d", f"--pid={app_pid[0]}", "-v", "threadtime")
+        capture("failure-app-process-status.txt", "shell", "cat", f"/proc/{app_pid[0]}/status")
     capture("failure-logcat-full.txt", "logcat", "-b", "all", "-d", "-t", "4000")
     capture(
         "failure-logcat-errors.txt", "logcat", "-d", "-t", "4000",
@@ -512,9 +572,9 @@ def save_failure_diagnostics() -> None:
         "ActivityManager:E", "installd:E", "*:S",
     )
     capture("failure-foreground-activity.txt", "shell", "dumpsys", "activity", "activities")
+    capture("failure-activity-top.txt", "shell", "dumpsys", "activity", "top")
     capture("failure-focused-window.txt", "shell", "dumpsys", "window", "windows")
     capture("failure-package-path.txt", "shell", "pm", "path", PACKAGE)
-    capture("failure-process.txt", "shell", "pidof", PACKAGE)
     capture("failure-ui-dump-command.txt", "shell", "uiautomator", "dump", UI_XML)
     capture("failure-ui-hierarchy.xml", "shell", "cat", UI_XML)
 
@@ -634,14 +694,18 @@ def main() -> None:
         timeout=45,
         label="authenticated Pamoja Home header",
     )
-    save_screen("02-home")
-    wait_for_text_scrolling(
-        "My Events",
-        "Event Calendar",
-        timeout=35,
-        label="Pamoja Home My Events overview",
-    )
-    save_screen("02a-my-events-overview")
+    login_navigation_only = os.environ.get("AFCON360_E2E_LOGIN_NAVIGATION_ONLY", "").strip().lower() in {"1", "true", "yes"}
+    if login_navigation_only:
+        save_screen("02-home-login-navigation-gate")
+    else:
+        save_screen("02-home")
+        wait_for_text_scrolling(
+            "My Events",
+            "Event Calendar",
+            timeout=35,
+            label="Pamoja Home My Events overview",
+        )
+        save_screen("02a-my-events-overview")
     mark_stage("authenticated_home")
 
     mark_stage("activity_navigation_started")
@@ -660,12 +724,28 @@ def main() -> None:
     mark_stage("wallet_screen")
 
     tap_text("Account", last=True)
-    wait_for_text("Your account.", timeout=25, label="authenticated account")
-    account_text = visible_text()
+    account_text = wait_for_text("Your account.", timeout=25, label="authenticated account")
     if USERNAME not in account_text and os.environ.get("AFCON360_E2E_EMAIL", "native-e2e@afcon360.test") not in account_text:
         raise AssertionError("The authenticated account screen did not display the synthetic user's identity.")
     save_screen("05-account")
     mark_stage("account_screen")
+
+    if login_navigation_only:
+        tap_text("Home", last=True)
+        wait_for_text(
+            "Your world,",
+            "Good to see you, " + USERNAME + ".",
+            timeout=25,
+            label="return to Home after primary tab navigation",
+        )
+        save_screen("05-home-after-tab-navigation")
+        mark_stage("login_navigation_gate_passed")
+        print(
+            "USER_ANDROID_E2E_LOGIN_NAVIGATION_PASS: authenticated login, Home, Activity, "
+            "Wallet, Account identity, and return to Home.",
+            flush=True,
+        )
+        return
 
     # Verify an intentional uninstall has an AFCON360 confirmation first.
     # Cancel the app's prompt; never remove the test APK from the emulator.
@@ -687,7 +767,20 @@ def main() -> None:
     print("PASS: AFCON360 remains installed after cancelling uninstall", flush=True)
     mark_stage("uninstall_confirmation_cancelled")
     run_adb("shell", "input", "keyevent", "4")
-    wait_for_text("Your account.", timeout=20, label="return to account after uninstall test")
+    restored_account_text = wait_for_text_scrolling_to_top(
+        "Your account.",
+        timeout=20,
+        label="return to Account after uninstall test",
+    )
+    if USERNAME not in restored_account_text and os.environ.get(
+        "AFCON360_E2E_EMAIL", "native-e2e@afcon360.test"
+    ) not in restored_account_text:
+        raise AssertionError(
+            "The Account screen did not restore the authenticated synthetic user's identity "
+            "after cancelling uninstall."
+        )
+    save_screen("05b-account-restored-after-uninstall-cancel")
+    mark_stage("account_restored_after_uninstall_cancel")
 
     tap_text("Explore", last=True)
     wait_for_text("Make more of the journey.", "Rides", label="Explore services")

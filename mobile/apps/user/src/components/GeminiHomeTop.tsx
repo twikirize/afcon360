@@ -120,15 +120,15 @@ export function GeminiHomeTop({
       <View style={styles.serviceSection}>
         <Text style={styles.sectionTitle}>Make yourself feel at home</Text>
         <View style={styles.serviceGrid}>
-          <ServiceEntry key="rides" onPress={() => onServicePress("rides")} index={0} />
-          <ServiceEntry key="stays" onPress={() => onServicePress("stays")} index={1} />
-          <ServiceEntry key="events" onPress={() => onServicePress("events")} index={2} />
-          <ServiceEntry key="adventure" onPress={() => onServicePress("adventure")} index={3} />
+          <ServiceEntry key="rides" serviceKey="rides" onPress={() => onServicePress("rides")} index={0} />
+          <ServiceEntry key="stays" serviceKey="stays" onPress={() => onServicePress("stays")} index={1} />
+          <ServiceEntry key="events" serviceKey="events" onPress={() => onServicePress("events")} index={2} />
+          <ServiceEntry key="adventure" serviceKey="adventure" onPress={() => onServicePress("adventure")} index={3} />
         </View>
       </View>
 
-      <ServiceEntry key="wallet" variant="banner" onPress={() => onServicePress("wallet")} />
-      <ServiceEntry key="stays" variant="banner" onPress={() => onServicePress("stays")} />
+      <ServiceEntry key="wallet" serviceKey="wallet" variant="banner" onPress={() => onServicePress("wallet")} />
+      <ServiceEntry key="stays-banner" serviceKey="stays" variant="banner" onPress={() => onServicePress("stays")} />
     </View>
   );
 }

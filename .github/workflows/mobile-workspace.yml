@@ -548,6 +548,7 @@ jobs:
         env:
           USER_APK_CACHE_MATCHED_KEY: ${{ steps.user-apk-cache.outputs.cache-matched-key }}
           USER_APK_NATIVE_FINGERPRINT: ${{ steps.user-apk-key.outputs.fingerprint }}
+          USER_APK_CACHE_KEY: ${{ steps.user-apk-key.outputs.key }}
           FORCE_USER_APK_REBUILD: ${{ inputs.force_apk_rebuild == true }}
         run: |
           set -euo pipefail
@@ -572,10 +573,42 @@ jobs:
           CACHED_FINGERPRINT="$(sed -n 's/^native_fingerprint=//p' "$INFO" | head -n 1)"
           if [ -n "$CACHED_FINGERPRINT" ]; then
             if [ "$CACHED_FINGERPRINT" != "$USER_APK_NATIVE_FINGERPRINT" ]; then
-              echo "Cached APK native fingerprint differs; build a compatible native binary."
-              exit 0
+              # A fingerprint-helper-only correction does not alter the APK.
+              # Permit one migration only when every native build input is
+              # byte-for-byte unchanged between the APK's source commit and
+              # this commit. Changes to app config, fingerprint policy,
+              # plugins, native projects, dependency manifests or lockfiles
+              # always invalidate this migration path.
+              SOURCE_COMMIT="$(sed -n 's/^source_commit=//p' "$INFO" | head -n 1)"
+              test -n "$SOURCE_COMMIT" || exit 0
+              git fetch --no-tags --depth=1 origin "$SOURCE_COMMIT"
+              if ! git diff --quiet "$SOURCE_COMMIT" "$GITHUB_SHA" -- \
+                mobile/apps/user/app.config.ts \
+                mobile/apps/user/fingerprint.config.js \
+                mobile/apps/user/package.json \
+                mobile/apps/user/plugins \
+                mobile/apps/user/android \
+                mobile/apps/user/ios \
+                mobile/package.json \
+                mobile/pnpm-lock.yaml \
+                mobile/pnpm-workspace.yaml \
+                mobile/.npmrc \
+                'mobile/packages/*/package.json'; then
+                echo "Cached APK native inputs changed; build a compatible native binary."
+                exit 0
+              fi
+              printf 'native_fingerprint=%s\n' "$USER_APK_NATIVE_FINGERPRINT" > "$RUNNER_TEMP/user-apk-build-info.new"
+              grep -v '^native_fingerprint=' "$INFO" >> "$RUNNER_TEMP/user-apk-build-info.new"
+              if grep -q '^cache_key=' "$RUNNER_TEMP/user-apk-build-info.new"; then
+                sed -i "s|^cache_key=.*|cache_key=$USER_APK_CACHE_KEY|" "$RUNNER_TEMP/user-apk-build-info.new"
+              else
+                printf 'cache_key=%s\n' "$USER_APK_CACHE_KEY" >> "$RUNNER_TEMP/user-apk-build-info.new"
+              fi
+              mv "$RUNNER_TEMP/user-apk-build-info.new" "$INFO"
+              echo "Migrated cached APK after helper-only fingerprint correction; all native build inputs are unchanged."
+            else
+              echo "Cached APK native fingerprint matches the Android runtime."
             fi
-            echo "Cached APK native fingerprint matches the Android runtime."
           else
             # One-time safe migration for older source-keyed cache entries.
             # The legacy build did not record an Expo fingerprint, so only
@@ -880,7 +913,21 @@ jobs:
           ls -l /dev/kvm
           test -r /dev/kvm
           test -w /dev/kvm
+      - name: Focused login and primary navigation gate — sign in, Home, Activity, Wallet and Account
+        id: login_navigation_journey
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          disable-linux-hw-accel: false
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1 python mobile/scripts/verify-user-authenticated-journey.py
       - name: Install, authenticate, test services, restore session and sign out
+        if: ${{ steps.login_navigation_journey.outcome == 'success' }}
         id: android_journey
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
@@ -908,7 +955,7 @@ jobs:
   user-android-version-compatibility:
     name: User authenticated journey — ${{ matrix.android-label }}
     needs: user-authenticated-journey
-    if: ${{ always() && needs.user-authenticated-journey.outputs.apk_ready == 'true' && needs.user-authenticated-journey.outputs.apk_rebuilt == 'true' && github.ref_name != 'fix/user-release-engineering-20261115' }}
+    if: ${{ needs.user-authenticated-journey.result == 'success' && needs.user-authenticated-journey.outputs.apk_ready == 'true' && needs.user-authenticated-journey.outputs.apk_rebuilt == 'true' && github.ref_name != 'fix/user-release-engineering-20261115' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:

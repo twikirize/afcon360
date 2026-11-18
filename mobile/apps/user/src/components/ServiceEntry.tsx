@@ -11,7 +11,7 @@ import { colors, typography, spacing, radii, shadows } from "../theme/tokens";
 export type ServiceKey = "rides" | "stays" | "events" | "adventure" | "wallet" | "tourism";
 
 export type ServiceEntryProps = {
-  key: ServiceKey;
+  serviceKey: ServiceKey;
   onPress: () => void;
   index?: number;
   variant?: "card" | "banner";
@@ -324,16 +324,16 @@ function BookingsBanner({ onPress }: { onPress: () => void }) {
 }
 
 export function ServiceEntry({
-  key,
+  serviceKey,
   onPress,
   index = 0,
   variant = "card",
 }: ServiceEntryProps) {
-  const config = SERVICE_CONFIG[key];
+  const config = SERVICE_CONFIG[serviceKey];
 
   if (variant === "banner") {
-    if (key === "wallet") return <WalletBanner onPress={onPress} />;
-    if (key === "stays") return <BookingsBanner onPress={onPress} />;
+    if (serviceKey === "wallet") return <WalletBanner onPress={onPress} />;
+    if (serviceKey === "stays") return <BookingsBanner onPress={onPress} />;
   }
 
   return <ServiceCard config={config} index={index} onPress={onPress} />;
