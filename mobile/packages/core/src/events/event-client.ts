@@ -70,6 +70,34 @@ export type NativeEventRegistration = {
   created_at: string | null;
 };
 
+export type NativeEventTicketPurchase = {
+  registration_reference: string;
+  ticket_number: string;
+  qr_code: string;
+  amount: string;
+  currency: string;
+  payment_reference: string;
+  status: string;
+};
+
+export type NativeEventPurchaseInitiateResponse = {
+  status: "pending" | "completed";
+  message: string;
+  reference: string;
+  provider_reference: string;
+  audit_transaction_id: string;
+  expires_in: number;
+};
+
+export type NativeEventPurchaseInput = {
+  eventPublicId: string;
+  ticketToken: string;
+  paymentMethod: string;
+  mobileMoneyOperator?: string;
+  mobileMoneyPhone?: string;
+  idempotencyKey: string;
+};
+
 export type NativeEventRegistrationList = {
   items: NativeEventRegistration[];
   limit: number;
@@ -135,6 +163,22 @@ export class MobileEventClient {
   getRegistration(reference: string): Promise<NativeEventRegistration> {
     return this.unwrap<NativeEventRegistration>(
       `/api/mobile/v1/events/registrations/${encodeURIComponent(reference)}`
+    );
+  }
+
+  purchaseTicket(input: NativeEventPurchaseInput): Promise<NativeEventTicketPurchase | NativeEventPurchaseInitiateResponse> {
+    return this.unwrap<NativeEventTicketPurchase | NativeEventPurchaseInitiateResponse>(
+      `/api/mobile/v1/events/${encodeURIComponent(input.eventPublicId)}/purchase`,
+      {
+        method: "POST",
+        body: {
+          ticket_token: input.ticketToken,
+          payment_method: input.paymentMethod,
+          mobile_money_operator: input.mobileMoneyOperator,
+          mobile_money_phone: input.mobileMoneyPhone,
+          idempotency_key: input.idempotencyKey,
+        },
+      }
     );
   }
 }

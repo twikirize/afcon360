@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
+import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { AppScreen, PageHeader, Panel, SectionTitle, palette } from "@afcon360/mobile-ui";
@@ -9,17 +10,124 @@ import { SERVER_SELECTION_ENABLED } from "../../src/services/api";
 
 type UpdateStatus = "idle" | "checking" | "downloading" | "ready" | "current" | "error" | "unavailable";
 
+type UpdateHistoryEntry = {
+  updateId: string;
+  createdAt: string | null;
+  runtimeVersion: string | null;
+  channel: string | null;
+  observedAt: string;
+};
+
+type AvailableUpdate = {
+  id: string | null;
+  createdAt: string | null;
+  runtimeVersion: string | null;
+};
+
+const UPDATE_HISTORY_KEY = "afcon360.user.update-history.v1";
+const MAX_UPDATE_HISTORY = 5;
+
+function isUpdateHistoryEntry(value: unknown): value is UpdateHistoryEntry {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.updateId === "string" && typeof record.observedAt === "string";
+}
+
+async function readUpdateHistory(): Promise<UpdateHistoryEntry[]> {
+  const raw = await SecureStore.getItemAsync(UPDATE_HISTORY_KEY);
+  if (!raw) return [];
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(isUpdateHistoryEntry).slice(0, MAX_UPDATE_HISTORY);
+}
+
+async function recordAppliedUpdate(
+  entry: Omit<UpdateHistoryEntry, "observedAt">
+): Promise<UpdateHistoryEntry[]> {
+  const existing = await readUpdateHistory();
+  if (existing.some((item) => item.updateId === entry.updateId)) return existing;
+  const next: UpdateHistoryEntry[] = [
+    { ...entry, observedAt: new Date().toISOString() },
+    ...existing,
+  ].slice(0, MAX_UPDATE_HISTORY);
+  await SecureStore.setItemAsync(UPDATE_HISTORY_KEY, JSON.stringify(next));
+  return next;
+}
+
+function formatUpdateTime(value: string | null): string {
+  if (!value) return "Not reported";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function readManifestSummary(manifest: unknown): AvailableUpdate {
+  if (!manifest || typeof manifest !== "object") {
+    return { id: null, createdAt: null, runtimeVersion: null };
+  }
+  const record = manifest as Record<string, unknown>;
+  return {
+    id: typeof record.id === "string" ? record.id : null,
+    createdAt: typeof record.createdAt === "string" ? record.createdAt : null,
+    runtimeVersion: typeof record.runtimeVersion === "string" ? record.runtimeVersion : null,
+  };
+}
+
+function InfoRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <View style={{ gap: 2 }}>
+      <Text style={{ color: palette.muted, fontSize: 12 }}>{label}</Text>
+      <Text selectable style={{ color: palette.ink, fontSize: 12, fontWeight: "800", lineHeight: 17 }}>
+        {value}
+      </Text>
+      {hint ? <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>{hint}</Text> : null}
+    </View>
+  );
+}
+
 function AppUpdateControls() {
   const [status, setStatus] = useState<UpdateStatus>("idle");
   const [message, setMessage] = useState(
     "AFCON360 checks for compatible updates when the app starts. You can also check manually here."
   );
 
+  const [history, setHistory] = useState<UpdateHistoryEntry[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [availableUpdate, setAvailableUpdate] = useState<AvailableUpdate | null>(null);
+
   const appVersion = Constants.expoConfig?.version ?? "Unknown";
   const runtimeVersion = Updates.runtimeVersion ?? "Not reported";
   const channel = Updates.channel ?? "Not configured";
-  const updateId = Updates.updateId ? Updates.updateId.slice(0, 8) : "Built-in app bundle";
+  const runningUpdateId = Updates.updateId;
+  const runningUpdateCreatedAt = Updates.createdAt ? Updates.createdAt.toISOString() : null;
+  const bundleSource = Updates.isEmbeddedLaunch ? "Embedded app bundle" : "Downloaded OTA update";
   const busy = status === "checking" || status === "downloading";
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const entries = await readUpdateHistory();
+        if (!cancelled) setHistory(entries);
+        if (runningUpdateId) {
+          const next = await recordAppliedUpdate({
+            updateId: runningUpdateId,
+            createdAt: runningUpdateCreatedAt,
+            runtimeVersion: Updates.runtimeVersion,
+            channel: Updates.channel,
+          });
+          if (!cancelled) setHistory(next);
+        }
+      } catch {
+        if (!cancelled) setHistoryError("Update history is unavailable on this installation.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [runningUpdateId, runningUpdateCreatedAt]);
 
   const checkForUpdates = async () => {
     if (__DEV__ || !Updates.isEnabled) {
@@ -37,8 +145,10 @@ function AppUpdateControls() {
 
     try {
       const check = await Updates.checkForUpdateAsync();
+      setLastCheckedAt(new Date().toISOString());
 
       if (check.isRollBackToEmbedded) {
+        setAvailableUpdate(null);
         setStatus("ready");
         setMessage(
           "A verified rollback to the embedded app version is available. Restart AFCON360 to apply it."
@@ -47,6 +157,7 @@ function AppUpdateControls() {
       }
 
       if (!check.isAvailable) {
+        setAvailableUpdate(null);
         setStatus("current");
         setMessage(
           "This app is up to date. AFCON360 will continue checking automatically when it starts."
@@ -54,6 +165,7 @@ function AppUpdateControls() {
         return;
       }
 
+      setAvailableUpdate(readManifestSummary(check.manifest));
       setStatus("downloading");
       setMessage("A compatible update was found. Downloading it securely…");
 
@@ -109,29 +221,51 @@ function AppUpdateControls() {
         </Text>
       </View>
 
-      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-        <Text style={{ color: palette.muted, fontSize: 12 }}>Installed version</Text>
-        <Text selectable style={{ color: palette.ink, fontSize: 12, fontWeight: "900" }}>
-          {appVersion}
-        </Text>
-      </View>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-        <Text style={{ color: palette.muted, fontSize: 12 }}>Update channel</Text>
-        <Text selectable style={{ color: palette.ink, fontSize: 12, fontWeight: "800" }}>
-          {channel}
-        </Text>
-      </View>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-        <Text style={{ color: palette.muted, fontSize: 12 }}>Compatible runtime</Text>
-        <Text selectable style={{ color: palette.ink, fontSize: 12, fontWeight: "800" }}>
-          {runtimeVersion}
-        </Text>
-      </View>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-        <Text style={{ color: palette.muted, fontSize: 12 }}>Running update</Text>
-        <Text selectable style={{ color: palette.ink, fontSize: 12, fontWeight: "800" }}>
-          {updateId}
-        </Text>
+      <InfoRow label="Installed version" value={appVersion} hint="Version reported by this installation" />
+      <InfoRow label="Compatible runtime" value={runtimeVersion} hint="OTA updates must match this runtime version" />
+      <InfoRow label="Update channel" value={channel} />
+      <InfoRow
+        label="Running update"
+        value={runningUpdateId ?? "Built-in app bundle"}
+        hint={bundleSource + (runningUpdateCreatedAt ? " · created " + formatUpdateTime(runningUpdateCreatedAt) : "")}
+      />
+      <InfoRow
+        label="Latest update found"
+        value={availableUpdate?.id ?? (lastCheckedAt ? "No newer compatible update" : "Not checked yet")}
+        hint={
+          availableUpdate?.createdAt
+            ? "created " + formatUpdateTime(availableUpdate.createdAt)
+            : lastCheckedAt
+              ? "Checked " + formatUpdateTime(lastCheckedAt)
+              : "Tap Check for updates below"
+        }
+      />
+      <InfoRow
+        label="Last checked"
+        value={lastCheckedAt ? formatUpdateTime(lastCheckedAt) : "Not checked in this session"}
+      />
+
+      <View style={{ gap: 4, borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10 }}>
+        <Text style={{ color: palette.ink, fontSize: 12, fontWeight: "900" }}>Applied update sequence</Text>
+        {historyError ? (
+          <Text style={{ color: "#A12E27", fontSize: 11, lineHeight: 16 }}>{historyError}</Text>
+        ) : history.length === 0 ? (
+          <Text style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
+            No OTA update has been recorded yet. After an update is applied and the app restarts, it will appear here.
+          </Text>
+        ) : (
+          history.map((entry, index) => (
+            <View key={entry.updateId} style={{ gap: 1 }}>
+              <Text selectable style={{ color: palette.ink, fontSize: 11, fontWeight: "800" }}>
+                {index + 1}. {entry.updateId}
+                {entry.updateId === runningUpdateId ? "  · running now" : ""}
+              </Text>
+              <Text style={{ color: palette.muted, fontSize: 10 }}>
+                created {formatUpdateTime(entry.createdAt)} · observed {formatUpdateTime(entry.observedAt)}
+              </Text>
+            </View>
+          ))
+        )}
       </View>
 
       <Text accessibilityLiveRegion="polite" style={{

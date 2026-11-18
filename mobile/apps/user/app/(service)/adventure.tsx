@@ -1,13 +1,11 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import * as WebBrowser from "expo-web-browser";
 import { palette as basePalette } from "@afcon360/mobile-ui";
 import {
   PamojaScreen as AppScreen,
   PamojaPageHeader as PageHeader,
   PamojaPanel as Panel,
   PamojaSectionTitle as SectionTitle,
-  PamojaActionButton as ActionButton,
 } from "../../src/components/PamojaScreen";
 import { ServiceHeroAccent } from "../../src/components/ServiceHeroAccent";
 
@@ -24,8 +22,6 @@ const palette = {
   warningSoft: "#FFF4D5",
 };
 
-const SITE = "https://www.pamoja.space";
-
 export default function Adventure() {
   return (
     <AppScreen>
@@ -40,20 +36,9 @@ export default function Adventure() {
       <Panel>
         <SectionTitle>Coming Soon</SectionTitle>
         <Text style={{ color: palette.muted, lineHeight: 22, fontSize: 14 }}>
-          Our Adventure module (tours, safaris, and local experiences) is currently available on the Pamoja website.
+          Our Adventure module (tours, safaris, and local experiences) is being prepared for the native app.
           Native booking, itinerary management, and Wallet integration are under development.
         </Text>
-      </Panel>
-
-      <Panel>
-        <SectionTitle>Explore on the Website</SectionTitle>
-        <Text style={{ color: palette.muted, lineHeight: 20, fontSize: 13, marginBottom: 12 }}>
-          Browse available experiences, view itineraries, and book directly on Pamoja.
-        </Text>
-        <ActionButton
-          label="Open Adventures on Pamoja"
-          onPress={() => void WebBrowser.openBrowserAsync(`${SITE}/tourism`)}
-        />
       </Panel>
 
       <Panel>

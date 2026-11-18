@@ -419,8 +419,9 @@ class MobileMoneyService:
         raise Exception(f"Airtel Nigeria deposit failed: {response.text}")
 
     def initiate_deposit(self, *, user_id: int, account_id: str, amount: Decimal,
-                          currency: str, phone_number: str,
-                          idempotency_key: Optional[str] = None) -> Dict:
+                           currency: str, phone_number: str,
+                           idempotency_key: Optional[str] = None,
+                           event_context: Optional[Dict] = None) -> Dict:
         """Initiate an async mobile money deposit (push / STK) WITHOUT crediting.
 
         This is the real, trackable flow:
@@ -432,6 +433,19 @@ class MobileMoneyService:
         The wallet ledger is credited ONLY when the provider webhook confirms
         (see verify_webhook). Crediting on the initial API response would inflate
         balances for pushes the user never approves.
+
+        Optional event_context: for event ticket purchases, pass:
+        {
+            'event_id': int,
+            'ticket_type_id': int,
+            'user_id': int,  # payer
+            'quantity': int,
+            'group_booking_id': str,
+            'group_label': str,
+            'unit_price_override': str,
+            'create_primary_for_payer': bool,
+            'group_attendees': List[Dict]
+        }
         """
         from flask import request
         from app.wallet.services.deposit_intent import (
@@ -506,7 +520,7 @@ class MobileMoneyService:
             }
 
         # Persist pending intent so the confirming webhook credits the right wallet.
-        save_deposit_intent(reference, {
+        intent_data = {
             'account_id': str(account_id),
             'user_id': int(user_id),
             'amount': str(amount),
@@ -520,7 +534,12 @@ class MobileMoneyService:
             'provider_reference': provider_reference,
             'audit_transaction_id': audit_transaction_id,
             'status': 'pending',
-        })
+        }
+        # Add event context for event ticket purchases
+        if event_context:
+            intent_data['event_context'] = event_context
+
+        save_deposit_intent(reference, intent_data)
 
         return {
             'success': True,
@@ -530,6 +549,7 @@ class MobileMoneyService:
             'audit_transaction_id': audit_transaction_id,
             'message': 'Check your phone and enter your PIN to approve the deposit.'
         }
+        # Method ends here
 
     def _validate_webhook_signature(self, payload_raw: bytes, headers: Dict[str, str]) -> bool:
         """Validate the webhook signature using HMAC-SHA256."""
@@ -622,6 +642,21 @@ class MobileMoneyService:
 
                 mark_deposit_intent_status(intent['reference'], 'completed')
 
+                # Handle event ticket registration if this was an event purchase
+                event_context = intent.get('event_context')
+                event_registration_result = None
+                if event_context and deposit_result.get('status') == 'success':
+                    try:
+                        from app.events.payment_service import EventPaymentService
+                        event_registration_result = EventPaymentService().create_registrations_from_webhook(
+                            event_context=event_context,
+                            payment_reference=reference,
+                            amount=amount,
+                            currency=currency,
+                        )
+                    except Exception as e:
+                        current_app.logger.error(f"Event registration from webhook failed: {e}")
+
                 if deposit_result.get('status') == 'success':
                     try:
                         AuditService.financial(
@@ -649,6 +684,7 @@ class MobileMoneyService:
                         'message': 'Mobile money deposit completed',
                         'reference': reference,
                         'account_id': str(account_id),
+                        'event_registration': event_registration_result,
                     }
                 else:
                     return {

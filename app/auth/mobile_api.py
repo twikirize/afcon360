@@ -2685,6 +2685,131 @@ def mobile_event_register_free_ticket(event_public_id):
         return _error("event_registration_unavailable", "AFCON360 could not complete this registration. Check your tickets before trying again.", 503)
 
 
+@mobile_api_bp.post("/events/<string:event_public_id>/purchase")
+@limiter.limit("5 per minute", key_func=get_remote_address)
+@_bearer_required("user")
+def mobile_event_purchase_ticket(event_public_id):
+    from app.events.native_event_service import NativeEventError, NativeEventService
+    from app.events.payment_service import EventPaymentService
+    from app.events.services import EventService
+    from app.wallet.payments.mobile_money import MobileMoneyService
+    from app.wallet.services.wallet_service import WalletService
+    from app.wallet import PaymentMethodConfig
+    data = request.get_json(silent=True) or {}
+    ticket_token = str(data.get("ticket_token") or "")
+    payment_method = str(data.get("payment_method") or "wallet")
+    mobile_money_operator = str(data.get("mobile_money_operator") or "")
+    mobile_money_phone = str(data.get("mobile_money_phone") or "")
+    idempotency_key = str(data.get("idempotency_key") or "")
+    if not ticket_token:
+        return _error("ticket_selection_required", "Select a ticket type before purchasing.", 400)
+    if not idempotency_key:
+        return _error("idempotency_key_required", "A unique request key is required for paid ticket purchases.", 400)
+    user = _native_events_user()
+    try:
+        event = NativeEventService._get_public_event(event_public_id)
+        ticket = NativeEventService._load_ticket_token(event, ticket_token)
+        price = Decimal(str(ticket.price or "0"))
+        if price <= Decimal("0"):
+            return _error("not_a_paid_ticket", "This ticket is free. Use the registrations endpoint instead.", 409)
+        gate_error = EventService._registration_gate_error(event, ticket.id)
+        if gate_error:
+            return _error("registration_closed", gate_error, 409)
+
+        # Validate payment method
+        if payment_method == "mobile_money":
+            if not mobile_money_operator or not mobile_money_phone:
+                return _error("mobile_money_details_required", "Mobile money operator and phone number are required.", 400)
+
+        # For wallet payments, use synchronous flow (existing)
+        if payment_method == "wallet":
+            result = EventPaymentService().process_ticket_purchase(
+                user_id=int(user.id),
+                event_id=int(event.id),
+                ticket_type_id=int(ticket.id),
+                quantity=1,
+                payment_method="wallet",
+                create_primary_for_payer=True,
+                group_booking_id=idempotency_key,
+            )
+            if not result.get("success"):
+                message = str(result.get("error") or "AFCON360 could not complete this purchase.")
+                code = "already_registered" if "already registered" in message.lower() else "ticket_purchase_failed"
+                return _error(code, message, 409)
+            registrations = result.get("registrations") or []
+            if len(registrations) != 1 or not registrations[0].get("registration_ref"):
+                logger.error("Event payment service returned unexpected paid-ticket result for user %s", user.public_id)
+                return _error("ticket_registration_unverified", "AFCON360 could not verify the ticket registration. Contact support before trying again.", 503)
+            from app.events.models import EventRegistration
+            registration = EventRegistration.query.filter_by(
+                registration_ref=registrations[0]["registration_ref"],
+                event_id=event.id,
+                booked_by_user_id=user.id,
+            ).first()
+            if registration is None:
+                return _error("ticket_registration_unverified", "The registration was created but could not be verified for this account. Contact support.", 503)
+            return jsonify({"success": True, "data": NativeEventService._serialize_registration(registration)}), 201
+
+        # For mobile money, use async flow with webhook confirmation
+        if payment_method == "mobile_money":
+            # Get user's wallet account for the currency
+            account = WalletService.get_wallet_by_user_id(user.id, ticket.currency)
+            if not account:
+                return _error("no_wallet_account", f"No {ticket.currency} wallet account found.", 409)
+
+            # Prepare event context for webhook to create registration
+            event_context = {
+                'event_id': int(event.id),
+                'ticket_type_id': int(ticket.id),
+                'user_id': int(user.id),
+                'quantity': 1,
+                'group_booking_id': idempotency_key,
+                'group_label': None,
+                'unit_price_override': str(ticket.price),
+                'create_primary_for_payer': True,
+                'group_attendees': [],
+            }
+
+            # Initiate async mobile money deposit
+            country = EventPaymentService()._get_country_from_currency(ticket.currency)
+            if not country:
+                return _error("unsupported_currency", f"Mobile money not supported for {ticket.currency}.", 409)
+
+            mobile_service = MobileMoneyService(mobile_money_operator, country)
+            deposit_result = mobile_service.initiate_deposit(
+                user_id=int(user.id),
+                account_id=str(account.id),
+                amount=Decimal(str(ticket.price)),
+                currency=ticket.currency,
+                phone_number=mobile_money_phone,
+                idempotency_key=idempotency_key,
+                event_context=event_context,
+            )
+
+            if not deposit_result.get("success"):
+                return _error(deposit_result.get("code", "deposit_failed"),
+                              deposit_result.get("error", "Failed to initiate mobile money payment."), 409)
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "status": "pending",
+                    "message": deposit_result.get("message"),
+                    "reference": deposit_result.get("reference"),
+                    "provider_reference": deposit_result.get("provider_reference"),
+                    "audit_transaction_id": deposit_result.get("audit_transaction_id"),
+                    "expires_in": 300,
+                }
+            }), 202
+
+    except NativeEventError as exc:
+        return _error(exc.code, exc.message, exc.status_code)
+    except Exception:
+        db.session.rollback()
+        logger.exception("Native event paid-ticket purchase failed")
+        return _error("event_purchase_unavailable", "AFCON360 could not complete this purchase. Your Wallet has not been charged.", 503)
+
+
 # ---------------------------------------------------------------------------
 # Native Accommodation APIs
 # ---------------------------------------------------------------------------

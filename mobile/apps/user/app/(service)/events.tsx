@@ -19,6 +19,9 @@ import {
 } from "@afcon360/mobile-core";
 import { eventClient } from "../../src/services/api";
 import { serviceErrorMessage } from "../../src/services/service-errors";
+import { TicketPurchase } from "../../src/components/events/TicketPurchase";
+import type { WalletAccount } from "@afcon360/mobile-core";
+import { walletClient } from "../../src/services/api";
 
 const palette = {
   ...basePalette,
@@ -74,6 +77,8 @@ export default function Events() {
   const [registrationsError, setRegistrationsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [purchaseTicket, setPurchaseTicket] = useState<NativeEventTicketType | null>(null);
+  const [walletAccount, setWalletAccount] = useState<WalletAccount | null>(null);
 
   const loadEvents = useCallback(async (search: string, destination: string) => {
     setLoading(true);
@@ -107,11 +112,22 @@ export default function Events() {
     }
   }, []);
 
+  const loadWalletAccount = useCallback(async () => {
+    try {
+      const summary = await walletClient.getSummary();
+      const account = summary.accounts?.[0] ?? null;
+      setWalletAccount(account);
+    } catch {
+      setWalletAccount(null);
+    }
+  }, []);
+
   useEffect(() => {
     setQuery(routeQuery);
     void loadEvents(routeQuery, "");
     void loadRegistrations();
-  }, [routeQuery, loadEvents, loadRegistrations]);
+    void loadWalletAccount();
+  }, [routeQuery, loadEvents, loadRegistrations, loadWalletAccount]);
 
   const openEvent = async (event: NativeEventSummary) => {
     setBusy(true);
@@ -131,7 +147,8 @@ export default function Events() {
   const register = async (ticket: NativeEventTicketType) => {
     if (!selectedEvent) return;
     if (Number(ticket.price) > 0) {
-      setError("This ticket requires payment. Paid-ticket checkout is not available in the app yet; no payment has been taken.");
+      // Paid ticket - show purchase flow (backend PR #46 required)
+      setPurchaseTicket(ticket);
       return;
     }
     setBusy(true);
@@ -237,9 +254,7 @@ export default function Events() {
                 {canRegister ? (
                   <ActionButton label={busy ? "Registering…" : "Register for free"} disabled={busy} onPress={() => void register(ticket)} />
                 ) : !isFree ? (
-                  <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
-                    Paid checkout is not enabled in the native app yet. You will not be charged here.
-                  </Text>
+                  <ActionButton label={busy ? "Loading…" : "Purchase ticket"} disabled={busy} onPress={() => void register(ticket)} />
                 ) : null}
               </View>
             );
@@ -248,6 +263,21 @@ export default function Events() {
           )}
         </Panel>
       ) : null}
+
+      {purchaseTicket && selectedEvent && (
+        <TicketPurchase
+          event={selectedEvent}
+          ticket={purchaseTicket}
+          selectedAccount={walletAccount}
+          busy={busy}
+          onClose={() => setPurchaseTicket(null)}
+          onPurchase={(ticket) => {
+            setPurchaseTicket(null);
+            register(ticket);
+          }}
+          onSetBusy={setBusy}
+        />
+      )}
 
       <Panel>
         <SectionTitle>Your tickets</SectionTitle>

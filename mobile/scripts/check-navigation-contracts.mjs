@@ -5,19 +5,18 @@ const root = path.resolve(import.meta.dirname, "..");
 
 // Every external website handoff must be reviewed and visibly labelled.
 const approved = [
-  ["apps/user/app/(tabs)/account.tsx", "WebBrowser.openBrowserAsync(target.toString())", null],
   ["apps/user/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', "Privacy notice"],
+  ["apps/user/app/(tabs)/account.tsx", "WebBrowser.openBrowserAsync(target.toString())", "Opens on Pamoja website"],
   ["apps/user/app/(tabs)/index.tsx", "WebBrowser.openBrowserAsync(target)", null],
   ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")', "Continue driver registration on website"],
   ["apps/user/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", "Back to AFCON360 website home"],
   ["apps/driver/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", "Back to AFCON360 website home"],
   ["apps/driver/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', "Privacy notice"],
-  ["apps/user/app/(tabs)/wallet.tsx", "Linking.openURL(checkout.toString())", "Starting secure checkout…"],
-  ["apps/user/app/(tabs)/wallet.tsx", "Linking.openURL(checkout.toString())", "Open Flutterwave checkout"],
+  ["apps/user/src/components/wallet/WalletScreen.tsx", "Linking.openURL(checkout.toString())", "Starting secure checkout…"],
+  ["apps/user/src/components/wallet/WalletScreen.tsx", "Linking.openURL(checkout.toString())", "Open Flutterwave checkout"],
   ["apps/user/app/(service)/settings.tsx", "Linking.openURL(officialDownloadsUrl)", "Open official downloads"],
   ["apps/user/app/(service)/settings.tsx", "WebBrowser.openBrowserAsync(officialDownloadsUrl)", "Open official downloads"],
-  ["apps/user/app/(tabs)/explore.tsx", "WebBrowser.openBrowserAsync(`${SITE}/onboarding/choose`)", "Become a partner on website"],
-  ["apps/user/app/(service)/adventure.tsx", "WebBrowser.openBrowserAsync(`${SITE}/tourism`)", "Open Adventures on Pamoja"],
+  ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(`${SITE}/onboarding/choose`)', "Become a partner on website"],
 ];
 
 const nativeInternalRoutes = [
@@ -39,7 +38,7 @@ const nativeInternalRoutes = [
   ["apps/user/app/(service)/_layout.tsx", 'return <Stack screenOptions={{ headerShown: false }} />;'],
   ["apps/user/app/(service)/events.tsx", "export default function Events()"],
   ["apps/user/app/(service)/stays.tsx", "export default function Stays()"],
-  ["apps/user/app/(service)/ride.tsx", "export default function RideScreen()"],
+  ["apps/user/src/components/ride/RideScreen.tsx", "export function RideScreen()"],
   ["apps/user/app/(service)/ride-status/[reference].tsx", "export default function RideStatusScreen()"],
   ["apps/user/app/(service)/delete-account.tsx", "export default function DeleteAccountScreen()"],
   ["apps/user/app/(service)/adventure.tsx", "export default function Adventure()"],
