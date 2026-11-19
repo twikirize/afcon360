@@ -1,0 +1,67 @@
+cmake_minimum_required(VERSION 3.4.1)
+
+project(expo-sqlite)
+
+set(CMAKE_VERBOSE_MAKEFILE ON)
+set(CMAKE_CXX_STANDARD 20)
+set(PACKAGE_NAME "expo-sqlite")
+set(BUILD_DIR ${CMAKE_SOURCE_DIR}/build)
+
+set(SRC_DIR "${CMAKE_SOURCE_DIR}/src/main/cpp")
+
+separate_arguments(SQLITE_BUILDFLAGS)
+add_compile_options(
+  ${SQLITE_BUILDFLAGS}
+)
+
+# Explicit source lists (replaces file(GLOB) to avoid Windows CMake reconfigure loop)
+set(SOURCES
+    ${SRC_DIR}/NativeDatabaseBinding.cpp
+    ${SRC_DIR}/NativeSessionBinding.cpp
+    ${SRC_DIR}/NativeStatementBinding.cpp
+    ${SRC_DIR}/SQLite3Main.cpp
+)
+
+add_library(
+  ${PACKAGE_NAME}
+  SHARED
+  ${SOURCES}
+  "${SQLITE3_SRC_DIR}/sqlite3.c"
+)
+target_include_directories(
+  ${PACKAGE_NAME}
+  PRIVATE
+  ${SRC_DIR}
+  "${SQLITE3_SRC_DIR}"
+)
+
+# Only `JNI_OnLoad` needs to be public.
+target_compile_options(
+  ${PACKAGE_NAME}
+  PRIVATE
+  -fvisibility=hidden
+)
+
+target_link_options(
+  ${PACKAGE_NAME}
+  PRIVATE
+  "-Wl,--pack-dyn-relocs=android"
+  "$<$<NOT:$<CONFIG:Debug>>:-Wl,-O2>"
+)
+
+find_library(LOG_LIB log)
+find_package(fbjni REQUIRED CONFIG)
+if(${USE_SQLCIPHER})
+  find_package(openssl REQUIRED CONFIG)
+  set(OPENSSL_CRYPTO_LIB "openssl::crypto")
+else()
+  set(OPENSSL_CRYPTO_LIB "")
+endif()
+
+target_link_libraries(
+  ${PACKAGE_NAME}
+  ${LOG_LIB}
+  ${OPENSSL_CRYPTO_LIB}
+  fbjni::fbjni
+  android
+)
