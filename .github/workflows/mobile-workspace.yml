@@ -1599,7 +1599,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Publish current User bundle to the isolated development OTA channel
+      - name: Publish current User bundle to the isolated Metro development-client OTA channel
         if: needs.classify-user-changes.outputs.ota == 'true'
         working-directory: mobile/apps/user
         env:
@@ -1607,7 +1607,7 @@ jobs:
           AFCON360_PREVIEW_BUILD: "true"
           AFCON360_RELEASE_BUILD: "false"
           AFCON360_DEVELOPMENT_CLIENT: "true"
-      AFCON360_UPDATE_CHANNEL: "user-development-client"
+          AFCON360_UPDATE_CHANNEL: "user-development-client"
           EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
           EXPO_NO_TELEMETRY: "1"
         shell: bash
