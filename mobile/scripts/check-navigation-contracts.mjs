@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 
-// Every external website handoff must be reviewed and visibly labelled.
+// Every external website handoff and intentional native deep link must be reviewed and visibly labelled.
 const approved = [
   ["apps/user/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', "Privacy notice"],
   ["apps/user/app/(tabs)/account.tsx", "WebBrowser.openBrowserAsync(target.toString())", "Opens on Pamoja website"],
@@ -17,6 +17,7 @@ const approved = [
   ["apps/user/app/(service)/settings.tsx", "Linking.openURL(officialDownloadsUrl)", "Open official downloads"],
   ["apps/user/app/(service)/settings.tsx", "WebBrowser.openBrowserAsync(officialDownloadsUrl)", "Open official downloads"],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(`${SITE}/onboarding/choose`)', "Become a partner on website"],
+  ["apps/user/app/server-settings.tsx", "Linking.openURL(deepLink)", "Save & Connect to Metro"],
 ];
 
 const nativeInternalRoutes = [

@@ -12,7 +12,14 @@
       "credentialsSource": "remote",
       "env": {
         "AFCON360_PREVIEW_BUILD": "true",
-        "AFCON360_RELEASE_BUILD": "false"
+        "AFCON360_RELEASE_BUILD": "false",
+        "AFCON360_DEVELOPMENT_CLIENT": "true",
+        "AFCON360_UPDATE_CHANNEL": "user-development-client",
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.pamoja.space"
+      },
+      "channel": "user-development-client",
+      "android": {
+        "buildType": "apk"
       }
     },
     "preview": {

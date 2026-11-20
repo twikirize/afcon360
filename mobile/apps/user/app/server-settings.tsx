@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import Constants from "expo-constants";
 import { Alert, Linking, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { AppScreen, ActionButton, PageHeader, Panel, palette } from "@afcon360/mobile-ui";
@@ -67,7 +68,9 @@ export default function ServerSettingsScreen() {
       await SecureStore.setItemAsync(METRO_URL_KEY, parsed.toString().replace(/\/$/, ""));
       setMetroUrl(parsed.toString().replace(/\/$/, ""));
       setMetroDraft(parsed.toString().replace(/\/$/, ""));
-      const deepLink = `afcon360-preview://expo-development-client/?url=${encodeURIComponent(parsed.toString().replace(/\/$/, ""))}`;
+      const configuredScheme = Constants.expoConfig?.scheme;
+      const appScheme = Array.isArray(configuredScheme) ? configuredScheme[0] : configuredScheme || "afcon360-preview";
+      const deepLink = `${appScheme}://expo-development-client/?url=${encodeURIComponent(parsed.toString().replace(/\/$/, ""))}`;
       const supported = await Linking.canOpenURL(deepLink);
       if (supported) {
         await Linking.openURL(deepLink);

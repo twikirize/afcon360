@@ -52,7 +52,7 @@ permissions:
 
 env:
   AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
-  AFCON360_USER_E2E_APK_RECIPE_VERSION: "v3"
+  AFCON360_USER_E2E_APK_RECIPE_VERSION: "v4"
 
 jobs:
   classify-user-changes:
@@ -267,8 +267,18 @@ jobs:
               profile?.environment === environment &&
               profile?.env?.AFCON360_PREVIEW_BUILD === (productionLike ? "false" : "true") &&
               profile?.env?.AFCON360_RELEASE_BUILD === (productionLike ? "true" : "false");
-            const apkProfileValid = name !== "apk-share" ||
-              (profile?.distribution === "internal" && profile?.android?.buildType === "apk" && profile?.channel === "preview");
+            const apkProfileValid = name === "development"
+              ? profile?.developmentClient === true &&
+                profile?.distribution === "internal" &&
+                profile?.android?.buildType === "apk" &&
+                profile?.channel === "user-development-client" &&
+                profile?.env?.AFCON360_DEVELOPMENT_CLIENT === "true" &&
+                profile?.env?.AFCON360_UPDATE_CHANNEL === "user-development-client"
+              : name === "apk-share"
+                ? profile?.distribution === "internal" &&
+                  profile?.android?.buildType === "apk" &&
+                  profile?.channel === "preview"
+                : true;
             console.log(`${valid && apkProfileValid ? "PASS" : "FAIL"} EAS build profile: ${name}`);
             if (!valid || !apkProfileValid) process.exit(1);
           }
@@ -1298,7 +1308,7 @@ jobs:
   
 
   build-user-dev-apk:
-    name: Build or reuse signed User development APK
+    name: Build or reuse Metro-capable User development-client APK
     needs: [classify-user-changes, mobile-typecheck, user-authenticated-journey]
     if: >-
       ${{
@@ -1319,7 +1329,8 @@ jobs:
       AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
       AFCON360_PREVIEW_BUILD: "true"
       AFCON360_RELEASE_BUILD: "false"
-      AFCON360_UPDATE_CHANNEL: "user-development"
+      AFCON360_DEVELOPMENT_CLIENT: "true"
+      AFCON360_UPDATE_CHANNEL: "user-development-client"
       EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
       EXPO_NO_TELEMETRY: "1"
     steps:
@@ -1353,8 +1364,8 @@ jobs:
           PROFILE_SHA256="$(node <<'NODE'
           const fs = require("node:fs");
           const crypto = require("node:crypto");
-          const profile = JSON.parse(fs.readFileSync("eas.json", "utf8")).build?.["dev-apk"];
-          if (!profile) throw new Error("eas.json build.dev-apk profile is missing.");
+          const profile = JSON.parse(fs.readFileSync("eas.json", "utf8")).build?.["development"];
+          if (!profile) throw new Error("eas.json build.development profile is missing.");
           const stable = value => Array.isArray(value)
             ? value.map(stable)
             : value && typeof value === "object"
@@ -1371,10 +1382,10 @@ jobs:
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_sha256=$VERSION_SHA256" >> "$GITHUB_OUTPUT"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
-          echo "Signed developer APK native fingerprint: $FINGERPRINT"
-          echo "Developer EAS profile SHA-256: $PROFILE_SHA256"
+          echo "Metro development-client APK native fingerprint: $FINGERPRINT"
+          echo "Development-client EAS profile SHA-256: $PROFILE_SHA256"
           echo "App version: $VERSION_NAME"
-          echo "Reusable signed APK key: $KEY"
+          echo "Reusable Metro APK key: $KEY"
 
       - name: Restore signed User development APK by native fingerprint
         id: dev-apk-cache
@@ -1397,7 +1408,7 @@ jobs:
           set -euo pipefail
           echo "reusable=false" >> "$GITHUB_OUTPUT"
           if [ "$FORCE_REBUILD" = "true" ]; then
-            echo "A signed developer APK rebuild was explicitly requested."
+            echo "A Metro development-client APK rebuild was explicitly requested."
             exit 0
           fi
           [ "$CACHE_MATCHED_KEY" = "${{ steps.dev-apk-key.outputs.key }}" ] || {
@@ -1413,9 +1424,9 @@ jobs:
           grep -Fxq "native_fingerprint=$EXPECTED_FINGERPRINT" "$INFO" || exit 0
           grep -Fxq "profile_sha256=$EXPECTED_PROFILE_SHA256" "$INFO" || exit 0
           grep -Fxq "version_name=$EXPECTED_VERSION_NAME" "$INFO" || exit 0
-          grep -Fxq "package=space.pamoja.afcon360.user.preview" "$INFO" || exit 0
+          grep -Fxq "package=space.pamoja.afcon360.user.preview.dev" "$INFO" || exit 0
           grep -Fxq "api=https://www.pamoja.space" "$INFO" || exit 0
-          grep -Fxq "update_channel=user-development" "$INFO" || exit 0
+          grep -Fxq "update_channel=user-development-client" "$INFO" || exit 0
           echo "Exact signed developer APK cache hit; SHA-256 verified: $ACTUAL_SHA"
           echo "reusable=true" >> "$GITHUB_OUTPUT"
 
@@ -1425,10 +1436,10 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${EXPO_TOKEN:-}" || {
-            echo "::error::EXPO_TOKEN is required for the signed User development APK and its isolated OTA channel."
+            echo "::error::EXPO_TOKEN is required for the Metro development-client APK and its isolated OTA channel."
             exit 1
           }
-          CHANNEL="user-development"
+          CHANNEL="user-development-client"
           if ! npx --yes eas-cli@latest channel:view "$CHANNEL" --json >/dev/null 2>&1; then
             npx --yes eas-cli@latest channel:create "$CHANNEL" --non-interactive
           fi
@@ -1454,9 +1465,9 @@ jobs:
           const c = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
           const expectedProject = process.env.AFCON360_USER_EAS_PROJECT_ID;
           const checks = {
-            package: c.android?.package === "space.pamoja.afcon360.user.preview",
+            package: c.android?.package === "space.pamoja.afcon360.user.preview.dev",
             liveApi: c.extra?.apiBaseUrl === "https://www.pamoja.space",
-            updateChannel: c.updates?.requestHeaders?.["expo-channel-name"] === "user-development",
+            updateChannel: c.updates?.requestHeaders?.["expo-channel-name"] === "user-development-client",
             fingerprintRuntime: c.runtimeVersion?.policy === "fingerprint",
             updateProject: c.extra?.eas?.projectId === expectedProject,
             updateUrl: c.updates?.url === "https://u.expo.dev/" + expectedProject,
@@ -1465,7 +1476,7 @@ jobs:
           for (const [name, ok] of Object.entries(checks)) console.log((ok ? "PASS " : "FAIL ") + name);
           if (Object.values(checks).some(ok => !ok)) process.exit(1);
           NODE
-          npx --yes eas-cli@latest build --platform android --profile dev-apk --message "AFCON360 User development APK ${GITHUB_SHA}" --freeze-credentials --wait --json > "$RUNNER_TEMP/afcon360-user-dev-eas-build.json"
+          npx --yes eas-cli@latest build --platform android --profile development --message "AFCON360 User Metro development-client APK ${GITHUB_SHA}" --freeze-credentials --wait --json > "$RUNNER_TEMP/afcon360-user-dev-eas-build.json"
           node - "$RUNNER_TEMP/afcon360-user-dev-eas-build.json" >> "$GITHUB_OUTPUT" <<'NODE'
           const fs = require("node:fs");
           const value = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
@@ -1519,8 +1530,6 @@ jobs:
           EXPECTED_FINGERPRINT: ${{ steps.dev-apk-key.outputs.fingerprint }}
           EXPECTED_PROFILE_SHA256: ${{ steps.dev-apk-key.outputs.profile_sha256 }}
           EXPECTED_VERSION_NAME: ${{ steps.dev-apk-key.outputs.version_name }}
-          EXPECTED_SIGNING_CERT_SHA256: "370321f504eab36a4cdd188bc90bb851f468288190bec6de883eeef05ccb3119"
-          MINIMUM_UPDATE_VERSION_CODE: "8"
           USER_DEV_APK_CACHE_KEY: ${{ steps.dev-apk-key.outputs.key }}
           CACHE_REUSED: ${{ steps.validate-dev-apk.outputs.reusable }}
         run: |
@@ -1537,22 +1546,13 @@ jobs:
           MINIMUM="$(sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
           TARGET="$(sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
           test "$VERSION_NAME" = "$EXPECTED_VERSION_NAME"
-          test -n "$VERSION_CODE" && test "$VERSION_CODE" -ge "$MINIMUM_UPDATE_VERSION_CODE" || {
-            echo "::error::This APK must upgrade the existing installed preview app (versionCode 7); expected versionCode >= 8, received $VERSION_CODE."
-            exit 1
-          }
+          test -n "$VERSION_CODE" && test "$VERSION_CODE" -ge 1
           test "$MINIMUM" = "24"
           test -n "$TARGET" && test "$TARGET" -ge 36
           # apksigner versions print either "Signer #1 ..." or "V2 Signer: ...".
           CERT_SHA256="$(sed -n 's/^.*certificate SHA-256 digest: //p' "$RUNNER_TEMP/afcon360-user-dev-signature.txt" | head -n 1)"
           test -n "$CERT_SHA256"
-          if [ "$CERT_SHA256" != "$EXPECTED_SIGNING_CERT_SHA256" ]; then
-            echo "::error::Signing certificate mismatch. Refusing to publish an APK that cannot update the existing signed preview installation."
-            echo "Expected existing certificate: $EXPECTED_SIGNING_CERT_SHA256"
-            echo "Actual new certificate: $CERT_SHA256"
-            exit 1
-          fi
-          echo "PASS: signing certificate matches the existing installable preview APK."
+          echo "PASS: isolated Metro development-client APK is signed (certificate $CERT_SHA256)."
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
           if [ "$CACHE_REUSED" = "true" ]; then
             grep -Fxq "signing_certificate_sha256=$CERT_SHA256" "$INFO"
@@ -1577,12 +1577,12 @@ jobs:
           fi
           echo "$APK_SHA256" | tee user-dev-apk-cache/user-development.apk.sha256
           mkdir -p "$GITHUB_WORKSPACE/user-dev-apk-artifact"
-          cp "$APK" "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-development.apk"
-          cp "$INFO" "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-development-build-info.txt"
-          cp user-dev-apk-cache/user-development.apk.sha256 "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-development.apk.sha256"
+          cp "$APK" "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-metro-development.apk"
+          cp "$INFO" "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-metro-development-build-info.txt"
+          cp user-dev-apk-cache/user-development.apk.sha256 "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-metro-development.apk.sha256"
           echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
           echo "cache_reused=$CACHE_REUSED" >> "$GITHUB_OUTPUT"
-          echo "Signed User development APK verified (cache_reused=$CACHE_REUSED): $APK_SHA256"
+          echo "Metro development-client APK verified (cache_reused=$CACHE_REUSED): $APK_SHA256"
 
       - name: Persist signed developer APK under native fingerprint key
         if: steps.validate-dev-apk.outputs.reusable != 'true'
@@ -1591,10 +1591,10 @@ jobs:
           path: user-dev-apk-cache/
           key: ${{ steps.dev-apk-key.outputs.key }}
 
-      - name: Upload signed User development APK
+      - name: Upload Metro development-client APK
         uses: actions/upload-artifact@v7
         with:
-          name: afcon360-user-development-apk-${{ github.run_number }}
+          name: afcon360-user-metro-development-apk-${{ github.run_number }}
           path: user-dev-apk-artifact/
           if-no-files-found: error
           retention-days: 90
@@ -1606,13 +1606,14 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           AFCON360_PREVIEW_BUILD: "true"
           AFCON360_RELEASE_BUILD: "false"
-          AFCON360_UPDATE_CHANNEL: "user-development"
+          AFCON360_DEVELOPMENT_CLIENT: "true"
+      AFCON360_UPDATE_CHANNEL: "user-development-client"
           EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
           EXPO_NO_TELEMETRY: "1"
         shell: bash
         run: |
           set -euo pipefail
-          CHANNEL="user-development"
+          CHANNEL="user-development-client"
           npx --yes eas-cli@latest channel:edit "$CHANNEL" --branch "$CHANNEL" --non-interactive
           npx --yes eas-cli@latest update \
             --branch "$CHANNEL" \

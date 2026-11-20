@@ -2,7 +2,12 @@ import type { ExpoConfig } from "expo/config";
 
 const isPreview = process.env.AFCON360_PREVIEW_BUILD === "true";
 const isReleaseBuild = process.env.AFCON360_RELEASE_BUILD === "true";
-const appId = "space.pamoja.afcon360.user" + (isPreview ? ".preview" : "");
+const isDevelopmentClient = process.env.AFCON360_DEVELOPMENT_CLIENT === "true";
+if (isDevelopmentClient && !isPreview) {
+  throw new Error("AFCON360 development-client builds must use the internal preview identity.");
+}
+const appId = "space.pamoja.afcon360.user" + (isPreview ? ".preview" : "") + (isDevelopmentClient ? ".dev" : "");
+const appScheme = isDevelopmentClient ? "afcon360-preview-dev" : isPreview ? "afcon360-preview" : "afcon360";
 const easProjectId =
   process.env.AFCON360_USER_EAS_PROJECT_ID?.trim() ||
   process.env.EAS_BUILD_PROJECT_ID?.trim();
@@ -14,7 +19,7 @@ const previewUpdateChannel =
   process.env.AFCON360_UPDATE_CHANNEL?.trim() || "preview";
 if (
   isPreview &&
-  !["preview", "user-development"].includes(previewUpdateChannel)
+  !["preview", "user-development", "user-development-client"].includes(previewUpdateChannel)
 ) {
   throw new Error("AFCON360 preview builds may use only preview or user-development update channels.");
 }
@@ -63,9 +68,9 @@ if (isReleaseBuild && (parsedApiBaseUrl.protocol !== "https:" || isLoopbackApi))
 }
 
 const config: ExpoConfig = {
-  name: isPreview ? "AFCON360 Preview" : "AFCON360",
+  name: isDevelopmentClient ? "AFCON360 Developer" : isPreview ? "AFCON360 Preview" : "AFCON360",
   slug: "afcon360-user",
-  scheme: isPreview ? "afcon360-preview" : "afcon360",
+  scheme: appScheme,
   version: "1.0.2",
   // Native fingerprint changes produce a new runtime version automatically.
   // JS/TS-only changes keep the same runtime and remain OTA-compatible.
