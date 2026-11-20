@@ -8,3 +8,5 @@ tests/wallet/test_wallet_config_transaction_boundary.py
 tests/test_refund_policy_signing_config.py
 tests/test_admin_audit_contract.py
 tests/test_admin_audit_serialization.py
+tests/test_kyc_canonical_backfill.py
+tests/test_kyc_single_entry_national_id.py

@@ -1,0 +1,54 @@
+{% extends "transport/base.html" %}
+{% block title %}Vehicle {{ vehicle.license_plate }} — Admin{% endblock %}
+{% block breadcrumb %}
+<span class="sep">/</span>
+<a href="{{ url_for('transport_admin.list_vehicles') }}">Vehicles</a>
+<span class="sep">/</span>
+<span class="current">{{ vehicle.license_plate }}</span>
+{% endblock %}
+
+{% block extra_css %}
+<style nonce="{{ csp_nonce }}">
+.dd-row { padding:9px 14px; border-bottom:1px solid var(--border); font-size:0.83rem; display:flex; justify-content:space-between; gap:16px; }
+.dd-row:last-child { border-bottom:none; }
+.dd-k { color:var(--text-muted); }
+.dd-v { font-weight:600; text-align:right; }
+@media(max-width:640px) { .dd-row { flex-wrap:wrap; } .dd-v { text-align:left; } }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set vehicle_class = vehicle.vehicle_class.value if vehicle.vehicle_class and vehicle.vehicle_class.value is defined else vehicle.vehicle_class %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1 class="page-title">{{ vehicle.license_plate }}</h1>
+    <p class="page-subtitle">{{ vehicle.make }} {{ vehicle.model }} · {{ vehicle.year }}</p>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('transport_admin.list_vehicles') }}" class="btn btn-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> All Vehicles
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">Vehicle profile</span></div>
+  <div class="dd-row"><span class="dd-k">Registration</span><span class="dd-v">{{ vehicle.license_plate }}</span></div>
+  <div class="dd-row"><span class="dd-k">Make / Model</span><span class="dd-v">{{ vehicle.make }} {{ vehicle.model }}</span></div>
+  <div class="dd-row"><span class="dd-k">Year</span><span class="dd-v">{{ vehicle.year }}</span></div>
+  <div class="dd-row"><span class="dd-k">Colour</span><span class="dd-v">{{ vehicle.color|default('—', true) }}</span></div>
+  <div class="dd-row"><span class="dd-k">Vehicle type</span><span class="dd-v">{{ vehicle.vehicle_type|default('—', true)|replace('_', ' ')|title }}</span></div>
+  <div class="dd-row"><span class="dd-k">Vehicle class</span><span class="dd-v">{{ vehicle_class|default('—', true)|replace('_', ' ')|title }}</span></div>
+  <div class="dd-row"><span class="dd-k">Owner category</span><span class="dd-v">{{ vehicle.owner_type|default('—', true)|replace('_', ' ')|title }}</span></div>
+  <div class="dd-row"><span class="dd-k">Passenger capacity</span><span class="dd-v">{{ vehicle.passenger_capacity }}</span></div>
+  <div class="dd-row"><span class="dd-k">Luggage capacity</span><span class="dd-v">{{ vehicle.luggage_capacity|default('—', true) }}</span></div>
+  <div class="dd-row"><span class="dd-k">Status</span><span class="dd-v">{{ vehicle.status|default('—', true)|replace('_', ' ')|title }}</span></div>
+  <div class="dd-row"><span class="dd-k">Available</span><span class="dd-v">{{ 'Yes' if vehicle.is_available else 'No' }}</span></div>
+  <div class="dd-row"><span class="dd-k">Reserved</span><span class="dd-v">{{ 'Yes' if vehicle.is_reserved else 'No' }}</span></div>
+  <div class="dd-row"><span class="dd-k">Insurance provider</span><span class="dd-v">{{ vehicle.insurance_provider|default('—', true) }}</span></div>
+  <div class="dd-row"><span class="dd-k">Insurance verified</span><span class="dd-v">{{ 'Yes' if vehicle.insurance_verified else 'No' }}</span></div>
+  <div class="dd-row"><span class="dd-k">Insurance expiry</span><span class="dd-v">{{ vehicle.insurance_expiry|default('—', true) }}</span></div>
+  <div class="dd-row"><span class="dd-k">Roadworthiness expiry</span><span class="dd-v">{{ vehicle.roadworthiness_expiry|default('—', true) }}</span></div>
+  <div class="dd-row"><span class="dd-k">Created</span><span class="dd-v">{{ vehicle.created_at|default('—', true) }}</span></div>
+</div>
+{% endblock %}

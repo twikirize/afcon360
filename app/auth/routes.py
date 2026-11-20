@@ -453,7 +453,10 @@ def register():
                 password=password,
                 email=email,
                 security_question=security_question,
-                security_answer=security_answer
+                security_answer=security_answer,
+                phone=phone,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get("User-Agent", ""),
             )
         except ValueError as exc:
             db.session.rollback()
@@ -686,7 +689,12 @@ def verify_email_code():
     if success:
         flash(message, "success")
         # Update session if needed
-        session['email_verified'] = True
+        session["email_verified"] = True
+        # When email verification was initiated from the phone onboarding
+        # gate, resume that step now that the account email is verified.
+        phone_resume = session.pop("post_email_verification_redirect", None)
+        if phone_resume:
+            return redirect(phone_resume)
     else:
         flash(message, "danger")
 
@@ -709,7 +717,11 @@ def verify_phone():
     from app.profile.models import get_profile_by_user
 
     profile = get_profile_by_user(current_user.public_id)
-    phone_number = getattr(profile, 'phone_number', '') if profile else ''
+    phone_number = (
+        (getattr(profile, "phone_number", "") if profile else "")
+        or getattr(current_user, "phone", "")
+        or ""
+    )
     user_email = getattr(current_user, 'email', '') or ''
 
     if request.method == "GET":
@@ -728,12 +740,12 @@ def verify_phone():
                 getattr(current_user, "email_verified", False)
                 or getattr(current_user, "is_verified", False)
             ),
+            phone_verified=bool(getattr(current_user, "phone_verified", False)),
+            phone_code_sent=bool(session.get("phone_verification_code_sent")),
             phone_verification_transport=phone_verification_transport,
         )
 
     code = request.form.get("code", "").strip()
-    full_name = request.form.get("full_name", "").strip()
-
     if not code or len(code) != 6 or not code.isdigit():
         flash("Please enter a valid 6-digit code.", "danger")
         return redirect(request.referrer or url_for("index"))
@@ -749,10 +761,6 @@ def verify_phone():
     )
 
     if success:
-        # Save full name to canonical profile (shared with KYC)
-        if full_name and profile:
-            profile.full_name = full_name
-            db.session.commit()
         if AuthConfiguration._sms_delivery_enabled():
             flash("Phone number verified successfully!", "success")
         else:
@@ -761,7 +769,8 @@ def verify_phone():
                 "This interim step does not independently confirm access to the phone handset.",
                 "success",
             )
-        session['phone_verified'] = True
+        session["phone_verified"] = True
+        session.pop("phone_verification_code_sent", None)
         return redirect(url_for("profile.account_overview"))
     else:
         flash(f"Invalid or expired verification code: {message}", "danger")
@@ -778,7 +787,10 @@ def resend_verification():
     if not current_user.is_authenticated:
         return redirect(url_for("auth.login"))
 
-    if getattr(current_user, "is_verified", False):
+    if (
+        getattr(current_user, "email_verified", False)
+        or getattr(current_user, "is_verified", False)
+    ):
         flash("Your email is already verified.", "info")
         return redirect(request.referrer or url_for("profile.account_overview"))
 
@@ -788,10 +800,15 @@ def resend_verification():
 
     if send_verification_email(current_user):
         flash("Verification email resent. Please check your inbox.", "success")
+        phone_verify_path = url_for("auth.verify_phone")
+        if request.referrer and phone_verify_path in request.referrer:
+            session["post_email_verification_redirect"] = phone_verify_path
+        else:
+            session.pop("post_email_verification_redirect", None)
     else:
         flash("Unable to resend verification email at this time. Please contact support.", "danger")
 
-    return redirect(request.referrer or url_for("profile.account_overview"))
+    return redirect(url_for("auth.verify_email_code"))
 
 @auth_bp.route("/deactivate-account", endpoint="deactivate_account")
 @login_required
@@ -809,8 +826,7 @@ def deactivate_account():
 @auth_bp.route("/delete-account", endpoint="delete_account")
 @login_required
 def delete_account():
-    flash("Account deletion is currently unavailable. Please contact support.", "warning")
-    return redirect(request.referrer or url_for("profile.account_overview"))
+    return redirect(url_for("mobile_apps_delete_account"))
 
 @auth_bp.route("/send-phone-verification", methods=["POST"], endpoint="send_phone_verification")
 @login_required
@@ -827,11 +843,14 @@ def send_phone_verification():
 
     if not phone_number:
         profile = get_profile_by_user(current_user.public_id)
-        if profile and profile.phone_number:
-            phone_number = profile.phone_number
-        else:
+        phone_number = (
+            (getattr(profile, "phone_number", "") if profile else "")
+            or getattr(current_user, "phone", "")
+            or ""
+        )
+        if not phone_number:
             flash("Please provide a phone number.", "danger")
-            return redirect(request.referrer or url_for("auth.verify_phone"))
+            return redirect(url_for("auth.verify_phone"))
 
     user_email = getattr(current_user, 'email', '') or ''
     if not user_email:
@@ -839,6 +858,9 @@ def send_phone_verification():
         return redirect(request.referrer or url_for("auth.verify_phone"))
 
     profile = get_profile_by_user(current_user.public_id)
+    # A failed resend must not leave the previous successful-send UI state
+    # visible as though a fresh code had just been delivered.
+    session.pop("phone_verification_code_sent", None)
     result = PhoneVerificationService.request_code(
         user=current_user,
         profile=profile,
@@ -846,6 +868,7 @@ def send_phone_verification():
     )
 
     if result.get('success'):
+        session["phone_verification_code_sent"] = True
         if result.get('transport') == 'sms':
             flash(f"Verification code sent by SMS to {phone_number}.", "success")
         else:

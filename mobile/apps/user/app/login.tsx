@@ -44,14 +44,14 @@ export default function LoginScreen() {
             <>
               <AuthNotice>{mfaType === "sms" ? "Enter the 6-digit code sent to your verified phone. It can only be used once; never share it." : "This authenticator challenge expires shortly and can only be used once. Do not share your code."}</AuthNotice>
               <AuthField label={mfaType === "sms" ? "SMS verification code" : "Authenticator code"} value={code} onChangeText={setCode} keyboardType={mfaType === "sms" ? "number-pad" : "default"} autoCapitalize="characters" autoCorrect={false} autoComplete="one-time-code" maxLength={mfaType === "sms" ? 6 : 8} placeholder={mfaType === "sms" ? "6-digit text message code" : "6-digit code or backup code"} />
-              <AuthSubmit label="Verify and continue" loading={signingIn} disabled={code.trim().length < 6} onPress={() => verifyMfa(code).then(() => router.replace("/(tabs)")).catch(showError)} />
+              <AuthSubmit label="Verify and continue" loading={signingIn} disabled={code.trim().length < 6} onPress={() => { void verifyMfa(code).catch(showError); }} />
               <AuthLink label="Use a different account" onPress={() => { cancelMfa(); setCode(""); setPassword(""); }} />
             </>
           ) : (
             <>
               <AuthField label="Username or email" value={identifier} onChangeText={setIdentifier} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="Your AFCON360 username or email" returnKeyType="next" />
               <AuthPasswordField label="Password" value={password} onChangeText={setPassword} visible={showPassword} onToggle={() => setShowPassword(value => !value)} autoComplete="password" placeholder="Your password" />
-              <AuthSubmit label="Sign in securely" loading={signingIn} disabled={!identifier.trim() || !password} onPress={() => signIn(identifier, password).then(needsMfa => { if (!needsMfa) router.replace("/(tabs)"); }).catch(showError)} />
+              <AuthSubmit label="Sign in securely" loading={signingIn} disabled={!identifier.trim() || !password} onPress={() => { void signIn(identifier, password).catch(showError); }} />
               <AuthLink label="Create an AFCON360 account" onPress={() => router.push("/register")} />
               <AuthLink label="Forgot your password?" onPress={() => router.push("/forgot-password")} />
               {SERVER_SELECTION_ENABLED ? <AuthLink label="Connection settings (preview)" onPress={() => router.push("/server-settings" as never)} /> : null}

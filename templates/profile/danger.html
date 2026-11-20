@@ -62,19 +62,11 @@
       <span class="dz-title"><i class="fas fa-trash-alt"></i> Delete account permanently</span>
     </div>
     <div class="dz-body">
-      <p class="dz-desc">Permanently remove your account and personal data. This action cannot be undone.</p>
-      {% if user.is_verified or user.kyc_level > 0 %}
-      <p class="dz-warn"><i class="fas fa-info-circle"></i> Because your account is verified, deletion is processed as an anonymization request and personal data is removed permanently.</p>
-      {% endif %}
+      <p class="dz-desc">Start a recoverable closure with a 30-day grace period. Direct identifiers are anonymized at closure; legally required KYC, financial, safety and audit records may be retained.</p>
       {% if user.is_app_owner() %}
       <p class="dz-warn"><i class="fas fa-lock"></i> The owner account cannot be deleted.</p>
       {% else %}
-      <form method="POST" action="{{ url_for('profile.delete_account') }}" id="delete-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label class="dz-label" for="confirm_delete">Type <code>DELETE MY ACCOUNT</code> exactly to confirm</label>
-        <input type="text" id="confirm_delete" name="confirm_delete" class="dz-input" autocomplete="off" placeholder="DELETE MY ACCOUNT" required>
-        <button type="submit" class="btn-hard" id="delete-btn" disabled><i class="fas fa-trash-alt"></i> Permanently delete account</button>
-      </form>
+      <a class="btn-hard" href="{{ url_for('mobile_apps_delete_account') }}"><i class="fas fa-trash-alt"></i> Review account closure</a>
       {% endif %}
     </div>
   </section>
@@ -120,7 +112,6 @@
     });
   }
   wire('confirm_deactivate', 'deactivate-btn', 'deactivate');
-  wire('confirm_delete', 'delete-btn', 'DELETE MY ACCOUNT');
 })();
 </script>
 {% endblock %}

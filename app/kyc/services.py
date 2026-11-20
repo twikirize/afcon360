@@ -157,6 +157,135 @@ class KycService:
             return None
 
     @staticmethod
+    def _backfill_profile_from_kyc_record(record) -> bool:
+        """Backfill only missing canonical profile facts from approved KYC evidence.
+
+        UserProfile remains the single person-identity authority. The KYC row is
+        evidence, not a second identity store: it may supply missing DOB and
+        nationality from its structured scope, while an already-approved
+        address_verification row may supply a missing address and city.
+
+        Existing canonical values are never overwritten. Verified profiles are
+        treated as immutable. The nested transaction makes this best-effort:
+        a backfill failure is rolled back to its savepoint and must not prevent
+        the separate KYC approval decision from being committed.
+        """
+        if record is None or not getattr(record, "user_id", None):
+            return False
+
+        try:
+            changed = False
+
+            with db.session.begin_nested():
+                user = User.query.filter_by(id=record.user_id).first()
+                if user is None:
+                    return False
+
+                profile = get_profile_by_user(user)
+                if profile is None:
+                    return False
+
+                profile_status = getattr(profile, "verification_status", "") or ""
+                profile_status = getattr(profile_status, "value", profile_status)
+                if isinstance(profile_status, str) and profile_status.lower() == "verified":
+                    return False
+
+                scope = getattr(record, "scope", None) or {}
+                if isinstance(scope, str):
+                    import json
+                    try:
+                        scope = json.loads(scope)
+                    except (TypeError, ValueError):
+                        scope = {}
+                if not isinstance(scope, dict):
+                    scope = {}
+
+                scope_sources = [scope]
+                for key in ("identity", "personal", "person", "personal_details", "verification"):
+                    nested_scope = scope.get(key)
+                    if isinstance(nested_scope, dict):
+                        scope_sources.append(nested_scope)
+
+                def scope_value(*keys):
+                    for source in scope_sources:
+                        for key in keys:
+                            value = source.get(key)
+                            if value is not None and str(value).strip():
+                                return value
+                    return None
+
+                # Date of birth is a canonical identity fact. Accept real date
+                # values and ISO strings only; malformed evidence is ignored.
+                if getattr(profile, "date_of_birth", None) is None:
+                    dob_value = scope_value("date_of_birth", "dob", "birth_date", "dateOfBirth")
+                    if isinstance(dob_value, datetime):
+                        dob_value = dob_value.date()
+                    elif isinstance(dob_value, str):
+                        try:
+                            dob_value = date.fromisoformat(dob_value.strip()[:10])
+                        except ValueError:
+                            dob_value = None
+                    if isinstance(dob_value, date):
+                        profile.date_of_birth = dob_value
+                        changed = True
+
+                # Nationality is distinct from the country on an address
+                # document; only the explicit nationality/citizenship field
+                # in the KYC scope may populate it.
+                if not (getattr(profile, "nationality", None) or "").strip():
+                    nationality = scope_value("nationality", "citizenship", "country_of_citizenship")
+                    if isinstance(nationality, str) and nationality.strip():
+                        profile.nationality = nationality.strip()[:64]
+                        changed = True
+
+                # Address and city are sourced only from an approved address
+                # verification record for the same account. Never infer
+                # nationality from the document's country field.
+                if (
+                    not (getattr(profile, "address", None) or "").strip()
+                    or not (getattr(profile, "city", None) or "").strip()
+                ):
+                    address_record = (
+                        KycRecord.query.filter_by(
+                            user_id=record.user_id,
+                            record_type="address_verification",
+                        )
+                        .filter(
+                            KycRecord.is_deleted.is_(False),
+                            KycRecord.status.in_(("approved", "verified")),
+                        )
+                        .order_by(KycRecord.created_at.desc(), KycRecord.id.desc())
+                        .first()
+                    )
+                    if address_record is not None:
+                        address_parts = [
+                            (getattr(address_record, "address_line1", None) or "").strip(),
+                            (getattr(address_record, "address_line2", None) or "").strip(),
+                        ]
+                        address = ", ".join(part for part in address_parts if part)
+                        if not (getattr(profile, "address", None) or "").strip() and address:
+                            profile.address = address[:256]
+                            changed = True
+
+                        city = (getattr(address_record, "city", None) or "").strip()
+                        if not (getattr(profile, "city", None) or "").strip() and city:
+                            profile.city = city[:128]
+                            changed = True
+
+                if changed:
+                    db.session.add(profile)
+
+            return changed
+        except Exception:
+            # The nested transaction has already rolled back its savepoint.
+            # Do not roll back the outer transaction containing the approval.
+            current_app.logger.warning(
+                "Canonical profile backfill from approved KYC evidence skipped",
+                exc_info=True,
+            )
+            return False
+
+    @staticmethod
     def approve_kyc(record_id: int, reviewer_id: int, kyc_level: int = 2,
                     ip_address: Optional[str] = None, user_agent: Optional[str] = None):
         """
@@ -186,6 +315,9 @@ class KycService:
         record.checked_by = str(reviewer_id)
         record.verified_at = datetime.now(timezone.utc)
         record.rejection_reason = None
+
+        # Backfill missing canonical facts before the profile becomes immutable.
+        KycService._backfill_profile_from_kyc_record(record)
 
         # Update the profile from the same record used by the account and dashboard.
         # KycRecord.user_id is internal ID; UserProfile.user_id stores public_id.
@@ -623,6 +755,9 @@ class KycService:
         record.compliance_reviewed_at = datetime.now(timezone.utc)
         record.compliance_reviewed_by = reviewer_id
         record.compliance_notes = notes
+
+        # Backfill missing canonical facts before the profile becomes immutable.
+        KycService._backfill_profile_from_kyc_record(record)
 
         # Update user profile verification status
         _user = User.query.filter_by(id=record.user_id).first()

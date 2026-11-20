@@ -588,3 +588,35 @@ class TestVehicleDashboardSurface:
         body = resp.data.decode("utf-8")
         assert "PC1-DASH-D" in body
         assert "PC1-DASH-U" in body
+
+
+class TestDriverVehicleRegistrationAssignment:
+    def test_registering_driver_owned_vehicle_creates_active_history_assignment(self, db_session):
+        from app.transport.models import DriverVehicleHistory
+        from app.transport.services.provider_service import ProviderService
+
+        user = _make_user(db_session)
+        driver = _make_driver_profile(db_session, user)
+        db_session.commit()
+
+        result = ProviderService().register_vehicle(
+            owner_type="driver",
+            owner_id=driver.id,
+            vehicle_data=_vehicle_payload(f"PC1-{uuid.uuid4().hex[:6].upper()}"),
+        )
+        vehicle = db_session.get(Vehicle, result["data"]["vehicle_id"])
+
+        assert result["success"] is True
+        assert vehicle is not None
+        assert vehicle.owner_type == "driver"
+        assert vehicle.owner_id == driver.id
+
+        active_assignments = DriverVehicleHistory.query.filter_by(
+            driver_id=driver.id,
+            vehicle_id=vehicle.id,
+            ended_at=None,
+            is_deleted=False,
+        ).all()
+        assert len(active_assignments) == 1
+        assert active_assignments[0].assignment_reason == "driver_vehicle_registration"
+        assert driver.current_vehicle.id == vehicle.id

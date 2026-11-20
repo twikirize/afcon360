@@ -79,6 +79,7 @@ on:
       - "app/models/system_config.py"
       - "env.example"
       - "templates/auth/**"
+      - "templates/kyc/**"
       - "app/auth/routes.py"
       - "app/auth/services.py"
       - "app/identity/models/user.py"
@@ -266,6 +267,8 @@ jobs:
           app/auth/deletion_guard.py
           app/auth/context.py
           app/auth/routes.py
+          app/auth/onboarding_routes.py
+          app/kyc/routes.py
           app/accommodation/routes.py
           app/identity/routes.py
           app/transport/routes.py
@@ -312,9 +315,18 @@ jobs:
               "auth/mfa_setup.html",
               "auth/mfa_status.html",
               "auth/verify_phone.html",
+              "kyc/upgrade.html",
+              "kyc/verify_national_id.html",
+              "onboarding/driver_step1.html",
+              "onboarding/driver_step2.html",
+              "onboarding/driver_step3.html",
               "auth/verify_options.html",
               "auth/verify_otp.html",
               "transport/admin/dashboard.html",
+              "transport/admin/drivers.html",
+              "transport/admin/driver_detail.html",
+              "transport/admin/vehicles.html",
+              "transport/admin/vehicle_detail.html",
               "base.html",
               "transport/driver/base.html",
               "components/workspace_context_switcher.html",
@@ -375,8 +387,13 @@ jobs:
             echo "Running only the recorded failing tests."
             mapfile -t TARGETS < tests/ci/failed_test_targets.txt
             TARGETS+=(
+              tests/transport/test_supply00_override.py
+              tests/test_kyc_upgrade_display_contract.py
               tests/test_celery_small_batch_contracts.py
               tests/test_phone_verification.py
+              tests/test_registration_phone_persistence.py
+              tests/test_stage4b5_transport.py
+              tests/test_phase_c1_vehicle_ownership.py::TestDriverVehicleRegistrationAssignment
               tests/test_backup_offsite.py
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
               tests/notifications/test_scheduled_notification_delivery.py

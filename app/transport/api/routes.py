@@ -154,7 +154,7 @@ def register_api_resources(api):
     # audited; blocked states remain absolute)
     safe_add_resource(
         DriverAdminOnlineOverrideResource,
-        "/drivers/<int:driver_id>/admin-online-override",
+        "/drivers/<string:driver_code>/admin-online-override",
         endpoint="driver_admin_online_override",
     )
 

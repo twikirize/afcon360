@@ -45,6 +45,17 @@
     </div>
   </div>
 
+  {# A verified identity is immutable. A missing immutable DOB needs assisted
+     correction, not another end-user identity edit. #}
+  {% elif identity_locked_missing_dob %}
+  <div class="kyc-status-card kyc-status--pending">
+    <div class="kyc-status-icon">!</div>
+    <div>
+      <strong>Identity record needs support</strong>
+      <p>Your profile is already verified but its date of birth is missing. Please contact support to correct the canonical identity record before submitting National ID verification.</p>
+    </div>
+  </div>
+
   {# ── Submission form ─────────────────────────────────────────────────────── #}
   {% else %}
 
@@ -63,10 +74,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     {% if collect_identity %}
-    {# KYC-first identity entry: the canonical bank has no full name yet. This
-       form is the first legitimate source, so the shared facts are entered
-       once here and written to the canonical profile (bidirectional single
-       entry). #}
+    {# KYC-first: collect the missing canonical name once. #}
     <div class="kyc-info-strip">
       <span>🔒 Your name and date of birth are entered here once and saved to your profile for all KYC.</span>
     </div>
@@ -87,22 +95,8 @@
         required
       >
     </div>
-
-    <div class="form-group">
-      <label for="date_of_birth">
-        Date of birth
-        <span class="form-hint">Optional — as shown on your National ID</span>
-      </label>
-      <input
-        type="date"
-        id="date_of_birth"
-        name="date_of_birth"
-        class="form-control"
-        {% if today %}max="{{ today }}"{% endif %}
-      >
-    </div>
     {% else %}
-    {# Canonical identity - read-only summary from the identity bank. #}
+    {# Existing canonical name remains read-only. #}
     <div class="kyc-info-strip">
       <span>🔒 Your identity comes from your profile and is not re-entered here.</span>
     </div>
@@ -112,14 +106,42 @@
         <span class="canonical-label">Full name</span>
         <span class="canonical-value">{{ canonical.full_name }}</span>
       </div>
+      {% if not collect_dob %}
       <div class="canonical-row">
         <span class="canonical-label">Date of birth</span>
-        <span class="canonical-value">{{ canonical.date_of_birth or '—' }}</span>
+        <span class="canonical-value">{{ canonical.date_of_birth }}</span>
       </div>
+      {% endif %}
     </div>
     {% endif %}
 
-    {# NIN field - the only evidence collected here #}
+    {% if collect_dob %}
+    <div class="form-group">
+      <label for="date_of_birth">
+        Date of birth
+        <span class="form-hint">Required — as shown on your National ID</span>
+      </label>
+      <input
+        type="date"
+        id="date_of_birth"
+        name="date_of_birth"
+        class="form-control"
+        {% if today %}max="{{ today }}"{% endif %}
+        required
+      >
+    </div>
+    {% endif %}
+
+    {# Use canonical NIN when present; otherwise this is the one collection point. #}
+    {% if has_canonical_nin %}
+    <div class="form-group">
+      <label>National Identification Number (NIN)</label>
+      <div class="canonical-identity">
+        <span class="canonical-value form-control--mono">{{ masked_nin }}</span>
+      </div>
+      <span class="form-hint">This number is already saved in your profile and cannot be changed in this verification step.</span>
+    </div>
+    {% else %}
     <div class="form-group">
       <label for="id_number">
         National Identification Number (NIN)
@@ -136,6 +158,7 @@
         required
       >
     </div>
+    {% endif %}
 
     <div class="kyc-consent">
       <label class="checkbox-label">

@@ -41,18 +41,43 @@ from app.transport.models import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_user(db_session, suffix=None):
+def _make_user(db_session, suffix=None, *, create_profile=True):
+    from datetime import datetime, timezone
     from app.identity.models.user import User
+    from app.profile.models import UserProfile
+
     suffix = suffix or uuid.uuid4().hex[:8]
+    email = f"s4b5_{suffix}@example.com"
+    phone = f"+2567{uuid.uuid4().int % 10**8:08d}"
     user = User(
         public_id=str(uuid.uuid4()),
         username=f"s4b5_{suffix}",
-        email=f"s4b5_{suffix}@example.com",
+        email=email,
+        phone=phone,
     )
     user.set_password("TestPassword123!")
     user.is_active = True
+    user.is_verified = True
+    user.email_verified = True
+    user.email_verified_at = datetime.now(timezone.utc)
+    user.phone_verified = True
+    user.phone_verified_at = datetime.now(timezone.utc)
     db_session.add(user)
     db_session.flush()
+
+    # Transport onboarding now reads real identity state; it must not fall
+    # back to the removed fabricated IdentityService response.
+    if create_profile:
+        db_session.add(UserProfile(
+            user_id=user.public_id,
+            full_name=f"Stage 4B-5 Driver {suffix}",
+            date_of_birth=date(1990, 1, 1),
+            nationality="UG",
+            email=email,
+            phone_number=phone,
+            verification_status="verified",
+        ))
+        db_session.flush()
     return user
 
 
@@ -214,8 +239,25 @@ def _make_canonical_profile(db_session, user, **overrides):
     }
     fields.update(overrides)
 
-    profile = UserProfile(**fields)
-    db_session.add(profile)
+    profile = UserProfile.query.filter_by(user_id=user.public_id).first()
+    if profile is None:
+        profile = UserProfile(**fields)
+        db_session.add(profile)
+    else:
+        original_status = getattr(
+            profile.verification_status,
+            "value",
+            profile.verification_status,
+        )
+        # Test setup must respect the production immutability firewall: put
+        # the profile into a non-verified state while preparing fixture facts,
+        # flush those facts, then restore the original verified state.
+        profile.verification_status = "pending"
+        for field_name, value in fields.items():
+            if field_name != "user_id":
+                setattr(profile, field_name, value)
+        db_session.flush()
+        profile.verification_status = original_status
     db_session.flush()
     return profile
 
@@ -290,13 +332,31 @@ def test_driver_commit_preserves_all_canonical_identity(db_session):
     assert prof.id_number == "NID-CANONICAL-001"
 
 
-def test_driver_commit_does_not_create_canonical_profile(db_session):
+def test_driver_commit_does_not_create_canonical_profile(db_session, monkeypatch):
     """A user with no UserProfile must NOT gain one from driver onboarding.
     Canonical identity creation is not owned by the driver flow."""
     from app.auth.onboarding_routes import _commit_driver_onboarding
     from app.profile.models import UserProfile
+    from app.transport.services.provider_service import ProviderService
 
-    user = _make_user(db_session)
+    user = _make_user(db_session, create_profile=False)
+    # This case isolates the no-profile-creation invariant. Eligibility is
+    # independently covered by ProviderService identity tests.
+    monkeypatch.setattr(
+        ProviderService,
+        "validate_driver_eligibility",
+        lambda self, user_id: {
+            "eligible": True,
+            "identity": {
+                "identity_verified": True,
+                "email_verified": True,
+                "phone_verified": True,
+                "age": 30,
+                "has_criminal_record": None,
+                "account_status": "active",
+            },
+        },
+    )
     _commit_driver_onboarding(user, _driver_wizard_data())
     db_session.flush()
 
@@ -319,15 +379,36 @@ def test_driver_commit_converts_license_expiry_to_datetime(db_session):
     assert driver.license_expiry.date() == date(2030, 12, 31)
 
 
-def test_driver_commit_accepts_string_dob_without_type_error(db_session):
+def test_driver_commit_accepts_string_dob_without_type_error(db_session, monkeypatch):
     """Committing driver onboarding with a raw string DOB (the exact HTML
     form shape that previously raised ``TypeError``) must succeed. Driver
-    onboarding never assigns the string to UserProfile.date_of_birth."""
+    onboarding never assigns the string to UserProfile.date_of_birth.
+
+    Eligibility is stubbed because this test isolates the wizard's data
+    boundary. Missing-DOB rejection is covered by the dedicated eligibility
+    test; production validation is not weakened.
+    """
     from app.auth.onboarding_routes import _commit_driver_onboarding
     from app.profile.models import get_profile_by_user
+    from app.transport.services.provider_service import ProviderService
 
     user = _make_user(db_session)
     _make_canonical_profile(db_session, user, date_of_birth=None)
+    monkeypatch.setattr(
+        ProviderService,
+        "validate_driver_eligibility",
+        lambda self, user_id: {
+            "eligible": True,
+            "identity": {
+                "identity_verified": True,
+                "email_verified": True,
+                "phone_verified": True,
+                "age": 30,
+                "has_criminal_record": None,
+                "account_status": "active",
+            },
+        },
+    )
 
     wizard = _driver_wizard_data()
     wizard["step1"]["date_of_birth"] = "1995-05-05"  # raw HTML string
@@ -460,3 +541,105 @@ def test_organisation_eligibility_accepts_transport_company(db_session, monkeypa
 
     result = svc.validate_organisation_eligibility(org.id)
     assert result["eligible"] is True
+
+
+# ---------------------------------------------------------------------------
+# Transport identity adapter: real authority, no fabricated fallback
+# ---------------------------------------------------------------------------
+
+def test_transport_identity_projection_uses_real_account_and_profile(db_session):
+    from app.transport.services.provider_service import ProviderService
+
+    user = _make_user(db_session)
+    identity = ProviderService().get_user_identity(user.id)
+
+    assert identity["identity_verified"] is True
+    assert identity["email_verified"] is True
+    assert identity["phone_verified"] is True
+    assert identity["account_status"] == "active"
+    assert identity["age"] >= 30
+    # No criminal-screening provider is installed; unknown is not "clear".
+    assert identity["has_criminal_record"] is None
+    assert identity["profile"]["email"] == user.email
+    assert identity["profile"]["phone"] == user.phone
+
+
+def test_transport_identity_does_not_fabricate_verified_profile(db_session):
+    from app.profile.models import get_profile_by_user
+    from app.transport.services.provider_service import ProviderService
+
+    user = _make_user(db_session)
+    profile = get_profile_by_user(user.public_id)
+    profile.verification_status = "pending"
+    db_session.flush()
+
+    identity = ProviderService().get_user_identity(user.id)
+
+    assert identity["identity_verified"] is False
+    assert identity["account_status"] == "active"
+    assert identity["has_criminal_record"] is None
+
+
+def test_enabled_criminal_screening_fails_closed_without_result(db_session, monkeypatch):
+    from app.transport.services.provider_service import ProviderService
+    from app.transport.services.settings_service import SettingsService
+    from app.utils.exceptions import ServiceUnavailableError
+
+    user = _make_user(db_session)
+    monkeypatch.setattr(
+        SettingsService,
+        "is_feature_enabled",
+        staticmethod(lambda feature_key, default=False: feature_key == "check_criminal_record"),
+    )
+
+    with pytest.raises(ServiceUnavailableError) as excinfo:
+        ProviderService().validate_driver_eligibility(user.id)
+
+    assert excinfo.value.code == "CRIMINAL_SCREENING_UNAVAILABLE"
+
+
+def test_driver_eligibility_requires_canonical_date_of_birth(db_session, monkeypatch):
+    from app.transport.services.provider_service import ProviderService
+    from app.transport.services.settings_service import SettingsService
+    from app.utils.exceptions import ValidationError
+
+    user = _make_user(db_session)
+    profile = _make_canonical_profile(db_session, user, date_of_birth=None)
+    profile.verification_status = "verified"
+    monkeypatch.setattr(
+        SettingsService,
+        "is_feature_enabled",
+        staticmethod(lambda feature_key, default=False: False),
+    )
+    monkeypatch.setattr(
+        SettingsService,
+        "get_setting",
+        staticmethod(lambda key, default=None: default),
+    )
+
+    with pytest.raises(ValidationError) as excinfo:
+        ProviderService().validate_driver_eligibility(user.id)
+
+    assert excinfo.value.code == "AGE_NOT_AVAILABLE"
+
+
+def test_feature_flag_cache_uses_shared_cache_ttl(monkeypatch):
+    import app.transport.services.settings_service as settings_module
+    from app.transport.services.settings_service import SettingsService
+
+    cached = {}
+    SettingsService.is_feature_enabled.cache_clear()
+    monkeypatch.setattr(settings_module, "get_cached", lambda key: None)
+    monkeypatch.setattr(settings_module, "get_setting", lambda key, default=None: True)
+
+    def _capture_cache(key, value, ttl=300):
+        cached.update(key=key, value=value, ttl=ttl)
+        return True
+
+    monkeypatch.setattr(settings_module, "set_cached", _capture_cache)
+    try:
+        assert SettingsService.is_feature_enabled("require_phone_verification") is True
+        assert cached["value"] is True
+        assert cached["ttl"] == SettingsService.CACHE_TTL
+    finally:
+        SettingsService.is_feature_enabled.cache_clear()
