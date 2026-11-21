@@ -169,7 +169,7 @@ $deviceWasExplicit = -not [string]::IsNullOrWhiteSpace($DeviceSerial)
 
 if ($DeviceSerial) {
     if (-not ($devices | Where-Object { $_.Serial -eq $DeviceSerial })) {
-        throw ("ADB device '" + $DeviceSerial + "' is not connected and authorized.")
+        throw ("ADB device {0} is not connected and authorized." -f $DeviceSerial)
     }
 } elseif ($devices.Count -eq 1) {
     $DeviceSerial = $devices[0].Serial
