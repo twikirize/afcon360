@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
+    [ValidateSet("Auto", "Local", "Pamoja")]
+    [string]$TargetEnvironment = "Auto",
     [ValidateSet("Auto", "Lan", "Usb")]
     [string]$ConnectionMode = "Auto",
+    [string]$ApiBaseUrl,
     [string]$BackendRoot,
     [string]$MetroHost,
     [string]$DeviceSerial,
@@ -189,6 +192,57 @@ function Start-LocalApi {
     Write-Host ("Local API database readiness passed on port {0}." -f $Port) -ForegroundColor Green
 }
 
+# Auto mode preserves the established local workflow unless an explicit API
+# target identifies the public Pamoja host. A live target never starts Metro.
+$apiTargetCandidate = $ApiBaseUrl
+if (-not $apiTargetCandidate -and $env:AFCON360_API_BASE_URL) {
+    $apiTargetCandidate = $env:AFCON360_API_BASE_URL
+}
+
+if ($TargetEnvironment -eq "Auto") {
+    if ($apiTargetCandidate) {
+        $detectedTargetUri = $null
+        if (-not [Uri]::TryCreate($apiTargetCandidate, [UriKind]::Absolute, [ref]$detectedTargetUri)) {
+            throw "-ApiBaseUrl or AFCON360_API_BASE_URL must be an absolute HTTP(S) URL."
+        }
+        $detectedHost = $detectedTargetUri.Host.ToLowerInvariant()
+        if ($detectedHost -eq "www.pamoja.space" -or $detectedHost -eq "pamoja.space") {
+            $TargetEnvironment = "Pamoja"
+        } else {
+            $TargetEnvironment = "Local"
+        }
+    } else {
+        $TargetEnvironment = "Local"
+    }
+}
+
+if ($TargetEnvironment -eq "Pamoja") {
+    if (-not $apiTargetCandidate) { $apiTargetCandidate = "https://www.pamoja.space" }
+    $liveTargetUri = $null
+    if (-not [Uri]::TryCreate($apiTargetCandidate, [UriKind]::Absolute, [ref]$liveTargetUri)) {
+        throw "The Pamoja API target must be an absolute HTTPS URL."
+    }
+    $liveTargetHost = $liveTargetUri.Host.ToLowerInvariant()
+    if ($liveTargetUri.Scheme -ne "https" -or ($liveTargetHost -ne "www.pamoja.space" -and $liveTargetHost -ne "pamoja.space")) {
+        throw "Pamoja live mode accepts only https://www.pamoja.space or https://pamoja.space. No local service was started."
+    }
+    $liveApiBaseUrl = $liveTargetUri.GetLeftPart([UriPartial]::Authority)
+    if (-not (Test-ApiReady -Url $liveApiBaseUrl)) {
+        throw ("Pamoja live API did not pass its read-only /api/health/ready check: " + $liveApiBaseUrl)
+    }
+    Write-Host ""
+    Write-Host "AFCON360 - PUBLIC PAMOJA TARGET DETECTED" -ForegroundColor Green
+    Write-Host ("Live API       : " + $liveApiBaseUrl)
+    Write-Host "Health check   : /api/health/ready passed"
+    Write-Host "Local Flask    : not started"
+    Write-Host "Metro          : not started (not required by live app users)"
+    Write-Host "Native rebuild : not performed"
+    Write-Host "OTA publication: not performed"
+    Write-Host "This check is read-only. Open the installed release-like preview or production app to use Pamoja."
+    return
+}
+
+Write-Host "Target environment: Local development (Flask + Metro)" -ForegroundColor Cyan
 $adb = Find-Adb
 $devices = Get-DeviceList -AdbPath $adb
 $deviceWasExplicit = -not [string]::IsNullOrWhiteSpace($DeviceSerial)

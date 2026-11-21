@@ -16,6 +16,23 @@ From the repository root, run one command:
 
 The script discovers the repo and backend folders relative to itself. By default, the backend is expected in the sibling folder afcon360_app. Set AFCON360_BACKEND_ROOT or pass -BackendRoot if the backend checkout is elsewhere.
 
+Running this one-command helper starts the local Flask API and Metro together. Running Flask directly (for example, `python app.py`) does not start Metro by itself.
+
+## Choose Local development or live Pamoja
+
+The default `-TargetEnvironment Auto` preserves the established local workflow: it starts the laptop Flask API and Metro. To check the live public Pamoja target without starting either local process, run:
+
+    powershell -ExecutionPolicy Bypass -File .\\mobile\\scripts\\windows\\start-user-dev.ps1 -TargetEnvironment Pamoja
+
+Auto mode also detects Pamoja from an explicit API target:
+
+    $env:AFCON360_API_BASE_URL = "https://www.pamoja.space"
+    & .\\mobile\\scripts\\windows\\start-user-dev.ps1
+
+The Pamoja path accepts only the public HTTPS Pamoja host and performs a read-only `/api/health/ready` check. It does not start local Flask, Metro, ADB tunnels, or publish an app update. Remove the process-level variable with `Remove-Item Env:AFCON360_API_BASE_URL` to return to the default local workflow, or pass `-TargetEnvironment Local`.
+
+**Metro is for internal developers only.** It serves unfinished JavaScript/TypeScript app code from a developer's laptop. It does not watch or download changes from the Pamoja server. Normal preview/live app users do not need Metro.
+
 ## Connection modes
 
 Auto is the default.
@@ -45,7 +62,7 @@ After Metro opens the User App, open Connection settings:
 - Use server for this development session applies the API address supplied by the current Metro session and verifies the database-readiness endpoint before switching.
 - Enter another preview server lets you enter an API address manually.
 - Metro Bundler (Fast Refresh) lets you save and open a Metro URL manually if needed.
-- Public Pamoja returns the app to the public HTTPS API.
+- Public Pamoja returns the app to the public HTTPS API. The Connection screen identifies this as the live Pamoja server. In a development-client build, Metro remains an optional developer-only code loader; non-development builds do not show its controls.
 
 For Wi-Fi/hotspot, the laptop API is http://<laptop-private-ip>:5000. For USB, it is http://127.0.0.1:5000 after ADB reverse is enabled. The app clears stored sign-in credentials and the offline account cache when changing API environments, preventing local test accounts and cached account information from being mixed with public Pamoja.
 
@@ -57,8 +74,9 @@ For LAN mode, Windows Firewall must permit inbound TCP ports 5000 and 8081 on a 
 
 There are two separate update paths:
 
-1. Metro Fast Refresh — day-to-day development. While the development client is connected to Metro, JavaScript/TypeScript and compatible assets can refresh immediately. No APK rebuild is needed for ordinary screen, navigation, styling, and business-logic changes.
-2. Expo Updates — previewing published JavaScript. The installable release-like preview build uses its configured user-development channel and checks compatible updates on launch. A development-client build can also preview a published compatible update from its Extensions tab. Published updates must match the app's platform and native runtime; a new native fingerprint is not OTA-compatible.
+1. Metro Fast Refresh — internal day-to-day development only. While the development client is connected to Metro, JavaScript/TypeScript and compatible assets can refresh immediately. No APK rebuild is needed for ordinary screen, navigation, styling, and business-logic changes. Metro serves code from the developer laptop, not from Pamoja.
+2. Expo Updates — distributing compatible app-code changes to installed preview/live builds. The app checks its configured update channel on launch. The release-like preview build uses its configured user-development channel; the production build uses the production channel. An OTA must be intentionally published to the matching channel and match the app's platform and native runtime. A new native fingerprint is not OTA-compatible.
+3. Backend/API changes — once deployed on Pamoja, the live app receives the server-side behaviour through its normal HTTPS API requests. No Metro session or app reinstall is required for backend-only changes.
 
 The Metro development-client APK is a debug development build. Use Metro for the immediate edit-and-review loop. Use the release-like preview build for automatic launch-time OTA validation, or the development client's Extensions tab to inspect a published update. Do not assume a debug development client automatically applies the same OTA behaviour as a standalone release build.
 

@@ -10,6 +10,18 @@ import * as SecureStore from "expo-secure-store";
 const PUBLIC_PAMOJA_URL = "https://www.pamoja.space";
 const METRO_URL_KEY = "afcon360.user.metro-url";
 
+function isPamojaServerUrl(value: string | null): boolean {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.toLowerCase();
+    return parsed.protocol === "https:" &&
+      (host === "pamoja.space" || host.endsWith(".pamoja.space"));
+  } catch {
+    return false;
+  }
+}
+
 export default function ServerSettingsScreen() {
   const router = useRouter();
   const { changeApiServer } = useAuth();
@@ -24,6 +36,8 @@ export default function ServerSettingsScreen() {
     Constants.expoConfig?.extra?.apiBaseUrl ?? PUBLIC_PAMOJA_URL
   );
   const hasRuntimeLocalApi = runtimeApiBaseUrl.startsWith("http://");
+  const isDevelopmentClient = Constants.expoConfig?.extra?.isDevelopmentClient === true;
+  const isLivePamojaServer = isPamojaServerUrl(currentUrl);
 
   useEffect(() => {
     let active = true;
@@ -125,10 +139,18 @@ export default function ServerSettingsScreen() {
 
   return (
     <AppScreen>
-      <PageHeader eyebrow="Preview connection" title="Choose your AFCON360 server." description="Use the laptop development server for local testing, or choose public Pamoja. Switching servers clears this device's saved sign-in credentials and offline account cache." />
+      <PageHeader eyebrow={isLivePamojaServer ? "Pamoja live connection" : "Preview connection"} title="Choose your AFCON360 server." description="Use the laptop development server for local testing, or choose public Pamoja. Switching servers clears this device's saved sign-in credentials and offline account cache." />
       <Panel>
         <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>CURRENT SERVER</Text>
+        <Text style={{ color: palette.ink, fontSize: 13, fontWeight: "800" }}>
+          {currentUrl ? (isLivePamojaServer ? "PUBLIC PAMOJA — LIVE SERVER" : "DEVELOPMENT / PREVIEW SERVER") : "Checking saved server…"}
+        </Text>
         <Text selectable style={{ color: palette.ink, fontSize: 14, fontWeight: "700" }}>{currentUrl ?? "Loading saved server…"}</Text>
+        {isLivePamojaServer ? (
+          <Text style={{ color: palette.muted, lineHeight: 20 }}>
+            This app is using the live Pamoja API. Backend changes are served by Pamoja directly. Ordinary live users do not need Metro; compatible mobile screen-code updates use Expo OTA, while native changes require a new app build.
+          </Text>
+        ) : null}
       </Panel>
       <Panel>
         <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Public Pamoja</Text>
@@ -166,23 +188,27 @@ export default function ServerSettingsScreen() {
       </Panel>
       <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>Security: public and remote servers must use HTTPS. Plain HTTP is limited to private-network preview testing on port 5000 or a local USB ADB tunnel. It is not encrypted over Wi-Fi/hotspot; use trusted test networks and test data only. Never send production credentials or financial information over HTTP.</Text>
       <ActionButton label="Back" disabled={busy} onPress={() => router.back()} />
-      <Panel>
-        <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Metro Bundler (Fast Refresh)</Text>
-        <Text style={{ color: palette.muted, lineHeight: 20 }}>The laptop helper normally opens Metro automatically. Use this only when reconnecting manually. For Wi-Fi/hotspot, enter the current laptop IPv4 address. For USB, the helper uses ADB reverse and the Metro address http://127.0.0.1:8081.</Text>
-        <TextInput
-          accessibilityLabel="Metro bundler address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          value={metroDraft}
-          onChangeText={setMetroDraft}
-          placeholder="http://laptop-ip:8081 or http://127.0.0.1:8081"
-          placeholderTextColor={palette.muted}
-          editable={!busy}
-          style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink, backgroundColor: palette.surface }}
-        />
-        <ActionButton label={busy ? "Connecting…" : "Save & Connect to Metro"} disabled={busy || !metroDraft.trim()} onPress={() => void connectToMetro()} />
-      </Panel>
+      {isDevelopmentClient && (
+        <Panel>
+          <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Metro — developer-only Fast Refresh</Text>
+          <Text style={{ color: palette.muted, lineHeight: 20 }}>
+            Metro serves in-progress app code from your laptop to this development-client build. It does not collect code from the Pamoja server and is not required by ordinary preview or live users. It remains available here only for internal development, even when this developer app is connected to the live Pamoja API.
+          </Text>
+          <TextInput
+            accessibilityLabel="Metro bundler address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            value={metroDraft}
+            onChangeText={setMetroDraft}
+            placeholder="http://laptop-ip:8081 or http://127.0.0.1:8081"
+            placeholderTextColor={palette.muted}
+            editable={!busy}
+            style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink, backgroundColor: palette.surface }}
+          />
+          <ActionButton label={busy ? "Connecting…" : "Save & Connect to Metro"} disabled={busy || !metroDraft.trim()} onPress={() => void connectToMetro()} />
+        </Panel>
+      )}
     </AppScreen>
   );
 }
