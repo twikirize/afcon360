@@ -7,6 +7,7 @@ on:
       - fix/native-user-apk-cache-and-e2e-20261110
       - fix/user-release-engineering-20261115
       - feat/user-offline-first-foundation-20261117
+      - reconcile/user-local-files-20261121
     paths:
       - "mobile/apps/user/**"
       - "mobile/packages/**"
@@ -52,7 +53,8 @@ permissions:
 
 env:
   AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
-  AFCON360_USER_E2E_APK_RECIPE_VERSION: "v4"
+  AFCON360_USER_E2E_APK_RECIPE_VERSION: "v5"
+  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v2"
 
 jobs:
   classify-user-changes:
@@ -214,6 +216,23 @@ jobs:
 
       - name: Check approved website handoffs and native account deletion
         run: pnpm navigation:check
+
+      - name: Parse Windows User App development helpers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $scripts = @(Get-ChildItem -Path "scripts/windows" -Filter "*.ps1" -File)
+          if ($scripts.Count -eq 0) { throw "No Windows User App helper scripts were found." }
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | ForEach-Object { Write-Error ("{0}:{1}: {2}" -f $script.Name, $_.Extent.StartLineNumber, $_.Message) }
+              throw "PowerShell syntax validation failed for $($script.Name)."
+            }
+            Write-Host "PASS PowerShell syntax: $($script.Name)"
+          }
 
       - name: Check User app Expo SDK dependency compatibility
         shell: bash
@@ -434,7 +453,7 @@ jobs:
 
   user-authenticated-journey:
     name: User APK — login, protected journeys, restore and logout
-    needs: classify-user-changes
+    needs: [classify-user-changes, mobile-typecheck]
     if: >-
       ${{
         needs.classify-user-changes.outputs.native == 'true' ||
@@ -537,7 +556,10 @@ jobs:
           test -n "$FINGERPRINT"
           # Bump the recipe version only when the disposable APK build recipe
           # changes (manifest override, SDK/build tools, signing mode or Gradle task).
-          KEY="afcon360-user-e2e-apk-recipe-${AFCON360_USER_E2E_APK_RECIPE_VERSION}-native-$FINGERPRINT"
+          # The disposable authenticated-journey APK must embed this exact source revision.
+          # Unlike the distributable dev-client APK, it is intentionally rebuilt for JS-only changes
+          # so stale embedded JS can never be used as proof for the current commit.
+          KEY="afcon360-user-e2e-apk-recipe-${AFCON360_USER_E2E_APK_RECIPE_VERSION}-native-$FINGERPRINT-source-$GITHUB_SHA"
           echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
           echo "Native Android fingerprint: $FINGERPRINT"
@@ -548,9 +570,6 @@ jobs:
         with:
           path: mobile-e2e-cache/
           key: ${{ steps.user-apk-key.outputs.key }}
-          restore-keys: |
-            afcon360-user-e2e-apk-recipe-v3-native-
-            afcon360-user-e2e-apk-v2-
 
       - name: Validate cached User APK against native fingerprint
         id: validate-user-apk
@@ -559,6 +578,7 @@ jobs:
           USER_APK_CACHE_MATCHED_KEY: ${{ steps.user-apk-cache.outputs.cache-matched-key }}
           USER_APK_NATIVE_FINGERPRINT: ${{ steps.user-apk-key.outputs.fingerprint }}
           USER_APK_CACHE_KEY: ${{ steps.user-apk-key.outputs.key }}
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
           FORCE_USER_APK_REBUILD: ${{ inputs.force_apk_rebuild == true }}
         run: |
           set -euo pipefail
@@ -579,6 +599,7 @@ jobs:
           EXPECTED_SHA="$(sed -n 's/^apk_sha256=//p' "$INFO" | head -n 1)"
           ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
           test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA" || exit 0
+          grep -Fxq "source_commit=$EXPECTED_SOURCE_COMMIT" "$INFO" || exit 0
 
           CACHED_FINGERPRINT="$(sed -n 's/^native_fingerprint=//p' "$INFO" | head -n 1)"
           if [ -n "$CACHED_FINGERPRINT" ]; then
@@ -1314,7 +1335,8 @@ jobs:
       ${{
         (github.event_name == 'push' ||
          github.event_name == 'workflow_dispatch') &&
-        github.ref_name == 'feat/user-offline-first-foundation-20261117' &&
+        (github.ref_name == 'feat/user-offline-first-foundation-20261117' ||
+         github.ref_name == 'reconcile/user-local-files-20261121') &&
         needs.mobile-typecheck.result == 'success' &&
         needs.user-authenticated-journey.result == 'success' &&
         needs.user-authenticated-journey.outputs.apk_ready == 'true'
@@ -1376,7 +1398,7 @@ jobs:
           )"
           VERSION_SHA256="$(printf '%s' "$VERSION_NAME" | sha256sum | awk '{print $1}')"
           # Bump recipe-v1 only when the EAS invocation, artifact validation or signing workflow changes.
-          KEY="afcon360-user-dev-apk-recipe-v1-native-$FINGERPRINT-profile-$PROFILE_SHA256-version-$VERSION_SHA256"
+          KEY="afcon360-user-dev-apk-${AFCON360_USER_DEV_APK_RECIPE_VERSION}-native-$FINGERPRINT-profile-$PROFILE_SHA256-version-$VERSION_SHA256"
           echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
           echo "profile_sha256=$PROFILE_SHA256" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
@@ -1540,7 +1562,7 @@ jobs:
           apksigner verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/afcon360-user-dev-signature.txt"
           aapt dump badging "$APK" > "$RUNNER_TEMP/afcon360-user-dev-badging.txt"
           BADGING="$RUNNER_TEMP/afcon360-user-dev-badging.txt"
-          grep -F "package: name='space.pamoja.afcon360.user.preview'" "$BADGING"
+          grep -F "package: name='space.pamoja.afcon360.user.preview.dev'" "$BADGING"
           VERSION_NAME="$(sed -n "s/^package:.*versionName:'\\([^']*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
           VERSION_CODE="$(sed -n "s/^package:.*versionCode:'\\([^']*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
           MINIMUM="$(sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
@@ -1560,14 +1582,14 @@ jobs:
           else
             {
               echo "app=user"
-              echo "package=space.pamoja.afcon360.user.preview"
+              echo "package=space.pamoja.afcon360.user.preview.dev"
               echo "version_name=$VERSION_NAME"
               echo "version_code=$VERSION_CODE"
               echo "min_sdk=$MINIMUM"
               echo "target_sdk=$TARGET"
               echo "signing_certificate_sha256=$CERT_SHA256"
               echo "api=https://www.pamoja.space"
-              echo "update_channel=user-development"
+              echo "update_channel=user-development-client"
               echo "native_fingerprint=$EXPECTED_FINGERPRINT"
               echo "profile_sha256=$EXPECTED_PROFILE_SHA256"
               echo "cache_key=$USER_DEV_APK_CACHE_KEY"
@@ -1622,3 +1644,33 @@ jobs:
             --message "AFCON360 User development OTA ${GITHUB_SHA}" \
             --non-interactive
           echo "Published the tested feature bundle to the installable User development channel, separate from preview/release."
+      - name: Publish compatible bundle to release-like User preview OTA channel
+        if: needs.classify-user-changes.outputs.ota == 'true'
+        working-directory: mobile/apps/user
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          AFCON360_PREVIEW_BUILD: "true"
+          AFCON360_RELEASE_BUILD: "false"
+          AFCON360_DEVELOPMENT_CLIENT: "false"
+          AFCON360_UPDATE_CHANNEL: "user-development"
+          EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+          EXPO_NO_TELEMETRY: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHANNEL="user-development"
+          if ! npx --yes eas-cli@latest channel:view "$CHANNEL" --json >/dev/null 2>&1; then
+            npx --yes eas-cli@latest channel:create "$CHANNEL" --non-interactive
+          fi
+          if ! npx --yes eas-cli@latest branch:view "$CHANNEL" --json >/dev/null 2>&1; then
+            npx --yes eas-cli@latest branch:create "$CHANNEL" --non-interactive
+          fi
+          npx --yes eas-cli@latest channel:edit "$CHANNEL" --branch "$CHANNEL" --non-interactive
+          npx --yes eas-cli@latest update \
+            --branch "$CHANNEL" \
+            --environment preview \
+            --platform android \
+            --message "AFCON360 User preview OTA ${GITHUB_SHA}" \
+            --non-interactive
+          echo "Published the compatible release-like User preview bundle to user-development; installed preview APKs still require matching runtime/platform/channel."
+

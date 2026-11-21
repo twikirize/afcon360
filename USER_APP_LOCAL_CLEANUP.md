@@ -1,31 +1,40 @@
-# User App Local Snapshot Cleanup
+# User App Local Snapshot Cleanup and Dynamic Development Connection
 
-**Repository:** `twikirize/afcon360`  
-**Branch:** `reconcile/user-local-files-20261121`  
-**Recovery snapshot:** `d82dfc2b2fbe00ba7b1bb654db910f66cda62e42`  
-**Cleanup parent:** `cd6159cddfedb72a3573827d5a2f41bc6fbc649a`
+**Repository:** twikirize/afcon360  
+**Branch:** reconcile/user-local-files-20261121  
+**Recovery snapshot:** d82dfc2b2fbe00ba7b1bb654db910f66cda62e42
 
-## Applied corrections
+## Reconciliation changes
 
-The full laptop snapshot remains in Git history as the recovery point. The following corrections apply only to this branch's active tree:
+The original 39-file local snapshot remains available in Git history. The active branch excludes the mismatched generated Android project, duplicate Home/Ride prototype screens, machine-specific launcher wrappers, and one-time diagnostics. The live offline-first Home and request-first Ride routes remain intact.
 
-1. Removed the captured `mobile/apps/user/android/` directory. The User App uses Expo Continuous Native Generation (CNG), so EAS should generate native Android files from `app.config.ts` and config plugins. The captured Android project hard-coded the old package and URI schemes and disabled Expo Updates; it did not match the current development-client identity.
-2. Added explicit root `.gitignore` and `.easignore` entries for `mobile/apps/user/android/` and `mobile/apps/user/ios/` so generated native projects are not accidentally committed or included in the EAS archive.
-3. Removed the un-routed `HomeScreen.tsx` and `RideBookingScreen.tsx` prototypes. The active home route remains `app/(tabs)/index.tsx` with offline repository/cache integration. The active ride route remains `app/(service)/ride.tsx` and the existing multi-stage `RideScreen`.
-4. Removed the one-time scheduled-task installer, temporary IP diagnostics, and old machine-specific launcher wrappers from the active tree. Their contents remain recoverable from the snapshot commit.
-5. Added maintained Windows development helpers in `mobile/scripts/windows/`:
-   - `start-user-metro.ps1`: resolves the workspace relative to its own location; sets the configured development-client identity/channel; supports a custom API base URL; refuses to reuse an occupied Metro port; starts Metro only and makes no firewall or native-build changes.
-   - `launch-user-dev-client.ps1`: discovers ADB without a hard-coded SDK path; selects an authorized connected device; verifies the expected `.preview.dev` package is installed; opens the `afcon360-preview-dev` Metro deep link.
-   - `README.md`: documents usage and the JS/TS versus native rebuild boundary.
+The captured Android project did not match the current dynamic .preview.dev package, scheme or Expo Updates configuration. This branch keeps the User App on Expo Continuous Native Generation (CNG), with native directories excluded from source and EAS archives.
+
+## Dynamic development connection
+
+The Windows helper scripts support phone-hotspot-to-laptop, laptop-hotspot-to-phone, ordinary trusted Wi-Fi/LAN, USB ADB reverse for both Metro and the local Flask API, and manual adapter/IP selection.
+
+The one-command helper discovers the repo and backend locations, chooses USB only when an authorized ADB device has the .preview.dev app installed (otherwise LAN), starts the local Flask API with debug disabled and the appropriate bind, waits for database readiness, starts Metro with the development-client package/scheme/channel, and opens the installed dev client where ADB is available. When the APK is not installed, Auto falls back to LAN/QR rather than failing after starting services.
+
+The in-app Connection settings no longer call the missing /api/health/server-urls endpoint. They use the API URL supplied by the current Metro manifest or a manual server entry, and verify /api/health/ready before switching. HTTP loopback is permitted only for preview USB ADB reverse on port 5000; public/remote servers still require HTTPS.
+
+The helper refuses to stop or silently reuse an unknown API process. Existing API reuse requires explicit -SkipApiStart and a user-verified safe debug/bind configuration. Wi-Fi/hotspot access is intended for trusted local networks and Windows Private firewall profiles.
+
+## Update and build discipline
+
+- Metro Fast Refresh is the immediate path for ordinary JavaScript/TypeScript and compatible asset changes.
+- The release-like preview APK uses its configured EAS Update channel for launch-time OTA when platform and native runtime match.
+- The development client can preview published compatible Expo Updates through its Extensions tab.
+- Native dependency/configuration changes need a new native APK.
+- The disposable authenticated-journey APK is rebuilt for each exact source commit (no old cache-prefix fallback), and the emulator tests that commit's embedded JavaScript. It runs only after dependency/config, strict TypeScript, Android/iOS bundle export and navigation checks pass.
+- The distributable development-client APK remains reusable across JavaScript-only changes; its cache is keyed by native fingerprint, EAS development profile, app version and build recipe. It is built or reused only after the disposable authenticated journey succeeds.
+- Compatible bundles are separately published to the development-client preview branch and the release-like user-development OTA branch. The dev-client APK uses Metro for immediate development; the release-like preview APK uses ON_LOAD OTA when runtime/platform/channel match.
 
 ## Scope and safety
 
-- All changes are confined to this reconciliation branch.
-- The native User App base and offline-first working branch are unchanged.
-- The original complete snapshot is the parent commit in Git history.
-- No production server, database, EAS credential, signing credential, or release channel was changed.
-- No APK was built or published by this cleanup.
-
-## Verification status
-
-The GitHub source tree and Expo configuration were statically reviewed. The PowerShell helpers have **not** been executed on the user's Windows laptop. Metro startup, ADB device launch, Expo Prebuild, TypeScript checks, and Android APK build still need verification before any selected result is transferred to the offline-first branch.
+- All changes are confined to the reconciliation branch.
+- The User App base and offline-first working branch were not modified.
+- The original local snapshot is retained as a recovery commit.
+- No production server, production database, EAS credential, or production release channel was changed.
+- No APK was built or installed by the reconciliation process itself.
+- PowerShell scripts are statically validated by GitHub CI and still require actual Windows network/ADB verification before transfer to the offline-first working branch.
