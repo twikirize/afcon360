@@ -21,10 +21,10 @@ The script discovers the repo and backend folders relative to itself. By default
 Auto is the default.
 
 - USB: if an authorized Android device is available through ADB and the .preview.dev development-client APK is installed, the helper uses adb reverse for both Metro (8081) and Flask (5000). The phone connects through 127.0.0.1 while the laptop API remains bound to loopback. Auto checks for the package before selecting USB; if it is not installed, Auto falls back to LAN and shows the Metro QR flow rather than failing after startup. Explicit -ConnectionMode Usb fails early when the app is missing.
-- Phone hotspot → laptop: the helper selects the laptop's active Wi-Fi IPv4 address on the phone hotspot and makes Metro and the local API reachable over that LAN.
-- Laptop hotspot → phone: the helper prioritizes common Windows mobile-hotspot addresses such as 192.168.137.1, then opens Metro and the local API over the hotspot connection.
-- Ordinary shared Wi-Fi/Ethernet: the helper selects an active private IPv4 address and binds the API to 0.0.0.0 with Flask debug disabled.
-- Manual selection: if the laptop has several active adapters and automatic selection is not the adapter the phone is using, pass -MetroHost with that laptop adapter's IPv4 address. The in-app Connection screen also permits manual API and Metro URLs.
+- Phone hotspot → laptop: Flask starts on all interfaces with its debugger disabled and prints the reachable laptop IP addresses. The helper shows those same addresses and asks you to choose the one on the phone-hotspot network.
+- Laptop hotspot → phone: Flask prints the laptop's current hotspot address (for example, 192.168.137.1). The helper asks you to select that address; it does not guess or rank a network adapter.
+- Ordinary shared Wi-Fi/Ethernet: Flask prints the addresses it detects for the active laptop interfaces. Choose the address on the same network as the phone.
+- Manual selection: pass -MetroHost with the laptop IPv4 address when you already know which Flask address to use. The in-app Connection screen also permits manual API and Metro URLs.
 
 Force a mode:
 
@@ -34,9 +34,9 @@ Force a mode:
 
     powershell -ExecutionPolicy Bypass -File .\mobile\scripts\windows\start-user-dev.ps1 -ConnectionMode Lan -MetroHost "192.168.43.100"
 
-The helper starts the local API with APP_ENV=local, FLASK_DEBUG=false, and the correct bind address. It waits for /api/health/ready (database readiness) before starting Metro. Metro runs in a separate PowerShell window. If ADB is available, the helper opens the installed development client; otherwise scan the QR code printed by Metro.
+The helper starts the local API with APP_ENV=local, FLASK_DEBUG=false, and FLASK_HOST=0.0.0.0 for Wi-Fi/hotspot (or loopback for USB). It waits for /api/health/ready (database readiness). For Wi-Fi/hotspot it then presents the addresses reported by Flask's existing "Server listening" startup output and asks you to choose the one that matches the phone's current connection. The selected address is used for both the app API and Metro. Metro runs in a separate PowerShell window. If ADB and the development APK are available, the helper opens the installed development client; otherwise scan the QR code printed by Metro.
 
-The helper does not kill an unknown process that already owns port 5000 or 8081. An API process previously started by this helper may be reused; an unrelated listener is rejected. Use -SkipApiStart only when you deliberately started the local API yourself and have confirmed its debug mode and bind address. The helper never enables the Flask/Werkzeug debugger on the LAN.
+The helper does not kill an unknown process that already owns port 5000 or 8081. An API process previously started by this helper may be reused; an unrelated listener is rejected. Use -SkipApiStart only when you deliberately started the local API yourself and have confirmed its debug mode and bind address. The helper never enables the Flask/Werkzeug debugger on the LAN. If Flask is reused after the laptop changes networks, the helper also offers current active adapter addresses so you can make the same explicit selection for the new connection.
 
 ## Use the laptop API from the app
 

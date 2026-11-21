@@ -77,44 +77,6 @@ function Get-DeviceList {
     return $devices
 }
 
-function Find-LanAddress {
-    $configs = @(Get-NetIPConfiguration -ErrorAction Stop | Where-Object {
-        $_.NetAdapter -and
-        $_.NetAdapter.Status -eq "Up" -and
-        $_.IPv4Address -and
-        $_.InterfaceAlias -notmatch "(?i)vpn|tunnel|loopback|virtualbox|vmware|wsl|bluetooth"
-    })
-
-    $candidates = @()
-    foreach ($config in $configs) {
-        foreach ($entry in @($config.IPv4Address)) {
-            $address = [string]$entry.IPAddress
-            if (-not $address -or $address -match "^(127\.|169\.254\.|0\.)") {
-                continue
-            }
-
-            $score = 0
-            if ($address -eq "192.168.137.1") { $score += 500 }
-            elseif ($address -like "192.168.43.*") { $score += 480 }
-            elseif ($address -like "172.20.10.*") { $score += 470 }
-            elseif ($address -like "192.168.*") { $score += 300 }
-            elseif ($address -like "10.*" -or $address -match "^172\.(1[6-9]|2[0-9]|3[01])\.") { $score += 280 }
-
-            if ($config.IPv4DefaultGateway) { $score += 100 }
-            if ($config.InterfaceAlias -match "(?i)wi-?fi|wireless") { $score += 40 }
-            elseif ($config.InterfaceAlias -match "(?i)ethernet|local area connection") { $score += 20 }
-
-            $candidates += [PSCustomObject]@{
-                Address = $address
-                Score = $score
-                Interface = $config.InterfaceAlias
-            }
-        }
-    }
-
-    if ($candidates.Count -eq 0) { return $null }
-    return ($candidates | Sort-Object Score -Descending | Select-Object -First 1)
-}
 
 function Test-ApiReady {
     param([string]$Url)
@@ -130,7 +92,6 @@ function Start-LocalApi {
     param(
         [string]$Root,
         [string]$BindAddress,
-        [string]$ExpectedLanAddress,
         [int]$Port
     )
 
@@ -154,7 +115,7 @@ function Start-LocalApi {
         $managedListeners = @($listeners | Where-Object { $_.OwningProcess -eq $managedPid })
         $expectedAddresses = @("127.0.0.1", "::1")
         if ($BindAddress -eq "0.0.0.0") {
-            $expectedAddresses = @("0.0.0.0", "::", $ExpectedLanAddress)
+            $expectedAddresses = @("0.0.0.0", "::")
         }
 
         $matchingBind = @($managedListeners | Where-Object {
@@ -272,54 +233,25 @@ if ($ConnectionMode -eq "Usb") {
     if (-not $deviceHasDevClient) {
         throw "The selected phone does not have the .preview.dev development APK installed."
     }
-} elseif ($DeviceSerial -and -not $deviceHasDevClient) {
-    if ($deviceWasExplicit) {
-        throw "The selected ADB device does not have the .preview.dev APK installed."
-    }
-    Write-Warning "The connected ADB device does not have the .preview.dev APK. Metro will display a QR code for manual launch."
-    $DeviceSerial = $null
-}
-
-if ($ConnectionMode -eq "Usb") {
     $MetroHost = "127.0.0.1"
     $ApiBaseUrl = "http://127.0.0.1:5000"
     $BindAddress = "127.0.0.1"
     $MetroConnectionMode = "Usb"
 } else {
-    $selectedNetwork = $null
-    if ($MetroHost) {
-        $ip = $null
-        if (-not [System.Net.IPAddress]::TryParse($MetroHost, [ref]$ip) -or
-            $ip.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
-            throw "-MetroHost must be a laptop IPv4 address."
-        }
-        $selectedNetwork = [PSCustomObject]@{ Address = $MetroHost; Interface = "manual adapter selection" }
-    } else {
-        $selectedNetwork = Find-LanAddress
-    }
-
-    if (-not $selectedNetwork) {
-        throw "No active laptop Wi-Fi/hotspot IPv4 address was found. Connect a network, use USB, or supply -MetroHost."
-    }
-
-    $MetroHost = $selectedNetwork.Address
-    $ApiBaseUrl = "http://" + $MetroHost + ":5000"
+    # Flask advertises every detected address at startup. We deliberately do
+    # not rank or guess an adapter: the user selects the address the phone uses.
     $BindAddress = "0.0.0.0"
     $MetroConnectionMode = "Lan"
-    Write-Host ("Laptop network selected: {0} ({1})" -f $MetroHost, $selectedNetwork.Interface) -ForegroundColor Cyan
 }
-
 Write-Host ""
 Write-Host "AFCON360 USER APP - DEVELOPMENT SESSION" -ForegroundColor Cyan
 Write-Host ("Connection mode : " + $ConnectionMode)
-Write-Host ("API base        : " + $ApiBaseUrl)
-Write-Host ("Metro address   : http://" + $MetroHost + ":" + $MetroPort)
 Write-Host ("Backend folder  : " + $BackendRoot)
 Write-Host "Native rebuild  : not performed by this script"
 Write-Host ""
 
 if (-not $SkipApiStart) {
-    Start-LocalApi -Root $BackendRoot -BindAddress $BindAddress -ExpectedLanAddress $MetroHost -Port $ApiPort
+    Start-LocalApi -Root $BackendRoot -BindAddress $BindAddress -Port $ApiPort
 } else {
     $existingApiListeners = @(Get-NetTCPConnection -LocalPort $ApiPort -State Listen -ErrorAction SilentlyContinue)
     if ($existingApiListeners.Count -eq 0) {
@@ -328,13 +260,13 @@ if (-not $SkipApiStart) {
 
     $expectedAddresses = @("127.0.0.1", "::1")
     if ($ConnectionMode -eq "Lan") {
-        $expectedAddresses = @("0.0.0.0", "::", $MetroHost)
+        $expectedAddresses = @("0.0.0.0", "::")
     }
     $matchingApi = @($existingApiListeners | Where-Object {
         $expectedAddresses -contains $_.LocalAddress
     })
     if ($matchingApi.Count -eq 0) {
-        throw "The existing API is not listening on the interface required by this connection mode."
+        throw "The existing API must listen on all interfaces (0.0.0.0) for LAN mode, or loopback for USB mode."
     }
 
     Write-Warning "Reusing an API started outside this helper. Confirm FLASK_DEBUG=false; this script cannot inspect another process environment."
@@ -342,6 +274,97 @@ if (-not $SkipApiStart) {
         throw "The existing API did not pass /api/health/ready."
     }
 }
+
+if ($ConnectionMode -eq "Lan") {
+    $urlCandidates = @()
+    $logPaths = @(
+        (Join-Path $env:TEMP ("afcon360-user-api-{0}.log" -f $ApiPort)),
+        (Join-Path $env:TEMP ("afcon360-user-api-{0}-error.log" -f $ApiPort))
+    )
+    $logText = @()
+    foreach ($logPath in $logPaths) {
+        if (Test-Path $logPath) {
+            $logText += Get-Content -LiteralPath $logPath -Raw
+        }
+    }
+    $combinedLog = $logText -join [Environment]::NewLine
+
+    # Show the URLs printed by app.py's existing "Server listening" startup.
+    foreach ($match in [regex]::Matches($combinedLog, 'https?://[^\s]+')) {
+        $candidate = $match.Value.TrimEnd('.', ',', ';', ')', ']', '"', "'")
+        $uri = $null
+        if (-not [Uri]::TryCreate($candidate, [UriKind]::Absolute, [ref]$uri)) { continue }
+        if ($uri.Port -ne $ApiPort -or $uri.IsLoopback) { continue }
+        $authority = $uri.GetLeftPart([UriPartial]::Authority)
+        if ($urlCandidates -notcontains $authority) { $urlCandidates += $authority }
+    }
+
+    # Keep the Flask-startup list distinct from live adapter addresses. If a
+    # managed Flask process was already running, its original list may predate
+    # a network change; the current adapter list provides fresh choices too.
+    $flaskAdvertisedCount = $urlCandidates.Count
+    $adapterCandidates = @()
+    $configs = @(Get-NetIPConfiguration -ErrorAction Stop | Where-Object {
+        $_.NetAdapter -and $_.NetAdapter.Status -eq "Up" -and $_.IPv4Address -and
+        $_.InterfaceAlias -notmatch "(?i)vpn|tunnel|loopback|virtualbox|vmware|wsl|bluetooth"
+    })
+    foreach ($config in $configs) {
+        foreach ($entry in @($config.IPv4Address)) {
+            $address = [string]$entry.IPAddress
+            if (-not $address -or $address -match "^(127\.|169\.254\.|0\.)") { continue }
+            $authority = "http://" + $address + ":" + $ApiPort
+            if ($adapterCandidates -notcontains $authority) { $adapterCandidates += $authority }
+        }
+    }
+    foreach ($authority in $adapterCandidates) {
+        if ($urlCandidates -notcontains $authority) { $urlCandidates += $authority }
+    }
+
+    if ($urlCandidates.Count -eq 0) {
+        throw "Flask did not advertise a reachable laptop IP and no active network adapter address was found."
+    }
+
+    Write-Host ""
+    Write-Host "Laptop addresses from Flask startup and active network adapters:" -ForegroundColor Cyan
+    for ($index = 0; $index -lt $urlCandidates.Count; $index++) {
+        $sourceLabel = "active adapter"
+        if ($index -lt $flaskAdvertisedCount) { $sourceLabel = "Flask startup" }
+        Write-Host ("  {0}. {1} ({2})" -f ($index + 1), $urlCandidates[$index], $sourceLabel)
+    }
+    Write-Host ""
+    Write-Host "Select the address that matches the network currently connecting your phone and laptop." -ForegroundColor Yellow
+    Write-Host "This supports phone hotspot → laptop, laptop hotspot → phone, or shared Wi-Fi."
+
+    if ($MetroHost) {
+        $selectedIp = $MetroHost
+        $ip = $null
+        if (-not [System.Net.IPAddress]::TryParse($selectedIp, [ref]$ip) -or
+            $ip.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+            throw "-MetroHost must be a laptop IPv4 address."
+        }
+    } else {
+        do {
+            $choiceText = Read-Host ("Enter the number (1-" + $urlCandidates.Count + ")")
+            $choice = 0
+            $validChoice = [int]::TryParse($choiceText, [ref]$choice) -and
+                $choice -ge 1 -and $choice -le $urlCandidates.Count
+            if (-not $validChoice) {
+                Write-Host "Please enter one of the listed numbers." -ForegroundColor Yellow
+            }
+        } until ($validChoice)
+        $selectedUri = [Uri]$urlCandidates[$choice - 1]
+        $selectedIp = $selectedUri.Host
+    }
+
+    $MetroHost = $selectedIp
+    $ApiBaseUrl = "http://" + $MetroHost + ":" + $ApiPort
+    if (-not (Test-ApiReady -Url $ApiBaseUrl)) {
+        throw ("The selected laptop address " + $ApiBaseUrl + " did not pass /api/health/ready. Choose the IP for the phone's current network.")
+    }
+    Write-Host ("Selected laptop API: " + $ApiBaseUrl) -ForegroundColor Green
+}
+
+Write-Host ("Metro address: http://" + $MetroHost + ":" + $MetroPort) -ForegroundColor Green
 
 $metroListeners = @(Get-NetTCPConnection -LocalPort $MetroPort -State Listen -ErrorAction SilentlyContinue)
 if ($metroListeners.Count -gt 0) {
