@@ -91,3 +91,6 @@ A new APK is required when native dependencies, Expo SDK/native configuration, a
 - start-user-dev.ps1 is the one-command orchestrator for API, Metro and device launch.
 
 No helper runs Gradle, Expo Prebuild, EAS Build, EAS Update, production database writes, or production server operations.
+## Downloadable internal Metro development APK
+
+The signed User development-client APK is produced by the `Mobile workspace CI` workflow on the canonical User development branches. The distributable artifact is uploaded only after the mobile checks and authenticated Android journey pass. In GitHub Actions, select this workflow and the `reconcile/user-local-files-20261121` branch, enable `force_apk_rebuild` when a fresh native binary is required, and leave `publish_preview_ota` disabled unless a separate preview OTA publication has been explicitly approved. The uploaded artifact is named `afcon360-user-metro-development-apk-<run-number>` and contains the APK, build information, and SHA-256 checksum.
