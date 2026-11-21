@@ -54,7 +54,7 @@ permissions:
 env:
   AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
   AFCON360_USER_E2E_APK_RECIPE_VERSION: "v5"
-  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v2"
+  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v3"
 
 jobs:
   classify-user-changes:
@@ -1329,7 +1329,7 @@ jobs:
   
 
   build-user-dev-apk:
-    name: Build or reuse Metro-capable User development-client APK
+    name: Build or reuse local-first Metro User development-client APK
     needs: [classify-user-changes, mobile-typecheck, user-authenticated-journey]
     if: >-
       ${{
@@ -1353,7 +1353,7 @@ jobs:
       AFCON360_RELEASE_BUILD: "false"
       AFCON360_DEVELOPMENT_CLIENT: "true"
       AFCON360_UPDATE_CHANNEL: "user-development-client"
-      EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+      EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
       EXPO_NO_TELEMETRY: "1"
     steps:
       - name: Check out validated User App source
@@ -1447,7 +1447,7 @@ jobs:
           grep -Fxq "profile_sha256=$EXPECTED_PROFILE_SHA256" "$INFO" || exit 0
           grep -Fxq "version_name=$EXPECTED_VERSION_NAME" "$INFO" || exit 0
           grep -Fxq "package=space.pamoja.afcon360.user.preview.dev" "$INFO" || exit 0
-          grep -Fxq "api=https://www.pamoja.space" "$INFO" || exit 0
+          grep -Fxq "api=http://127.0.0.1:5000" "$INFO" || exit 0
           grep -Fxq "update_channel=user-development-client" "$INFO" || exit 0
           echo "Exact signed developer APK cache hit; SHA-256 verified: $ACTUAL_SHA"
           echo "reusable=true" >> "$GITHUB_OUTPUT"
@@ -1488,7 +1488,9 @@ jobs:
           const expectedProject = process.env.AFCON360_USER_EAS_PROJECT_ID;
           const checks = {
             package: c.android?.package === "space.pamoja.afcon360.user.preview.dev",
-            liveApi: c.extra?.apiBaseUrl === "https://www.pamoja.space",
+            localApi: c.extra?.apiBaseUrl === "http://127.0.0.1:5000",
+            serverSelection: c.extra?.allowServerSelection === true,
+            metroScheme: c.scheme === "afcon360-preview-dev",
             updateChannel: c.updates?.requestHeaders?.["expo-channel-name"] === "user-development-client",
             fingerprintRuntime: c.runtimeVersion?.policy === "fingerprint",
             updateProject: c.extra?.eas?.projectId === expectedProject,
@@ -1588,7 +1590,7 @@ jobs:
               echo "min_sdk=$MINIMUM"
               echo "target_sdk=$TARGET"
               echo "signing_certificate_sha256=$CERT_SHA256"
-              echo "api=https://www.pamoja.space"
+              echo "api=http://127.0.0.1:5000"
               echo "update_channel=user-development-client"
               echo "native_fingerprint=$EXPECTED_FINGERPRINT"
               echo "profile_sha256=$EXPECTED_PROFILE_SHA256"
@@ -1630,7 +1632,7 @@ jobs:
           AFCON360_RELEASE_BUILD: "false"
           AFCON360_DEVELOPMENT_CLIENT: "true"
           AFCON360_UPDATE_CHANNEL: "user-development-client"
-          EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+          EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
           EXPO_NO_TELEMETRY: "1"
         shell: bash
         run: |
@@ -1653,7 +1655,7 @@ jobs:
           AFCON360_RELEASE_BUILD: "false"
           AFCON360_DEVELOPMENT_CLIENT: "false"
           AFCON360_UPDATE_CHANNEL: "user-development"
-          EXPO_PUBLIC_API_BASE_URL: https://www.pamoja.space
+          EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
           EXPO_NO_TELEMETRY: "1"
         shell: bash
         run: |

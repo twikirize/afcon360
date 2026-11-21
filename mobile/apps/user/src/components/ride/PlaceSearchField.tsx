@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TextInput, Pressable, ActivityIndicator, StyleSheet, Keyboard } from "react-native";
 import { colors, spacing, radii, typography } from "../../theme/tokens";
+import { authClient } from "../../services/api";
 import type { Place, GeocodeCandidate, PlaceSearchState } from "./types";
 import {
   normalizePlaceSearchQuery,
@@ -63,10 +64,15 @@ export function PlaceSearchField({ label, value, placeholder, onValue, onSelect 
     });
 
     const timer = setTimeout(() => {
-      void fetch("/api/geo/geocode?q=" + encodeURIComponent(query) + "&limit=5", { signal: controller.signal })
-        .then(async (response) => {
+      void authClient.request<{
+        success?: unknown;
+        results?: unknown;
+        attribution?: unknown;
+      }>(
+        "/geo/api/geocode?q=" + encodeURIComponent(query) + "&limit=5",
+        { signal: controller.signal }
+      ).then((data) => {
           if (!active) return;
-          const data = await response.json();
           if (data.success !== true || !Array.isArray(data.results)) {
             throw new Error("AFCON360 could not read the place-search results. Search again.");
           }
