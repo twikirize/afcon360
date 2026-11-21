@@ -36,7 +36,10 @@ export default function ServerSettingsScreen() {
     Constants.expoConfig?.extra?.apiBaseUrl ?? PUBLIC_PAMOJA_URL
   );
   const hasRuntimeLocalApi = runtimeApiBaseUrl.startsWith("http://");
-  const isDevelopmentClient = Constants.expoConfig?.extra?.isDevelopmentClient === true;
+  const configuredScheme = Constants.expoConfig?.scheme;
+  const isDevelopmentClient = Array.isArray(configuredScheme)
+    ? configuredScheme.includes("afcon360-preview-dev")
+    : configuredScheme === "afcon360-preview-dev";
   const isLivePamojaServer = isPamojaServerUrl(currentUrl);
 
   useEffect(() => {

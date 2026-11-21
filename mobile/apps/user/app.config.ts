@@ -127,7 +127,6 @@ const config: ExpoConfig = {
   extra: {
     apiBaseUrl,
     allowServerSelection: isPreview,
-    isDevelopmentClient,
     ...(easProjectId ? { eas: { projectId: easProjectId } } : {})
   }
 };
