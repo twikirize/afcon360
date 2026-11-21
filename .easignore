@@ -413,3 +413,7 @@ coverage/
 !mobile/apps/driver/package.json
 !mobile/packages/core/package.json
 !mobile/packages/ui/package.json
+
+# User App uses Expo CNG; let EAS Prebuild generate its native projects from app.config.ts.
+/mobile/apps/user/android/
+/mobile/apps/user/ios/
