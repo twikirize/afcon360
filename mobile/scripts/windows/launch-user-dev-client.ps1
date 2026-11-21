@@ -1,8 +1,12 @@
 [CmdletBinding()]
 param(
+    [ValidateSet("Lan", "Usb")]
+    [string]$ConnectionMode = "Lan",
     [string]$MetroHost,
     [ValidateRange(1024, 65535)]
     [int]$Port = 8081,
+    [ValidateRange(1, 65535)]
+    [int]$ApiPort = 5000,
     [string]$DeviceSerial
 )
 
@@ -13,12 +17,10 @@ $Scheme = "afcon360-preview-dev"
 function Find-Adb {
     $command = Get-Command "adb" -ErrorAction SilentlyContinue
     if ($command) { return $command.Source }
-
     $sdkRoots = @()
     if ($env:ANDROID_HOME) { $sdkRoots += $env:ANDROID_HOME }
     if ($env:ANDROID_SDK_ROOT) { $sdkRoots += $env:ANDROID_SDK_ROOT }
     if ($env:LOCALAPPDATA) { $sdkRoots += (Join-Path $env:LOCALAPPDATA "Android\Sdk") }
-
     foreach ($root in ($sdkRoots | Select-Object -Unique)) {
         $candidate = Join-Path $root "platform-tools\adb.exe"
         if (Test-Path $candidate) { return $candidate }
@@ -31,28 +33,32 @@ function Find-LanAddress {
         $_.NetAdapter -and $_.NetAdapter.Status -eq "Up" -and $_.IPv4Address -and
         $_.InterfaceAlias -notmatch "(?i)vpn|tunnel|loopback|virtualbox|vmware|wsl|bluetooth"
     })
-
     $candidates = @()
     foreach ($config in $configs) {
         foreach ($entry in @($config.IPv4Address)) {
             $address = [string]$entry.IPAddress
             if (-not $address -or $address -match "^(127\.|169\.254\.|0\.)") { continue }
-
             $score = 0
+            if ($address -eq "192.168.137.1") { $score += 500 }
+            elseif ($address -like "192.168.43.*") { $score += 480 }
+            elseif ($address -like "172.20.10.*") { $score += 470 }
+            elseif ($address -like "192.168.*") { $score += 300 }
+            elseif ($address -like "10.*" -or $address -match "^172\.(1[6-9]|2[0-9]|3[01])\.") { $score += 280 }
             if ($config.IPv4DefaultGateway) { $score += 100 }
-            if ($address -like "192.168.43.*" -or $address -like "192.168.137.*") { $score += 50 }
-            elseif ($address -like "192.168.*" -or $address -like "10.*") { $score += 30 }
-            elseif ($address -match "^172\.(1[6-9]|2[0-9]|3[01])\.") { $score += 20 }
-            if ($config.InterfaceAlias -match "(?i)wi-?fi|wireless|ethernet") { $score += 10 }
-
-            $candidates += [PSCustomObject]@{ Address = $address; Score = $score }
+            if ($config.InterfaceAlias -match "(?i)wi-?fi|wireless") { $score += 40 }
+            elseif ($config.InterfaceAlias -match "(?i)ethernet|local area connection") { $score += 20 }
+            $candidates += [PSCustomObject]@{ Address = $address; Score = $score; Interface = $config.InterfaceAlias }
         }
     }
     if ($candidates.Count -eq 0) { return $null }
     return ($candidates | Sort-Object Score -Descending | Select-Object -First 1).Address
 }
 
-if (-not $MetroHost) { $MetroHost = Find-LanAddress }
+if ($ConnectionMode -eq "Usb") {
+    $MetroHost = "127.0.0.1"
+} elseif (-not $MetroHost) {
+    $MetroHost = Find-LanAddress
+}
 if (-not $MetroHost) { throw "Could not detect the laptop's LAN IPv4 address. Supply it with -MetroHost." }
 
 $parsedIp = $null
@@ -66,33 +72,37 @@ if (-not $metroListener) { throw "Metro is not listening on port $Port. Start st
 
 $adb = Find-Adb
 if (-not $adb) { throw "ADB was not found. Install Android SDK platform-tools or set ANDROID_HOME / ANDROID_SDK_ROOT." }
-
-$deviceOutput = @(& $adb devices)
+$deviceOutput = @(& $adb devices -l)
 if ($LASTEXITCODE -ne 0) { throw "ADB could not list connected Android devices." }
+
 $onlineDevices = @()
 foreach ($line in $deviceOutput) {
-    if ($line -match "^(\S+)\s+device$") { $onlineDevices += $Matches[1] }
+    if ($line -match "^(\S+)\s+device(?:\s|$)") { $onlineDevices += $Matches[1] }
 }
-
 if ($DeviceSerial) {
     if ($onlineDevices -notcontains $DeviceSerial) {
         throw "Device '$DeviceSerial' is not connected and authorized. Online devices: $($onlineDevices -join ', ')"
     }
     $selectedDevice = $DeviceSerial
-}
-elseif ($onlineDevices.Count -eq 1) {
+} elseif ($onlineDevices.Count -eq 1) {
     $selectedDevice = $onlineDevices[0]
-}
-elseif ($onlineDevices.Count -gt 1) {
+} elseif ($onlineDevices.Count -gt 1) {
     throw "More than one Android device is connected. Specify -DeviceSerial. Devices: $($onlineDevices -join ', ')"
-}
-else {
-    throw "No authorized ADB device is connected. Connect by USB and approve debugging, or open the dev client using the Metro QR code."
+} else {
+    throw "No authorized ADB device is connected. Open the installed development client and scan the QR code shown by Metro, or connect the phone by USB and approve debugging."
 }
 
 $installed = @(& $adb -s $selectedDevice shell pm path $PackageId)
 if ($LASTEXITCODE -ne 0 -or -not ($installed -match "package:")) {
-    throw "The development client '$PackageId' is not installed on '$selectedDevice'. Install the User development-client APK first."
+    throw "The development client '$PackageId' is not installed on '$selectedDevice'. A compatible development-client APK is required before the first launch."
+}
+
+if ($ConnectionMode -eq "Usb") {
+    Write-Host "Setting up USB ADB reverse tunnels (Metro $Port and API $ApiPort)..." -ForegroundColor Cyan
+    & $adb -s $selectedDevice reverse "tcp:$Port" "tcp:$Port"
+    if ($LASTEXITCODE -ne 0) { throw "ADB could not forward the Metro port over USB." }
+    & $adb -s $selectedDevice reverse "tcp:$ApiPort" "tcp:$ApiPort"
+    if ($LASTEXITCODE -ne 0) { throw "ADB could not forward the laptop API port over USB." }
 }
 
 $metroUrl = "http://" + $MetroHost + ":" + $Port
@@ -101,9 +111,12 @@ $deepLink = $Scheme + "://expo-development-client/?url=" + $encodedUrl
 
 Write-Host ""
 Write-Host "Launching AFCON360 User development client" -ForegroundColor Cyan
-Write-Host "Device    : $selectedDevice"
-Write-Host "Package   : $PackageId"
-Write-Host "Metro URL : $metroUrl"
+Write-Host "Connection : $ConnectionMode"
+Write-Host "Device     : $selectedDevice"
+Write-Host "Package    : $PackageId"
+Write-Host "Metro URL  : $metroUrl"
+if ($ConnectionMode -eq "Usb") { Write-Host "API URL    : http://127.0.0.1:$ApiPort (ADB reverse)" }
 Write-Host ""
+
 & $adb -s $selectedDevice shell am start -a android.intent.action.VIEW -d $deepLink -p $PackageId
 if ($LASTEXITCODE -ne 0) { throw "Android failed to open the development-client deep link." }

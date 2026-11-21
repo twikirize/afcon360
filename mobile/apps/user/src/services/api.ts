@@ -82,8 +82,13 @@ export function normalizePreviewApiBaseUrl(value: string): string {
     throw new Error("Enter only the server origin. Do not include a username, password, path, query or fragment.");
   }
   if (parsed.protocol === "http:") {
-    if (!isPrivateIpv4(parsed.hostname) || parsed.port !== "5000") {
-      throw new Error("For laptop staging, use a private Wi-Fi IPv4 address with port 5000, for example http://192.168.100.28:5000.");
+    // USB development uses adb reverse: the phone's loopback is forwarded to
+    // the laptop's 127.0.0.1:5000. This is preview-only, not a public HTTP host.
+    const isUsbLoopback =
+      (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+      parsed.port === "5000";
+    if (!isUsbLoopback && (!isPrivateIpv4(parsed.hostname) || parsed.port !== "5000")) {
+      throw new Error("For laptop staging, use a private Wi-Fi IPv4 address with port 5000, for example http://192.168.100.28:5000. For USB debugging, use http://127.0.0.1:5000 after the development helper enables ADB reverse.");
     }
   } else if (parsed.protocol !== "https:") {
     throw new Error("Use HTTPS for public servers.");

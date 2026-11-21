@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Constants from "expo-constants";
-import { Alert, Linking, Text, TextInput, View } from "react-native";
+import { Alert, Linking, Text, TextInput } from "react-native";
 import { useRouter } from "expo-router";
 import { AppScreen, ActionButton, PageHeader, Panel, palette } from "@afcon360/mobile-ui";
 import { SERVER_SELECTION_ENABLED, getSelectedApiBaseUrl, normalizePreviewApiBaseUrl } from "../src/services/api";
@@ -9,7 +9,6 @@ import * as SecureStore from "expo-secure-store";
 
 const PUBLIC_PAMOJA_URL = "https://www.pamoja.space";
 const METRO_URL_KEY = "afcon360.user.metro-url";
-const DEFAULT_METRO_URL = "http://192.168.100.28:8081";
 
 export default function ServerSettingsScreen() {
   const router = useRouter();
@@ -17,9 +16,14 @@ export default function ServerSettingsScreen() {
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
   const [draftUrl, setDraftUrl] = useState("");
   const [busy, setBusy] = useState(false);
-  const [metroUrl, setMetroUrl] = useState<string | null>(null);
   const [metroDraft, setMetroDraft] = useState("");
-  const [serverUrls, setServerUrls] = useState<{ api_base_urls: string[]; metro_urls: string[] } | null>(null);
+
+  // The laptop Metro helper injects its current API origin into the Expo
+  // runtime manifest. This follows Wi-Fi, either hotspot direction, or USB.
+  const runtimeApiBaseUrl = String(
+    Constants.expoConfig?.extra?.apiBaseUrl ?? PUBLIC_PAMOJA_URL
+  );
+  const hasRuntimeLocalApi = runtimeApiBaseUrl.startsWith("http://");
 
   useEffect(() => {
     let active = true;
@@ -27,27 +31,11 @@ export default function ServerSettingsScreen() {
       if (!active) return;
       setCurrentUrl(savedUrl);
       setDraftUrl(savedUrl);
-      // Auto-fetch current server URLs using the saved URL as base
-      fetch(`${savedUrl}/api/health/server-urls`)
-        .then(r => r.json())
-        .then(data => {
-          if (!active) return;
-          if (data?.api_base_urls?.length) {
-            setServerUrls(data);
-            if (!savedUrl) setDraftUrl(data.api_base_urls[0]);
-            if (!metroDraft) setMetroDraft(data.metro_urls?.[0] ?? "");
-          }
-        })
-        .catch(() => {});
     }).catch(() => {
       if (active) Alert.alert("Connection settings unavailable", "AFCON360 could not read the saved server setting.");
     });
     void SecureStore.getItemAsync(METRO_URL_KEY).then(value => {
-      if (active) {
-        const url = value ?? "";
-        setMetroUrl(url);
-        setMetroDraft(url);
-      }
+      if (active) setMetroDraft(value ?? "");
     });
     return () => { active = false; };
   }, []);
@@ -65,12 +53,12 @@ export default function ServerSettingsScreen() {
       if (!["http:", "https:"].includes(parsed.protocol)) {
         throw new Error("Use http:// or https:// for the Metro bundler.");
       }
-      await SecureStore.setItemAsync(METRO_URL_KEY, parsed.toString().replace(/\/$/, ""));
-      setMetroUrl(parsed.toString().replace(/\/$/, ""));
-      setMetroDraft(parsed.toString().replace(/\/$/, ""));
+      const metroOrigin = parsed.toString().replace(/\/$/, "");
+      await SecureStore.setItemAsync(METRO_URL_KEY, metroOrigin);
+      setMetroDraft(metroOrigin);
       const configuredScheme = Constants.expoConfig?.scheme;
       const appScheme = Array.isArray(configuredScheme) ? configuredScheme[0] : configuredScheme || "afcon360-preview";
-      const deepLink = `${appScheme}://expo-development-client/?url=${encodeURIComponent(parsed.toString().replace(/\/$/, ""))}`;
+      const deepLink = appScheme + "://expo-development-client/?url=" + encodeURIComponent(metroOrigin);
       const supported = await Linking.canOpenURL(deepLink);
       if (supported) {
         await Linking.openURL(deepLink);
@@ -93,21 +81,22 @@ export default function ServerSettingsScreen() {
       const timeout = setTimeout(() => controller.abort(), 10000);
       let healthResponse: Response;
       try {
-        healthResponse = await fetch(nextBaseUrl + "/api/health/ping", {
+        healthResponse = await fetch(nextBaseUrl + "/api/health/ready", {
           method: "GET",
           headers: { Accept: "application/json" },
           signal: controller.signal
         });
       } catch {
         throw new Error(
-          "AFCON360 could not reach this server. Check the laptop IP, confirm the phone and laptop are on the same hotspot or Wi-Fi, and make sure the API and firewall allow port 5000."
+          "AFCON360 could not reach a ready server. For Wi-Fi/hotspot, check that the phone and laptop share that network, the laptop API listens on all interfaces, and Windows Firewall permits ports 5000 and 8081. For USB, start the development helper so it can set up ADB reverse."
         );
       } finally {
         clearTimeout(timeout);
       }
-      if (!healthResponse.ok) {
+      const readiness = await healthResponse.json().catch(() => null) as { status?: string } | null;
+      if (!healthResponse.ok || readiness?.status !== "ready") {
         throw new Error(
-          `The server responded with HTTP ${healthResponse.status}, but its AFCON360 health check did not pass.`
+          "The server responded with HTTP " + healthResponse.status + ", but its database readiness check did not pass. Check the laptop API log and database connection."
         );
       }
       const result = await changeApiServer(nextBaseUrl);
@@ -118,9 +107,9 @@ export default function ServerSettingsScreen() {
         return;
       }
       const message = result.remoteLogoutConfirmed
-        ? "The server has changed. Sign in again using an account that belongs to this environment."
+        ? "The server has changed. Sign in again using an account that belongs to this development environment."
         : "The server has changed and this device's saved credentials were cleared. The old server could not be contacted to confirm remote session revocation; its session may remain until it expires or is revoked there.";
-      Alert.alert("Connection changed", message, [
+      Alert.alert("Development connection changed", message, [
         { text: "Continue", onPress: () => router.replace("/login" as never) }
       ]);
     } catch (error) {
@@ -136,7 +125,7 @@ export default function ServerSettingsScreen() {
 
   return (
     <AppScreen>
-      <PageHeader eyebrow="Preview connection" title="Choose your AFCON360 server." description="Choose public Pamoja or enter the server reachable on your current network. Switching servers clears this device's saved sign-in credentials." />
+      <PageHeader eyebrow="Preview connection" title="Choose your AFCON360 server." description="Use the laptop development server for local testing, or choose public Pamoja. Switching servers clears this device's saved sign-in credentials and offline account cache." />
       <Panel>
         <Text style={{ color: palette.muted, fontSize: 12, fontWeight: "800" }}>CURRENT SERVER</Text>
         <Text selectable style={{ color: palette.ink, fontSize: 14, fontWeight: "700" }}>{currentUrl ?? "Loading saved server…"}</Text>
@@ -146,24 +135,21 @@ export default function ServerSettingsScreen() {
         <Text style={{ color: palette.muted, lineHeight: 20 }}>Connect to the live public website API over HTTPS. Use this only when you intend to test the live environment.</Text>
         <ActionButton label="Use public Pamoja" disabled={busy} onPress={() => { setDraftUrl(PUBLIC_PAMOJA_URL); void save(PUBLIC_PAMOJA_URL); }} />
       </Panel>
-      {serverUrls?.api_base_urls && serverUrls.api_base_urls.length > 1 && (
+      {hasRuntimeLocalApi && (
         <Panel>
-          <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Auto-detected laptop servers</Text>
-          <Text style={{ color: palette.muted, lineHeight: 20, marginBottom: 8 }}>These are the current IPs your laptop is reachable on. Tap one to test & save instantly.</Text>
-          {serverUrls.api_base_urls.map((url, i) => (
-            <View key={i} style={{ marginBottom: 6 }}>
-              <ActionButton
-                label={`Use ${url}`}
-                disabled={busy}
-                onPress={() => { setDraftUrl(url); void save(url); }}
-              />
-            </View>
-          ))}
+          <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Laptop development server</Text>
+          <Text style={{ color: palette.muted, lineHeight: 20 }}>The current Metro session supplied this API address. It follows the active Wi-Fi or hotspot connection. In USB mode it uses 127.0.0.1 through ADB reverse.</Text>
+          <Text selectable style={{ color: palette.ink, fontSize: 13, fontWeight: "700" }}>{runtimeApiBaseUrl}</Text>
+          <ActionButton
+            label={busy ? "Checking laptop server…" : "Use server for this development session"}
+            disabled={busy}
+            onPress={() => { setDraftUrl(runtimeApiBaseUrl); void save(runtimeApiBaseUrl); }}
+          />
         </Panel>
       )}
       <Panel>
-        <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Laptop hotspot or another staging server</Text>
-        <Text style={{ color: palette.muted, lineHeight: 20 }}>For laptop testing, enter the laptop's current private IPv4 address on the Wi-Fi or hotspot adapter. The phone and laptop must be on the same local network. Example only: http://192.168.137.1:5000. Replace that address with the one shown by ipconfig on your laptop.</Text>
+        <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Enter another preview server</Text>
+        <Text style={{ color: palette.muted, lineHeight: 20 }}>For Wi-Fi/hotspot, enter the laptop's private IPv4 address on the adapter the phone is connected to. For USB, enter http://127.0.0.1:5000 after the ADB reverse tunnel is active. Private HTTP is supported only for internal preview testing.</Text>
         <TextInput
           accessibilityLabel="API server address"
           autoCapitalize="none"
@@ -171,20 +157,18 @@ export default function ServerSettingsScreen() {
           keyboardType="url"
           value={draftUrl}
           onChangeText={setDraftUrl}
-          placeholder="http://192.168.x.x:5000 or https://staging.example"
+          placeholder="http://192.168.x.x:5000 or http://127.0.0.1:5000"
           placeholderTextColor={palette.muted}
           editable={!busy}
           style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink, backgroundColor: palette.surface }}
         />
         <ActionButton label={busy ? "Checking server…" : "Test and save server"} disabled={busy || !draftUrl.trim()} onPress={() => void save()} />
       </Panel>
-      <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>Security: public and remote servers must use HTTPS. Plain HTTP is allowed only for private-network preview testing on port 5000; it is not encrypted. Use it only on a trusted, isolated test network with test data. Never send production credentials or financial information over HTTP.</Text>
+      <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>Security: public and remote servers must use HTTPS. Plain HTTP is limited to private-network preview testing on port 5000 or a local USB ADB tunnel. It is not encrypted over Wi-Fi/hotspot; use trusted test networks and test data only. Never send production credentials or financial information over HTTP.</Text>
       <ActionButton label="Back" disabled={busy} onPress={() => router.back()} />
       <Panel>
         <Text style={{ color: palette.ink, fontSize: 14, fontWeight: "800" }}>Metro Bundler (Fast Refresh)</Text>
-        <Text style={{ color: palette.muted, lineHeight: 20 }}>Enter the laptop's Metro bundler address for wireless Fast Refresh. The phone and laptop must be on the same hotspot or Wi-Fi. Example: http://10.247.255.214:8081. Restart Metro with </Text>
-        <Text style={{ color: palette.muted, lineHeight: 20, fontFamily: "monospace" }}>npx expo start --dev-client --host lan --port 8081</Text>
-        <Text style={{ color: palette.muted, lineHeight: 20 }}> on the laptop.</Text>
+        <Text style={{ color: palette.muted, lineHeight: 20 }}>The laptop helper normally opens Metro automatically. Use this only when reconnecting manually. For Wi-Fi/hotspot, enter the current laptop IPv4 address. For USB, the helper uses ADB reverse and the Metro address http://127.0.0.1:8081.</Text>
         <TextInput
           accessibilityLabel="Metro bundler address"
           autoCapitalize="none"
@@ -192,7 +176,7 @@ export default function ServerSettingsScreen() {
           keyboardType="url"
           value={metroDraft}
           onChangeText={setMetroDraft}
-          placeholder="http://10.247.255.214:8081"
+          placeholder="http://laptop-ip:8081 or http://127.0.0.1:8081"
           placeholderTextColor={palette.muted}
           editable={!busy}
           style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink, backgroundColor: palette.surface }}
