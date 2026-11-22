@@ -71,12 +71,9 @@ add("native Gradle plugin ships a JS bundle in the debug variant",
 add("app config enables the native embedded-bundle and automatic fallback plugin only for development clients",
   appConfigSource.includes('withDevClientEmbeddedBundle') &&
   appConfigSource.includes('enabled: isDevelopmentClient'));
-const embeddedFingerprintSource = fingerprintConfig.match(
-  /\\{[^{}]*type:\\s*"file"[^{}]*filePath:\\s*"plugins\\/withDevClientEmbeddedBundle\\.js"[^{}]*\\}/s
-);
 add("native fallback plugin is included in the fingerprint with valid reasons metadata",
-  Boolean(embeddedFingerprintSource) &&
-  /reasons:\\s*\\[[^\\]]+\\]/s.test(embeddedFingerprintSource[0]));
+  fingerprintConfig.includes('filePath: "plugins/withDevClientEmbeddedBundle.js"') &&
+  fingerprintConfig.includes('reasons: ["AFCON360\'s Metro and embedded-bundle startup fallback"]'));
 add("native plugin automatically falls back to embedded JS after Metro and EAS loading fail",
   gradlePlugin.includes("loadEmbeddedBundle(activityToBeInvalidated)") &&
   gradlePlugin.includes("loadEmbeddedBundle(mainActivity)") &&
