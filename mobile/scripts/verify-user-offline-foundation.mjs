@@ -67,15 +67,16 @@ const checks = [
       !/sdkmanager|gradlew|assembleRelease|android-emulator-runner|expo prebuild/i.test(prebuildJob) &&
       metroJob.includes("needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests]") &&
       metroJob.includes("needs.user-prebuild-tests.result == 'success'") &&
-      !metroJob.includes("outputs.e2e_harness == 'true'") &&
+      metroJob.includes("outputs.e2e_harness == 'true'") &&
+      metroJob.includes("Require a compatible cached APK for harness-only requalification") &&
       previewJob.includes("needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests]") &&
       previewJob.includes("needs.user-prebuild-tests.result == 'success'") &&
       throwawayJob.includes("needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests]") &&
       throwawayJob.includes("needs.user-prebuild-tests.result == 'success'") &&
-      throwawayJob.includes("github.ref_name != 'reconcile/user-local-files-20261121'");
+      !throwawayJob.includes("github.ref_name != 'reconcile/user-local-files-20261121'");
   })()],
   ["Mobile update/rebuild constitution is versioned and included in workflow path filters", read("../docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md").includes("PRE-BUILD TEST GATE") && read("../.github/workflows/mobile-workspace.yml").includes('docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md')],
-  ["Test-harness-only changes cannot trigger a Metro APK build", /build-user-dev-apk:[\s\S]*?outputs.native == 'true'[\s\S]*?outputs.ota == 'true'/.test(read("../.github/workflows/mobile-workspace.yml")) && !/build-user-dev-apk:[\s\S]*?outputs.e2e_harness == 'true'/.test(read("../.github/workflows/mobile-workspace.yml"))],
+  ["Test-harness-only changes reuse a compatible Metro APK without starting another native build", /build-user-dev-apk:[\s\S]*?outputs.e2e_harness == 'true'[\s\S]*?Require a compatible cached APK for harness-only requalification/.test(read("../.github/workflows/mobile-workspace.yml")) && /if: >-[\s\S]*?outputs.e2e_harness == 'true'[\s\S]*?steps.validate-dev-apk.outputs.reusable != 'true'[\s\S]*?Refusing to create an unnecessary native build/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Disposable authenticated-journey APK is gated behind strict TypeScript and Android/iOS bundle exports", /user-authenticated-journey:[\s\S]*?needs: \[classify-user-changes, mobile-typecheck, user-prebuild-tests\]/.test(read("../.github/workflows/mobile-workspace.yml")) && /name: Bundle User app for Android and iOS/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Compatible preview updates are also published to the release-like user-development channel", /Publish compatible bundle to release-like User preview OTA channel/.test(read("../.github/workflows/mobile-workspace.yml")) && /AFCON360_UPDATE_CHANNEL: "user-development"/.test(read("../.github/workflows/mobile-workspace.yml"))],
 
