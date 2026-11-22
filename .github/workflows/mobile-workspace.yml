@@ -1652,21 +1652,6 @@ jobs:
           echo "Exact signed developer APK cache hit; SHA-256 verified: $ACTUAL_SHA"
           echo "reusable=true" >> "$GITHUB_OUTPUT"
 
-      - name: Require a compatible cached APK for harness-only requalification
-        if: >-
-          ${{
-            needs.classify-user-changes.outputs.e2e_harness == 'true' &&
-            needs.classify-user-changes.outputs.native != 'true' &&
-            needs.classify-user-changes.outputs.ota != 'true' &&
-            needs.classify-user-changes.outputs.dev_apk_recipe != 'true' &&
-            !(github.event_name == 'workflow_dispatch' && inputs.force_apk_rebuild == true) &&
-            steps.validate-dev-apk.outputs.reusable != 'true'
-          }}
-        shell: bash
-        run: |
-          echo "::error::This is a test-harness-only change, but no exact compatible signed APK was found in cache. Refusing to create an unnecessary native build."
-          exit 1
-
       - name: Ensure isolated User development update channel exists
         working-directory: mobile/apps/user
         shell: bash
