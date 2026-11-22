@@ -1759,7 +1759,14 @@ jobs:
           APK="user-dev-apk-cache/user-development.apk"
           INFO="user-dev-apk-cache/build-info.txt"
           test -s "$APK"
-          BUNDLE_ENTRY="$(unzip -Z1 "$APK" | grep -E '^assets/index\\.android\\.bundle(\\.hbc)?          aapt dump badging "$APK" > "$RUNNER_TEMP/afcon360-user-dev-badging.txt"
+          BUNDLE_ENTRY="$(unzip -Z1 "$APK" | grep -E '^assets/index\.android\.bundle(\.hbc)?$' | head -n 1 || true)"
+          if [ -z "$BUNDLE_ENTRY" ]; then
+            echo "::error::The Metro development APK does not contain an embedded Android JavaScript bundle."
+            exit 1
+          fi
+          echo "PASS: embedded JavaScript bundle found: $BUNDLE_ENTRY"
+          apksigner verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/afcon360-user-dev-signature.txt"
+          aapt dump badging "$APK" > "$RUNNER_TEMP/afcon360-user-dev-badging.txt"
           METADATA_LINE="$(node mobile/scripts/verify-user-dev-apk-metadata.mjs "$RUNNER_TEMP/afcon360-user-dev-badging.txt" "$EXPECTED_VERSION_NAME")"
           IFS=$'\t' read -r PACKAGE VERSION_CODE VERSION_NAME MINIMUM TARGET <<< "$METADATA_LINE"
           echo "PASS: APK metadata verified: package=$PACKAGE version=$VERSION_NAME ($VERSION_CODE) minSdk=$MINIMUM targetSdk=$TARGET"
@@ -1928,120 +1935,6 @@ jobs:
           console.log("marker=" + marker);
           NODE
 
-      - name: Publish compatible bundle to release-like User preview OTA channel
-        if: needs.classify-user-changes.outputs.ota == 'true'
-        working-directory: mobile/apps/user
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          AFCON360_PREVIEW_BUILD: "true"
-          AFCON360_RELEASE_BUILD: "false"
-          AFCON360_DEVELOPMENT_CLIENT: "false"
-          AFCON360_UPDATE_CHANNEL: "user-development"
-          EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
-          EXPO_NO_TELEMETRY: "1"
-        shell: bash
-        run: |
-          set -euo pipefail
-          CHANNEL="user-development"
-          if ! npx --yes eas-cli@latest channel:view "$CHANNEL" --json >/dev/null 2>&1; then
-            npx --yes eas-cli@latest channel:create "$CHANNEL" --non-interactive
-          fi
-          if ! npx --yes eas-cli@latest branch:view "$CHANNEL" --json >/dev/null 2>&1; then
-            npx --yes eas-cli@latest branch:create "$CHANNEL" --non-interactive
-          fi
-          npx --yes eas-cli@latest channel:edit "$CHANNEL" --branch "$CHANNEL" --non-interactive
-          npx --yes eas-cli@latest update \
-            --branch "$CHANNEL" \
-            --environment preview \
-            --platform android \
-            --message "AFCON360 User preview OTA ${GITHUB_SHA}" \
-            --non-interactive
-          echo "Published the compatible release-like User preview bundle to user-development; installed preview APKs still require matching runtime/platform/channel."
-
- | head -n 1 || true)"
-          if [ -z "$BUNDLE_ENTRY" ]; then
-            echo "::error::The Metro development APK does not contain an embedded Android JavaScript bundle."
-            exit 1
-          fi
-          echo "PASS: embedded JavaScript bundle found: $BUNDLE_ENTRY"
-          apksigner verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/afcon360-user-dev-signature.txt"
-          aapt dump badging "$APK" > "$RUNNER_TEMP/afcon360-user-dev-badging.txt"
-          METADATA_LINE="$(node mobile/scripts/verify-user-dev-apk-metadata.mjs "$RUNNER_TEMP/afcon360-user-dev-badging.txt" "$EXPECTED_VERSION_NAME")"
-          IFS=$'\t' read -r PACKAGE VERSION_CODE VERSION_NAME MINIMUM TARGET <<< "$METADATA_LINE"
-          echo "PASS: APK metadata verified: package=$PACKAGE version=$VERSION_NAME ($VERSION_CODE) minSdk=$MINIMUM targetSdk=$TARGET"
-          # apksigner versions print either "Signer #1 ..." or "V2 Signer: ...".
-          CERT_SHA256="$(sed -n 's/^.*certificate SHA-256 digest: //p' "$RUNNER_TEMP/afcon360-user-dev-signature.txt" | head -n 1)"
-          test -n "$CERT_SHA256"
-          echo "PASS: isolated Metro development-client APK is signed (certificate $CERT_SHA256)."
-          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
-          if [ "$CACHE_REUSED" = "true" ]; then
-            grep -Fxq "signing_certificate_sha256=$CERT_SHA256" "$INFO"
-            grep -Fxq "apk_sha256=$APK_SHA256" "$INFO"
-          else
-            {
-              echo "app=user"
-              echo "package=space.pamoja.afcon360.user.preview.dev"
-              echo "version_name=$VERSION_NAME"
-              echo "version_code=$VERSION_CODE"
-              echo "min_sdk=$MINIMUM"
-              echo "target_sdk=$TARGET"
-              echo "signing_certificate_sha256=$CERT_SHA256"
-              echo "api=http://127.0.0.1:5000"
-              echo "update_channel=user-development-client"
-              echo "native_fingerprint=$EXPECTED_FINGERPRINT"
-              echo "profile_sha256=$EXPECTED_PROFILE_SHA256"
-              echo "cache_key=$USER_DEV_APK_CACHE_KEY"
-              echo "source_commit=$GITHUB_SHA"
-              echo "apk_sha256=$APK_SHA256"
-            } > "$INFO"
-          fi
-          echo "$APK_SHA256" | tee user-dev-apk-cache/user-development.apk.sha256
-          mkdir -p "$GITHUB_WORKSPACE/user-dev-apk-artifact"
-          cp "$APK" "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-metro-development.apk"
-          cp "$INFO" "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-metro-development-build-info.txt"
-          cp user-dev-apk-cache/user-development.apk.sha256 "$GITHUB_WORKSPACE/user-dev-apk-artifact/afcon360-user-metro-development.apk.sha256"
-          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
-          echo "cache_reused=$CACHE_REUSED" >> "$GITHUB_OUTPUT"
-          echo "Metro development-client APK verified (cache_reused=$CACHE_REUSED): $APK_SHA256"
-
-      - name: Persist signed developer APK under native fingerprint key
-        if: steps.validate-dev-apk.outputs.reusable != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: user-dev-apk-cache/
-          key: ${{ steps.dev-apk-key.outputs.key }}
-
-      - name: Upload Metro development-client APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: afcon360-user-metro-development-apk-${{ github.run_number }}
-          path: user-dev-apk-artifact/
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Publish current User bundle to the isolated Metro development-client OTA channel
-        if: needs.classify-user-changes.outputs.ota == 'true'
-        working-directory: mobile/apps/user
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          AFCON360_PREVIEW_BUILD: "true"
-          AFCON360_RELEASE_BUILD: "false"
-          AFCON360_DEVELOPMENT_CLIENT: "true"
-          AFCON360_UPDATE_CHANNEL: "user-development-client"
-          EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:5000
-          EXPO_NO_TELEMETRY: "1"
-        shell: bash
-        run: |
-          set -euo pipefail
-          CHANNEL="user-development-client"
-          npx --yes eas-cli@latest channel:edit "$CHANNEL" --branch "$CHANNEL" --non-interactive
-          npx --yes eas-cli@latest update \
-            --branch "$CHANNEL" \
-            --environment preview \
-            --platform android \
-            --message "AFCON360 User development OTA ${GITHUB_SHA}" \
-            --non-interactive
-          echo "Published the tested feature bundle to the installable User development channel, separate from preview/release."
       - name: Publish compatible bundle to release-like User preview OTA channel
         if: needs.classify-user-changes.outputs.ota == 'true'
         working-directory: mobile/apps/user
