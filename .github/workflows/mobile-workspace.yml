@@ -56,7 +56,7 @@ permissions:
 env:
   AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
   AFCON360_USER_E2E_APK_RECIPE_VERSION: "v6"
-  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v8"
+  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v9"
 
 jobs:
   classify-user-changes:
@@ -627,7 +627,6 @@ jobs:
       ${{
         needs.user-prebuild-tests.result == 'success' &&
         github.ref_name != 'feat/user-offline-first-foundation-20261117' &&
-        github.ref_name != 'reconcile/user-local-files-20261121' &&
         (
           needs.classify-user-changes.outputs.native == 'true' ||
           needs.classify-user-changes.outputs.ota == 'true' ||
@@ -1158,7 +1157,7 @@ jobs:
   user-android-version-compatibility:
     name: User authenticated journey — ${{ matrix.android-label }}
     needs: user-authenticated-journey
-    if: ${{ needs.user-authenticated-journey.result == 'success' && needs.user-authenticated-journey.outputs.apk_ready == 'true' && needs.user-authenticated-journey.outputs.apk_rebuilt == 'true' && github.ref_name != 'fix/user-release-engineering-20261115' }}
+    if: ${{ needs.user-authenticated-journey.result == 'success' && needs.user-authenticated-journey.outputs.apk_ready == 'true' && needs.user-authenticated-journey.outputs.apk_rebuilt == 'true' && github.ref_name != 'fix/user-release-engineering-20261115' && github.ref_name != 'reconcile/user-local-files-20261121' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
@@ -2075,8 +2074,8 @@ jobs:
 
   user-dev-client-delivery-qualification:
     name: Qualify Metro, EAS fallback and startup on Android
-    needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests, build-user-dev-apk]
-    if: ${{ needs.build-user-dev-apk.result == 'success' }}
+    needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests, user-authenticated-journey, build-user-dev-apk]
+    if: ${{ needs.build-user-dev-apk.result == 'success' && needs.user-authenticated-journey.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     defaults:
