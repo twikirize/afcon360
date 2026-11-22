@@ -77,7 +77,14 @@ const checks = [
       !throwawayJob.includes("github.ref_name != 'reconcile/user-local-files-20261121'");
   })()],
   ["Mobile update/rebuild constitution is versioned and included in workflow path filters", read("../docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md").includes("PRE-BUILD TEST GATE") && read("../.github/workflows/mobile-workspace.yml").includes('docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md')],
-  ["Test-harness-only changes reuse an exact compatible APK and build one baseline only when cache is absent", /build-user-dev-apk:[\\s\\S]*?outputs.e2e_harness == 'true'[\\s\\S]*?if: steps.validate-dev-apk.outputs.reusable != 'true'[\\s\\S]*?eas-cli@latest build/.test(read("../.github/workflows/mobile-workspace.yml")) && /grep -Fxq "apk_sha256=\\$ACTUAL_SHA" "\\$INFO"/.test(read("../.github/workflows/mobile-workspace.yml"))],
+  ["Test-harness-only changes reuse an exact compatible APK and build one baseline only when cache is absent", (() => {
+    const workflow = read("../.github/workflows/mobile-workspace.yml");
+    return workflow.includes("build-user-dev-apk:") &&
+      workflow.includes("outputs.e2e_harness == 'true'") &&
+      workflow.includes("if: steps.validate-dev-apk.outputs.reusable != 'true'") &&
+      workflow.includes("eas-cli@latest build") &&
+      workflow.includes('grep -Fxq "apk_sha256=$ACTUAL_SHA" "$INFO"');
+  })()],
   ["Disposable authenticated-journey APK is gated behind strict TypeScript and Android/iOS bundle exports", /user-authenticated-journey:[\s\S]*?needs: \[classify-user-changes, mobile-typecheck, user-prebuild-tests\]/.test(read("../.github/workflows/mobile-workspace.yml")) && /name: Bundle User app for Android and iOS/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Compatible preview updates are also published to the release-like user-development channel", /Publish compatible bundle to release-like User preview OTA channel/.test(read("../.github/workflows/mobile-workspace.yml")) && /AFCON360_UPDATE_CHANNEL: "user-development"/.test(read("../.github/workflows/mobile-workspace.yml"))],
 
