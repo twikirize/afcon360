@@ -64,9 +64,13 @@ add("development client suppresses launcher onboarding and menu at startup",
   devClientPlugin?.showMenuAtLaunch === false);
 add("native Gradle plugin ships a JS bundle in the debug variant",
   /debuggableVariants\s*=\s*\[\s*\]/.test(gradlePlugin));
-add("app config enables the native embedded-bundle plugin only for development clients",
+add("app config enables the native embedded-bundle and automatic fallback plugin only for development clients",
   appConfigSource.includes('withDevClientEmbeddedBundle') &&
   appConfigSource.includes('enabled: isDevelopmentClient'));
+add("native plugin automatically falls back to embedded JS after Metro and EAS loading fail",
+  /loadEmbeddedBundle\\(activityToBeInvalidated\\)/.test(gradlePlugin) &&
+  /DevLauncherController\\.kt/.test(gradlePlugin) &&
+  /source\\.replace\\(original, patched\\)/.test(gradlePlugin));
 
 add("expo-updates is installed as a native plugin",
   config.plugins?.some(plugin =>
