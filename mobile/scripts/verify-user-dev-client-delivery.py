@@ -278,6 +278,15 @@ def set_network_offline() -> None:
     time.sleep(3)
 
 
+def set_network_online() -> None:
+    adb("shell", "cmd", "connectivity", "airplane-mode", "disable", check=False)
+    adb("shell", "settings", "put", "global", "airplane_mode_on", "0", check=False)
+    adb("shell", "am", "broadcast", "-a", "android.intent.action.AIRPLANE_MODE", "--ez", "state", "false", check=False)
+    adb("shell", "svc", "wifi", "enable", check=False)
+    adb("shell", "svc", "data", "enable", check=False)
+    time.sleep(5)
+
+
 def capture_failure() -> None:
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     save_text("failure-logcat.txt", adb("logcat", "-d", "-v", "time", timeout=60, check=False))
@@ -334,6 +343,19 @@ def main() -> None:
     package_output = adb("shell", "dumpsys", "package", PACKAGE)
     save_text("installed-package.txt", package_output)
     record("installed package identity matches the candidate", PACKAGE in package_output, PACKAGE)
+
+    # First-launch offline proof: with no Metro history, no cached EAS update
+    # and no internet, the startup fallback must enter the embedded AFCON360
+    # bundle rather than leave the user on the development launcher.
+    set_network_offline()
+    fresh_offline_ui = cold_launch("fresh-install-offline-startup.txt")
+    fresh_offline_ok = "Your journey starts here." in fresh_offline_ui
+    record(
+        "fresh first launch opens embedded AFCON360 with Metro and internet unavailable",
+        fresh_offline_ok,
+        fresh_offline_ui[-2000:],
+    )
+    set_network_online()
 
     start_backend_stub()
     write_qa_route("AFCON360_METRO_FAST_REFRESH_BEFORE")
