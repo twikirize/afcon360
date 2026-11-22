@@ -128,9 +128,20 @@ Before an APK is declared ready for pilot testers, the exact candidate binary mu
 - Primary navigation and the key journeys changed by the update.
 - Logs and evidence for any failure, including device model, Android version, APK SHA-256, and test outcome.
 
-The planned pilot is three to five Android phones. A successful backend test, JavaScript bundle export, or test of a different APK does not replace testing the exact candidate Metro development-client APK.
+The CI workflow must also install the exact signed candidate APK on an Android emulator and verify the development delivery contract before it can produce an emulator-qualified artifact. The automated sequence must prove:
 
-Until the exact Metro APK has passed device qualification, its CI artifact remains a candidate for controlled internal evaluation. It must not be described as a fully qualified tester release.
+- The installed APK contains the embedded Android JavaScript bundle.
+- The app cold-starts on the embedded bundle when both Metro and internet are unavailable before an OTA update has been cached.
+- Metro connects to the same installed APK and Fast Refresh applies a React source edit without rebuilding or reinstalling.
+- After Metro has been used, stopping it and cold-starting the app falls back to the compatible EAS development-channel update, then to the embedded bundle if the EAS update is unavailable.
+- A published, runtime-compatible EAS Update loads in the same APK and is used on subsequent cold starts; the cached update also opens without Metro or internet.
+- The preview login screen exposes laptop/live backend selection and a disposable API readiness check confirms that local backend selection works.
+
+The CI update used to prove EAS loading must be published to a unique, isolated qualification branch. It must not change the normal development, preview, or production branch. CI must retain logcat, UI hierarchy, Metro server output, APK hash, EAS update group/runtime, and per-check results on failure as well as success.
+
+The planned physical pilot remains three to five Android phones. A successful backend test, JavaScript bundle export, emulator test, or test of a different APK does not replace testing the exact candidate on those phones.
+
+Until the exact Metro APK has passed the automated delivery gate and the required physical-device qualification, its CI artifact remains a candidate for controlled internal evaluation. It must not be described as a fully qualified tester release.
 
 ## Article 8 — OTA update governance
 
@@ -203,7 +214,7 @@ The User App workflow enforces the pre-build sequence through:
 - Isolated E2E and Metro development OTA channels.
 - An executable verifier that checks these workflow rules for regressions.
 
-The exact Metro development-client APK is currently checked for signing, package identity, SDK levels, API/channel configuration, and SHA-256 in CI. The current Metro job does not yet automatically perform the full three-to-five-phone device qualification described in Article 7. Therefore its artifact remains a candidate until that device evidence is recorded. The older authenticated Android journey is a separate test path and must not be represented as proof that the exact Metro APK passed that device test.
+The exact Metro development-client APK is checked for package identity, SDK levels, signing certificate, SHA-256, embedded bundle presence, Metro Fast Refresh, Metro-off fallback, EAS Update loading, cached offline startup, and preview backend selection on an Android emulator. The standard authenticated Android journey must also pass on the active delivery branch before the emulator-qualified candidate is produced. Emulator qualification is not a substitute for the three-to-five-phone physical-device qualification in Article 7.
 
 The Driver App pipeline must be reviewed and brought under equivalent controls before this constitution is claimed to be fully automated for both apps.
 
