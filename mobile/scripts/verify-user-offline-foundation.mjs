@@ -43,7 +43,25 @@ const checks = [
   ["Authenticated-journey APK cache is pinned to the exact source commit to prevent stale JS test proof", /afcon360-user-e2e-apk-recipe-\$\{AFCON360_USER_E2E_APK_RECIPE_VERSION\}-native-\$FINGERPRINT-source-\$GITHUB_SHA/.test(read("../.github/workflows/mobile-workspace.yml")) && /EXPECTED_SOURCE_COMMIT: \$\{\{ github\.sha \}\}/.test(read("../.github/workflows/mobile-workspace.yml")) && /source_commit=\$EXPECTED_SOURCE_COMMIT/.test(read("../.github/workflows/mobile-workspace.yml"))],
 
   ["CI parses PowerShell development helpers before APK-related validation", /Parse Windows User App development helpers/.test(read("../.github/workflows/mobile-workspace.yml")) && /Parser\]::ParseFile/.test(read("../.github/workflows/mobile-workspace.yml"))],
-  ["Reconciliation branch receives mobile CI and the same post-journey development APK gate", /- reconcile\/user-local-files-20261121/.test(read("../.github/workflows/mobile-workspace.yml")) && /github\.ref_name == 'reconcile\/user-local-files-20261121'/.test(read("../.github/workflows/mobile-workspace.yml")) && /needs: \[classify-user-changes, mobile-typecheck, user-authenticated-journey\]/.test(read("../.github/workflows/mobile-workspace.yml"))],
+  ["Reconciliation branch runs pre-build checks before the Metro APK", (() => {
+    const workflow = read("../.github/workflows/mobile-workspace.yml");
+    const prebuildStart = workflow.indexOf("  user-prebuild-tests:");
+    const prebuildEnd = workflow.indexOf("  user-authenticated-journey:", prebuildStart);
+    const metroStart = workflow.indexOf("  build-user-dev-apk:");
+    const throwawayStart = workflow.indexOf("  user-authenticated-journey:");
+    const throwawayEnd = workflow.indexOf("  user-android-version-compatibility:", throwawayStart);
+    const prebuildJob = prebuildStart >= 0 && prebuildEnd > prebuildStart
+      ? workflow.slice(prebuildStart, prebuildEnd) : "";
+    const metroJob = metroStart >= 0 ? workflow.slice(metroStart) : "";
+    const throwawayJob = throwawayStart >= 0 && throwawayEnd > throwawayStart
+      ? workflow.slice(throwawayStart, throwawayEnd) : "";
+    return /- reconcile\\/user-local-files-20261121/.test(workflow) &&
+      prebuildJob.includes("mobile-user-e2e-backend.py prebuild") &&
+      !/sdkmanager|gradlew|assembleRelease|android-emulator-runner|expo prebuild/i.test(prebuildJob) &&
+      /needs: \\[classify-user-changes, mobile-typecheck, user-prebuild-tests\\]/.test(metroJob) &&
+      /needs\\.user-prebuild-tests\\.result == 'success'/.test(metroJob) &&
+      /github\\.ref_name != 'reconcile\\/user-local-files-20261121'/.test(throwawayJob);
+  })()],
   ["Disposable authenticated-journey APK is gated behind strict TypeScript and Android/iOS bundle exports", /user-authenticated-journey:[\s\S]*?needs: \[classify-user-changes, mobile-typecheck\]/.test(read("../.github/workflows/mobile-workspace.yml")) && /name: Bundle User app for Android and iOS/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Compatible preview updates are also published to the release-like user-development channel", /Publish compatible bundle to release-like User preview OTA channel/.test(read("../.github/workflows/mobile-workspace.yml")) && /AFCON360_UPDATE_CHANNEL: "user-development"/.test(read("../.github/workflows/mobile-workspace.yml"))],
 

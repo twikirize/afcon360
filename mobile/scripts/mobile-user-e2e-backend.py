@@ -125,6 +125,8 @@ def prebuild_checks(app) -> None:
         user = User.query.filter_by(username=USERNAME, email=EMAIL).one_or_none()
         if user is None:
             raise AssertionError("The disposable synthetic E2E user was not seeded.")
+        user_id = int(user.id)
+        user_public_id = str(user.public_id)
 
     client = app.test_client()
     login_response = client.post(
@@ -172,11 +174,11 @@ def prebuild_checks(app) -> None:
         server_session_id = str(token_record["server_session_id"])
         device_session = DeviceSession.query.filter_by(
             session_id=device_session_id,
-            user_id=user.id,
+            user_id=user_id,
         ).one_or_none()
         server_session = ServerSession.query.filter_by(
             session_id=server_session_id,
-            user_id=str(user.public_id),
+            user_id=user_public_id,
         ).one_or_none()
         check(
             "device and server sessions active before logout",
@@ -218,11 +220,11 @@ def prebuild_checks(app) -> None:
     with app.app_context():
         revoked_device = DeviceSession.query.filter_by(
             session_id=device_session_id,
-            user_id=user.id,
+            user_id=user_id,
         ).one_or_none()
         revoked_server = ServerSession.query.filter_by(
             session_id=server_session_id,
-            user_id=str(user.public_id),
+            user_id=user_public_id,
         ).one_or_none()
         check(
             "exact device session revoked in PostgreSQL",
