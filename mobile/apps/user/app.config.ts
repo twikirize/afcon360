@@ -147,9 +147,7 @@ const config: ExpoConfig = {
           }
         : {}
     ],
-    ...(isDevelopmentClient
-      ? [["./plugins/withDevClientEmbeddedBundle", { enabled: true }]]
-      : []),
+    ["./plugins/withDevClientEmbeddedBundle", { enabled: isDevelopmentClient }],
     "expo-updates",
     [
       "expo-location",
