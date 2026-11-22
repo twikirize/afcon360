@@ -56,7 +56,7 @@ permissions:
 env:
   AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
   AFCON360_USER_E2E_APK_RECIPE_VERSION: "v6"
-  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v6"
+  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v7"
 
 jobs:
   classify-user-changes:
@@ -1725,7 +1725,7 @@ jobs:
           test -s "$APK"
           apksigner verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/afcon360-user-dev-signature.txt"
           aapt dump badging "$APK" > "$RUNNER_TEMP/afcon360-user-dev-badging.txt"
-          METADATA_LINE="$(node scripts/verify-user-dev-apk-metadata.mjs "$RUNNER_TEMP/afcon360-user-dev-badging.txt" "$EXPECTED_VERSION_NAME")"
+          METADATA_LINE="$(node mobile/scripts/verify-user-dev-apk-metadata.mjs "$RUNNER_TEMP/afcon360-user-dev-badging.txt" "$EXPECTED_VERSION_NAME")"
           IFS=$'\t' read -r PACKAGE VERSION_CODE VERSION_NAME MINIMUM TARGET <<< "$METADATA_LINE"
           echo "PASS: APK metadata verified: package=$PACKAGE version=$VERSION_NAME ($VERSION_CODE) minSdk=$MINIMUM targetSdk=$TARGET"
           # apksigner versions print either "Signer #1 ..." or "V2 Signer: ...".
