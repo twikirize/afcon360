@@ -56,7 +56,7 @@ permissions:
 env:
   AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
   AFCON360_USER_E2E_APK_RECIPE_VERSION: "v6"
-  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v3"
+  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v4"
 
 jobs:
   classify-user-changes:
@@ -66,6 +66,7 @@ jobs:
       native: ${{ steps.classify.outputs.native }}
       ota: ${{ steps.classify.outputs.ota }}
       e2e_harness: ${{ steps.classify.outputs.e2e_harness }}
+      dev_apk_recipe: ${{ steps.classify.outputs.dev_apk_recipe }}
     steps:
       - name: Check out full history for reliable change detection
         uses: actions/checkout@v7
@@ -126,6 +127,7 @@ jobs:
           native = False
           ota = False
           e2e_harness = False
+          dev_apk_recipe = False
 
           for path in changed:
               parts = PurePosixPath(path).parts
@@ -165,10 +167,21 @@ jobs:
               if path.startswith("mobile/scripts/") or path == ".github/workflows/mobile-workspace.yml":
                   e2e_harness = True
 
+          # A deliberate APK recipe version bump requests one candidate requalification.
+          # It still cannot bypass any pre-build test gate.
+          if ".github/workflows/mobile-workspace.yml" in changed:
+              workflow_diff = git("diff", "--unified=0", base + "...HEAD", "--", ".github/workflows/mobile-workspace.yml")
+              dev_apk_recipe = any(
+                  line.startswith("+") and not line.startswith("+++") and
+                  "AFCON360_USER_DEV_APK_RECIPE_VERSION:" in line
+                  for line in workflow_diff.splitlines()
+              )
+
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"native={str(native).lower()}\n")
               output.write(f"ota={str(ota).lower()}\n")
               output.write(f"e2e_harness={str(e2e_harness).lower()}\n")
+              output.write(f"dev_apk_recipe={str(dev_apk_recipe).lower()}\n")
 
           if native:
               decision = "NATIVE INPUT CHANGE: compare the Expo native fingerprint; rebuild the APK only when the fingerprint changes."
@@ -184,7 +197,8 @@ jobs:
               summary.write(f"- Changed files: {len(changed)}\n")
               summary.write(f"- Native rebuild required: **{str(native).lower()}**\n")
               summary.write(f"- OTA-compatible source changed: **{str(ota).lower()}**\n")
-              summary.write(f"- E2E harness changed: **{str(e2e_harness).lower()}**\n\n")
+              summary.write(f"- E2E harness changed: **{str(e2e_harness).lower()}**\n")
+              summary.write(f"- Metro APK verification recipe changed: **{str(dev_apk_recipe).lower()}**\n\n")
               summary.write(decision + "\n")
           print(decision)
           print("Changed paths:")
@@ -252,6 +266,9 @@ jobs:
           fi
       - name: Verify User offline-first storage and session contracts
         run: node scripts/verify-user-offline-foundation.mjs
+
+      - name: Test signed APK metadata parser
+        run: node scripts/verify-user-dev-apk-metadata.mjs --self-test
 
       - name: Validate production User app release configuration
         shell: bash
@@ -1482,6 +1499,7 @@ jobs:
         (
           needs.classify-user-changes.outputs.native == 'true' ||
           needs.classify-user-changes.outputs.ota == 'true' ||
+          needs.classify-user-changes.outputs.dev_apk_recipe == 'true' ||
           (github.event_name == 'workflow_dispatch' && inputs.force_apk_rebuild == true)
         )
       }}
@@ -1707,16 +1725,9 @@ jobs:
           test -s "$APK"
           apksigner verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/afcon360-user-dev-signature.txt"
           aapt dump badging "$APK" > "$RUNNER_TEMP/afcon360-user-dev-badging.txt"
-          BADGING="$RUNNER_TEMP/afcon360-user-dev-badging.txt"
-          grep -F "package: name='space.pamoja.afcon360.user.preview.dev'" "$BADGING"
-          VERSION_NAME="$(sed -n "s/^package:.*versionName:'\\([^']*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
-          VERSION_CODE="$(sed -n "s/^package:.*versionCode:'\\([^']*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
-          MINIMUM="$(sed -n "s/.*sdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
-          TARGET="$(sed -n "s/.*targetSdkVersion:'\\([0-9]*\\)'.*/\\1/p" "$BADGING" | head -n 1)"
-          test "$VERSION_NAME" = "$EXPECTED_VERSION_NAME"
-          test -n "$VERSION_CODE" && test "$VERSION_CODE" -ge 1
-          test "$MINIMUM" = "24"
-          test -n "$TARGET" && test "$TARGET" -ge 36
+          METADATA_LINE="$(node scripts/verify-user-dev-apk-metadata.mjs "$RUNNER_TEMP/afcon360-user-dev-badging.txt" "$EXPECTED_VERSION_NAME")"
+          IFS=$'\t' read -r PACKAGE VERSION_CODE VERSION_NAME MINIMUM TARGET <<< "$METADATA_LINE"
+          echo "PASS: APK metadata verified: package=$PACKAGE version=$VERSION_NAME ($VERSION_CODE) minSdk=$MINIMUM targetSdk=$TARGET"
           # apksigner versions print either "Signer #1 ..." or "V2 Signer: ...".
           CERT_SHA256="$(sed -n 's/^.*certificate SHA-256 digest: //p' "$RUNNER_TEMP/afcon360-user-dev-signature.txt" | head -n 1)"
           test -n "$CERT_SHA256"
