@@ -38,6 +38,14 @@ const updateChannel = isE2EBuild
   ? previewUpdateChannel
   : "production";
 
+// When Metro is unavailable, the development client can fall back to the
+// latest compatible EAS update on its isolated development channel. Metro
+// remains the first choice after a developer has connected to it at least once.
+const developmentClientFallbackUrl =
+  isDevelopmentClient && easProjectId
+    ? "https://u.expo.dev/" + easProjectId + "?channel-name=" + updateChannel
+    : undefined;
+
 const easProjectIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 if (easProjectId && !easProjectIdPattern.test(easProjectId)) {
@@ -85,6 +93,7 @@ const config: ExpoConfig = {
   // Native fingerprint changes produce a new runtime version automatically.
   // JS/TS-only changes keep the same runtime and remain OTA-compatible.
   runtimeVersion: { policy: "fingerprint" },
+  developmentClient: isDevelopmentClient ? { silentLaunch: true } : undefined,
   updates: easProjectId
     ? {
         url: "https://u.expo.dev/" + easProjectId,
@@ -125,7 +134,22 @@ const config: ExpoConfig = {
     "./plugins/withReactNativeGradlePluginPortal",
     "expo-secure-store",
     ["expo-sqlite", { useSQLCipher: true }],
-    "expo-dev-client",
+    [
+      "expo-dev-client",
+      isDevelopmentClient
+        ? {
+            launchMode: "most-recent",
+            defaultLaunchURL: developmentClientFallbackUrl,
+            embeddedBundle: true,
+            skipOnboarding: true,
+            showMenuAtLaunch: false,
+            toolsButton: false
+          }
+        : {}
+    ],
+    ...(isDevelopmentClient
+      ? [["./plugins/withDevClientEmbeddedBundle", { enabled: true }]]
+      : []),
     "expo-updates",
     [
       "expo-location",
