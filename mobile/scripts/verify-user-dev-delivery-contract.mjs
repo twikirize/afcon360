@@ -68,11 +68,12 @@ add("app config enables the native embedded-bundle and automatic fallback plugin
   appConfigSource.includes('withDevClientEmbeddedBundle') &&
   appConfigSource.includes('enabled: isDevelopmentClient'));
 add("native plugin automatically falls back to embedded JS after Metro and EAS loading fail",
-  /loadEmbeddedBundle\\(activityToBeInvalidated\\)/.test(gradlePlugin) &&
-  /loadEmbeddedBundle\\(mainActivity\\)/.test(gradlePlugin) &&
-  /DevLauncherController\\.kt/.test(gradlePlugin) &&
-  /source\\.replace\\(originalDefaultFallback, patchedDefaultFallback\\)/.test(gradlePlugin) &&
-  /replace\\(originalLoaderFailure, patchedLoaderFailure\\)/.test(gradlePlugin));
+  gradlePlugin.includes("loadEmbeddedBundle(activityToBeInvalidated)") &&
+  gradlePlugin.includes("loadEmbeddedBundle(mainActivity)") &&
+  gradlePlugin.includes("DevLauncherController.kt") &&
+  gradlePlugin.includes("replace(originalDefaultFallback, patchedDefaultFallback)") &&
+  gradlePlugin.includes("replace(originalLoaderFailure, patchedLoaderFailure)") &&
+  gradlePlugin.includes("Refusing an unverified native source modification"));
 
 add("expo-updates is installed as a native plugin",
   config.plugins?.some(plugin =>
