@@ -17,6 +17,15 @@ const isE2EBuild = process.env.AFCON360_E2E_BUILD === "true";
 // Neither publishes unreviewed feature code to the user-facing preview channel.
 const previewUpdateChannel =
   process.env.AFCON360_UPDATE_CHANNEL?.trim() || "preview";
+
+// These isolated development channels must remain local-first even when
+// EAS Preview environment variables contain the public production API URL.
+// A saved tester-selected server still takes precedence inside the API client.
+const isLocalFirstDevelopmentChannel =
+  isE2EBuild ||
+  (isPreview &&
+    (isDevelopmentClient ||
+      ["user-development", "user-development-client"].includes(previewUpdateChannel)));
 if (
   isPreview &&
   !["preview", "user-development", "user-development-client"].includes(previewUpdateChannel)
@@ -41,8 +50,9 @@ if (isEasBuild && !easProjectId) {
   );
 }
 
-const apiBaseUrl =
-  process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || "https://www.pamoja.space";
+const apiBaseUrl = isLocalFirstDevelopmentChannel
+  ? "http://127.0.0.1:5000"
+  : process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || "https://www.pamoja.space";
 let parsedApiBaseUrl: URL;
 try {
   parsedApiBaseUrl = new URL(apiBaseUrl);
