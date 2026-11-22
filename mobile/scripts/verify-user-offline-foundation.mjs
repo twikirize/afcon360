@@ -39,8 +39,8 @@ const checks = [
   ["Dev-client launcher targets the current package and deep-link scheme", /space\.pamoja\.afcon360\.user\.preview\.dev/.test(read("scripts/windows/launch-user-dev-client.ps1")) && /afcon360-preview-dev/.test(read("scripts/windows/launch-user-dev-client.ps1"))],
   ["Unknown API listeners are not silently reused or terminated", /unmanaged or differently-bound process/.test(read("scripts/windows/start-user-dev.ps1")) && /does not kill an unknown process/.test(read("scripts/windows/README.md"))],
   ["Generated native projects are excluded from Git and EAS archives", /\/mobile\/apps\/user\/android\//.test(read("../.gitignore")) && /\/mobile\/apps\/user\/android\//.test(read("../.easignore"))],
-  ["E2E APK cache uses the v5 exact key without legacy restore keys", /AFCON360_USER_E2E_APK_RECIPE_VERSION: "v5"/.test(read("../.github/workflows/mobile-workspace.yml")) && /Restore native-fingerprint-keyed User E2E APK[\s\S]*?key: \$\{\{ steps\.user-apk-key\.outputs\.key \}\}[\s\S]*?- name: Validate cached User APK/.test(read("../.github/workflows/mobile-workspace.yml")) && !/Restore native-fingerprint-keyed User E2E APK[\s\S]*?restore-keys:/.test(read("../.github/workflows/mobile-workspace.yml"))],
-  ["Authenticated-journey APK cache is pinned to the exact source commit to prevent stale JS test proof", /afcon360-user-e2e-apk-recipe-\$\{AFCON360_USER_E2E_APK_RECIPE_VERSION\}-native-\$FINGERPRINT-source-\$GITHUB_SHA/.test(read("../.github/workflows/mobile-workspace.yml")) && /EXPECTED_SOURCE_COMMIT: \$\{\{ github\.sha \}\}/.test(read("../.github/workflows/mobile-workspace.yml")) && /source_commit=\$EXPECTED_SOURCE_COMMIT/.test(read("../.github/workflows/mobile-workspace.yml"))],
+  ["E2E APK cache uses the v6 native-fingerprint key without legacy restore keys", /AFCON360_USER_E2E_APK_RECIPE_VERSION: "v6"/.test(read("../.github/workflows/mobile-workspace.yml")) && /Restore native-fingerprint-keyed User E2E APK[\s\S]*?key: \$\{\{ steps\.user-apk-key\.outputs\.key \}\}[\s\S]*?- name: Validate cached User APK/.test(read("../.github/workflows/mobile-workspace.yml")) && !/Restore native-fingerprint-keyed User E2E APK[\s\S]*?restore-keys:/.test(read("../.github/workflows/mobile-workspace.yml"))],
+  ["Authenticated-journey APK is reused across OTA-only commits when the native fingerprint matches", /afcon360-user-e2e-apk-recipe-\$\{AFCON360_USER_E2E_APK_RECIPE_VERSION\}-native-\$FINGERPRINT/.test(read("../.github/workflows/mobile-workspace.yml")) && !/source-\$GITHUB_SHA/.test(read("../.github/workflows/mobile-workspace.yml")) && !/EXPECTED_SOURCE_COMMIT/.test(read("../.github/workflows/mobile-workspace.yml"))],
 
   ["CI parses PowerShell development helpers before APK-related validation", /Parse Windows User App development helpers/.test(read("../.github/workflows/mobile-workspace.yml")) && /Parser\]::ParseFile/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Reconciliation branch runs pre-build checks before the Metro APK", (() => {
@@ -49,6 +49,9 @@ const checks = [
     const prebuildEnd = workflow.indexOf("  user-authenticated-journey:", prebuildStart);
     const metroStart = workflow.indexOf("  build-user-dev-apk:");
     const throwawayStart = workflow.indexOf("  user-authenticated-journey:");
+    const previewStart = workflow.indexOf("  publish-preview-ota:");
+    const previewEnd = workflow.indexOf("  user-prebuild-tests:", previewStart);
+    const previewJob = previewStart >= 0 && previewEnd > previewStart ? workflow.slice(previewStart, previewEnd) : "";
     const throwawayEnd = workflow.indexOf("  user-android-version-compatibility:", throwawayStart);
     const prebuildJob = prebuildStart >= 0 && prebuildEnd > prebuildStart
       ? workflow.slice(prebuildStart, prebuildEnd) : "";
@@ -56,13 +59,22 @@ const checks = [
     const throwawayJob = throwawayStart >= 0 && throwawayEnd > throwawayStart
       ? workflow.slice(throwawayStart, throwawayEnd) : "";
     return workflow.includes("- reconcile/user-local-files-20261121") &&
+      workflow.includes('docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md') &&
+      prebuildJob.includes("needs: [classify-user-changes, mobile-typecheck]") &&
       prebuildJob.includes("mobile-user-e2e-backend.py prebuild") &&
       !/sdkmanager|gradlew|assembleRelease|android-emulator-runner|expo prebuild/i.test(prebuildJob) &&
       metroJob.includes("needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests]") &&
       metroJob.includes("needs.user-prebuild-tests.result == 'success'") &&
+      !metroJob.includes("outputs.e2e_harness == 'true'") &&
+      previewJob.includes("needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests]") &&
+      previewJob.includes("needs.user-prebuild-tests.result == 'success'") &&
+      throwawayJob.includes("needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests]") &&
+      throwawayJob.includes("needs.user-prebuild-tests.result == 'success'") &&
       throwawayJob.includes("github.ref_name != 'reconcile/user-local-files-20261121'");
   })()],
-  ["Disposable authenticated-journey APK is gated behind strict TypeScript and Android/iOS bundle exports", /user-authenticated-journey:[\s\S]*?needs: \[classify-user-changes, mobile-typecheck\]/.test(read("../.github/workflows/mobile-workspace.yml")) && /name: Bundle User app for Android and iOS/.test(read("../.github/workflows/mobile-workspace.yml"))],
+  ["Mobile update/rebuild constitution is versioned and included in workflow path filters", read("../docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md").includes("PRE-BUILD TEST GATE") && read("../.github/workflows/mobile-workspace.yml").includes('docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md')],
+  ["Test-harness-only changes cannot trigger a Metro APK build", /build-user-dev-apk:[\s\S]*?outputs.native == 'true'[\s\S]*?outputs.ota == 'true'/.test(read("../.github/workflows/mobile-workspace.yml")) && !/build-user-dev-apk:[\s\S]*?outputs.e2e_harness == 'true'/.test(read("../.github/workflows/mobile-workspace.yml"))],
+  ["Disposable authenticated-journey APK is gated behind strict TypeScript and Android/iOS bundle exports", /user-authenticated-journey:[\s\S]*?needs: \[classify-user-changes, mobile-typecheck, user-prebuild-tests\]/.test(read("../.github/workflows/mobile-workspace.yml")) && /name: Bundle User app for Android and iOS/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Compatible preview updates are also published to the release-like user-development channel", /Publish compatible bundle to release-like User preview OTA channel/.test(read("../.github/workflows/mobile-workspace.yml")) && /AFCON360_UPDATE_CHANNEL: "user-development"/.test(read("../.github/workflows/mobile-workspace.yml"))],
 
   ["E2E OTA channel is isolated from user-facing preview", /isE2EBuild\s*\?\s*"afcon360-user-e2e"/.test(read("apps/user/app.config.ts")) && /updates: easProjectId\s*\?/.test(read("apps/user/app.config.ts"))],
