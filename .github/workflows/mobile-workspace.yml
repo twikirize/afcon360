@@ -2073,3 +2073,122 @@ jobs:
             --non-interactive
           echo "Published the compatible release-like User preview bundle to user-development; installed preview APKs still require matching runtime/platform/channel."
 
+  user-dev-client-delivery-qualification:
+    name: Qualify Metro, EAS fallback and startup on Android
+    needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests, build-user-dev-apk]
+    if: ${{ needs.build-user-dev-apk.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
+      AFCON360_USER_DEV_UPDATE_GROUP: ${{ needs.build-user-dev-apk.outputs.dev_update_group }}
+      AFCON360_USER_DEV_UPDATE_RUNTIME: ${{ needs.build-user-dev-apk.outputs.dev_update_runtime }}
+      AFCON360_USER_DEV_UPDATE_MARKER: ${{ needs.build-user-dev-apk.outputs.dev_update_marker }}
+      AFCON360_DEV_EVIDENCE_DIR: user-dev-delivery-evidence
+      EXPO_NO_TELEMETRY: "1"
+    steps:
+      - name: Check out the exact validated source commit
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.1"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Install User workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Download the exact signed APK candidate from this workflow run
+        uses: actions/download-artifact@v7
+        with:
+          name: afcon360-user-metro-development-candidate-${{ github.run_number }}
+          path: mobile/user-dev-apk-artifact
+
+      - name: Verify the candidate artifact hash and EAS update metadata
+        shell: bash
+        env:
+          EXPECTED_APK_SHA256: ${{ needs.build-user-dev-apk.outputs.apk_sha256 }}
+        run: |
+          set -euo pipefail
+          APK="user-dev-apk-artifact/afcon360-user-metro-development.apk"
+          INFO="user-dev-apk-artifact/afcon360-user-metro-development-build-info.txt"
+          SHA_FILE="user-dev-apk-artifact/afcon360-user-metro-development.apk.sha256"
+          test -s "$APK" && test -s "$INFO" && test -s "$SHA_FILE"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          test "$ACTUAL_SHA" = "$EXPECTED_APK_SHA256"
+          grep -Fxq "apk_sha256=$ACTUAL_SHA" "$INFO"
+          test -n "$AFCON360_USER_DEV_UPDATE_GROUP"
+          test -n "$AFCON360_USER_DEV_UPDATE_RUNTIME"
+          test -n "$AFCON360_USER_DEV_UPDATE_MARKER"
+          echo "PASS: exact candidate APK SHA-256 $ACTUAL_SHA"
+          echo "PASS: EAS update group $AFCON360_USER_DEV_UPDATE_GROUP"
+          echo "PASS: EAS runtime $AFCON360_USER_DEV_UPDATE_RUNTIME"
+
+      - name: Enable KVM hardware acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::This runner does not expose /dev/kvm; Android startup qualification cannot run."
+            exit 1
+          fi
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+
+      - name: Install candidate and test Metro, Fast Refresh, EAS updates and offline startup
+        id: qualify
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          ram-size: 4096M
+          disk-size: 12G
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: python scripts/verify-user-dev-client-delivery.py user-dev-apk-artifact/afcon360-user-metro-development.apk
+
+      - name: Upload detailed User development delivery evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-dev-delivery-evidence-${{ github.run_number }}
+          path: mobile/user-dev-delivery-evidence/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Publish emulator-qualified APK candidate
+        if: ${{ steps.qualify.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: afcon360-user-metro-development-emulator-qualified-${{ github.run_number }}
+          path: |
+            mobile/user-dev-apk-artifact/afcon360-user-metro-development.apk
+            mobile/user-dev-apk-artifact/afcon360-user-metro-development-build-info.txt
+            mobile/user-dev-apk-artifact/afcon360-user-metro-development.apk.sha256
+            mobile/user-dev-delivery-evidence/dev-client-delivery-results.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Record physical-device qualification remains required
+        if: ${{ steps.qualify.outcome == 'success' }}
+        run: |
+          {
+            echo "## User development APK qualification"
+            echo
+            echo "The exact APK passed the automated Android emulator delivery tests."
+            echo "This does not replace the policy-required physical-device tests on three to five Android phones."
+            echo "Do not mark the APK tester-ready until those phone results are recorded."
+          } >> "$GITHUB_STEP_SUMMARY"
