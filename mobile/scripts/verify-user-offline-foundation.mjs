@@ -89,7 +89,7 @@ const checks = [
         typecheckJob.indexOf("Execute hybrid Android config plugins before any EAS APK build");
   })()],
   ["Fast Refresh harness tests allow only the qualification-owned route to be rewritten",
-    /if \(ROUTE\.exists\(\) && !ROUTE_CREATED\)/.test(read("scripts/verify-user-dev-client-delivery.py")) &&
+    /if ROUTE\.exists\(\) and not ROUTE_CREATED:/.test(read("scripts/verify-user-dev-client-delivery.py")) &&
     read("scripts/verify-user-dev-client-delivery.py").includes("write_qa_route(\"AFCON360_METRO_FAST_REFRESH_BEFORE\")") &&
     read("scripts/test-user-dev-client-delivery.py").includes("Refusing to overwrite an existing source file") &&
     read("../.github/workflows/mobile-workspace.yml").includes("python scripts/test-user-dev-client-delivery.py")],
