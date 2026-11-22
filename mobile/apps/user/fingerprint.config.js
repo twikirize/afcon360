@@ -15,7 +15,15 @@ module.exports = {
   ],
   // Make a deliberate policy change visible to the native APK cache key.
   extraSources: [
-    { type: "file", filePath: "fingerprint.config.js" },
-    { type: "file", filePath: "plugins/withDevClientEmbeddedBundle.js" }
+    {
+      type: "file",
+      filePath: "fingerprint.config.js",
+      reasons: ["AFCON360's native fingerprint policy"]
+    },
+    {
+      type: "file",
+      filePath: "plugins/withDevClientEmbeddedBundle.js",
+      reasons: ["AFCON360's Metro and embedded-bundle startup fallback"]
+    }
   ]
 };
