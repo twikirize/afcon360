@@ -55,12 +55,12 @@ const checks = [
     const metroJob = metroStart >= 0 ? workflow.slice(metroStart) : "";
     const throwawayJob = throwawayStart >= 0 && throwawayEnd > throwawayStart
       ? workflow.slice(throwawayStart, throwawayEnd) : "";
-    return /- reconcile\\/user-local-files-20261121/.test(workflow) &&
+    return workflow.includes("- reconcile/user-local-files-20261121") &&
       prebuildJob.includes("mobile-user-e2e-backend.py prebuild") &&
       !/sdkmanager|gradlew|assembleRelease|android-emulator-runner|expo prebuild/i.test(prebuildJob) &&
-      /needs: \\[classify-user-changes, mobile-typecheck, user-prebuild-tests\\]/.test(metroJob) &&
-      /needs\\.user-prebuild-tests\\.result == 'success'/.test(metroJob) &&
-      /github\\.ref_name != 'reconcile\\/user-local-files-20261121'/.test(throwawayJob);
+      metroJob.includes("needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests]") &&
+      metroJob.includes("needs.user-prebuild-tests.result == 'success'") &&
+      throwawayJob.includes("github.ref_name != 'reconcile/user-local-files-20261121'");
   })()],
   ["Disposable authenticated-journey APK is gated behind strict TypeScript and Android/iOS bundle exports", /user-authenticated-journey:[\s\S]*?needs: \[classify-user-changes, mobile-typecheck\]/.test(read("../.github/workflows/mobile-workspace.yml")) && /name: Bundle User app for Android and iOS/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Compatible preview updates are also published to the release-like user-development channel", /Publish compatible bundle to release-like User preview OTA channel/.test(read("../.github/workflows/mobile-workspace.yml")) && /AFCON360_UPDATE_CHANNEL: "user-development"/.test(read("../.github/workflows/mobile-workspace.yml"))],
