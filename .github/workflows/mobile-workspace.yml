@@ -56,7 +56,7 @@ permissions:
 env:
   AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
   AFCON360_USER_E2E_APK_RECIPE_VERSION: "v6"
-  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v12"
+  AFCON360_USER_DEV_APK_RECIPE_VERSION: "v13"
 
 jobs:
   classify-user-changes:
@@ -412,6 +412,19 @@ jobs:
               > "$RUNNER_TEMP/afcon360-user-dev-delivery-config.json"
           node scripts/verify-user-dev-delivery-contract.mjs \
             "$RUNNER_TEMP/afcon360-user-dev-delivery-config.json"
+          (
+            cd apps/user
+            AFCON360_PREVIEW_BUILD="true" \
+            AFCON360_RELEASE_BUILD="false" \
+            AFCON360_DEVELOPMENT_CLIENT="true" \
+            AFCON360_UPDATE_CHANNEL="user-development-client" \
+            EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:5000" \
+              node ../../scripts/user-native-fingerprint.cjs \
+                > "$RUNNER_TEMP/afcon360-user-dev-native-fingerprint.txt"
+          )
+          FINGERPRINT="$(cat "$RUNNER_TEMP/afcon360-user-dev-native-fingerprint.txt")"
+          test -n "$FINGERPRINT"
+          echo "PASS: development native fingerprint computed before APK build: $FINGERPRINT"
           python -m py_compile scripts/verify-user-dev-client-delivery.py
 
       - name: Type-check User application
