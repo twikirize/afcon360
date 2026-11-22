@@ -903,6 +903,7 @@ jobs:
           nohup python mobile/scripts/mobile-user-e2e-backend.py serve > mobile-e2e-evidence/backend.log 2>&1 < /dev/null &
           echo $! > mobile-e2e-evidence/backend.pid
           for attempt in $(seq 1 60); do
+            : "$attempt"
             if curl --silent --show-error --fail http://127.0.0.1:5000/api/health/ping >/dev/null; then
               echo "Disposable AFCON360 API is healthy."
               exit 0
@@ -1360,6 +1361,7 @@ jobs:
             > "$AFCON360_E2E_EVIDENCE_DIR/backend.log" 2>&1 < /dev/null &
           echo $! > "$AFCON360_E2E_EVIDENCE_DIR/backend.pid"
           for attempt in $(seq 1 60); do
+            : "$attempt"
             if curl --silent --show-error --fail http://127.0.0.1:5000/api/health/ping >/dev/null; then
               echo "Isolated API is healthy for ${{ matrix.android-label }}."
               exit 0
@@ -1581,11 +1583,13 @@ jobs:
           VERSION_SHA256="$(printf '%s' "$VERSION_NAME" | sha256sum | awk '{print $1}')"
           # Bump recipe-v1 only when the EAS invocation, artifact validation or signing workflow changes.
           KEY="afcon360-user-dev-apk-${AFCON360_USER_DEV_APK_RECIPE_VERSION}-native-$FINGERPRINT-profile-$PROFILE_SHA256-version-$VERSION_SHA256"
-          echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
-          echo "profile_sha256=$PROFILE_SHA256" >> "$GITHUB_OUTPUT"
-          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-          echo "version_sha256=$VERSION_SHA256" >> "$GITHUB_OUTPUT"
-          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          {
+            echo "fingerprint=$FINGERPRINT"
+            echo "profile_sha256=$PROFILE_SHA256"
+            echo "version_name=$VERSION_NAME"
+            echo "version_sha256=$VERSION_SHA256"
+            echo "key=$KEY"
+          } >> "$GITHUB_OUTPUT"
           echo "Metro development-client APK native fingerprint: $FINGERPRINT"
           echo "Development-client EAS profile SHA-256: $PROFILE_SHA256"
           echo "App version: $VERSION_NAME"
