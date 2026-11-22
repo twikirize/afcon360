@@ -17,6 +17,7 @@ on:
       - "mobile/pnpm-workspace.yaml"
       - "mobile/.npmrc"
       - ".github/workflows/mobile-workspace.yml"
+      - "docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md"
   pull_request:
     types: [opened, reopened, ready_for_review]
     branches: [feat/native-user-app-integration-20261108]
@@ -29,6 +30,7 @@ on:
       - "mobile/pnpm-workspace.yaml"
       - "mobile/.npmrc"
       - ".github/workflows/mobile-workspace.yml"
+      - "docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md"
   workflow_dispatch:
     inputs:
       force_apk_rebuild:
@@ -53,7 +55,7 @@ permissions:
 
 env:
   AFCON360_USER_EAS_PROJECT_ID: ${{ vars.AFCON360_USER_EAS_PROJECT_ID }}
-  AFCON360_USER_E2E_APK_RECIPE_VERSION: "v5"
+  AFCON360_USER_E2E_APK_RECIPE_VERSION: "v6"
   AFCON360_USER_DEV_APK_RECIPE_VERSION: "v3"
 
 jobs:
@@ -390,12 +392,13 @@ jobs:
 
   publish-preview-ota:
     name: Publish User OTA update to preview channel
-    needs: [classify-user-changes, mobile-typecheck]
+    needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests]
     if: >-
       ${{
         needs.classify-user-changes.outputs.ota == 'true' &&
         needs.classify-user-changes.outputs.native != 'true' &&
         needs.mobile-typecheck.result == 'success' &&
+        needs.user-prebuild-tests.result == 'success' &&
         github.event_name == 'workflow_dispatch' &&
         github.ref_name == 'feat/native-user-app-integration-20261108' &&
         inputs.publish_preview_ota == true
@@ -587,9 +590,10 @@ jobs:
 
   user-authenticated-journey:
     name: User APK — login, protected journeys, restore and logout
-    needs: [classify-user-changes, mobile-typecheck]
+    needs: [classify-user-changes, mobile-typecheck, user-prebuild-tests]
     if: >-
       ${{
+        needs.user-prebuild-tests.result == 'success' &&
         github.ref_name != 'feat/user-offline-first-foundation-20261117' &&
         github.ref_name != 'reconcile/user-local-files-20261121' &&
         (
@@ -694,10 +698,10 @@ jobs:
           test -n "$FINGERPRINT"
           # Bump the recipe version only when the disposable APK build recipe
           # changes (manifest override, SDK/build tools, signing mode or Gradle task).
-          # The disposable authenticated-journey APK must embed this exact source revision.
-          # Unlike the distributable dev-client APK, it is intentionally rebuilt for JS-only changes
-          # so stale embedded JS can never be used as proof for the current commit.
-          KEY="afcon360-user-e2e-apk-recipe-${AFCON360_USER_E2E_APK_RECIPE_VERSION}-native-$FINGERPRINT-source-$GITHUB_SHA"
+          # The APK supplies the native runtime; the current JavaScript bundle is
+          # published to the isolated E2E OTA channel below. Reuse is safe only when
+          # the native fingerprint and this build recipe match.
+          KEY="afcon360-user-e2e-apk-recipe-${AFCON360_USER_E2E_APK_RECIPE_VERSION}-native-$FINGERPRINT"
           echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
           echo "Native Android fingerprint: $FINGERPRINT"
@@ -716,7 +720,6 @@ jobs:
           USER_APK_CACHE_MATCHED_KEY: ${{ steps.user-apk-cache.outputs.cache-matched-key }}
           USER_APK_NATIVE_FINGERPRINT: ${{ steps.user-apk-key.outputs.fingerprint }}
           USER_APK_CACHE_KEY: ${{ steps.user-apk-key.outputs.key }}
-          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
           FORCE_USER_APK_REBUILD: ${{ inputs.force_apk_rebuild == true }}
         run: |
           set -euo pipefail
@@ -737,7 +740,6 @@ jobs:
           EXPECTED_SHA="$(sed -n 's/^apk_sha256=//p' "$INFO" | head -n 1)"
           ACTUAL_SHA="$(sha256sum "$APK" | awk '{print $1}')"
           test -n "$EXPECTED_SHA" && test "$EXPECTED_SHA" = "$ACTUAL_SHA" || exit 0
-          grep -Fxq "source_commit=$EXPECTED_SOURCE_COMMIT" "$INFO" || exit 0
 
           CACHED_FINGERPRINT="$(sed -n 's/^native_fingerprint=//p' "$INFO" | head -n 1)"
           if [ -n "$CACHED_FINGERPRINT" ]; then
@@ -1480,7 +1482,6 @@ jobs:
         (
           needs.classify-user-changes.outputs.native == 'true' ||
           needs.classify-user-changes.outputs.ota == 'true' ||
-          needs.classify-user-changes.outputs.e2e_harness == 'true' ||
           (github.event_name == 'workflow_dispatch' && inputs.force_apk_rebuild == true)
         )
       }}
