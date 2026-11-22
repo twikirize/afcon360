@@ -348,8 +348,8 @@ def main() -> None:
     # and no internet, the startup fallback must enter the embedded AFCON360
     # bundle rather than leave the user on the development launcher.
     set_network_offline()
-    fresh_offline_ui = cold_launch("fresh-install-offline-startup.txt")
-    fresh_offline_ok = "Your journey starts here." in fresh_offline_ui
+    cold_launch("fresh-install-offline-startup.txt")
+    fresh_offline_ok, fresh_offline_ui = wait_for_text("Your journey starts here.", timeout=90)
     record(
         "fresh first launch opens embedded AFCON360 with Metro and internet unavailable",
         fresh_offline_ok,
@@ -400,11 +400,17 @@ def main() -> None:
 
     # Test the exact behaviour requested: Metro has been used most recently,
     # but is now stopped. The icon launch must enter AFCON360, not the launcher.
-    metro_off_ui = cold_launch("metro-off-after-metro-launch.txt")
-    automatic_fallback = (
-        "Your journey starts here." in metro_off_ui
-        or "AFCON360_EAS_UPDATE_" in metro_off_ui
-    )
+    cold_launch("metro-off-after-metro-launch.txt")
+    metro_off_deadline = time.monotonic() + 120
+    metro_off_ui = ""
+    automatic_fallback = False
+    while time.monotonic() < metro_off_deadline:
+        metro_off_ui = visible_text()
+        if "Your journey starts here." in metro_off_ui or "AFCON360_EAS_UPDATE_" in metro_off_ui:
+            automatic_fallback = True
+            break
+        time.sleep(1)
+    save_text("metro-off-after-metro-launch-ui.xml", ui_dump())
     record(
         "cold launch opens AFCON360 after the most-recent Metro server is stopped",
         automatic_fallback,
@@ -420,13 +426,13 @@ def main() -> None:
 
     # Having loaded the EAS bundle once, the last project should now be the
     # EAS update rather than Metro. Verify cold-start and then cached offline.
-    update_cold_ui = cold_launch("eas-update-cold-launch.txt")
-    update_cold_ok = "AFCON360_EAS_UPDATE_" + update_marker in update_cold_ui
+    cold_launch("eas-update-cold-launch.txt")
+    update_cold_ok, update_cold_ui = wait_for_text("AFCON360_EAS_UPDATE_" + update_marker, timeout=120)
     record("EAS update becomes the app's cold-start project with Metro stopped", update_cold_ok, update_cold_ui[-2000:])
 
     set_network_offline()
-    offline_ui = cold_launch("eas-update-offline-cold-launch.txt")
-    offline_ok = "AFCON360_EAS_UPDATE_" + update_marker in offline_ui
+    cold_launch("eas-update-offline-cold-launch.txt")
+    offline_ok, offline_ui = wait_for_text("AFCON360_EAS_UPDATE_" + update_marker, timeout=90)
     record("cached EAS bundle opens when both Metro and internet are unavailable", offline_ok, offline_ui[-2000:])
 
     # Validate that the actual User login screen is present in the EAS-updated
