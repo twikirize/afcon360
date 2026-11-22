@@ -174,7 +174,9 @@ def start_backend_stub() -> None:
 
 def write_qa_route(marker: str) -> None:
     global ROUTE_CREATED
-    if ROUTE.exists():
+    # Refuse to touch a developer-owned route, but allow this qualification
+    # runner to rewrite the exact temporary route it created for Fast Refresh.
+    if ROUTE.exists() and not ROUTE_CREATED:
         raise RuntimeError(f"Refusing to overwrite an existing source file: {ROUTE}")
     ROUTE.parent.mkdir(parents=True, exist_ok=True)
     ROUTE.write_text(
