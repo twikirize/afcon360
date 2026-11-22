@@ -6,7 +6,6 @@ const { withAppBuildGradle, withDangerousMod } = require("expo/config-plugins");
 
 /**
  * AFCON360's single development APK needs three compatible sources:
- *
  * 1. Metro for active development and Fast Refresh.
  * 2. The latest compatible EAS Update when Metro is unavailable.
  * 3. The embedded JS bundle if neither Metro nor a usable EAS update can load.
@@ -16,16 +15,15 @@ const { withAppBuildGradle, withDangerousMod } = require("expo/config-plugins");
  * retaining expo-dev-client and its Metro support.
  *
  * SDK 58's DevLauncher falls back from a failed defaultLaunchURL to its
- * launcher screen. We patch that one failure path to try the bundled JS before
- * showing the launcher. The patch is version-structure guarded and fails the
- * native prebuild if Expo changes the source unexpectedly.
+ * launcher screen. Patch that one failure path to try the bundled JS before
+ * showing the launcher. This patch is version-structure guarded.
  */
 module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
   if (options.enabled !== true) return config;
 
   config = withAppBuildGradle(config, (modConfig) => {
     const contents = modConfig.modResults.contents;
-    const reactOpen = /\\breact\\s*\\{/.exec(contents);
+    const reactOpen = /\breact\s*\{/.exec(contents);
     if (!reactOpen) {
       throw new Error(
         "AFCON360 could not find the React Native react { } block in android/app/build.gradle."
@@ -33,7 +31,7 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
     }
 
     const openBrace = contents.indexOf("{", reactOpen.index);
-    const closeLine = contents.indexOf("\\n}", openBrace);
+    const closeLine = contents.indexOf("\n}", openBrace);
     if (closeLine < 0) {
       throw new Error(
         "AFCON360 could not find the end of the React Native react { } Gradle block."
@@ -41,7 +39,7 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
     }
 
     const block = contents.slice(openBrace + 1, closeLine);
-    const setting = /^([ \\t]*)(?:\\/\\/\\s*)?debuggableVariants\\s*=.*$/m.exec(block);
+    const setting = /^([ \t]*)(?:\/\/\s*)?debuggableVariants\s*=.*$/m.exec(block);
     let updatedBlock;
 
     if (setting) {
@@ -50,11 +48,11 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
       updatedBlock = block.replace(setting[0], replacement);
     } else {
       updatedBlock =
-        "\\n    debuggableVariants = [] // Bundle debug JS while retaining expo-dev-client and Metro." +
+        "\n    debuggableVariants = [] // Bundle debug JS while retaining expo-dev-client and Metro." +
         block;
     }
 
-    if (updatedBlock === block && !/^\\s*debuggableVariants\\s*=\\s*\\[\\s*\\]/m.test(block)) {
+    if (updatedBlock === block && !/^\s*debuggableVariants\s*=\s*\[\s*\]/m.test(block)) {
       throw new Error("AFCON360 failed to configure the development APK embedded bundle.");
     }
 
@@ -100,7 +98,7 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
         "  }",
         "",
         "  override fun handleIntent",
-      ].join("\\n");
+      ].join("\n");
       const patched = [
         "      } catch (_: Throwable) {",
         "        try {",
@@ -117,7 +115,7 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
         "  }",
         "",
         "  override fun handleIntent",
-      ].join("\\n");
+      ].join("\n");
 
       if (source.includes(patched)) {
         console.log("AFCON360 automatic embedded-bundle fallback is already patched.");
