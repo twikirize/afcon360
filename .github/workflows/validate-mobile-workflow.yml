@@ -1,0 +1,41 @@
+name: Validate AFCON360 mobile workflow
+
+on:
+  push:
+    branches:
+      - reconcile/user-local-files-20261121
+    paths:
+      - ".github/workflows/mobile-workspace.yml"
+      - ".github/workflows/validate-mobile-workflow.yml"
+  pull_request:
+    branches:
+      - feat/native-user-app-integration-20261108
+    paths:
+      - ".github/workflows/mobile-workspace.yml"
+      - ".github/workflows/validate-mobile-workflow.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Parse and lint mobile-workspace.yml
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out workflow source
+        uses: actions/checkout@v4
+
+      - name: Install Go for actionlint
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+
+      - name: Parse GitHub Actions workflow syntax and job graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run github.com/rhysd/actionlint/cmd/actionlint@latest \
+            -color \
+            .github/workflows/mobile-workspace.yml
+          echo "PASS: mobile-workspace.yml parses and passes actionlint."
