@@ -5,18 +5,17 @@ const path = require("node:path");
 const { withAppBuildGradle, withDangerousMod } = require("expo/config-plugins");
 
 /**
- * AFCON360's single development APK needs three compatible sources:
- * 1. Metro for active development and Fast Refresh.
- * 2. The latest compatible EAS Update when Metro is unavailable.
- * 3. The embedded JS bundle if neither Metro nor a usable EAS update can load.
+ * AFCON360's single development APK uses Metro for active editing, a compatible
+ * EAS Update when Metro is unavailable, and its embedded bundle if neither
+ * network source can load.
  *
- * React Native Gradle Plugin normally omits the JS bundle for debuggable
- * variants. Removing "debug" from debuggableVariants embeds the bundle while
- * retaining expo-dev-client and its Metro support.
+ * React Native Gradle Plugin normally omits JS for debuggable variants.
+ * Removing "debug" from debuggableVariants embeds JS without disabling Metro.
  *
- * SDK 58's DevLauncher falls back from a failed defaultLaunchURL to its
- * launcher screen. Patch that one failure path to try the bundled JS before
- * showing the launcher. This patch is version-structure guarded.
+ * SDK 58 DevLauncher normally returns to its launcher after failed URL loading.
+ * Patch both failed-loader and failed-default-URL paths to try the embedded
+ * app first. Exact source guards stop the native build if Expo changes these
+ * code paths and the patch needs review.
  */
 module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
   if (options.enabled !== true) return config;
@@ -25,17 +24,13 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
     const contents = modConfig.modResults.contents;
     const reactOpen = /\breact\s*\{/.exec(contents);
     if (!reactOpen) {
-      throw new Error(
-        "AFCON360 could not find the React Native react { } block in android/app/build.gradle."
-      );
+      throw new Error("AFCON360 could not find React Native's react { } Gradle block.");
     }
 
     const openBrace = contents.indexOf("{", reactOpen.index);
     const closeLine = contents.indexOf("\n}", openBrace);
     if (closeLine < 0) {
-      throw new Error(
-        "AFCON360 could not find the end of the React Native react { } Gradle block."
-      );
+      throw new Error("AFCON360 could not find the end of the React Native Gradle block.");
     }
 
     const block = contents.slice(openBrace + 1, closeLine);
@@ -43,22 +38,22 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
     let updatedBlock;
 
     if (setting) {
-      const replacement = setting[1] +
-        "debuggableVariants = [] // Bundle debug JS while retaining expo-dev-client and Metro.";
-      updatedBlock = block.replace(setting[0], replacement);
+      updatedBlock = block.replace(
+        setting[0],
+        setting[1] + "debuggableVariants = [] // Keep Metro and also ship an embedded JS bundle."
+      );
     } else {
       updatedBlock =
-        "\n    debuggableVariants = [] // Bundle debug JS while retaining expo-dev-client and Metro." +
+        "\n    debuggableVariants = [] // Keep Metro and also ship an embedded JS bundle." +
         block;
     }
 
     if (updatedBlock === block && !/^\s*debuggableVariants\s*=\s*\[\s*\]/m.test(block)) {
-      throw new Error("AFCON360 failed to configure the development APK embedded bundle.");
+      throw new Error("AFCON360 failed to enable the embedded development bundle.");
     }
 
     modConfig.modResults.contents =
       contents.slice(0, openBrace + 1) + updatedBlock + contents.slice(closeLine);
-
     return modConfig;
   });
 
@@ -84,13 +79,13 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
 
       if (!fs.existsSync(controllerPath)) {
         throw new Error(
-          "AFCON360 could not locate SDK 58 DevLauncherController.kt. " +
-          "The automatic embedded fallback patch must be reviewed for the installed Expo SDK."
+          "AFCON360 could not locate the installed Expo DevLauncherController.kt. " +
+          "Review the SDK-specific fallback patch before building."
         );
       }
 
       const source = fs.readFileSync(controllerPath, "utf8");
-      const original = [
+      const originalDefaultFallback = [
         "      } catch (_: Throwable) {",
         "        navigateToLauncher()",
         "      }",
@@ -99,7 +94,7 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
         "",
         "  override fun handleIntent",
       ].join("\n");
-      const patched = [
+      const patchedDefaultFallback = [
         "      } catch (_: Throwable) {",
         "        try {",
         "          if (hasEmbeddedBundle()) {",
@@ -117,20 +112,56 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
         "  override fun handleIntent",
       ].join("\n");
 
-      if (source.includes(patched)) {
-        console.log("AFCON360 automatic embedded-bundle fallback is already patched.");
+      const originalLoaderFailure = [
+        "      } else {",
+        "        // The app couldn't be loaded. For now, we just return to the launcher.",
+        "        mode = Mode.LAUNCHER",
+        "        manifest = null",
+        "        manifestURL = null",
+        "      }",
+      ].join("\n");
+      const patchedLoaderFailure = [
+        "      } else {",
+        "        // Neither Metro nor the EAS update loader initialized; try the bundled app.",
+        "        synchronized(this) {",
+        "          appIsLoading = false",
+        "          _isLoadingToBundler.value = false",
+        "        }",
+        "        if (hasEmbeddedBundle()) {",
+        "          loadEmbeddedBundle(mainActivity)",
+        "        } else {",
+        "          mode = Mode.LAUNCHER",
+        "          manifest = null",
+        "          manifestURL = null",
+        "          navigateToLauncher()",
+        "        }",
+        "      }",
+      ].join("\n");
+
+      const hasDefaultFallback = source.includes(patchedDefaultFallback);
+      const hasLoaderFallback = source.includes(patchedLoaderFailure);
+      if (hasDefaultFallback && hasLoaderFallback) {
+        console.log("AFCON360 automatic embedded-bundle fallbacks are already patched.");
         return modConfig;
       }
-      if (!source.includes(original)) {
+      if (hasDefaultFallback || hasLoaderFallback) {
         throw new Error(
-          "AFCON360 could not match the expected SDK 58 DevLauncher fallback block. " +
-          "Refusing to make an unverified change to expo-dev-launcher."
+          "AFCON360 found a partially patched Expo DevLauncher. Refusing a mixed startup configuration."
+        );
+      }
+      if (!source.includes(originalDefaultFallback) || !source.includes(originalLoaderFailure)) {
+        throw new Error(
+          "AFCON360 could not match the expected Expo SDK DevLauncher failure paths. " +
+          "Refusing an unverified native source modification."
         );
       }
 
-      fs.writeFileSync(controllerPath, source.replace(original, patched), "utf8");
+      const patchedSource = source
+        .replace(originalDefaultFallback, patchedDefaultFallback)
+        .replace(originalLoaderFailure, patchedLoaderFailure);
+      fs.writeFileSync(controllerPath, patchedSource, "utf8");
       console.log(
-        "AFCON360 patched Metro/EAS failure handling: load embedded JS before showing the developer launcher."
+        "AFCON360 automatic fallback enabled: Metro -> EAS Update -> embedded app -> launcher only if all app sources fail."
       );
       return modConfig;
     },
