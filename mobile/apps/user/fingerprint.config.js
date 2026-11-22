@@ -14,5 +14,8 @@ module.exports = {
     "ExpoConfigExtraSection"
   ],
   // Make a deliberate policy change visible to the native APK cache key.
-  extraSources: [{ type: "file", filePath: "fingerprint.config.js" }]
+  extraSources: [
+    { type: "file", filePath: "fingerprint.config.js" },
+    { type: "file", filePath: "plugins/withDevClientEmbeddedBundle.js" }
+  ]
 };
