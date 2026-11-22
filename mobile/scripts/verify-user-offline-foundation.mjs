@@ -84,9 +84,19 @@ const checks = [
       ? workflow.slice(typecheckStart, typecheckEnd) : "";
     return typecheckJob.includes("Execute hybrid Android config plugins before any EAS APK build") &&
       typecheckJob.includes("expo prebuild --platform android --no-install --clean") &&
+      typecheckJob.includes("PREBUILD_LOG") &&
+      typecheckJob.includes("AFCON360 automatic fallback enabled: Metro -> EAS Update -> embedded app") &&
       typecheckJob.includes("debuggableVariants = []") &&
       typecheckJob.indexOf("Bundle User app for Android and iOS") <
         typecheckJob.indexOf("Execute hybrid Android config plugins before any EAS APK build");
+  })()],
+  ["Hybrid config plugin resolves the matching nested Expo Dev Launcher from pnpm", (() => {
+    const plugin = read("apps/user/plugins/withDevClientEmbeddedBundle.js");
+    return plugin.includes("findPackageRootFromEntry") &&
+      plugin.includes("findInstalledPackageRoot") &&
+      plugin.includes('entry.startsWith(packageName + "@")') &&
+      plugin.includes('devClientPackage.dependencies?.["expo-dev-launcher"]') &&
+      plugin.includes("package root for ");
   })()],
   ["Fast Refresh harness tests allow only the qualification-owned route to be rewritten",
     /if ROUTE\.exists\(\) and not ROUTE_CREATED:/.test(read("scripts/verify-user-dev-client-delivery.py")) &&

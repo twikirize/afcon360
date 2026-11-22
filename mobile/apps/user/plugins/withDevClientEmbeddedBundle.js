@@ -17,6 +17,79 @@ const { withAppBuildGradle, withDangerousMod } = require("expo/config-plugins");
  * app first. Exact source guards stop the native build if Expo changes these
  * code paths and the patch needs review.
  */
+function findPackageRootFromEntry(entry, packageName) {
+  let current = path.dirname(entry);
+  while (true) {
+    const manifestPath = path.join(current, "package.json");
+    if (fs.existsSync(manifestPath)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        if (manifest.name === packageName) return current;
+      } catch {
+        // Continue walking; the next ancestor may still be the package root.
+      }
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  throw new Error("AFCON360 could not locate package root for " + packageName + ".");
+}
+
+function findInstalledPackageRoot(packageName, expectedVersion, startDirectory) {
+  const candidates = [];
+  const seen = new Set();
+  const add = (candidate) => {
+    const resolved = path.resolve(candidate);
+    if (!seen.has(resolved)) {
+      seen.add(resolved);
+      candidates.push(resolved);
+    }
+  };
+
+  // Support normal node_modules layouts and pnpm's isolated virtual store.
+  let current = path.resolve(startDirectory);
+  while (true) {
+    add(path.join(current, "node_modules", packageName));
+    const virtualStore = path.join(current, "node_modules", ".pnpm");
+    if (fs.existsSync(virtualStore)) {
+      for (const entry of fs.readdirSync(virtualStore)) {
+        if (entry.startsWith(packageName + "@")) {
+          add(path.join(virtualStore, entry, "node_modules", packageName));
+        }
+      }
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+
+  const exactVersion = typeof expectedVersion === "string"
+    ? expectedVersion.match(/\d+\.\d+\.\d+/)?.[0]
+    : null;
+  for (const candidate of candidates) {
+    const manifestPath = path.join(candidate, "package.json");
+    if (!fs.existsSync(manifestPath)) continue;
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      if (
+        manifest.name === packageName &&
+        (!exactVersion || manifest.version === exactVersion)
+      ) {
+        return candidate;
+      }
+    } catch {
+      // Ignore malformed/non-package candidates and keep searching.
+    }
+  }
+
+  throw new Error(
+    "AFCON360 could not find " + packageName +
+    (expectedVersion ? "@" + expectedVersion : "") +
+    " in the workspace node_modules or pnpm virtual store."
+  );
+}
+
 module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
   if (options.enabled !== true) return config;
 
@@ -61,10 +134,20 @@ module.exports = function withDevClientEmbeddedBundle(config, options = {}) {
     "android",
     async (modConfig) => {
       const devClientEntry = require.resolve("expo-dev-client");
-      const launcherEntry = require.resolve("expo-dev-launcher", {
-        paths: [path.dirname(devClientEntry)],
-      });
-      const launcherRoot = path.resolve(path.dirname(launcherEntry), "..");
+      const devClientRoot = findPackageRootFromEntry(devClientEntry, "expo-dev-client");
+      const devClientPackage = JSON.parse(
+        fs.readFileSync(path.join(devClientRoot, "package.json"), "utf8"),
+      );
+      const expectedLauncherVersion =
+        devClientPackage.dependencies?.["expo-dev-launcher"] ||
+        devClientPackage.optionalDependencies?.["expo-dev-launcher"] ||
+        null;
+      const launcherRoot = findInstalledPackageRoot(
+        "expo-dev-launcher",
+        expectedLauncherVersion,
+        devClientRoot,
+      );
+      console.log("Resolved Expo Dev Launcher package:", launcherRoot);
       const controllerPath = path.join(
         launcherRoot,
         "android",
