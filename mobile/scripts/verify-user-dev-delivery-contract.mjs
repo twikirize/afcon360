@@ -27,6 +27,11 @@ const fingerprintConfig = fs.readFileSync(
   "utf8",
 );
 
+const workflowSource = fs.readFileSync(
+  path.resolve(mobileRoot, "..", ".github", "workflows", "mobile-workspace.yml"),
+  "utf8",
+);
+
 const checks = [];
 const add = (label, passed, detail = "") => checks.push({ label, passed: Boolean(passed), detail });
 
@@ -74,6 +79,10 @@ add("app config enables the native embedded-bundle and automatic fallback plugin
 add("native fallback plugin is included in the fingerprint with valid reasons metadata",
   fingerprintConfig.includes('filePath: "plugins/withDevClientEmbeddedBundle.js"') &&
   fingerprintConfig.includes('reasons: ["AFCON360\'s Metro and embedded-bundle startup fallback"]'));
+add("native fingerprint preflight runs before any candidate APK build",
+  workflowSource.includes("node ../../scripts/user-native-fingerprint.cjs") &&
+  workflowSource.indexOf("Validate hybrid Metro and EAS development delivery configuration") <
+    workflowSource.indexOf("  build-user-dev-apk:"));
 add("native plugin automatically falls back to embedded JS after Metro and EAS loading fail",
   gradlePlugin.includes("loadEmbeddedBundle(activityToBeInvalidated)") &&
   gradlePlugin.includes("loadEmbeddedBundle(mainActivity)") &&
