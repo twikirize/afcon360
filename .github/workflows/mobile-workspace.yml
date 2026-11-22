@@ -426,6 +426,7 @@ jobs:
           test -n "$FINGERPRINT"
           echo "PASS: development native fingerprint computed before APK build: $FINGERPRINT"
           python -m py_compile scripts/verify-user-dev-client-delivery.py
+          python scripts/test-user-dev-client-delivery.py
 
       - name: Type-check User application
         run: pnpm user:typecheck
@@ -434,6 +435,53 @@ jobs:
         run: |
           pnpm --filter @afcon360/user-app exec expo export --platform android --output-dir /tmp/afcon360-user-android
           pnpm --filter @afcon360/user-app exec expo export --platform ios --output-dir /tmp/afcon360-user-ios
+
+      - name: Execute hybrid Android config plugins before any EAS APK build
+        shell: bash
+        env:
+          AFCON360_PREVIEW_BUILD: "true"
+          AFCON360_RELEASE_BUILD: "false"
+          AFCON360_DEVELOPMENT_CLIENT: "true"
+          AFCON360_UPDATE_CHANNEL: "user-development-client"
+          EXPO_PUBLIC_API_BASE_URL: "http://127.0.0.1:5000"
+          CI: "1"
+        run: |
+          set -euo pipefail
+          # Execute native config plugins on this disposable CI checkout. No APK is built here.
+          pnpm --filter @afcon360/user-app exec expo prebuild --platform android --no-install --clean
+          test -s apps/user/android/app/src/main/AndroidManifest.xml
+          grep -Fq 'debuggableVariants = []' apps/user/android/app/build.gradle
+
+          (
+            cd apps/user
+            node - <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const devClientEntry = require.resolve("expo-dev-client");
+          const launcherEntry = require.resolve("expo-dev-launcher", {
+            paths: [path.dirname(devClientEntry)],
+          });
+          const launcherRoot = path.resolve(path.dirname(launcherEntry), "..");
+          const controllerPath = path.join(
+            launcherRoot, "android", "src", "debug", "java", "expo", "modules",
+            "devlauncher", "DevLauncherController.kt"
+          );
+          if (!fs.existsSync(controllerPath)) {
+            throw new Error("Expo DevLauncherController.kt was not found after hybrid prebuild.");
+          }
+          const source = fs.readFileSync(controllerPath, "utf8");
+          const checks = {
+            "failed default launch falls back to embedded AFCON360": source.includes("loadEmbeddedBundle(activityToBeInvalidated)"),
+            "failed Metro/EAS loader falls back to embedded AFCON360": source.includes("loadEmbeddedBundle(mainActivity)"),
+            "launcher is only the final fallback": source.includes("Neither Metro nor the EAS update loader initialized; try the bundled app.")
+          };
+          for (const [label, passed] of Object.entries(checks)) {
+            console.log((passed ? "PASS " : "FAIL ") + label);
+          }
+          if (Object.values(checks).some(passed => !passed)) process.exit(1);
+          NODE
+          )
+          echo "PASS: Android native config plugins executed and hybrid fallback patch is present."
 
   publish-preview-ota:
     name: Publish User OTA update to preview channel

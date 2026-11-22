@@ -76,6 +76,23 @@ const checks = [
       throwawayJob.includes("needs.user-prebuild-tests.result == 'success'") &&
       !throwawayJob.includes("github.ref_name != 'reconcile/user-local-files-20261121'");
   })()],
+  ["Hybrid Android config plugins execute in CI before any APK build", (() => {
+    const workflow = read("../.github/workflows/mobile-workspace.yml");
+    const typecheckStart = workflow.indexOf("  mobile-typecheck:");
+    const typecheckEnd = workflow.indexOf("  publish-preview-ota:", typecheckStart);
+    const typecheckJob = typecheckStart >= 0 && typecheckEnd > typecheckStart
+      ? workflow.slice(typecheckStart, typecheckEnd) : "";
+    return typecheckJob.includes("Execute hybrid Android config plugins before any EAS APK build") &&
+      typecheckJob.includes("expo prebuild --platform android --no-install --clean") &&
+      typecheckJob.includes("debuggableVariants = []") &&
+      typecheckJob.indexOf("Bundle User app for Android and iOS") <
+        typecheckJob.indexOf("Execute hybrid Android config plugins before any EAS APK build");
+  })()],
+  ["Fast Refresh harness tests allow only the qualification-owned route to be rewritten",
+    /if \(ROUTE\.exists\(\) && !ROUTE_CREATED\)/.test(read("scripts/verify-user-dev-client-delivery.py")) &&
+    read("scripts/verify-user-dev-client-delivery.py").includes("write_qa_route(\"AFCON360_METRO_FAST_REFRESH_BEFORE\")") &&
+    read("scripts/test-user-dev-client-delivery.py").includes("Refusing to overwrite an existing source file") &&
+    read("../.github/workflows/mobile-workspace.yml").includes("python scripts/test-user-dev-client-delivery.py")],
   ["Mobile update/rebuild constitution is versioned and included in workflow path filters", read("../docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md").includes("PRE-BUILD TEST GATE") && read("../.github/workflows/mobile-workspace.yml").includes('docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md')],
   ["Test-harness-only changes reuse an exact compatible APK and build one baseline only when cache is absent", (() => {
     const workflow = read("../.github/workflows/mobile-workspace.yml");
