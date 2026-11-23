@@ -49,6 +49,8 @@ $env:AFCON360_RELEASE_BUILD = "false"
 $env:AFCON360_DEVELOPMENT_CLIENT = "true"
 $env:AFCON360_UPDATE_CHANNEL = "user-development-client"
 $env:EXPO_PUBLIC_API_BASE_URL = $ApiBaseUrl.TrimEnd("/")
+$env:EXPO_NO_DEPENDENCY_VALIDATION = "1"
+$env:EXPO_NO_DOCTOR = "1"
 
 $MetroHostMode = "lan"
 if ($ConnectionMode -eq "Usb") { $MetroHostMode = "localhost" }
