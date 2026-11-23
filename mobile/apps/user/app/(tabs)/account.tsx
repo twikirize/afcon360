@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -143,6 +143,19 @@ export default function Account() {
   const displayName = user?.display_name || user?.username || "AFCON360 member";
   const initials = accountInitials(displayName);
 
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleAvatarPress = useCallback(() => {
+    if (!__DEV__) return;
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0; }, 1500);
+    if (tapCountRef.current >= 5) {
+      tapCountRef.current = 0;
+      router.push("/connection" as never);
+    }
+  }, [router]);
+
   return (
     <AppScreen>
       <PageHeader
@@ -152,9 +165,9 @@ export default function Account() {
       />
 
       <View style={styles.profileHero}>
-        <View style={styles.avatar}>
+        <Pressable onPress={handleAvatarPress} style={styles.avatar} accessibilityLabel="AFCON360 avatar">
           <Text style={styles.avatarText}>{initials}</Text>
-        </View>
+        </Pressable>
         <View style={styles.profileInfo}>
           <Text style={styles.profileEyebrow}>YOUR PAMOJA IDENTITY</Text>
           <Text style={styles.profileName} numberOfLines={2}>{displayName}</Text>
@@ -319,6 +332,22 @@ export default function Account() {
           last
         />
       </AccountMenuSection>
+
+      {__DEV__ && (
+        <AccountMenuSection
+          title="Developer"
+          description="Internal development tools"
+        >
+          <WebsiteMenuRow
+            title="Metro connection"
+            description="Connect to Metro bundler for Fast Refresh, auto-wake, and manual IP entry"
+            symbol="⚡"
+            onPress={() => router.push("/connection" as never)}
+            external={false}
+            last
+          />
+        </AccountMenuSection>
+      )}
 
       <AccountMenuSection
         title="Privacy"

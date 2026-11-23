@@ -169,7 +169,20 @@ def tap_text(
     React Native Text nodes. Some return [0,0][0,0] for a visible tab label;
     tapping that Text node would silently tap screen coordinate (0,0). Walk
     up the native hierarchy and prefer the nearest enabled clickable parent.
+
+    Never fall back to a non-clickable parent or a full-screen view.
+    Never tap into the Android system navigation area.
     """
+    # Get screen dimensions once for navigation-area protection
+    size_output = run_adb("shell", "wm", "size")
+    sizes = re.findall(r"(\d+)x(\d+)", size_output)
+    if not sizes:
+        raise RuntimeError(f"Could not determine Android display size: {size_output.strip()}")
+    screen_width, screen_height = map(int, sizes[-1])
+    # System navigation bar typically occupies bottom ~60-80dp (~12-15% of height)
+    # Use a conservative threshold: reject taps in bottom 15% of screen
+    nav_bar_threshold_y = int(screen_height * 0.85)
+
     deadline = time.monotonic() + timeout
     last_diagnostics = []
     while time.monotonic() < deadline:
@@ -197,13 +210,18 @@ def tap_text(
                 }
 
                 ancestor = node
-                nearest_visible = None
                 clickable_target = None
                 disabled_clickable_ancestor = False
                 depth = 0
                 while ancestor is not None:
                     center = bounds_center(ancestor.attrib.get("bounds", ""))
                     if center is not None:
+                        cx, cy = center
+                        # Reject taps that would land in the system navigation area
+                        if cy >= nav_bar_threshold_y:
+                            ancestor = parents.get(ancestor)
+                            depth += 1
+                            continue
                         candidate = {
                             "center": center,
                             "bounds": ancestor.attrib.get("bounds", ""),
@@ -212,8 +230,6 @@ def tap_text(
                             "enabled": ancestor.attrib.get("enabled", ""),
                             "depth": depth,
                         }
-                        if nearest_visible is None:
-                            nearest_visible = candidate
                         if candidate["clickable"] == "true":
                             if candidate["enabled"] == "false":
                                 disabled_clickable_ancestor = True
@@ -223,45 +239,45 @@ def tap_text(
                     ancestor = parents.get(ancestor)
                     depth += 1
 
-                target = clickable_target or nearest_visible
-                if (
-                    target is not None
-                    and not (
-                        require_enabled
-                        and (
-                            target["enabled"] == "false"
-                            or disabled_clickable_ancestor
-                        )
+                # Only accept a clickable, enabled ancestor with valid bounds.
+                # Do NOT fall back to nearest_visible (non-clickable parent).
+                if clickable_target is not None and not (
+                    require_enabled
+                    and (
+                        clickable_target["enabled"] == "false"
+                        or disabled_clickable_ancestor
                     )
                 ):
                     matches.append({
                         "matched_node": matched,
-                        "target_node": target,
-                        "target_source": (
-                            "nearest-clickable-ancestor"
-                            if clickable_target is not None
-                            else "nearest-visible-ancestor"
-                        ),
+                        "target_node": clickable_target,
+                        "target_source": "nearest-clickable-ancestor",
                     })
 
             if matches:
                 chosen = matches[-1] if last else matches[0]
                 x, y = chosen["target_node"]["center"]
-                print(
-                    "ANDROID_TAP_TARGET: "
-                    + json.dumps({
-                        "label": value,
-                        "match_count": len(matches),
-                        "chosen": chosen,
-                        "all_matches": matches,
-                    }, sort_keys=True),
-                    flush=True,
-                )
-                run_adb("shell", "input", "tap", str(x), str(y))
-                time.sleep(0.7)
-                return
+                # Final guard: never tap into navigation area
+                if y >= nav_bar_threshold_y:
+                    last_diagnostics = [
+                        f"chosen target center ({x},{y}) falls in system navigation area (y >= {nav_bar_threshold_y}); refusing to tap"
+                    ]
+                else:
+                    print(
+                        "ANDROID_TAP_TARGET: "
+                        + json.dumps({
+                            "label": value,
+                            "match_count": len(matches),
+                            "chosen": chosen,
+                            "all_matches": matches,
+                        }, sort_keys=True),
+                        flush=True,
+                    )
+                    run_adb("shell", "input", "tap", str(x), str(y))
+                    time.sleep(0.7)
+                    return
             last_diagnostics = [
-                f"matching text {value!r} was found without any usable bounds"
+                f"matching text {value!r} was found but no enabled clickable ancestor with valid bounds outside navigation area"
             ]
         except Exception as error:
             last_diagnostics = [f"{type(error).__name__}: {error}"]
