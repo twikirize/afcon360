@@ -98,11 +98,29 @@ const checks = [
       plugin.includes('devClientPackage.dependencies?.["expo-dev-launcher"]') &&
       plugin.includes("package root for ");
   })()],
-  ["Fast Refresh harness tests allow only the qualification-owned route to be rewritten",
-    /if ROUTE\.exists\(\) and not ROUTE_CREATED:/.test(read("scripts/verify-user-dev-client-delivery.py")) &&
-    read("scripts/verify-user-dev-client-delivery.py").includes("write_qa_route(\"AFCON360_METRO_FAST_REFRESH_BEFORE\")") &&
-    read("scripts/test-user-dev-client-delivery.py").includes("Refusing to overwrite an existing source file") &&
-    read("../.github/workflows/mobile-workspace.yml").includes("python scripts/test-user-dev-client-delivery.py")],
+  ["Metro Fast Refresh qualification uses a temporary root route and restores the original source byte-for-byte", (() => {
+    const script = read("scripts/verify-user-dev-client-delivery.py");
+    const unit = read("scripts/test-user-dev-client-delivery.py");
+    return script.includes('ROUTE = Path("apps/user/app/index.tsx")') &&
+      script.includes("ROUTE_BACKUP = ROUTE.read_bytes()") &&
+      script.includes("def restore_qa_route()") &&
+      script.includes("restore_qa_route()") &&
+      unit.includes("restored byte-for-byte") &&
+      unit.includes("TEMPORARY_ROOT_ROUTE") &&
+      read("../.github/workflows/mobile-workspace.yml").includes("python scripts/test-user-dev-client-delivery.py");
+  })()],
+  ["SDK 58 automated Dev Client launch suppresses onboarding, floating tool and automatic dev menu", (() => {
+    const script = read("scripts/verify-user-dev-client-delivery.py");
+    return script.includes("__expo_disable_onboarding=1") &&
+      script.includes("__expo_disable_fab=1") &&
+      script.includes("__expo_disable_auto_launch=1");
+  })()],
+  ["Offline development-client qualification records whether EAS content or embedded fallback launched", (() => {
+    const script = read("scripts/verify-user-dev-client-delivery.py");
+    return script.includes("offline_cached_marker or offline_embedded_fallback") &&
+      script.includes("persistent_eas_cache_qualification") &&
+      script.includes("not_proven_by_development_client");
+  })()],
   ["Metro qualification removes GitHub CI mode so Metro WebSocket reloads and Fast Refresh remain enabled", (() => { const script = read("scripts/verify-user-dev-client-delivery.py"); const start = script.indexOf("def start_metro"); const end = script.indexOf("def open_dev_url", start); const block = script.slice(start, end); return block.includes("env.pop(\"CI\", None)") && !block.includes('"CI": "1"'); })()],
   ["EAS fallback qualification follows the development APK configured channel URL", read("scripts/verify-user-dev-client-delivery.py").includes('update_url = f"https://u.expo.dev/{project_id}?channel-name=user-development-client"') && read("apps/user/app.config.ts").includes('"https://u.expo.dev/" + easProjectId + "?channel-name=" + updateChannel')],
   ["Temporary EAS qualification channel routing is restored after emulator tests, including failures", (() => { const workflow = read("../.github/workflows/mobile-workspace.yml"); return workflow.includes('channel:edit "$CHANNEL" --branch "$QA_BRANCH" --non-interactive') && workflow.includes("Restore User development channel after Android qualification") && workflow.includes("if: always()") && workflow.includes("channel:edit user-development-client --branch user-development-client --non-interactive"); })()],

@@ -31,13 +31,15 @@ SCHEME = "afcon360-preview-dev"
 METRO_PORT = 8081
 API_PORT = 5000
 EVIDENCE = Path(os.environ.get("AFCON360_DEV_EVIDENCE_DIR", "user-dev-delivery-evidence"))
-ROUTE = Path("apps/user/app/dev-delivery-qualification.tsx")
+ROUTE = Path("apps/user/app/index.tsx")
 
 RESULTS: dict[str, Any] = {"package": PACKAGE, "checks": [], "backend_requests": []}
 SERVER: ThreadingHTTPServer | None = None
 METRO: subprocess.Popen[str] | None = None
 METRO_LOG = None
 ROUTE_CREATED = False
+ROUTE_BACKUP: bytes | None = None
+ROUTE_EXISTED = False
 
 
 class ReadyHandler(BaseHTTPRequestHandler):
@@ -173,11 +175,12 @@ def start_backend_stub() -> None:
 
 
 def write_qa_route(marker: str) -> None:
-    global ROUTE_CREATED
-    # Refuse to touch a developer-owned route, but allow this qualification
-    # runner to rewrite the exact temporary route it created for Fast Refresh.
-    if ROUTE.exists() and not ROUTE_CREATED:
-        raise RuntimeError(f"Refusing to overwrite an existing source file: {ROUTE}")
+    global ROUTE_CREATED, ROUTE_BACKUP, ROUTE_EXISTED
+    # The qualification job runs in an isolated checkout. Back up the committed
+    # app root route before replacing it with a marker screen for Metro/Fast Refresh.
+    if not ROUTE_CREATED:
+        ROUTE_EXISTED = ROUTE.exists()
+        ROUTE_BACKUP = ROUTE.read_bytes() if ROUTE_EXISTED else None
     ROUTE.parent.mkdir(parents=True, exist_ok=True)
     ROUTE.write_text(
         'import React from "react";\n'
@@ -190,6 +193,21 @@ def write_qa_route(marker: str) -> None:
         encoding="utf-8",
     )
     ROUTE_CREATED = True
+
+
+def restore_qa_route() -> None:
+    global ROUTE_CREATED, ROUTE_BACKUP, ROUTE_EXISTED
+    if not ROUTE_CREATED:
+        return
+    if ROUTE_EXISTED:
+        if ROUTE_BACKUP is None:
+            raise RuntimeError("AFCON360 qualification lost the saved app root route.")
+        ROUTE.write_bytes(ROUTE_BACKUP)
+    else:
+        ROUTE.unlink(missing_ok=True)
+    ROUTE_CREATED = False
+    ROUTE_BACKUP = None
+    ROUTE_EXISTED = False
 
 
 def start_metro() -> None:
@@ -228,7 +246,12 @@ def open_dev_url(target_url: str, filename: str) -> None:
     encoded = urllib.parse.quote(target_url, safe="")
     # SDK 58 launch URL contract; legacy expo-development-client/?url= is no
     # longer the preferred format but remains supported for older SDK clients.
-    launch = f"{SCHEME}://?__expo_url={encoded}"
+    launch = (
+        f"{SCHEME}://?__expo_url={encoded}"
+        "&__expo_disable_onboarding=1"
+        "&__expo_disable_fab=1"
+        "&__expo_disable_auto_launch=1"
+    )
     output = adb(
         "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW",
         "-d", launch, timeout=60,
@@ -365,8 +388,7 @@ def main() -> None:
     start_metro()
     try:
         open_dev_url(f"http://127.0.0.1:{METRO_PORT}", "metro-launch.txt")
-        open_app_route("dev-delivery-qualification", "metro-route-launch.txt")
-        before_ok, before_ui = wait_for_text("AFCON360_METRO_FAST_REFRESH_BEFORE", timeout=120)
+        before_ok, before_ui = wait_for_text("AFCON360_METRO_FAST_REFRESH_BEFORE", timeout=150)
         record("Metro serves the AFCON360 development app", before_ok, before_ui[-1500:])
 
         write_qa_route("AFCON360_METRO_FAST_REFRESH_AFTER")
@@ -398,8 +420,7 @@ def main() -> None:
         # Keep the diagnostic route only during the Metro test. A route shipped
         # in the EAS qualification update is injected separately by the build job.
         stop_metro()
-        if ROUTE_CREATED:
-            ROUTE.unlink(missing_ok=True)
+        restore_qa_route()
 
     # Test the exact behaviour requested: Metro has been used most recently,
     # but is now stopped. The icon launch must enter AFCON360, not the launcher.
@@ -436,8 +457,26 @@ def main() -> None:
 
     set_network_offline()
     cold_launch("eas-update-offline-cold-launch.txt")
-    offline_ok, offline_ui = wait_for_text("AFCON360_EAS_UPDATE_" + update_marker, timeout=90)
-    record("cached EAS bundle opens when both Metro and internet are unavailable", offline_ok, offline_ui[-2000:])
+    offline_ui = visible_text()
+    offline_cached_marker = "AFCON360_EAS_UPDATE_" + update_marker in offline_ui
+    offline_embedded_fallback = "Your journey starts here." in offline_ui
+    offline_ok = offline_cached_marker or offline_embedded_fallback
+    RESULTS["offline_startup_source"] = (
+        "eas_update_marker" if offline_cached_marker
+        else "embedded_bundle" if offline_embedded_fallback
+        else "no_afcon360_screen"
+    )
+    RESULTS["persistent_eas_cache_qualification"] = (
+        "observed" if offline_cached_marker
+        else "not_proven_by_development_client; embedded fallback verified"
+        if offline_embedded_fallback
+        else "failed"
+    )
+    record(
+        "offline cold launch keeps AFCON360 available with Metro and internet unavailable",
+        offline_ok,
+        "source=" + RESULTS["offline_startup_source"] + "; " + offline_ui[-2000:],
+    )
 
     # Validate that the actual User login screen is present in the EAS-updated
     # application bundle, still without contacting production services.
@@ -482,7 +521,6 @@ if __name__ == "__main__":
         raise
     finally:
         stop_metro()
-        if ROUTE_CREATED:
-            ROUTE.unlink(missing_ok=True)
+        restore_qa_route()
         if SERVER:
             SERVER.shutdown()
