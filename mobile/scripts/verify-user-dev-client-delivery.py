@@ -202,8 +202,9 @@ def start_metro() -> None:
         "AFCON360_UPDATE_CHANNEL": "user-development-client",
         "EXPO_PUBLIC_API_BASE_URL": "http://127.0.0.1:5000",
         "EXPO_NO_TELEMETRY": "1",
-        "CI": "1",
     })
+    # GitHub Actions exports CI=true, which makes Metro disable reloads and HMR.
+    env.pop("CI", None)
     if not env.get("AFCON360_USER_EAS_PROJECT_ID"):
         raise RuntimeError("AFCON360_USER_EAS_PROJECT_ID is required for delivery qualification.")
     METRO_LOG = (EVIDENCE / "metro-server.log").open("w", encoding="utf-8")
@@ -421,7 +422,8 @@ def main() -> None:
 
     # Independently prove the same APK can load a published, runtime-compatible
     # EAS Update using the documented SDK 58 dev-client update launch URL.
-    update_url = f"https://u.expo.dev/{project_id}/group/{update_group}"
+    update_url = f"https://u.expo.dev/{project_id}?channel-name=user-development-client"
+    RESULTS["eas_update_channel"] = "user-development-client"
     open_dev_url(update_url, "eas-update-launch.txt")
     update_ok, update_ui = wait_for_text("AFCON360_EAS_UPDATE_" + update_marker, timeout=150)
     record("same APK loads the compatible EAS Update group", update_ok, update_ui[-2000:])

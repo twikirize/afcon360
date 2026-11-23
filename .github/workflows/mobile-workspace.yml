@@ -1910,7 +1910,9 @@ jobs:
             --platform android \
             --message "AFCON360 User dev-client qualification $MARKER" \
             --non-interactive
-          echo "Published a CI-only test marker update to isolated branch $QA_BRANCH."
+          CHANNEL="user-development-client"
+          npx --yes eas-cli@latest channel:edit "$CHANNEL" --branch "$QA_BRANCH" --non-interactive
+          echo "Temporarily routed $CHANNEL to CI-only marker branch $QA_BRANCH for exact default-fallback qualification."
 
       - name: Resolve published EAS qualification update group
         id: dev-update-list
@@ -1986,6 +1988,16 @@ jobs:
             --message "AFCON360 User preview OTA ${GITHUB_SHA}" \
             --non-interactive
           echo "Published the compatible release-like User preview bundle to user-development; installed preview APKs still require matching runtime/platform/channel."
+
+      - name: Restore User development channel if APK publication fails
+        if: ${{ failure() || cancelled() }}
+        working-directory: mobile/apps/user
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest channel:edit user-development-client --branch user-development-client --non-interactive
 
   user-dev-client-delivery-qualification:
     name: Qualify Metro, EAS fallback and startup on Android
@@ -2082,6 +2094,16 @@ jobs:
           path: mobile/user-dev-delivery-evidence/
           if-no-files-found: warn
           retention-days: 90
+
+      - name: Restore User development channel after Android qualification
+        if: always()
+        working-directory: mobile/apps/user
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@latest channel:edit user-development-client --branch user-development-client --non-interactive
 
       - name: Publish emulator-qualified APK candidate
         if: ${{ steps.qualify.outcome == 'success' }}
