@@ -2072,7 +2072,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
           disable-animations: true
           emulator-boot-timeout: 600
-          script: python scripts/verify-user-dev-client-delivery.py user-dev-apk-artifact/afcon360-user-metro-development.apk
+          script: cd mobile && python scripts/verify-user-dev-client-delivery.py user-dev-apk-artifact/afcon360-user-metro-development.apk
 
       - name: Upload detailed User development delivery evidence
         if: always()
