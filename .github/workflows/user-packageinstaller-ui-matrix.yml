@@ -284,7 +284,6 @@ jobs:
           ram-size: 4096M
           disk-size: 12G
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -accel on
-          disable-animations: true
           emulator-boot-timeout: 900
           script: >-
             python mobile/scripts/verify-user-packageinstaller-ui.py
