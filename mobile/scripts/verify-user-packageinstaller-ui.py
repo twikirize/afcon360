@@ -17,6 +17,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from urllib.parse import quote
 from typing import Sequence
 
 PACKAGE_OLD = "space.pamoja.afcon360.user"
@@ -90,8 +91,8 @@ def capture_screenshot(evidence: Path, label: str) -> None:
 
 
 def dump_ui(evidence: Path, label: str) -> tuple[str, ET.Element | None]:
-    adb("shell", "uiautomator", "dump", "/sdcard/afcon360-packageinstaller-window.xml", timeout=25, check=False)
-    raw = adb("exec-out", "cat", "/sdcard/afcon360-packageinstaller-window.xml", timeout=15, check=False)
+    adb("shell", "uiautomator", "dump", "/data/local/tmp/afcon360-packageinstaller-window.xml", timeout=25, check=False)
+    raw = adb("exec-out", "cat", "/data/local/tmp/afcon360-packageinstaller-window.xml", timeout=15, check=False)
     write_text(evidence / f"{label}-window.xml", raw)
     try:
         root = ET.fromstring(raw)
@@ -164,45 +165,36 @@ def set_up_installer_source(evidence: Path) -> None:
 
 
 
-def media_store_content_uri(remote_path: str, evidence: Path, label: str) -> str:
-    """Ask Android MediaProvider for a readable content URI for the staged APK.
 
-    PackageInstaller cannot consume a raw file:// URI. The shell MediaProvider
-    scan call returns the content:// URI that can be granted to the installer.
+def external_storage_document_uri(remote_path: str, evidence: Path, label: str) -> str:
+    """Build and verify a shell-readable ExternalStorageProvider document URI.
+
+    The emulator's MediaProvider authority is not guaranteed to be installed
+    in every system image. The platform ExternalStorageProvider is the
+    DocumentsProvider used by Android's system file picker; the adb shell has
+    MANAGE_DOCUMENTS access for this test. Stage at the shared-storage root so
+    no Download directory creation is required.
     """
+    filename = Path(remote_path).name
+    document_id = f"primary:{filename}"
+    uri = (
+        "content://com.android.externalstorage.documents/document/"
+        + quote(document_id, safe="")
+    )
     result = run(
-        [
-            "adb",
-            "shell",
-            "content",
-            "call",
-            "--uri",
-            "content://media",
-            "--method",
-            "scan_file",
-            "--arg",
-            remote_path,
-        ],
-        timeout=90,
+        ["adb", "shell", "content", "query", "--uri", uri],
+        timeout=45,
         check=False,
     )
     output = (result.stdout or "") + (result.stderr or "")
-    write_text(evidence / f"{label}-media-scan.txt", output)
-    if result.returncode != 0:
+    write_text(evidence / f"{label}-document-provider-query.txt", output)
+    if result.returncode != 0 or filename not in output:
+        provider_packages = adb("shell", "pm", "list", "packages", check=False)
+        write_text(evidence / f"{label}-provider-packages.txt", provider_packages)
         raise TestFailure(
-            f"MediaProvider could not create an installer URI for {remote_path} "
-            f"(exit {result.returncode}): {output[-3000:]}"
+            "Android ExternalStorageProvider could not expose the staged APK "
+            f"as a readable document URI ({uri}): {output[-3000:]}"
         )
-
-    match = re.search(r"(content://[^\\s,}\\]]+)", output)
-    if not match:
-        raise TestFailure(
-            f"MediaProvider did not return a content:// URI for {remote_path}: "
-            f"{output[-3000:]}"
-        )
-    uri = match.group(1).rstrip(").'")
-    if not uri.startswith("content://"):
-        raise TestFailure(f"MediaProvider returned an invalid installer URI: {uri}")
     write_text(evidence / f"{label}-content-uri.txt", uri + "\\n")
     return uri
 
@@ -218,20 +210,29 @@ def perform_packageinstaller_install(
     if not apk.is_file() or apk.stat().st_size == 0:
         raise TestFailure(f"APK fixture is missing or empty: {apk}")
 
-    # Stage the APK in shell-owned storage. Do not depend on /sdcard being
-    # mounted or responsive: some emulator images stall indefinitely while
-    # creating /sdcard/Download. MediaProvider can return a content URI for
-    # the staged file, which is what Android's installer contract requires.
-    remote = f"/data/local/tmp/{label}.apk"
+    # Stage directly in the shared-storage root. This avoids creating a
+    # Download subdirectory (which can stall on some emulator images) while
+    # remaining accessible through Android's ExternalStorageProvider.
+    remote = f"/sdcard/{label}.apk"
+    storage_probe = run(
+        ["adb", "shell", "ls", "-ld", "/sdcard"],
+        timeout=20,
+        check=False,
+    )
+    if storage_probe.returncode != 0:
+        raise TestFailure(
+            "Android shared storage is not mounted; cannot create the "
+            f"PackageInstaller content URI: {storage_probe.stderr or storage_probe.stdout}"
+        )
     write_text(
         evidence / f"{label}-storage-staging.txt",
-        f"mode=data-local-tmp\\nremote={remote}\\n",
+        f"mode=shared-storage-root\\nremote={remote}\\n",
     )
     adb("push", str(apk), remote, timeout=120)
     remote_listing = adb("shell", "ls", "-l", remote, timeout=30)
     write_text(evidence / f"{label}-remote-apk.txt", remote_listing)
 
-    content_uri = media_store_content_uri(remote, evidence, label)
+    content_uri = external_storage_document_uri(remote, evidence, label)
 
     # ACTION_INSTALL_PACKAGE requires a content:// URI; grant the system
     # installer temporary read access to the APK. This opens the real installer
