@@ -18,6 +18,7 @@ const approved = [
   ["apps/user/app/(service)/settings.tsx", "WebBrowser.openBrowserAsync(officialDownloadsUrl)", "Open official downloads"],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(`${SITE}/onboarding/choose`)', "Become a partner on website"],
   ["apps/user/app/server-settings.tsx", "Linking.openURL(deepLink)", "Save & Connect to Metro"],
+  ["apps/user/app/connection.tsx", "Linking.openURL(deepLink)", "Save & Connect to Metro"],
 ];
 
 const nativeInternalRoutes = [
