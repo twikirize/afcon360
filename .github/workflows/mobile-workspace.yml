@@ -19,7 +19,7 @@ on:
       - ".github/workflows/mobile-workspace.yml"
       - "docs/engineering/AFCON360_MOBILE_UPDATE_REBUILD_CONSTITUTION.md"
   pull_request:
-    types: [opened, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [feat/native-user-app-integration-20261108]
     paths:
       - "mobile/apps/user/**"

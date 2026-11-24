@@ -2,64 +2,120 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { withDangerousMod } = require("expo/config-plugins");
 
+function findInstalledPackageRoot(packageName, expectedVersion, startDirectory) {
+  const packageSegments = packageName.split("/");
+  const virtualStorePrefix = packageName.startsWith("@")
+    ? packageName.replace("/", "+")
+    : packageName;
+  const candidates = [];
+  const seen = new Set();
+  const add = (candidate) => {
+    const resolved = path.resolve(candidate);
+    if (!seen.has(resolved)) {
+      seen.add(resolved);
+      candidates.push(resolved);
+    }
+  };
+
+  let current = path.resolve(startDirectory);
+  while (true) {
+    add(path.join(current, "node_modules", ...packageSegments));
+    const virtualStore = path.join(current, "node_modules", ".pnpm");
+    if (fs.existsSync(virtualStore)) {
+      for (const entry of fs.readdirSync(virtualStore)) {
+        if (entry.startsWith(virtualStorePrefix + "@")) {
+          add(path.join(virtualStore, entry, "node_modules", ...packageSegments));
+        }
+      }
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+
+  const exactVersion = typeof expectedVersion === "string"
+    ? expectedVersion.match(/\d+\.\d+\.\d+/)?.[0]
+    : null;
+  for (const candidate of candidates) {
+    const manifestPath = path.join(candidate, "package.json");
+    if (!fs.existsSync(manifestPath)) continue;
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      if (
+        manifest.name === packageName &&
+        (!exactVersion || manifest.version === exactVersion)
+      ) {
+        return candidate;
+      }
+    } catch {
+      // Keep checking other valid workspace/package-manager candidates.
+    }
+  }
+
+  throw new Error(
+    "AFCON360 could not locate " + packageName +
+    (expectedVersion ? "@" + expectedVersion : "") +
+    " from " + startDirectory + "."
+  );
+}
+
 /**
- * React Native 0.88.1's included Gradle plugin build needs the Gradle Plugin
- * Portal to resolve org.gradle.toolchains.foojay-resolver-convention:1.0.0.
- * The upstream included build currently searches Maven Central only.
- *
- * This idempotent config plugin adjusts the dependency's own settings file
- * before the Android Gradle build. It applies to both local E2E prebuilds and
- * EAS preview builds, and fails loudly if the upstream layout changes.
+ * React Native 0.88.1's published Gradle plugin settings already include the
+ * Gradle Plugin Portal needed for the Foojay resolver. Verify the installed
+ * version selected by React Native rather than assuming one pnpm-store path.
+ * If a future upstream version removes the repository, restore it idempotently
+ * and fail loudly if the settings structure changes.
  */
 module.exports = function withReactNativeGradlePluginPortal(config) {
   return withDangerousMod(config, [
     "android",
     async (modConfig) => {
-      const mobileRoot = path.resolve(modConfig.modRequest.projectRoot, "../..");
-      const pnpmStore = path.join(mobileRoot, "node_modules", ".pnpm");
-      if (!fs.existsSync(pnpmStore)) {
-        throw new Error("AFCON360 could not locate the mobile pnpm store for Gradle plugin setup.");
+      const projectRoot = modConfig.modRequest.projectRoot;
+      const appManifest = JSON.parse(
+        fs.readFileSync(path.join(projectRoot, "package.json"), "utf8")
+      );
+      const reactNativeRoot = findInstalledPackageRoot(
+        "react-native",
+        appManifest.dependencies?.["react-native"],
+        projectRoot
+      );
+      const reactNativeManifest = JSON.parse(
+        fs.readFileSync(path.join(reactNativeRoot, "package.json"), "utf8")
+      );
+      const gradlePluginRoot = findInstalledPackageRoot(
+        "@react-native/gradle-plugin",
+        reactNativeManifest.dependencies?.["@react-native/gradle-plugin"],
+        reactNativeRoot
+      );
+      const settingsFile = path.join(gradlePluginRoot, "settings.gradle.kts");
+
+      if (!fs.existsSync(settingsFile)) {
+        throw new Error(
+          "AFCON360 could not find settings.gradle.kts in the selected React Native Gradle plugin: " +
+          gradlePluginRoot
+        );
       }
 
-      const candidates = fs.readdirSync(pnpmStore)
-        .filter((entry) => entry.startsWith("@react-native+gradle-plugin@"))
-        .sort();
-      const settingsFiles = candidates
-        .map((entry) => path.join(
-          pnpmStore,
-          entry,
-          "node_modules",
-          "@react-native",
-          "gradle-plugin",
-          "settings.gradle.kts"
-        ))
-        .filter((file) => fs.existsSync(file));
-
-      if (settingsFiles.length === 0) {
-        throw new Error("AFCON360 could not find React Native Gradle plugin settings.gradle.kts.");
+      const original = fs.readFileSync(settingsFile, "utf8");
+      if (original.includes("gradlePluginPortal()")) {
+        console.log("AFCON360 React Native Gradle plugin already includes Gradle Plugin Portal.");
+        return modConfig;
       }
 
-      for (const settingsFile of settingsFiles) {
-        const original = fs.readFileSync(settingsFile, "utf8");
-        if (original.includes("gradlePluginPortal()")) {
-          console.log("AFCON360 Gradle Plugin Portal already configured.");
-          continue;
-        }
-
-        const repositoriesBlock = /pluginManagement\s*\{\s*repositories\s*\{/m.exec(original);
-        if (!repositoriesBlock) {
-          throw new Error("AFCON360 could not find pluginManagement.repositories in the React Native Gradle plugin.");
-        }
-
-        const insertionPoint = repositoriesBlock.index + repositoriesBlock[0].length;
-        const updated =
-          original.slice(0, insertionPoint) +
-          "\n        gradlePluginPortal()" +
-          original.slice(insertionPoint);
-        fs.writeFileSync(settingsFile, updated, "utf8");
-        console.log("AFCON360 enabled Gradle Plugin Portal for the React Native Foojay resolver.");
+      const repositoriesBlock = /pluginManagement\s*\{\s*repositories\s*\{/m.exec(original);
+      if (!repositoriesBlock) {
+        throw new Error(
+          "AFCON360 could not find pluginManagement.repositories in the selected React Native Gradle plugin."
+        );
       }
 
+      const insertionPoint = repositoriesBlock.index + repositoriesBlock[0].length;
+      const updated =
+        original.slice(0, insertionPoint) +
+        "\n    gradlePluginPortal()" +
+        original.slice(insertionPoint);
+      fs.writeFileSync(settingsFile, updated, "utf8");
+      console.log("AFCON360 restored Gradle Plugin Portal for the React Native Foojay resolver.");
       return modConfig;
     }
   ]);

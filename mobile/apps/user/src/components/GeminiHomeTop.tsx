@@ -112,7 +112,6 @@ export function GeminiHomeTop({
             recentSearches={recentSearches}
             onRecentPress={onRecentPress}
             onClearRecent={onClearRecent}
-            variant="gemini"
           />
         </View>
       </View>
