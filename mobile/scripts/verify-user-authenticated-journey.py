@@ -706,9 +706,9 @@ def main() -> None:
 
     wait_for_text(
         "Your Africa.",
-        "Good to see you, " + USERNAME + ".",
+        "Your journey.",
         timeout=45,
-        label="authenticated Pamoja Home header",
+        label="authenticated curated Pamoja Home header",
     )
     login_navigation_only = os.environ.get("AFCON360_E2E_LOGIN_NAVIGATION_ONLY", "").strip().lower() in {"1", "true", "yes"}
     if login_navigation_only:
