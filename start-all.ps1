@@ -18,6 +18,9 @@
 
     Use -PhoneStart (alias -NoMetro) to leave Metro stopped and let the phone's
     Developer screen wake it (Account -> Developer -> Wake Metro on Laptop).
+
+    A rerun preserves healthy services already running (Flask, Metro listener,
+    Metro). Use -Restart to force a clean restart of the dev stack.
 #>
 [CmdletBinding()]
 param(
@@ -226,47 +229,87 @@ Write-Host ""
 
 if ($Restart) {
     Write-Host "Stopping existing AFCON360 dev services..." -ForegroundColor Yellow
-    $killPattern = 'metro_manager\.py|metro_listener\.py|start-user-metro\.ps1|expo start'
+    $killPattern = 'metro_manager\.py|metro_listener\.py|start-user-metro\.ps1|expo[\\/].*start|@expo[\\/]cli'
     if (-not $NoFlask) { $killPattern += '|app\.py' }
-    Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'powershell.exe' OR Name = 'node.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -match $killPattern } |
-        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    $staleProcesses = Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'powershell.exe' OR Name = 'node.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine -match $killPattern }
+    foreach ($proc in $staleProcesses) {
+        Write-Host "Stopping PID $($proc.ProcessId)..." -ForegroundColor Yellow
+        & taskkill.exe /PID $proc.ProcessId /T /F 2>$null | Out-Null
+    }
     $ports = @(8081, 8082)
     if (-not $NoFlask) { $ports += 5000 }
     foreach ($port in $ports) {
         Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty OwningProcess -Unique |
-            ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+            ForEach-Object { & taskkill.exe /PID $_ /T /F 2>$null | Out-Null }
     }
     Start-Sleep -Seconds 2
 }
 
-# 0. Clear stale wake artifacts so an old trigger cannot start Metro inadvertently
-Remove-Item -Force -ErrorAction SilentlyContinue `
-    (Join-Path $RepoRoot "metro_trigger.json"), `
-    (Join-Path $RepoRoot "metro_status.json")
+# 0. Reuse healthy services so a rerun does not create hidden duplicates.
+$flaskHealthUrl = "http://127.0.0.1:5000/api/health/ready"
+$listenerHealthUrl = "http://127.0.0.1:8082/health"
+$metroStatusUrl = "$MetroUrl/status"
+$flaskHealthy = (Test-HttpStatus $flaskHealthUrl) -eq "200"
+$listenerHealthy = (Test-HttpStatus $listenerHealthUrl) -eq "200"
+$metroStatusText = & curl.exe -s -m 3 $metroStatusUrl 2>$null
+$metroHealthy = (($metroStatusText -join "`n") -match "packager-status:running")
+$flaskPortInUse = [bool](Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue)
+$metroPortInUse = [bool](Get-NetTCPConnection -LocalPort 8081 -State Listen -ErrorAction SilentlyContinue)
 
-# 1. Start Metro Listener
-Write-Host "Starting Metro Listener (port 8082)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList '-NoExit', '-Command', "cd '$RepoRoot'; python metro_listener.py"
+if ($flaskPortInUse -and -not $flaskHealthy) {
+    for ($i = 0; $i -lt 15 -and -not $flaskHealthy; $i++) {
+        Start-Sleep -Seconds 1
+        $flaskHealthy = (Test-HttpStatus $flaskHealthUrl) -eq "200"
+    }
+}
+if ($metroPortInUse -and -not $metroHealthy) {
+    for ($i = 0; $i -lt 15 -and -not $metroHealthy; $i++) {
+        Start-Sleep -Seconds 1
+        $metroStatusText = & curl.exe -s -m 3 $metroStatusUrl 2>$null
+        $metroHealthy = (($metroStatusText -join "`n") -match "packager-status:running")
+    }
+}
 
-# 2. Start Metro Manager (mode and API URL are passed via environment)
-Write-Host "Starting Metro Manager ($Mode mode)..." -ForegroundColor Yellow
-$managerCmd = "cd '$RepoRoot'; `$env:AFCON_METRO_CONNECTION_MODE='$Mode'; `$env:AFCON_API_BASE_URL='$ApiBaseUrl'; `$env:AFCON_METRO_CLEAR_CACHE='$([int]$ClearCache.IsPresent)'; python metro_manager.py"
-Start-Process powershell -ArgumentList '-NoExit', '-Command', $managerCmd
+if ($metroHealthy) {
+    Write-Host "Metro is already running on port 8081; preserving it." -ForegroundColor Green
+} elseif ($metroPortInUse) {
+    throw "Port 8081 is in use but Metro is not ready. Use -Restart to force a clean restart."
+} elseif ($listenerHealthy) {
+    Write-Host "Metro listener is already running on port 8082; preserving it." -ForegroundColor Green
+} else {
+    # Clear stale wake artifacts so an old trigger cannot start Metro inadvertently
+    Remove-Item -Force -ErrorAction SilentlyContinue `
+        (Join-Path $RepoRoot "metro_trigger.json"), `
+        (Join-Path $RepoRoot "metro_status.json")
+
+    # 1. Start Metro Listener
+    Write-Host "Starting Metro Listener (port 8082)..." -ForegroundColor Yellow
+    Start-Process powershell -ArgumentList '-NoExit', '-Command', "cd '$RepoRoot'; python metro_listener.py"
+
+    # 2. Start Metro Manager (mode and API URL are passed via environment)
+    Write-Host "Starting Metro Manager ($Mode mode)..." -ForegroundColor Yellow
+    $managerCmd = "cd '$RepoRoot'; `$env:AFCON_METRO_CONNECTION_MODE='$Mode'; `$env:AFCON_API_BASE_URL='$ApiBaseUrl'; `$env:AFCON_METRO_CLEAR_CACHE='$([int]$ClearCache.IsPresent)'; python metro_manager.py"
+    Start-Process powershell -ArgumentList '-NoExit', '-Command', $managerCmd
+}
 
 # 3. Start Flask API on the phone-preview environment (HTTP 0.0.0.0:5000)
 if ($NoFlask) {
     Write-Host "Using the Flask API already running on port 5000 (PyCharm)..." -ForegroundColor Yellow
+} elseif ($flaskHealthy) {
+    Write-Host "Flask API is already ready on port 5000; preserving it." -ForegroundColor Green
+} elseif ($flaskPortInUse) {
+    Write-Host "Flask port 5000 is in use; waiting for readiness without starting a duplicate..." -ForegroundColor Yellow
 } else {
     Write-Host "Starting Flask API (port 5000)..." -ForegroundColor Yellow
-    Start-Process powershell -ArgumentList '-NoExit', '-Command', "cd '$AfconRoot'; `$env:APP_ENV='phone-preview'; .venv\Scripts\python.exe app.py"
+    Start-Process powershell -ArgumentList '-NoExit', '-Command', "cd '$AfconRoot'; `$env:APP_ENV='phone-preview'; `$env:AFCON360_OWNER='startall'; .venv\Scripts\python.exe app.py"
 }
 
 # Wait for Flask API to be ready
 Write-Host "Waiting for Flask API..." -ForegroundColor Cyan
-$flaskReady = $false
-for ($i = 0; $i -lt 60; $i++) {
+$flaskReady = $flaskHealthy
+for ($i = 0; $i -lt 60 -and -not $flaskReady; $i++) {
     try {
         $resp = Invoke-WebRequest -Uri "http://127.0.0.1:5000/api/health/ready" -Method GET `
             -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
@@ -344,6 +387,11 @@ if ($Mode -eq "Lan") {
 # 5. Metro: either start it here (default) or wait for the phone (phone-start)
 $launched = $false
 if ($PhoneStart) {
+    if ($metroHealthy) {
+        Write-Host "Metro is already running; the phone can connect directly." -ForegroundColor Green
+        Write-Host "Metro URL: $MetroUrl" -ForegroundColor Green
+        Write-Host "Phone action: Account -> Developer -> Save & Connect to Metro." -ForegroundColor Yellow
+    } else {
     $phoneListener = if ($Mode -eq "Lan" -and $LanIp) { "http://${LanIp}:8082" } else { "http://127.0.0.1:8082 (USB reverse)" }
     Write-Host "Phone-start mode: Metro is not started by this launcher." -ForegroundColor Cyan
     Write-Host "Waiting for the Metro Listener..." -ForegroundColor Cyan
@@ -364,6 +412,12 @@ if ($PhoneStart) {
     Write-Host "Set Laptop IP (for auto-wake) to $(if ($Mode -eq 'Lan' -and $LanIp) { $LanIp } else { '127.0.0.1' }), then tap Save & Connect to Metro." -ForegroundColor Yellow
     Write-Host "Metro will start on the laptop when the phone calls /wake: $MetroUrl" -ForegroundColor Yellow
     Write-Host "Note: the app must already be open (or have a cached/embedded bundle) to wake Metro." -ForegroundColor Gray
+    }
+} else {
+if ($metroHealthy) {
+    Write-Host "Metro is already running; skipping wake and health wait." -ForegroundColor Green
+    $metroReady = $true
+    $metroHttpReady = $true
 } else {
 # 5. Wake Metro via listener
 Write-Host "Waking Metro..." -ForegroundColor Yellow
@@ -427,6 +481,7 @@ for ($i = 0; $i -lt 90; $i++) {
 }
 if (-not $metroHttpReady) { throw "Metro HTTP status did not become ready on $MetroUrl" }
 Write-Host "Metro HTTP status ready on $MetroUrl" -ForegroundColor Green
+}
 
 # 7. Launch the app (USB used only to trigger the launch when available)
 $EncodedUrl = [Uri]::EscapeDataString($MetroUrl)
@@ -454,13 +509,21 @@ Write-Host "Mode           : $Mode"
 $listenerUrl = if ($Mode -eq "Lan" -and $LanIp) { "http://${LanIp}:8082" } else { "http://127.0.0.1:8082" }
 if ($Mode -eq "Lan" -and $LanIp) { Write-Host "LAN IP         : $LanIp" }
 Write-Host "Phone link     : $phoneLinkText"
-Write-Host "Metro Listener : $listenerUrl (wake endpoint)"
-Write-Host "Metro Manager  : watches trigger file, starts Metro"
-Write-Host "Flask API      : $ApiBaseUrl$(if ($NoFlask) { ' (PyCharm)' } else { '' })"
+$listenerState = if ($metroHealthy) { "not needed (Metro already running)" } elseif ($listenerHealthy) { "reused" } else { "started" }
+$managerState = if ($metroHealthy) { "not needed" } elseif ($listenerHealthy) { "reused" } else { "started" }
+$flaskState = if ($NoFlask) { "PyCharm" } elseif ($flaskHealthy) { "reused" } elseif ($flaskPortInUse) { "preserved (still starting)" } else { "started" }
+Write-Host "Metro Listener : $listenerUrl ($listenerState)"
+Write-Host "Metro Manager  : $managerState (watches trigger file, starts Metro)"
+Write-Host "Flask API      : $ApiBaseUrl ($flaskState)"
 if ($PhoneStart) {
-    Write-Host "Metro Bundler  : $MetroUrl (starts when the phone wakes it)"
-    Write-Host "Phone app      : open it and tap Wake Metro on Laptop"
-    Write-Host "Phone action   : Account -> Developer -> Wake Metro on Laptop -> Save & Connect"
+    if ($metroHealthy) {
+        Write-Host "Metro Bundler  : $MetroUrl (already running)"
+        Write-Host "Phone action   : Account -> Developer -> Save & Connect to Metro"
+    } else {
+        Write-Host "Metro Bundler  : $MetroUrl (starts when the phone wakes it)"
+        Write-Host "Phone app      : open it and tap Wake Metro on Laptop"
+        Write-Host "Phone action   : Account -> Developer -> Wake Metro on Laptop -> Save & Connect"
+    }
 } else {
     Write-Host "Metro Bundler  : $MetroUrl"
     if ($launched) {
@@ -474,13 +537,17 @@ if ($PhoneStart) {
 Write-Host ""
 if ($Mode -eq "Lan") {
     Write-Host "Lan mode auto-detects the laptop IP (phone hotspot, laptop hotspot, or shared Wi-Fi)." -ForegroundColor Gray
-    Write-Host "USB can be unplugged once the app is open. Use -Restart after a network/IP change." -ForegroundColor Gray
+    Write-Host "USB can be unplugged once the app is open. Rerun to reuse healthy services; use -Restart to force a clean restart." -ForegroundColor Gray
 } else {
     Write-Host "Usb mode: keep the cable connected. Use -Mode Lan for Wi-Fi/hotspot connectivity." -ForegroundColor Gray
 }
 if ($PhoneStart) {
-    Write-Host "Phone-start mode: Metro is started by the phone, not by this window." -ForegroundColor Gray
-    Write-Host "The listener stays up; reopen the app and tap Wake Metro on Laptop after a network change." -ForegroundColor Gray
+    if ($metroHealthy) {
+        Write-Host "Phone-start mode: Metro is already running; no listener is needed." -ForegroundColor Gray
+    } else {
+        Write-Host "Phone-start mode: Metro is started by the phone, not by this window." -ForegroundColor Gray
+        Write-Host "The listener stays up; reopen the app and tap Wake Metro on Laptop after a network change." -ForegroundColor Gray
+    }
 }
-Write-Host "Keep the Metro/Flask windows open. Rerun this launcher (it restarts safely) after a network change." -ForegroundColor Gray
+Write-Host "Keep the Metro/Flask windows open. Rerun this launcher to reuse healthy services; use -Restart to force a clean restart." -ForegroundColor Gray
 Read-Host "Press Enter to exit"
