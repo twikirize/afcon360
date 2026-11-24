@@ -1938,6 +1938,14 @@ def create_app(config_object=None) -> Flask:
     except Exception as e:
         app.logger.error(f"❌ Failed to register CSP routes: {e}")
 
+    # Health check endpoints (for mobile app auto-configuration)
+    try:
+        from app.api.health import health_bp
+        app.register_blueprint(health_bp)
+        app.logger.info("✅ Health check endpoints registered")
+    except Exception as e:
+        app.logger.error(f"❌ Failed to register health check endpoints: {e}")
+
     # JSON PIN API
     try:
         from app.wallet.routes_pin import pin_bp
@@ -3142,15 +3150,6 @@ def create_app(config_object=None) -> Flask:
         app.logger.warning("Module API blueprint not found – skipping")
     except Exception as e:
         app.logger.error(f"❌ Failed to register module API blueprint: {e}")
-
-    try:
-        from app.api.health import health_bp
-        app.register_blueprint(health_bp)
-        app.logger.info("✅ Health API blueprint registered")
-    except ImportError:
-        app.logger.warning("Health API blueprint not found – skipping")
-    except Exception as e:
-        app.logger.error(f"❌ Failed to register health API blueprint: {e}")
 
     # ------------------------------------------------------------------
     # Module reload middleware for instant toggle effect
