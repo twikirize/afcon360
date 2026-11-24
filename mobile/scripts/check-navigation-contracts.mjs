@@ -75,6 +75,8 @@ const publicRootRouteFiles = new Set([
   // Public preview-only route: users must be able to select the laptop API
   // before login when the installed preview APK initially targets loopback.
   "server-settings.tsx",
+  // Hidden developer-only preview route, launched from the five-tap Account menu.
+  "connection.tsx",
 ]);
 const userRootRoutes = path.join(root, "apps/user/app");
 for (const entry of fs.readdirSync(userRootRoutes, { withFileTypes: true })) {
