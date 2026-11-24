@@ -162,6 +162,7 @@ def tap_text(
     last: bool = False,
     timeout: int = 12,
     require_enabled: bool = False,
+    allow_tab_bar: bool = False,
 ) -> None:
     """Tap a visible text target through its real clickable ancestor when needed.
 
@@ -171,17 +172,23 @@ def tap_text(
     up the native hierarchy and prefer the nearest enabled clickable parent.
 
     Never fall back to a non-clickable parent or a full-screen view.
-    Never tap into the Android system navigation area.
+    Never tap into the Android system navigation area. The one explicit
+    exception is allow_tab_bar=True, which accepts clickable controls only
+    inside the app's bottom-tab band and still keeps clear of system UI.
     """
-    # Get screen dimensions once for navigation-area protection
+    # Get screen dimensions once for navigation-area protection.
     size_output = run_adb("shell", "wm", "size")
     sizes = re.findall(r"(\d+)x(\d+)", size_output)
     if not sizes:
         raise RuntimeError(f"Could not determine Android display size: {size_output.strip()}")
     screen_width, screen_height = map(int, sizes[-1])
-    # System navigation bar typically occupies bottom ~60-80dp (~12-15% of height)
-    # Use a conservative threshold: reject taps in bottom 15% of screen
-    nav_bar_threshold_y = int(screen_height * 0.85)
+    # Regular controls must stay above the bottom 15% of the screen.
+    # The app tab bar is in that band, but its controls remain above Android's
+    # system navigation; permit only the 85%-96% vertical band when requested.
+    regular_tap_limit_y = int(screen_height * 0.85)
+    tab_bar_top_y = regular_tap_limit_y
+    system_navigation_top_y = int(screen_height * 0.96)
+    tap_limit_y = system_navigation_top_y if allow_tab_bar else regular_tap_limit_y
 
     deadline = time.monotonic() + timeout
     last_diagnostics = []
@@ -217,8 +224,15 @@ def tap_text(
                     center = bounds_center(ancestor.attrib.get("bounds", ""))
                     if center is not None:
                         cx, cy = center
-                        # Reject taps that would land in the system navigation area
-                        if cy >= nav_bar_threshold_y:
+                        # Body actions stay above the bottom tab bar. Explicit
+                        # tab actions may use the app tab band, but never the
+                        # Android system navigation area.
+                        if allow_tab_bar:
+                            if cy < tab_bar_top_y or cy >= system_navigation_top_y:
+                                ancestor = parents.get(ancestor)
+                                depth += 1
+                                continue
+                        elif cy >= regular_tap_limit_y:
                             ancestor = parents.get(ancestor)
                             depth += 1
                             continue
@@ -257,10 +271,12 @@ def tap_text(
             if matches:
                 chosen = matches[-1] if last else matches[0]
                 x, y = chosen["target_node"]["center"]
-                # Final guard: never tap into navigation area
-                if y >= nav_bar_threshold_y:
+                # Final guard mirrors the per-ancestor safety band.
+                too_high_for_tab = allow_tab_bar and y < tab_bar_top_y
+                if y >= tap_limit_y or too_high_for_tab:
                     last_diagnostics = [
-                        f"chosen target center ({x},{y}) falls in system navigation area (y >= {nav_bar_threshold_y}); refusing to tap"
+                        f"chosen target center ({x},{y}) is outside the allowed "
+                        f"{'app tab-bar band' if allow_tab_bar else 'content area'}; refusing to tap"
                     ]
                 else:
                     print(
@@ -725,13 +741,13 @@ def main() -> None:
     mark_stage("authenticated_home")
 
     mark_stage("activity_navigation_started")
-    tap_text("Activity", last=True)
+    tap_text("Activity", last=True, allow_tab_bar=True)
     wait_for_text("Your rides and bookings.", "No rides yet", timeout=35, label="authenticated ride activity")
     save_screen("03-activity")
     mark_stage("activity_screen")
 
     mark_stage("wallet_navigation_started")
-    tap_text("Wallet", last=True)
+    tap_text("Wallet", last=True, allow_tab_bar=True)
     wait_for_text(
         "Your money, clearly managed.", "Wallet accounts", "No Wallet account is active yet.",
         timeout=35, label="authenticated Wallet read views",
@@ -739,7 +755,7 @@ def main() -> None:
     save_screen("04-wallet")
     mark_stage("wallet_screen")
 
-    tap_text("Account", last=True)
+    tap_text("Account", last=True, allow_tab_bar=True)
     account_text = wait_for_text("Your account.", timeout=25, label="authenticated account")
     if USERNAME not in account_text and os.environ.get("AFCON360_E2E_EMAIL", "native-e2e@afcon360.test") not in account_text:
         raise AssertionError("The authenticated account screen did not display the synthetic user's identity.")
@@ -747,7 +763,7 @@ def main() -> None:
     mark_stage("account_screen")
 
     if login_navigation_only:
-        tap_text("Home", last=True)
+        tap_text("Home", last=True, allow_tab_bar=True)
         wait_for_text(
             "Your Africa.",
             "Good to see you, " + USERNAME + ".",
@@ -893,7 +909,7 @@ def main() -> None:
     save_screen("10a-restored-my-events-overview")
     mark_stage("session_restored")
 
-    tap_text("Account", last=True)
+    tap_text("Account", last=True, allow_tab_bar=True)
     wait_for_text("Your account.", label="account before logout")
     tap_text_scrolling("Sign out")
     tap_text("Sign out")
