@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
+import { palette as basePalette } from "@afcon360/mobile-ui";
 import {
-  ActionButton,
-  AppScreen,
-  PageHeader,
-  Panel,
-  SectionTitle,
-  StatusPill,
-  palette,
-} from "@afcon360/mobile-ui";
+  PamojaActionButton as ActionButton,
+  PamojaScreen as AppScreen,
+  PamojaPageHeader as PageHeader,
+  PamojaPanel as Panel,
+  PamojaSectionTitle as SectionTitle,
+  PamojaStatusPill as StatusPill,
+} from "../../src/components/PamojaScreen";
+import { ServiceHeroAccent } from "../../src/components/ServiceHeroAccent";
 import {
   NativeEventDetail,
   NativeEventRegistration,
@@ -18,6 +19,22 @@ import {
 } from "@afcon360/mobile-core";
 import { eventClient } from "../../src/services/api";
 import { serviceErrorMessage } from "../../src/services/service-errors";
+import { TicketPurchase } from "../../src/components/events/TicketPurchase";
+import type { WalletAccount } from "@afcon360/mobile-core";
+import { walletClient } from "../../src/services/api";
+
+const palette = {
+  ...basePalette,
+  canvas: "#F5F6F2",
+  surface: "#FFFFFF",
+  ink: "#122419",
+  muted: "#6C766E",
+  green: "#0E5B36",
+  greenDark: "#093E24",
+  greenSoft: "#E8F4EC",
+  border: "#E6EAE4",
+  warningSoft: "#FFF4D5",
+};
 
 function displayDate(start: string | null, end: string | null): string {
   if (!start) return "Date to be announced";
@@ -60,6 +77,8 @@ export default function Events() {
   const [registrationsError, setRegistrationsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [purchaseTicket, setPurchaseTicket] = useState<NativeEventTicketType | null>(null);
+  const [walletAccount, setWalletAccount] = useState<WalletAccount | null>(null);
 
   const loadEvents = useCallback(async (search: string, destination: string) => {
     setLoading(true);
@@ -93,11 +112,22 @@ export default function Events() {
     }
   }, []);
 
+  const loadWalletAccount = useCallback(async () => {
+    try {
+      const summary = await walletClient.getSummary();
+      const account = summary.accounts?.[0] ?? null;
+      setWalletAccount(account);
+    } catch {
+      setWalletAccount(null);
+    }
+  }, []);
+
   useEffect(() => {
     setQuery(routeQuery);
     void loadEvents(routeQuery, "");
     void loadRegistrations();
-  }, [routeQuery, loadEvents, loadRegistrations]);
+    void loadWalletAccount();
+  }, [routeQuery, loadEvents, loadRegistrations, loadWalletAccount]);
 
   const openEvent = async (event: NativeEventSummary) => {
     setBusy(true);
@@ -117,7 +147,8 @@ export default function Events() {
   const register = async (ticket: NativeEventTicketType) => {
     if (!selectedEvent) return;
     if (Number(ticket.price) > 0) {
-      setError("This ticket requires payment. Paid-ticket checkout is not available in the app yet; no payment has been taken.");
+      // Paid ticket - show purchase flow (backend PR #46 required)
+      setPurchaseTicket(ticket);
       return;
     }
     setBusy(true);
@@ -146,6 +177,8 @@ export default function Events() {
         description="Discover published events, check ticket availability and register for free tickets in AFCON360."
       />
 
+      <ServiceHeroAccent serviceKey="events" title="Discover events" subtitle="Search, register, get QR tickets" />
+
       {error ? <Panel><Text style={{ color: "#9A342D", lineHeight: 20 }}>{error}</Text></Panel> : null}
       {notice ? <Panel><Text style={{ color: palette.green, lineHeight: 20, fontWeight: "800" }}>{notice}</Text></Panel> : null}
 
@@ -159,7 +192,7 @@ export default function Events() {
             placeholder="Search football, fan zone, concert…"
             placeholderTextColor="#87938C"
             autoCapitalize="none"
-            style={{ backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: palette.border, borderRadius: 10, padding: 12, color: palette.ink }}
+            style={{ backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: palette.border, borderRadius: 13, padding: 12, color: palette.ink }}
           />
         </View>
         <View style={{ gap: 6 }}>
@@ -182,7 +215,7 @@ export default function Events() {
               key={event.public_id}
               onPress={() => void openEvent(event)}
               disabled={busy}
-              style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 12, padding: 12, gap: 5, backgroundColor: palette.surface }}
+              style={{ borderWidth: 1, borderColor: palette.border, borderRadius: 18, padding: 16, gap: 7, backgroundColor: palette.surface }}
             >
               <Text style={{ color: palette.ink, fontSize: 16, fontWeight: "900" }}>{event.name}</Text>
               <Text style={{ color: palette.muted }}>{event.city}, {event.country}</Text>
@@ -210,7 +243,7 @@ export default function Events() {
             const isFree = Number(ticket.price) <= 0;
             const canRegister = isFree && ticket.is_available_now && selectedEvent.registration.state === "open";
             return (
-              <View key={ticket.ticket_token} style={{ borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 10, gap: 6 }}>
+              <View key={ticket.ticket_token} style={{ borderTopWidth: 1, borderTopColor: palette.border, paddingTop: 12, gap: 8 }}>
                 <Text style={{ color: palette.ink, fontWeight: "900" }}>{ticket.name}</Text>
                 {ticket.description ? <Text style={{ color: palette.muted }}>{ticket.description}</Text> : null}
                 <Text style={{ color: palette.ink, fontWeight: "800" }}>{ticketPrice(ticket)}</Text>
@@ -221,9 +254,7 @@ export default function Events() {
                 {canRegister ? (
                   <ActionButton label={busy ? "Registering…" : "Register for free"} disabled={busy} onPress={() => void register(ticket)} />
                 ) : !isFree ? (
-                  <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
-                    Paid checkout is not enabled in the native app yet. You will not be charged here.
-                  </Text>
+                  <ActionButton label={busy ? "Loading…" : "Purchase ticket"} disabled={busy} onPress={() => void register(ticket)} />
                 ) : null}
               </View>
             );
@@ -232,6 +263,21 @@ export default function Events() {
           )}
         </Panel>
       ) : null}
+
+      {purchaseTicket && selectedEvent && (
+        <TicketPurchase
+          event={selectedEvent}
+          ticket={purchaseTicket}
+          selectedAccount={walletAccount ?? undefined}
+          busy={busy}
+          onClose={() => setPurchaseTicket(null)}
+          onPurchase={(ticket) => {
+            setPurchaseTicket(null);
+            register(ticket);
+          }}
+          onSetBusy={setBusy}
+        />
+      )}
 
       <Panel>
         <SectionTitle>Your tickets</SectionTitle>

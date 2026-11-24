@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -8,9 +8,23 @@ import {
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
-import { AppScreen, PageHeader, palette } from "@afcon360/mobile-ui";
+import { palette as basePalette } from "@afcon360/mobile-ui";
+import { PamojaScreen as AppScreen, PamojaPageHeader as PageHeader } from "../../src/components/PamojaScreen";
 import { useAuth } from "../../src/auth/AuthProvider";
 import { getSelectedApiBaseUrl } from "../../src/services/api";
+
+const palette = {
+  ...basePalette,
+  canvas: "#F5F6F2",
+  surface: "#FFFFFF",
+  ink: "#122419",
+  muted: "#6C766E",
+  green: "#0E5B36",
+  greenDark: "#093E24",
+  greenSoft: "#E8F4EC",
+  border: "#E6EAE4",
+  warningSoft: "#FFF4D5",
+};
 
 const WEBSITE_ACTION_LABEL = "Opens on Pamoja website";
 
@@ -129,6 +143,19 @@ export default function Account() {
   const displayName = user?.display_name || user?.username || "AFCON360 member";
   const initials = accountInitials(displayName);
 
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleAvatarPress = useCallback(() => {
+    if (!__DEV__) return;
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0; }, 1500);
+    if (tapCountRef.current >= 5) {
+      tapCountRef.current = 0;
+      router.push("/connection" as never);
+    }
+  }, [router]);
+
   return (
     <AppScreen>
       <PageHeader
@@ -138,9 +165,9 @@ export default function Account() {
       />
 
       <View style={styles.profileHero}>
-        <View style={styles.avatar}>
+        <Pressable onPress={handleAvatarPress} style={styles.avatar} accessibilityLabel="AFCON360 avatar">
           <Text style={styles.avatarText}>{initials}</Text>
-        </View>
+        </Pressable>
         <View style={styles.profileInfo}>
           <Text style={styles.profileEyebrow}>YOUR PAMOJA IDENTITY</Text>
           <Text style={styles.profileName} numberOfLines={2}>{displayName}</Text>
@@ -306,6 +333,22 @@ export default function Account() {
         />
       </AccountMenuSection>
 
+      {__DEV__ && (
+        <AccountMenuSection
+          title="Developer"
+          description="Internal development tools"
+        >
+          <WebsiteMenuRow
+            title="Metro connection"
+            description="Connect to Metro bundler for Fast Refresh, auto-wake, and manual IP entry"
+            symbol="⚡"
+            onPress={() => router.push("/connection" as never)}
+            external={false}
+            last
+          />
+        </AccountMenuSection>
+      )}
+
       <AccountMenuSection
         title="Privacy"
         description="How AFCON360 handles your information"
@@ -358,7 +401,9 @@ const styles = StyleSheet.create({
     gap: 14,
     padding: 17,
     borderRadius: 20,
-    backgroundColor: "#173D28",
+    backgroundColor: "#D6EBDD",
+    borderWidth: 1,
+    borderColor: "#E6EAE4",
     overflow: "hidden"
   },
   avatar: {
@@ -367,16 +412,16 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     borderWidth: 2,
     borderColor: "#FFCC00",
-    backgroundColor: "#0D2C1A",
+    backgroundColor: "#0E5B36",
     alignItems: "center",
     justifyContent: "center"
   },
   avatarText: { color: "#FFCC00", fontSize: 22, fontWeight: "900" },
   profileInfo: { flex: 1, minWidth: 0, gap: 3 },
-  profileEyebrow: { color: "rgba(255,255,255,0.70)", fontSize: 9, fontWeight: "900", letterSpacing: 1.4 },
-  profileName: { color: "#FFFFFF", fontSize: 19, lineHeight: 23, fontWeight: "900" },
-  profileUsername: { color: "#FFCC00", fontSize: 11, fontWeight: "800" },
-  profileEmail: { color: "rgba(255,255,255,0.78)", fontSize: 11, marginTop: 2 },
+  profileEyebrow: { color: "#1F5C3D", fontSize: 9, fontWeight: "900", letterSpacing: 1.4 },
+  profileName: { color: "#093E24", fontSize: 19, lineHeight: 23, fontWeight: "900" },
+  profileUsername: { color: "#0E5B36", fontSize: 11, fontWeight: "800" },
+  profileEmail: { color: "#53665A", fontSize: 11, marginTop: 2 },
   statusRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 7 },
   statusPill: {
     flexDirection: "row",
@@ -386,14 +431,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 99,
-    backgroundColor: "rgba(255,255,255,0.12)"
+    backgroundColor: "rgba(14,91,54,0.10)"
   },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#75D39A" },
-  statusText: { color: "#FFFFFF", fontSize: 8, fontWeight: "900", letterSpacing: 0.5 },
-  verifiedPill: { backgroundColor: "rgba(117,211,154,0.16)" },
-  pendingPill: { backgroundColor: "rgba(255,204,0,0.16)" },
-  verifiedText: { color: "#B9F0CB" },
-  pendingText: { color: "#FFE28A" },
+  statusText: { color: "#0E5B36", fontSize: 8, fontWeight: "900", letterSpacing: 0.5 },
+  verifiedPill: { backgroundColor: "#E8F4EC" },
+  pendingPill: { backgroundColor: "#FFF4D5" },
+  verifiedText: { color: "#0E5B36" },
+  pendingText: { color: "#80611A" },
   contextRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 11, paddingHorizontal: 12, paddingVertical: 9 },
   contextRowDivider: { borderBottomWidth: 1, borderBottomColor: palette.border },
   contextIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#E7F1E9" },

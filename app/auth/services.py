@@ -251,7 +251,8 @@ def register_user(
         security_question: Optional[str] = None,
         security_answer: Optional[str] = None,
         ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None
+        user_agent: Optional[str] = None,
+        phone: Optional[str] = None
 ) -> User:
     """
     Register a new user with email verification or security question.
@@ -324,7 +325,8 @@ def register_user(
         recovery_code = secrets.token_urlsafe(16)
 
     public_id = str(uuid.uuid4())
-    user = User(public_id=public_id, username=username, email=email)
+    phone = (phone or "").strip() or None
+    user = User(public_id=public_id, username=username, email=email, phone=phone)
     user.set_password(password)
     if not email and security_answer:
         user.set_security_answer(security_answer)
@@ -368,6 +370,7 @@ def register_user(
             user=user,
             full_name=full_name or username,
             email=email,
+            phone_number=phone,
             profile_completed=False
         ))
 
@@ -421,6 +424,15 @@ def register_user(
                 "is_active": user.is_active
             }
         )
+
+        # Flag returning identity for compliance review
+        try:
+            from app.auth.account_deletion_service import flag_returning_identity
+            flag_returning_identity(user)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Returning-identity flag check failed for new registration"
+            )
     except Exception as e:
         db.session.rollback()
         ForensicAuditService.log_completion(

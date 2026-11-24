@@ -4,14 +4,16 @@ on:
   push:
     branches:
       - feat/native-user-app-integration-20261108
+    # Only JavaScript/TypeScript app and shared-package sources are OTA-publishable.
+    # Native configuration, dependencies, lockfiles and build profiles require a native build.
     paths:
-      - "mobile/apps/user/**"
-      - "mobile/packages/**"
-      - "mobile/package.json"
-      - "mobile/pnpm-lock.yaml"
-      - "mobile/pnpm-workspace.yaml"
-      - "mobile/.npmrc"
-      - ".github/workflows/user-preview-ota-update.yml"
+      - "mobile/apps/user/app/**"
+      - "mobile/apps/user/src/**"
+      - "mobile/apps/user/assets/**"
+      - "mobile/packages/core/src/**"
+      - "mobile/packages/core/assets/**"
+      - "mobile/packages/ui/src/**"
+      - "mobile/packages/ui/assets/**"
   workflow_dispatch:
 
 permissions:

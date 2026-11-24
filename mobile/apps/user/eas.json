@@ -6,11 +6,32 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "environment": "development",
+      "autoIncrement": true,
+      "credentialsSource": "remote",
+      "env": {
+        "AFCON360_PREVIEW_BUILD": "true",
+        "AFCON360_RELEASE_BUILD": "false",
+        "AFCON360_DEVELOPMENT_CLIENT": "true",
+        "AFCON360_UPDATE_CHANNEL": "user-development-client",
+        "EXPO_PUBLIC_API_BASE_URL": "http://127.0.0.1:5000"
+      },
+      "channel": "user-development-client",
+      "android": {
+        "buildType": "apk"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "environment": "preview",
+      "autoIncrement": true,
+      "credentialsSource": "remote",
+      "env": {
+        "AFCON360_PREVIEW_BUILD": "true",
+        "AFCON360_RELEASE_BUILD": "false"
+      }
     },
     "production": {
       "distribution": "store",
@@ -18,6 +39,12 @@
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
+      },
+      "environment": "production",
+      "credentialsSource": "remote",
+      "env": {
+        "AFCON360_PREVIEW_BUILD": "false",
+        "AFCON360_RELEASE_BUILD": "true"
       }
     },
     "apk-share": {
@@ -25,6 +52,29 @@
       "channel": "preview",
       "android": {
         "buildType": "apk"
+      },
+      "environment": "preview",
+      "autoIncrement": true,
+      "credentialsSource": "remote",
+      "env": {
+        "AFCON360_PREVIEW_BUILD": "true",
+        "AFCON360_RELEASE_BUILD": "false"
+      }
+    },
+    "dev-apk": {
+      "distribution": "internal",
+      "channel": "user-development",
+      "android": {
+        "buildType": "apk"
+      },
+      "environment": "preview",
+      "autoIncrement": true,
+      "credentialsSource": "remote",
+      "env": {
+        "AFCON360_PREVIEW_BUILD": "true",
+        "AFCON360_RELEASE_BUILD": "false",
+        "AFCON360_UPDATE_CHANNEL": "user-development",
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.pamoja.space"
       }
     }
   },

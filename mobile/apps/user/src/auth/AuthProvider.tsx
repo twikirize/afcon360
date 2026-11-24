@@ -1,6 +1,8 @@
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { AppState } from "react-native";
 import { MobileAuthError, MobileIdentity } from "@afcon360/mobile-core";
-import { authClient, changeApiServerBaseUrl } from "../services/api";
+import { authClient, changeApiServerBaseUrl, getSelectedApiBaseUrl } from "../services/api";
+import { clearAllOfflineData, clearOfflineAccount, readOfflineIdentity, saveOfflineIdentity } from "../offline/storage";
 
 type ApiServerChangeResult = {
   baseUrl: string;
@@ -12,6 +14,9 @@ type AuthContextValue = {
   user: MobileIdentity | null;
   loading: boolean;
   restoreError: string | null;
+  isOffline: boolean;
+  lastVerifiedAt: number | null;
+  offlineStorageError: string | null;
   retryRestoreSession(): Promise<void>;
   signingIn: boolean;
   mfaChallenge: string | null;
@@ -31,36 +36,109 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MobileIdentity | null>(null);
   const [loading, setLoading] = useState(true);
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
+  const [lastVerifiedAt, setLastVerifiedAt] = useState<number | null>(null);
+  const [offlineStorageError, setOfflineStorageError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
   const [mfaChallenge, setMfaChallenge] = useState<string | null>(null);
   const [mfaType, setMfaType] = useState<"totp" | "sms" | null>(null);
   const [mfaDestinationHint, setMfaDestinationHint] = useState<string | null>(null);
 
+  const persistVerifiedIdentity = useCallback(async (identity: MobileIdentity) => {
+    try {
+      await saveOfflineIdentity(identity, await getSelectedApiBaseUrl());
+      setOfflineStorageError(null);
+    } catch {
+      setOfflineStorageError(
+        "Secure offline storage could not be prepared. AFCON360 remains available while online."
+      );
+    }
+  }, []);
+
   const retryRestoreSession = useCallback(async () => {
     setLoading(true);
     setRestoreError(null);
     try {
-      setUser(await authClient.restoreSession());
+      const restored = await authClient.restoreSession();
+      authClient.setOfflineReadOnly(false);
+      setUser(restored);
+      setIsOffline(false);
+      setLastVerifiedAt(restored ? Date.now() : null);
+      if (restored) await persistVerifiedIdentity(restored);
     } catch (error) {
-      // Keep the saved credentials intact. A transient server/network failure
-      // must not be presented as a successful sign-out or force a new login.
-      setUser(null);
-      setRestoreError(error instanceof Error
-        ? error.message
-        : "AFCON360 could not verify your saved session. Check your connection and retry.");
+      const credentialsPresent = await authClient.hasStoredCredentials().catch(() => false);
+      const transient = error instanceof MobileAuthError &&
+        (error.status == null || error.status >= 500 || [408, 425, 429].includes(error.status));
+      if (credentialsPresent && transient) {
+        authClient.setOfflineReadOnly(true);
+        try {
+          const cached = await readOfflineIdentity(await getSelectedApiBaseUrl());
+          if (cached) {
+            setUser(cached.user);
+            setIsOffline(true);
+            setLastVerifiedAt(cached.lastVerifiedAt);
+            // A cached identity is an offline presentation state, not an
+            // authentication error. Let the User tabs render their cached screens.
+            setRestoreError(null);
+          } else {
+            setUser(null);
+            setIsOffline(true);
+            setLastVerifiedAt(null);
+            setRestoreError(
+              "Connection unavailable and no saved account snapshot exists. Reconnect to sign in."
+            );
+          }
+        } catch {
+          setUser(null);
+          setIsOffline(true);
+          setLastVerifiedAt(null);
+          setOfflineStorageError(
+            "Protected offline storage could not be opened. Reconnect to AFCON360 to continue."
+          );
+          setRestoreError(
+            error instanceof Error ? error.message : "AFCON360 could not verify your saved session."
+          );
+        }
+      } else {
+        authClient.setOfflineReadOnly(false);
+        setUser(null);
+        setIsOffline(false);
+        setLastVerifiedAt(null);
+        setRestoreError(
+          error instanceof Error ? error.message : "AFCON360 could not verify your saved session."
+        );
+      }
     } finally {
       setLoading(false);
     }
+  }, [persistVerifiedIdentity]);
+
+  useEffect(() => {
+    authClient.setOfflineStateListener(offline => {
+      setIsOffline(offline);
+      if (!offline) setRestoreError(null);
+    });
+    return () => authClient.setOfflineStateListener(null);
   }, []);
 
   useEffect(() => {
     void retryRestoreSession();
   }, [retryRestoreSession]);
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") void retryRestoreSession();
+    });
+    return () => subscription.remove();
+  }, [retryRestoreSession]);
+
   const value = useMemo<AuthContextValue>(() => ({
     user,
     loading,
     restoreError,
+    isOffline,
+    lastVerifiedAt,
+    offlineStorageError,
     retryRestoreSession,
     signingIn,
     mfaChallenge,
@@ -77,7 +155,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setMfaDestinationHint(result.destinationHint ?? null);
           return true;
         }
+        authClient.setOfflineReadOnly(false);
         setUser(result.user);
+        setIsOffline(false);
+        setLastVerifiedAt(Date.now());
+        await persistVerifiedIdentity(result.user);
         setMfaChallenge(null);
         setMfaType(null);
         setMfaDestinationHint(null);
@@ -91,7 +173,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSigningIn(true);
       try {
         const identity = await authClient.verifyMfa(mfaChallenge, code);
+        authClient.setOfflineReadOnly(false);
         setUser(identity);
+        setIsOffline(false);
+        setLastVerifiedAt(Date.now());
+        await persistVerifiedIdentity(identity);
         setMfaChallenge(null);
         setMfaType(null);
         setMfaDestinationHint(null);
@@ -107,7 +193,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async changeApiServer(url) {
       const result = await changeApiServerBaseUrl(url);
       if (result.changed) {
+        await clearAllOfflineData().catch(() => undefined);
+        authClient.setOfflineReadOnly(false);
         setUser(null);
+        setIsOffline(false);
+        setLastVerifiedAt(null);
+        setOfflineStorageError(null);
         setMfaChallenge(null);
         setMfaType(null);
         setMfaDestinationHint(null);
@@ -116,9 +207,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return result;
     },
     async logout() {
+      const accountId = user?.public_id;
       setRestoreError(null);
       try { await authClient.logout(); } finally {
+        if (accountId) {
+          try {
+            await clearOfflineAccount(accountId, await getSelectedApiBaseUrl());
+          } catch {
+            await clearAllOfflineData().catch(() => undefined);
+          }
+        } else {
+          await clearAllOfflineData().catch(() => undefined);
+        }
+        authClient.setOfflineReadOnly(false);
         setUser(null);
+        setIsOffline(false);
+        setLastVerifiedAt(null);
+        setOfflineStorageError(null);
         setMfaChallenge(null);
         setMfaType(null);
         setMfaDestinationHint(null);
@@ -127,12 +232,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async deleteAccount(password, confirmation, mfaCode) {
       setRestoreError(null);
       await authClient.deleteAccount(password, confirmation, mfaCode);
+      await clearAllOfflineData().catch(() => undefined);
+      authClient.setOfflineReadOnly(false);
       setUser(null);
+      setIsOffline(false);
+      setLastVerifiedAt(null);
+      setOfflineStorageError(null);
       setMfaChallenge(null);
       setMfaType(null);
       setMfaDestinationHint(null);
     }
-  }), [user, loading, restoreError, retryRestoreSession, signingIn, mfaChallenge, mfaType, mfaDestinationHint]);
+  }), [user, loading, restoreError, isOffline, lastVerifiedAt, offlineStorageError, retryRestoreSession, signingIn, mfaChallenge, mfaType, mfaDestinationHint, persistVerifiedIdentity]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

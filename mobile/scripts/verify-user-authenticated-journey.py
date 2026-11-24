@@ -272,6 +272,107 @@ def tap_text(
     )
 
 
+def wait_for_text_scrolling(
+    *needles: str,
+    timeout: int = 35,
+    label: str = "screen section",
+    max_swipes: int = 8,
+) -> str:
+    """Wait for content inside a scroll view, swiping until it becomes visible.
+
+    UIAutomator reports only the current viewport. Long Home screens therefore
+    need a deliberate scroll before lower sections can be asserted.
+    """
+    size_output = run_adb("shell", "wm", "size")
+    sizes = re.findall(r"(\d+)x(\d+)", size_output)
+    if not sizes:
+        raise RuntimeError(f"Could not determine Android display size: {size_output.strip()}")
+    width, height = map(int, sizes[-1])
+    deadline = time.monotonic() + timeout
+    last = ""
+    swipes = 0
+
+    while time.monotonic() < deadline:
+        try:
+            last = visible_text()
+            if all(needle in last for needle in needles):
+                print(
+                    f"PASS: {label} after {swipes} scroll(s): " + " | ".join(needles),
+                    flush=True,
+                )
+                return last
+        except Exception as error:
+            last = f"{type(error).__name__}: {error}"
+
+        if swipes >= max_swipes:
+            break
+
+        x = width // 2
+        start_y = int(height * 0.82)
+        end_y = int(height * 0.36)
+        run_adb("shell", "input", "swipe", str(x), str(start_y), str(x), str(end_y), "450")
+        swipes += 1
+        time.sleep(0.6)
+
+    raise AssertionError(
+        f"Timed out waiting for {label} after {swipes} scroll(s): {needles}. "
+        f"Last visible hierarchy:\\n{last[:6000]}"
+    )
+
+
+
+def wait_for_text_scrolling_to_top(
+    *needles: str,
+    timeout: int = 20,
+    label: str = "screen heading",
+    max_swipes: int = 8,
+) -> str:
+    """Scroll a long native screen back to its top before asserting its heading.
+
+    UIAutomator exposes only the current viewport. A previous action may have
+    scrolled Account down to Version & updates; after returning from Android
+    Settings, restore the viewport before asserting the Account heading.
+    """
+    size_output = run_adb("shell", "wm", "size")
+    sizes = re.findall(r"(\d+)x(\d+)", size_output)
+    if not sizes:
+        raise RuntimeError(f"Could not determine Android display size: {size_output.strip()}")
+    width, height = map(int, sizes[-1])
+    deadline = time.monotonic() + timeout
+    last = ""
+    swipes = 0
+
+    while time.monotonic() < deadline:
+        try:
+            last = visible_text()
+            if all(needle in last for needle in needles):
+                print(
+                    f"PASS: {label} at page top after {swipes} upward scroll(s): "
+                    + " | ".join(needles),
+                    flush=True,
+                )
+                return last
+        except Exception as error:
+            last = f"{type(error).__name__}: {error}"
+
+        if swipes >= max_swipes:
+            break
+
+        # Swipe downward through the content to move the viewport back up.
+        # Keep the gesture inside the page body, clear of the bottom tab bar.
+        x = width // 2
+        start_y = int(height * 0.32)
+        end_y = int(height * 0.72)
+        run_adb("shell", "input", "swipe", str(x), str(start_y), str(x), str(end_y), "450")
+        swipes += 1
+        time.sleep(0.6)
+
+    raise AssertionError(
+        f"Timed out restoring {label} after {swipes} upward scroll(s): {needles}. "
+        f"Last visible hierarchy:\n{last[:6000]}"
+    )
+
+
 def tap_text_scrolling(value: str, *, max_swipes: int = 6) -> None:
     """Scroll a long native screen until an exact action is visible, then tap it."""
     size_output = run_adb("shell", "wm", "size")
@@ -419,12 +520,12 @@ def return_to_explore() -> None:
         # Android can restore Explore at the previous scroll offset. The top
         # heading is therefore not a reliable screen identity check. The Stays
         # action is present on the Explore service list at both tested offsets.
-        wait_for_text("Find and book a stay", timeout=8, label="Explore after Android Back")
+        wait_for_text("Make more of the journey.", "Book accommodation", timeout=8, label="Explore after Android Back")
     except AssertionError:
         # If Back leaves us on another tab, explicitly select Explore and then
         # verify its stable Stays action rather than assuming scroll-to-top.
         tap_text("Explore", last=True)
-        wait_for_text("Find and book a stay", timeout=20, label="Explore tab")
+        wait_for_text("Make more of the journey.", "Book accommodation", timeout=20, label="Explore tab")
 
 
 def save_failure_diagnostics() -> None:
@@ -456,6 +557,13 @@ def save_failure_diagnostics() -> None:
             f"{type(error).__name__}: {error}\n", encoding="utf-8",
         )
 
+    app_pid = run_adb("shell", "pidof", PACKAGE, check=False).strip().split()
+    capture("failure-process.txt", "shell", "pidof", PACKAGE)
+    if app_pid:
+        # App-specific logs are small and remain useful even when emulator
+        # services generate thousands of unrelated logcat records.
+        capture("failure-app-logcat.txt", "logcat", "-d", f"--pid={app_pid[0]}", "-v", "threadtime")
+        capture("failure-app-process-status.txt", "shell", "cat", f"/proc/{app_pid[0]}/status")
     capture("failure-logcat-full.txt", "logcat", "-b", "all", "-d", "-t", "4000")
     capture(
         "failure-logcat-errors.txt", "logcat", "-d", "-t", "4000",
@@ -464,9 +572,9 @@ def save_failure_diagnostics() -> None:
         "ActivityManager:E", "installd:E", "*:S",
     )
     capture("failure-foreground-activity.txt", "shell", "dumpsys", "activity", "activities")
+    capture("failure-activity-top.txt", "shell", "dumpsys", "activity", "top")
     capture("failure-focused-window.txt", "shell", "dumpsys", "window", "windows")
     capture("failure-package-path.txt", "shell", "pm", "path", PACKAGE)
-    capture("failure-process.txt", "shell", "pidof", PACKAGE)
     capture("failure-ui-dump-command.txt", "shell", "uiautomator", "dump", UI_XML)
     capture("failure-ui-hierarchy.xml", "shell", "cat", UI_XML)
 
@@ -580,8 +688,24 @@ def main() -> None:
     time.sleep(0.5)
     tap_text("Sign in securely", require_enabled=True)
 
-    wait_for_text("Welcome to Pamoja", f"Good to see you, {USERNAME}.", timeout=45, label="authenticated User home")
-    save_screen("02-home")
+    wait_for_text(
+        "Your world,",
+        "Good to see you, " + USERNAME + ".",
+        timeout=45,
+        label="authenticated Pamoja Home header",
+    )
+    login_navigation_only = os.environ.get("AFCON360_E2E_LOGIN_NAVIGATION_ONLY", "").strip().lower() in {"1", "true", "yes"}
+    if login_navigation_only:
+        save_screen("02-home-login-navigation-gate")
+    else:
+        save_screen("02-home")
+        wait_for_text_scrolling(
+            "My Events",
+            "Event Calendar",
+            timeout=35,
+            label="Pamoja Home My Events overview",
+        )
+        save_screen("02a-my-events-overview")
     mark_stage("authenticated_home")
 
     mark_stage("activity_navigation_started")
@@ -600,12 +724,63 @@ def main() -> None:
     mark_stage("wallet_screen")
 
     tap_text("Account", last=True)
-    wait_for_text("Your account.", timeout=25, label="authenticated account")
-    account_text = visible_text()
+    account_text = wait_for_text("Your account.", timeout=25, label="authenticated account")
     if USERNAME not in account_text and os.environ.get("AFCON360_E2E_EMAIL", "native-e2e@afcon360.test") not in account_text:
         raise AssertionError("The authenticated account screen did not display the synthetic user's identity.")
     save_screen("05-account")
     mark_stage("account_screen")
+
+    if login_navigation_only:
+        tap_text("Home", last=True)
+        wait_for_text(
+            "Your world,",
+            "Good to see you, " + USERNAME + ".",
+            timeout=25,
+            label="return to Home after primary tab navigation",
+        )
+        save_screen("05-home-after-tab-navigation")
+        mark_stage("login_navigation_gate_passed")
+        print(
+            "USER_ANDROID_E2E_LOGIN_NAVIGATION_PASS: authenticated login, Home, Activity, "
+            "Wallet, Account identity, and return to Home.",
+            flush=True,
+        )
+        return
+
+    # Verify an intentional uninstall has an AFCON360 confirmation first.
+    # Cancel the app's prompt; never remove the test APK from the emulator.
+    tap_text_scrolling("Version & updates")
+    wait_for_text("App settings.", "Method 1", timeout=25, label="app installation settings")
+    tap_text_scrolling("Uninstall AFCON360 from this device")
+    wait_for_text("Uninstall AFCON360?", timeout=12, label="AFCON360 uninstall confirmation")
+    save_screen("05a-uninstall-confirmation")
+    tap_text("KEEP AFCON360")
+    # The settings screen may remain scrolled below its heading after the
+    # native confirmation closes. Verify the actual invariant instead:
+    # Android still resolves the installed package after cancellation.
+    installed_package = run_adb("shell", "pm", "path", PACKAGE).strip()
+    if not installed_package.startswith("package:"):
+        raise AssertionError(
+            "AFCON360 was not found as an installed Android package after "
+            "cancelling the uninstall confirmation: " + installed_package
+        )
+    print("PASS: AFCON360 remains installed after cancelling uninstall", flush=True)
+    mark_stage("uninstall_confirmation_cancelled")
+    run_adb("shell", "input", "keyevent", "4")
+    restored_account_text = wait_for_text_scrolling_to_top(
+        "Your account.",
+        timeout=20,
+        label="return to Account after uninstall test",
+    )
+    if USERNAME not in restored_account_text and os.environ.get(
+        "AFCON360_E2E_EMAIL", "native-e2e@afcon360.test"
+    ) not in restored_account_text:
+        raise AssertionError(
+            "The Account screen did not restore the authenticated synthetic user's identity "
+            "after cancelling uninstall."
+        )
+    save_screen("05b-account-restored-after-uninstall-cancel")
+    mark_stage("account_restored_after_uninstall_cancel")
 
     tap_text("Explore", last=True)
     wait_for_text("Make more of the journey.", "Rides", label="Explore services")
@@ -661,7 +836,7 @@ def main() -> None:
     save_screen("07b-explore-before-stays")
     mark_stage("explore_after_ride")
 
-    tap_text("Find and book a stay")
+    tap_text("Book accommodation")
     time.sleep(2)
     save_screen("08-stays-navigation-attempt")
     wait_for_text("Find your place to stay.", timeout=30, label="native accommodation screen")
@@ -671,7 +846,7 @@ def main() -> None:
     mark_stage("explore_after_stays")
 
     mark_stage("events_navigation_started")
-    tap_text_scrolling("Discover events and tickets")
+    tap_text_scrolling("Browse events")
     wait_for_text("Be there for the moments.", timeout=30, label="native events screen")
     save_screen("09-events")
     mark_stage("events_screen")
@@ -684,8 +859,22 @@ def main() -> None:
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
-    wait_for_text("Welcome to Pamoja", f"Good to see you, {USERNAME}.", timeout=45, label="restored authenticated session")
+    # The native app restores to its actual User dashboard ("My Events").
+    # The backend evidence check separately verifies the identity endpoint after relaunch.
+    wait_for_text(
+        "Your world,",
+        "Good to see you, " + USERNAME + ".",
+        timeout=45,
+        label="restored Pamoja Home header after app relaunch",
+    )
     save_screen("10-session-restored")
+    wait_for_text_scrolling(
+        "My Events",
+        "Event Calendar",
+        timeout=35,
+        label="restored Pamoja Home My Events overview",
+    )
+    save_screen("10a-restored-my-events-overview")
     mark_stage("session_restored")
 
     tap_text("Account", last=True)

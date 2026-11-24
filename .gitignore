@@ -385,3 +385,7 @@ migration_sql.txt
 marketplace_code.txt
 my_code_changes.txt
 run_with_otel.py
+
+# User App uses Expo CNG; keep generated native projects out of source control.
+/mobile/apps/user/android/
+/mobile/apps/user/ios/

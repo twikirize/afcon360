@@ -16,5 +16,8 @@
     "driver:typecheck": "pnpm --filter @afcon360/driver-app typecheck",
     "typecheck": "pnpm user:typecheck && pnpm driver:typecheck",
     "navigation:check": "node scripts/check-navigation-contracts.mjs"
+  },
+  "devDependencies": {
+    "expo-doctor": "^1.21.8"
   }
 }

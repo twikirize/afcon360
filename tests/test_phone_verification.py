@@ -24,6 +24,11 @@ def _request_app():
         endpoint="auth.verify_phone",
         view_func=lambda: "ok",
     )
+    app.add_url_rule(
+        "/verify-email",
+        endpoint="auth.verify_email_code",
+        view_func=lambda: "ok",
+    )
     return app
 
 
@@ -383,3 +388,80 @@ def test_legacy_phone_channel_uses_sms_after_global_switch_is_enabled(app, monke
         "internal_user_id": user.id,
     }
     assert debug_otp == "319572"
+
+
+def test_verify_phone_prefills_signup_number_from_user_when_profile_copy_is_missing(monkeypatch):
+    user = _user()
+    profile = _profile()
+    profile.phone_number = ""
+    app = _request_app()
+
+    monkeypatch.setattr(auth_routes, "current_user", user)
+    monkeypatch.setattr(
+        "app.profile.models.get_profile_by_user",
+        lambda _: profile,
+    )
+    monkeypatch.setattr(
+        AuthConfiguration,
+        "get_config",
+        classmethod(lambda cls: None),
+    )
+    monkeypatch.setattr(
+        auth_routes,
+        "render_template",
+        lambda template, **context: context,
+    )
+
+    with app.test_request_context("/verify-phone", method="GET"):
+        context = inspect.unwrap(auth_routes.verify_phone)()
+
+    assert context["phone_number"] == user.phone
+    assert context["email_verified"] is True
+    assert context["phone_verified"] is False
+    assert context["phone_code_sent"] is False
+
+
+def test_resend_email_from_phone_gate_opens_email_code_page_and_resumes_phone(monkeypatch):
+    user = _user()
+    user.is_authenticated = True
+    user.is_verified = False
+    user.email_verified = False
+    app = _request_app()
+
+    monkeypatch.setattr(auth_routes, "current_user", user)
+    monkeypatch.setattr(
+        "app.auth.email.send_verification_email",
+        lambda _: True,
+    )
+
+    with app.test_request_context(
+        "/resend-verification",
+        method="GET",
+        headers={"Referer": "http://localhost/verify-phone"},
+    ):
+        response = inspect.unwrap(auth_routes.resend_verification)()
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith("/verify-email")
+        assert auth_routes.session.get("post_email_verification_redirect") == "/verify-phone"
+
+
+def test_successful_email_code_returns_to_phone_gate_when_requested(monkeypatch):
+    user = _user()
+    app = _request_app()
+
+    monkeypatch.setattr(auth_routes, "current_user", user)
+    monkeypatch.setattr(
+        "app.auth.email.verify_email_code",
+        lambda user_id, code: (True, "Email verified"),
+    )
+
+    with app.test_request_context(
+        "/verify-email",
+        method="POST",
+        data={"code": "123456"},
+    ):
+        auth_routes.session["post_email_verification_redirect"] = "/verify-phone"
+        response = inspect.unwrap(auth_routes.verify_email_code)()
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/verify-phone")

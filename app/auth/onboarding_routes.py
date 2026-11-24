@@ -254,20 +254,29 @@ def driver_onboarding(step: int = 1):
         data = session["driver_onboarding"]
 
         if step == 1:
-            data["step1"] = {
-                "full_name": request.form.get("full_name", "").strip(),
-                "date_of_birth": request.form.get("date_of_birth"),
-                "nationality": request.form.get("nationality", "").strip(),
-                "national_id_number": request.form.get("national_id_number", "").strip(),
-            }
+            # Personal identity is read-only here. It is owned by UserProfile
+            # and must not be copied into a driver-onboarding session snapshot.
+            data["step1"] = {}
             session["driver_onboarding"] = data
             return redirect(url_for("onboarding.driver_onboarding", step=2))
 
         elif step == 2:
+            licence_number = request.form.get("licence_number", "").strip()
+            licence_expiry = request.form.get("licence_expiry", "").strip()
+            if not licence_number or not licence_expiry:
+                flash("Enter your driving licence number and expiry date to continue.", "danger")
+                return redirect(url_for("onboarding.driver_onboarding", step=2))
+            try:
+                datetime.strptime(licence_expiry, "%Y-%m-%d")
+            except ValueError:
+                flash("Enter a valid driving licence expiry date.", "danger")
+                return redirect(url_for("onboarding.driver_onboarding", step=2))
+
             data["step2"] = {
-                "licence_number": request.form.get("licence_number", "").strip(),
-                "licence_expiry": request.form.get("licence_expiry"),
+                "licence_number": licence_number,
+                "licence_expiry": licence_expiry,
                 "licence_class": request.form.get("licence_class", "").strip(),
+                "licence_document_url": None,
             }
             # Handle file upload for licence
             licence_file = request.files.get("licence_document")
@@ -288,11 +297,6 @@ def driver_onboarding(step: int = 1):
 
         elif step == 3:
             data["step3"] = {
-                "vehicle_make": request.form.get("vehicle_make", "").strip(),
-                "vehicle_model": request.form.get("vehicle_model", "").strip(),
-                "vehicle_year": request.form.get("vehicle_year"),
-                "plate_number": request.form.get("plate_number", "").strip(),
-                "vehicle_type": request.form.get("vehicle_type", "").strip(),
                 "operating_country_code": request.form.get(
                     "operating_country_code", ""
                 ).strip().upper(),
@@ -323,6 +327,34 @@ def driver_onboarding(step: int = 1):
                 return redirect(url_for("transport.driver_dashboard"))
             except Exception as e:
                 current_app.logger.error(f"Driver onboarding error: {e}")
+                error_code = getattr(e, "code", None)
+                if error_code == "IDENTITY_NOT_VERIFIED":
+                    flash(
+                        "Complete the driver identity verification requirements before submitting your driver profile.",
+                        "warning",
+                    )
+                    return redirect(url_for("kyc.upgrade", purpose="driver"))
+                if error_code == "EMAIL_NOT_VERIFIED":
+                    flash("Verify your account email before continuing.", "warning")
+                    return redirect(url_for("auth.verify_email_code"))
+                if error_code == "PHONE_NOT_VERIFIED":
+                    flash("Verify your saved phone number before continuing.", "warning")
+                    return redirect(url_for("auth.verify_phone"))
+                if error_code == "AGE_NOT_AVAILABLE":
+                    flash(
+                        "Add your date of birth to your profile so we can confirm driver age eligibility.",
+                        "warning",
+                    )
+                    return redirect(url_for("profile.edit_profile"))
+                if error_code == "AGE_REQUIREMENT_NOT_MET":
+                    flash("You do not meet the minimum age requirement for driver registration.", "danger")
+                    return redirect(url_for("onboarding.choose"))
+                if error_code == "CRIMINAL_SCREENING_UNAVAILABLE":
+                    flash(
+                        "Driver registration is temporarily unavailable because required screening cannot be completed. Please contact support.",
+                        "danger",
+                    )
+                    return redirect(url_for("transport.driver_dashboard"))
                 flash("Something went wrong. Please try again.", "danger")
 
     from app.profile.models import get_profile_by_user
@@ -353,6 +385,12 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
     # but must not write it. step1 data remains transport/session-only.
     step2 = data.get("step2", {})
     step3 = data.get("step3", {})
+    if not (step2.get("licence_number") or "").strip() or not step2.get("licence_expiry"):
+        raise ValueError("A driving licence number and expiry date are required.")
+    try:
+        licence_expiry = datetime.strptime(step2["licence_expiry"], "%Y-%m-%d")
+    except (TypeError, ValueError):
+        raise ValueError("Enter a valid driving licence expiry date.")
 
     # Operating country is a separate Transport declaration, never derived
     # from nationality. Current individual-driver launch markets are UG/KE/TZ.
@@ -398,11 +436,7 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
         driver = DriverProfile(
             user_id=user.id,  # internal FK - correct
             license_number=step2.get("licence_number", ""),  # Will be encrypted by model
-            license_expiry=(
-                datetime.strptime(step2["licence_expiry"], "%Y-%m-%d")
-                if step2.get("licence_expiry")
-                else None
-            ),
+            license_expiry=licence_expiry,
             verification_tier=VerificationTier.PENDING,
             compliance_status=ComplianceStatus.PENDING_REVIEW,
             is_online=False,
@@ -417,6 +451,11 @@ def _commit_driver_onboarding(user, data: Dict[str, Any]) -> Any:
             driver_metadata={
                 "operating_country_code": operating_country_code,
                 "operating_country_verified": False,
+                # The licence number and expiry have dedicated DriverProfile
+                # columns. Class and the uploaded evidence reference have no
+                # dedicated columns, so retain them in the existing metadata.
+                "licence_class": (step2.get("licence_class") or "").strip() or None,
+                "licence_document_url": step2.get("licence_document_url") or None,
             },
         )
         db.session.add(driver)

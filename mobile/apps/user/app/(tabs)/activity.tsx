@@ -1,9 +1,30 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, AppState, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { AppScreen, PageHeader, Panel, SectionTitle, StatusPill, palette, EmptyState } from "@afcon360/mobile-ui";
+import { palette as basePalette } from "@afcon360/mobile-ui";
+import {
+  PamojaEmptyState as EmptyState,
+  PamojaScreen as AppScreen,
+  PamojaPageHeader as PageHeader,
+  PamojaPanel as Panel,
+  PamojaSectionTitle as SectionTitle,
+  PamojaStatusPill as StatusPill,
+} from "../../src/components/PamojaScreen";
 import { useFocusEffect } from "expo-router";
 import { authClient } from "../../src/services/api";
+
+const palette = {
+  ...basePalette,
+  canvas: "#F5F6F2",
+  surface: "#FFFFFF",
+  ink: "#122419",
+  muted: "#6C766E",
+  green: "#0E5B36",
+  greenDark: "#093E24",
+  greenSoft: "#E8F4EC",
+  border: "#E6EAE4",
+  warningSoft: "#FFF4D5",
+};
 
 type ActivityItem = { request_id: string; booking_reference: string; kind?: "request" | "booking"; status: string; converted?: boolean; booking_status?: string; booking_mode?: string; service_type?: string; created_at?: string; fare_estimate?: { amount?: number; currency?: string } };
 export default function Activity() {

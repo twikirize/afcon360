@@ -687,3 +687,76 @@ class EventPaymentService:
             "bank_transfer": "🏦"
         }
         return icon_map.get(method_type, "💳")
+
+    def create_registrations_from_webhook(
+        self,
+        event_context: Dict,
+        payment_reference: str,
+        amount: Decimal,
+        currency: str,
+    ) -> Optional[List[Dict]]:
+        """
+        Create event registrations after mobile money webhook confirms payment.
+
+        Called from MobileMoneyService.verify_webhook after successful wallet credit.
+        Uses the event_context stored in the deposit intent at initiation time.
+
+        Args:
+            event_context: Dict with event_id, ticket_type_id, user_id, quantity,
+                          group_booking_id, group_label, unit_price_override,
+                          create_primary_for_payer, group_attendees
+            payment_reference: The mobile money provider reference
+            amount: Amount paid
+            currency: Currency of payment
+
+        Returns:
+            List of created registrations or None if failed
+        """
+        try:
+            event_id = event_context.get('event_id')
+            ticket_type_id = event_context.get('ticket_type_id')
+            user_id = event_context.get('user_id')
+            quantity = event_context.get('quantity', 1)
+            group_booking_id = event_context.get('group_booking_id')
+            group_label = event_context.get('group_label')
+            unit_price_override = event_context.get('unit_price_override')
+            create_primary_for_payer = event_context.get('create_primary_for_payer', True)
+            group_attendees = event_context.get('group_attendees', [])
+
+            if not all([event_id, ticket_type_id, user_id]):
+                current_app.logger.error("Incomplete event_context for webhook registration")
+                return None
+
+            # Convert unit_price_override string to Decimal if present
+            unit_price = None
+            if unit_price_override:
+                try:
+                    unit_price = Decimal(str(unit_price_override))
+                except Exception:
+                    current_app.logger.warning(f"Invalid unit_price_override: {unit_price_override}")
+
+            # Use the mobile money payment reference as the group_booking_id
+            gb_id = group_booking_id or payment_reference
+
+            registrations = self._create_registrations(
+                user_id=int(user_id),
+                event_id=int(event_id),
+                ticket_type_id=int(ticket_type_id),
+                quantity=int(quantity),
+                payment_reference=payment_reference,
+                group_attendees=group_attendees,
+                create_primary_for_payer=create_primary_for_payer,
+                group_booking_id=gb_id,
+                group_label=group_label,
+                unit_price_override=unit_price,
+            )
+
+            current_app.logger.info(
+                f"Created {len(registrations)} event registrations from webhook "
+                f"for event {event_id}, payment {payment_reference}"
+            )
+            return registrations
+
+        except Exception as e:
+            current_app.logger.error(f"Failed to create event registrations from webhook: {e}")
+            return None

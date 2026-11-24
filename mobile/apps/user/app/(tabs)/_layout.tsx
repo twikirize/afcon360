@@ -10,7 +10,7 @@ export default function UserTabs() {
   const insets = useSafeAreaInsets();
   const { user, loading, restoreError, retryRestoreSession } = useAuth();
   if (loading) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: palette.canvas }}><ActivityIndicator color={palette.green} /></View>;
-  if (restoreError) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: palette.canvas }}><Text style={{ color: palette.ink, textAlign: "center", lineHeight: 22 }}>{restoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retryRestoreSession()} style={{ marginTop: 16, padding: 14, backgroundColor: palette.green, borderRadius: 10 }}><Text style={{ color: "#FFFFFF", fontWeight: "800" }}>Retry saved session</Text></Pressable></View>;
+  if (restoreError && !user) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: palette.canvas }}><Text style={{ color: palette.ink, textAlign: "center", lineHeight: 22 }}>{restoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retryRestoreSession()} style={{ marginTop: 16, padding: 14, backgroundColor: palette.green, borderRadius: 10 }}><Text style={{ color: "#FFFFFF", fontWeight: "800" }}>Retry saved session</Text></Pressable></View>;
   if (!user) return <Redirect href="/login" />;
   return <Tabs screenOptions={({ route }) => ({
     headerShown: false,
@@ -27,7 +27,16 @@ export default function UserTabs() {
       borderTopColor: palette.border,
       backgroundColor: palette.surface
     },
-    tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 21, fontWeight: "700" }}>{symbols[route.name] ?? "•"}</Text>
+    tabBarIcon: ({ color, focused }) => (
+      <View style={{
+        backgroundColor: focused ? "#FCEEE2" : "transparent",
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 2,
+      }}>
+        <Text style={{ color, fontSize: 20, fontWeight: "700" }}>{symbols[route.name] ?? "•"}</Text>
+      </View>
+    )
   })}>
     <Tabs.Screen name="index" options={{ title: "Home" }} />
     <Tabs.Screen name="explore" options={{ title: "Explore" }} />

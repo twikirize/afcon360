@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Account closure scheduled — AFCON360{% endblock %}
+{% block content %}
+<section style="max-width:780px;margin:0 auto;padding:32px 18px 56px;line-height:1.7">
+  <p style="color:#087a4b;font-weight:800;letter-spacing:.12em;text-transform:uppercase">Account closure scheduled</p>
+  <h1>Your account is scheduled for closure</h1>
+
+  <div role="alert" class="alert alert-success">
+    {{ result.message }}
+  </div>
+
+  <h2>What happens next</h2>
+  <ul>
+    <li>Your account is disabled now and your active sessions have been signed out.</li>
+    <li>Your profile and public content are hidden during the grace period.</li>
+    <li>You can cancel the closure before <strong>{{ result.grace_until[:10] }}</strong> using the cancellation link below.</li>
+    <li>If you cancel, sign-in and account access are restored.</li>
+    <li>After the grace period, direct identifiers are anonymized and retained records are limited to legal, financial, safety, dispute and audit obligations.</li>
+  </ul>
+
+  {% if result.cancellation_url %}
+  <p>
+    <a class="btn btn-primary" href="{{ result.cancellation_url }}">Cancel account closure</a>
+  </p>
+  <p style="font-size:.9rem;color:#4b5563">Keep this link private. It is time-limited and can restore your account until the grace period ends.</p>
+  {% endif %}
+
+  <h2>Retention</h2>
+  <p>{{ result.retention_summary }}</p>
+
+  <p style="font-size:.9rem;color:#4b5563">
+    Closure request reference: <strong>{{ result.request_number }}</strong>.
+    {% if not result.email_sent %}
+    We could not confirm delivery of the cancellation email. Save this page or contact support if you need the cancellation link.
+    {% endif %}
+  </p>
+
+  <p><a href="/apps">Back to AFCON360 Apps</a></p>
+</section>
+{% endblock %}

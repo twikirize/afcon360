@@ -147,7 +147,7 @@ def _requirement_fill_url(req: str):
     """Return the URL of the form where a missing requirement is filled in."""
     dedicated = {
         "phone_verified": lambda: url_for("auth.verify_phone"),
-        "full_name": lambda: url_for("auth.verify_phone"),
+        "full_name": lambda: url_for("profile.edit_profile"),
         "national_id": lambda: url_for("kyc.verify_national_id_page"),
         "selfie": lambda: url_for("kyc.upload", preselect="selfie"),
         "proof_of_address": lambda: url_for("kyc.verify_address"),
@@ -320,9 +320,17 @@ def upgrade():
 
     current = calculate_kyc_tier(effective.id)
     current_tier = current["tier"]
+    driver_purpose = request.args.get("purpose") == "driver"
 
     available_upgrades = []
-    for tier in range(current_tier + 1, TIER_5_CORPORATE + 1):
+    target_tiers = (
+        [TIER_2_STANDARD]
+        if driver_purpose and current_tier < TIER_2_STANDARD
+        else []
+        if driver_purpose
+        else range(current_tier + 1, TIER_5_CORPORATE + 1)
+    )
+    for tier in target_tiers:
         can_upgrade, missing = can_upgrade_to_tier(effective.id, tier)
         info = TIER_REQUIREMENTS[tier]
         available_upgrades.append({
@@ -351,6 +359,7 @@ def upgrade():
         current_tier_name=TIER_REQUIREMENTS[current_tier]["name"],
         available_upgrades=available_upgrades,
         TIER_INFO=TIER_INFO,
+        driver_purpose=driver_purpose,
     )
 
 
@@ -500,6 +509,28 @@ def verify_national_id_page():
         show_collection
         and (canonical is None or not (canonical.full_name or "").strip())
     )
+    canonical_dob_missing = canonical is None or not canonical.date_of_birth
+    raw_profile_status = getattr(canonical, "verification_status", "pending")
+    profile_status = str(
+        getattr(raw_profile_status, "value", raw_profile_status) or "pending"
+    ).lower()
+    profile_verified = profile_status == "verified"
+    collect_dob = bool(show_collection and canonical_dob_missing and not profile_verified)
+    identity_locked_missing_dob = bool(
+        show_collection and canonical_dob_missing and profile_verified
+    )
+    canonical_id_type = (
+        getattr(canonical.id_type, "value", canonical.id_type)
+        if canonical is not None else None
+    )
+    canonical_nin = (
+        (canonical.id_number or "").strip().upper()
+        if canonical is not None and canonical_id_type == "national_id" else ""
+    )
+    masked_nin = (
+        ("*" * max(0, len(canonical_nin) - 4)) + canonical_nin[-4:]
+        if canonical_nin else None
+    )
 
     return render_template(
         "kyc/verify_national_id.html",
@@ -508,7 +539,14 @@ def verify_national_id_page():
         existing=existing,
         canonical=canonical,
         collect_identity=collect_identity,
-        today=datetime.now(timezone.utc).date().isoformat() if collect_identity else None,
+        collect_dob=collect_dob,
+        identity_locked_missing_dob=identity_locked_missing_dob,
+        has_canonical_nin=bool(canonical_nin),
+        masked_nin=masked_nin,
+        today=(
+            datetime.now(timezone.utc).date().isoformat()
+            if collect_identity or collect_dob else None
+        ),
     )
 
 
@@ -526,7 +564,7 @@ def submit_national_id():
       4. Create KycRecord
       5. Generate compliance report
     """
-    id_number   = request.form.get("id_number",   "").strip().upper()
+    submitted_id_number = request.form.get("id_number", "").strip().upper()
 
     # Bidirectional canonical identity (single entry): shared personal facts
     # (full name / DOB) come from ONE legitimate source. Profile-first users
@@ -538,24 +576,57 @@ def submit_national_id():
     except Exception:
         canonical = None
 
+    # A canonical profile NIN is authoritative. Never accept a replacement
+    # from the browser when one already exists; when absent, KYC is the sole
+    # collection point for this evidence value.
+    canonical_id_type = (
+        getattr(canonical.id_type, "value", canonical.id_type)
+        if canonical is not None else None
+    )
+    canonical_nin = (
+        (canonical.id_number or "").strip().upper()
+        if canonical is not None and canonical_id_type == "national_id" else ""
+    )
+    id_number = canonical_nin or submitted_id_number
+
     kyc_first = not (canonical is not None and (canonical.full_name or "").strip())
+    canonical_dob_missing = canonical is None or not canonical.date_of_birth
+    raw_profile_status = getattr(canonical, "verification_status", "pending")
+    profile_status = str(
+        getattr(raw_profile_status, "value", raw_profile_status) or "pending"
+    ).lower()
+    profile_verified = profile_status == "verified"
+
     if kyc_first:
         full_name = (request.form.get("full_name") or "").strip()
         if not full_name:
             flash_form_error("Full name is required to submit your National ID verification.")
             return redirect(url_for("kyc.verify_national_id_page"))
-        dob_raw = (request.form.get("date_of_birth") or "").strip()
-        date_of_birth = None
-        if dob_raw:
-            try:
-                # HTML date input ships YYYY-MM-DD; convert at the boundary
-                # exactly like the canonical profile editor (%Y-%m-%d).
-                date_of_birth = datetime.strptime(dob_raw, "%Y-%m-%d").date()
-            except ValueError:
-                flash_form_error("Date of birth must be in YYYY-MM-DD format.")
-                return redirect(url_for("kyc.verify_national_id_page"))
     else:
+        # Once present, the canonical name is never re-entered or overwritten.
         full_name = (canonical.full_name or "").strip()
+
+    if canonical_dob_missing:
+        if profile_verified:
+            flash_form_error(
+                "Your verified profile is missing its date of birth. "
+                "Please contact support to correct the identity record before National ID verification."
+            )
+            return redirect(url_for("kyc.verify_national_id_page"))
+
+        dob_raw = (request.form.get("date_of_birth") or "").strip()
+        if not dob_raw:
+            flash_form_error("Date of birth is required to submit your National ID verification.")
+            return redirect(url_for("kyc.verify_national_id_page"))
+        try:
+            # HTML date input ships YYYY-MM-DD; convert at the boundary
+            # exactly like the canonical profile editor (%Y-%m-%d).
+            date_of_birth = datetime.strptime(dob_raw, "%Y-%m-%d").date()
+        except ValueError:
+            flash_form_error("Date of birth must be in YYYY-MM-DD format.")
+            return redirect(url_for("kyc.verify_national_id_page"))
+    else:
+        # Existing DOB is authoritative; ignore any browser-supplied replacement.
         date_of_birth = canonical.date_of_birth
 
     name_parts = full_name.split()
@@ -602,16 +673,15 @@ def submit_national_id():
         flash_form_error("Your ID could not be processed at this time. Please contact support.")
         return redirect(url_for("kyc.verify_national_id_page"))
 
-    # ── 2b. KYC-first canonical write ────────────────────────────────────────
-    # Only when KYC is the first legitimate source of a missing shared fact,
-    # and only AFTER format + watchlist gates have passed. The helper never
-    # overwrites an existing canonical value, skips verified profiles, and
-    # fails soft so the evidence record below still submits on any error.
-    if kyc_first:
+    # ── 2b. Canonical identity write ─────────────────────────────────────────
+    # KYC is the first legitimate source only for facts still missing from the
+    # canonical bank. Run after format + watchlist gates; never overwrite a
+    # present value. The helper skips verified profiles and remains fail-soft.
+    if kyc_first or canonical_dob_missing:
         _write_canonical_identity_from_kyc(
             current_user,
-            full_name=full_name,
-            date_of_birth=date_of_birth,
+            full_name=full_name if kyc_first else None,
+            date_of_birth=date_of_birth if canonical_dob_missing else None,
         )
 
     # ── 3. Persist KycRecord ─────────────────────────────────────────────────
@@ -633,6 +703,22 @@ def submit_national_id():
             verification_id=None,
             reference_code=result.get("verification_id"),  # Store NIRA string here
             risk_score=watchlist.get("risk_score", 0),
+            # Retain the effective canonical identity evidence with the KYC
+            # decision. KycService's approval-time backfill uses this scope
+            # as defense in depth if the submission-side profile write was
+            # unavailable; do not duplicate the separately stored NIN.
+            scope={
+                "full_name": full_name,
+                "date_of_birth": (
+                    date_of_birth.isoformat()
+                    if hasattr(date_of_birth, "isoformat")
+                    else str(date_of_birth) if date_of_birth else None
+                ),
+                "nationality": (
+                    (canonical.nationality or "").strip()
+                    if canonical is not None and canonical.nationality else None
+                ),
+            },
             raw_response=result,
         )
         db.session.add(record)
