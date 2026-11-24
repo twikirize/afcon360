@@ -122,15 +122,15 @@ export default function UserHome() {
     if (target) void WebBrowser.openBrowserAsync(target);
   }, []);
   const openEventSearch = useCallback((query = "") => {
-    router.push({ pathname: "/(service)/events", params: query ? { query } : {} } as never);
+    router.push({ pathname: '/(service)/events', params: query ? { query } : {} } as never);
   }, [router]);
   const openService = useCallback((service: string) => {
     switch (service) {
-      case "rides": router.push("/(service)/ride" as never); break;
-      case "stays": router.push("/(service)/stays" as never); break;
+      case "rides": router.push('/(service)/ride' as never); break;
+      case "stays": router.push('/(service)/stays' as never); break;
       case "events": openEventSearch(); break;
-      case "wallet": router.push("/(tabs)/wallet" as never); break;
-      case "adventure": router.push("/(service)/adventure" as never); break;
+      case "wallet": router.push('/(tabs)/wallet' as never); break;
+      case 'adventure': router.push('/(service)/adventure' as never); break;
       case "tourism": openWebsite("/tourism"); break;
       default: router.push("/(tabs)/explore" as never);
     }
