@@ -1,9 +1,6 @@
 import os
 import sys
 import logging
-import subprocess
-import atexit
-import signal
 
 # Environment information is printed by create_app() after configuration
 # resolution, so it reflects what the application actually loaded.
@@ -17,109 +14,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-
-# Global reference to Metro subprocess
-_metro_process = None
-
-def start_metro():
-    """Start Metro bundler as a subprocess for dev client development."""
-    global _metro_process
-    
-    # Only start Metro in development with dev client
-    if not os.getenv('AFCON360_DEVELOPMENT_CLIENT', '').lower() in ('true', '1', 'yes'):
-        return
-    
-    if os.getenv('METRO_AUTO_START', '').lower() in ('false', '0', 'no'):
-        logger.info("Metro auto-start disabled via METRO_AUTO_START=false")
-        return
-    
-    # The mobile app is in a sibling directory: ../afcon360-user-dev/mobile
-    base_dir = os.path.dirname(os.path.dirname(__file__))
-    mobile_root = os.path.join(base_dir, 'afcon360-user-dev', 'mobile')
-    metro_script = os.path.join(mobile_root, 'scripts', 'windows', 'start-user-metro.ps1')
-    
-    if not os.path.exists(metro_script):
-        logger.warning(f"Metro script not found at {metro_script}, skipping Metro auto-start")
-        return
-    
-    # Determine API base URL - use the one from environment or auto-detect
-    api_base_url = os.getenv('EXPO_PUBLIC_API_BASE_URL')
-    if not api_base_url:
-        # Try to detect from Flask host/port
-        flask_host = os.getenv('FLASK_HOST', '0.0.0.0')
-        flask_port = os.getenv('FLASK_PORT', '5000')
-        if flask_host in ('0.0.0.0', '::', '127.0.0.1', 'localhost'):
-            api_base_url = f"http://127.0.0.1:{os.getenv('FLASK_PORT', '5000')}"
-        else:
-            api_base_url = f"http://{flask_host}:{os.getenv('FLASK_PORT', '5000')}"
-    
-    logger.info(f"Starting Metro dev client (API: {api_base_url})...")
-    
-    try:
-        env = os.environ.copy()
-        env.update({
-            'AFCON360_PREVIEW_BUILD': 'true',
-            'AFCON360_RELEASE_BUILD': 'false',
-            'AFCON360_DEVELOPMENT_CLIENT': 'true',
-            'AFCON360_UPDATE_CHANNEL': 'user-development-client',
-            'EXPO_PUBLIC_API_BASE_URL': api_base_url,
-        })
-        
-        # Use the PowerShell script to start Metro
-        metro_cmd = [
-            'powershell.exe',
-            '-ExecutionPolicy', 'Bypass',
-            '-File', os.path.abspath(metro_script),
-            '-ConnectionMode', 'Lan',
-            '-ApiBaseUrl', api_base_url,
-        ]
-        
-        _metro_process = subprocess.Popen(
-            metro_cmd,
-            cwd=os.path.join(os.path.dirname(metro_script), '..', 'apps', 'user'),
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0
-        )
-        
-        # Start a thread to read Metro output
-        def read_metro_output():
-            try:
-                for line in _metro_process.stdout:
-                    logger.info(f"[METRO] {line.rstrip()}")
-            except Exception:
-                pass
-        
-        import threading
-        metro_thread = threading.Thread(target=read_metro_output, daemon=True)
-        metro_thread.start()
-        
-        # Register cleanup
-        def cleanup_metro():
-            if _metro_process and _metro_process.poll() is None:
-                logger.info("Stopping Metro...")
-                try:
-                    if sys.platform == 'win32':
-                        _metro_process.send_signal(signal.CTRL_BREAK_EVENT)
-                    else:
-                        _metro_process.terminate()
-                    _metro_process.wait(timeout=5)
-                except Exception:
-                    try:
-                        _metro_process.kill()
-                    except Exception:
-                        pass
-        
-        atexit.register(cleanup_metro)
-        
-        logger.info(f"Metro started (PID: {_metro_process.pid})")
-        
-    except Exception as e:
-        logger.error(f"Failed to start Metro: {e}")
-        _metro_process = None
 
 # Only show path debug when troubleshooting (set SHOW_PATH_DEBUG=true)
 if os.getenv('SHOW_PATH_DEBUG', 'false').lower() == 'true':
@@ -167,10 +61,6 @@ if __name__ == "__main__":
     import os
 
     debug_mode = os.getenv('FLASK_DEBUG', 'true').lower() in ('true', '1', 'yes')
-    
-    # Auto-start Metro for development client
-    if os.getenv('AFCON360_DEVELOPMENT_CLIENT', '').lower() in ('true', '1', 'yes'):
-        start_metro()
     if debug_mode and os.getenv('FLASK_ENV', 'production') == 'production':
         debug_mode = False
         logger.warning("FLASK_DEBUG=true but FLASK_ENV=production - Disabling debug mode for safety")
