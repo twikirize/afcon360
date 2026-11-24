@@ -8,6 +8,9 @@
     4. Connects the phone:
        - Lan mode (default): over Wi-Fi using the laptop LAN IP; USB only used to launch the app
        - Usb mode: adb reverse tunnels over the USB cable
+    5. Detects the LAN source by matching phone/laptop subnets:
+       - Phone hotspot (ap0), laptop hotspot (192.168.137.1), or shared Wi-Fi
+       - Warns only when the phone and laptop have no shared LAN subnet
 .NOTES
     Lan mode requires the phone and laptop on the same Wi-Fi network and Windows
     Firewall inbound allowances for TCP 8081, 8082, 5000. When this script is run
@@ -62,6 +65,101 @@ function Get-LanIp {
         Sort-Object InterfaceMetric | Select-Object -First 1).IPAddress
     if (-not $ip) { throw "Could not detect the laptop LAN IPv4 address" }
     return $ip
+}
+
+function Test-SameSubnet {
+    param(
+        [string]$IpA,
+        [string]$IpB,
+        [int]$PrefixLength
+    )
+    try {
+        $a = [System.Net.IPAddress]::Parse($IpA).GetAddressBytes()
+        $b = [System.Net.IPAddress]::Parse($IpB).GetAddressBytes()
+    } catch {
+        return $false
+    }
+    $whole = [int][math]::Floor($PrefixLength / 8)
+    for ($i = 0; $i -lt $whole; $i++) {
+        if ($a[$i] -ne $b[$i]) { return $false }
+    }
+    $rem = $PrefixLength % 8
+    if ($rem -gt 0) {
+        $mask = (0xFF -shl (8 - $rem)) -band 0xFF
+        if (($a[$whole] -band $mask) -ne ($b[$whole] -band $mask)) { return $false }
+    }
+    return $true
+}
+
+function Get-PhoneNetworkLink {
+    param(
+        [string]$AdbPath,
+        [string]$Serial,
+        [string]$LaptopIp,
+        [bool]$DeviceOnline = $true
+    )
+    if (-not $DeviceOnline) {
+        return [pscustomobject]@{
+            Connected = $false; Source = "Unknown"; Interface = $null; PhoneIp = $null
+            Reason = "no-usb"; WifiOn = $null
+        }
+    }
+
+    $ipOutput = & $AdbPath -s $Serial shell ip -f inet addr show 2>$null
+    $wifiOn = ((& $AdbPath -s $Serial shell settings get global wifi_on 2>$null) -join "").Trim()
+    $interfaces = @()
+    $current = $null
+    foreach ($line in $ipOutput) {
+        if ($line -match '^\s*\d+:\s+([^:@\s]+)') {
+            $current = $matches[1]
+        } elseif ($line -match 'inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)') {
+            if ($current -and $current -notmatch '^(lo|ccmni|rmnet|pdp|dummy|sit|ip6tnl)') {
+                $interfaces += [pscustomobject]@{
+                    Name = $current; Ip = $matches[1]; Prefix = [int]$matches[2]
+                }
+            }
+        }
+    }
+
+    $match = $null
+    foreach ($iface in $interfaces) {
+        if (Test-SameSubnet -IpA $iface.Ip -IpB $LaptopIp -PrefixLength $iface.Prefix) {
+            $match = $iface
+            break
+        }
+    }
+
+    if ($match) {
+        $source = if ($match.Name -match '^(ap|softap|swlan)') {
+            "Phone hotspot"
+        } elseif ($LaptopIp -eq "192.168.137.1") {
+            "Laptop hotspot"
+        } elseif ($match.Name -match '^(rndis|usb)') {
+            "USB tethering"
+        } else {
+            "Shared Wi-Fi"
+        }
+        return [pscustomobject]@{
+            Connected = $true; Source = $source; Interface = $match.Name
+            PhoneIp = $match.Ip; Reason = $null; WifiOn = $wifiOn
+        }
+    }
+
+    $wlan = $interfaces | Where-Object { $_.Name -match '^wlan' } | Select-Object -First 1
+    $ap = $interfaces | Where-Object { $_.Name -match '^(ap|softap|swlan)' } | Select-Object -First 1
+    $hasMobile = (($ipOutput -join "`n") -match '(ccmni|rmnet|pdp)')
+    $reason = if ($wlan) { "different-subnet" }
+              elseif ($ap) { "phone-hotspot-no-client" }
+              elseif ($hasMobile) { "mobile-only" }
+              elseif ($wifiOn -eq "0") { "wifi-off" }
+              else { "no-lan-address" }
+    $phoneIp = if ($wlan) { $wlan.Ip } elseif ($ap) { $ap.Ip } else { $null }
+    $ifaceName = if ($wlan) { $wlan.Name } elseif ($ap) { $ap.Name } else { $null }
+
+    return [pscustomobject]@{
+        Connected = $false; Source = "None"; Interface = $ifaceName
+        PhoneIp = $phoneIp; Reason = $reason; WifiOn = $wifiOn
+    }
 }
 
 function Ensure-FirewallRules {
@@ -182,6 +280,7 @@ Write-Host "Flask API ready" -ForegroundColor Green
 # 4. Networking
 $devices = & $Adb devices 2>$null
 $deviceOnline = (($devices -join "`n") -match ([regex]::Escape($PhoneId) + "\s+device"))
+$phoneLinkText = "not checked"
 
 if ($Mode -eq "Lan") {
     Ensure-FirewallRules
@@ -198,24 +297,36 @@ if ($Mode -eq "Lan") {
     if ($deviceOnline) {
         Write-Host "Removing adb reverse tunnels (LAN mode does not use them)..." -ForegroundColor Yellow
         & $Adb -s $PhoneId reverse --remove-all | Out-Null
-        $wifiOn = (& $Adb -s $PhoneId shell settings get global wifi_on).Trim()
-        $wlan = & $Adb -s $PhoneId shell ip -f inet addr show wlan0 2>$null
-        if ($wifiOn -ne "1" -or -not (($wlan -join "`n") -match "inet ")) {
-            Write-Warning "Phone Wi-Fi is OFF or not connected. Enable Wi-Fi and join the same network as the laptop before unplugging USB."
+        $phoneLink = Get-PhoneNetworkLink -AdbPath $Adb -Serial $PhoneId -LaptopIp $LanIp
+        if ($phoneLink.Connected) {
+            $phoneLinkText = "$($phoneLink.Source) [$($phoneLink.Interface) $($phoneLink.PhoneIp)]"
+            Write-Host "Phone link: $phoneLinkText" -ForegroundColor Green
+            Write-Host "Phone and laptop share the $LanIp subnet." -ForegroundColor Green
         } else {
-            $phoneIp = ([regex]::Match(($wlan -join "`n"), "inet (\d+\.\d+\.\d+\.\d+)")).Groups[1].Value
-            if ($phoneIp) {
-                $phoneSubnet = ($phoneIp -split "\.")[0..2] -join "."
-                $lanSubnet = ($LanIp -split "\.")[0..2] -join "."
-                if ($phoneSubnet -ne $lanSubnet) {
-                    Write-Warning "Phone IP $phoneIp is not on the laptop subnet $lanSubnet.0/24; cross-network access may be blocked."
-                } else {
-                    Write-Host "Phone on same subnet: $phoneIp" -ForegroundColor Green
+            $phoneLinkText = "none ($($phoneLink.Reason))"
+            switch ($phoneLink.Reason) {
+                "wifi-off" {
+                    Write-Warning "Phone Wi-Fi/hotspot is OFF. Enable Wi-Fi or the phone hotspot, or use -Mode Usb."
+                }
+                "mobile-only" {
+                    Write-Warning "Phone has mobile data only (no Wi-Fi/hotspot LAN address). The app will show Offline until the phone joins the laptop's network."
+                }
+                "different-subnet" {
+                    Write-Warning "Phone is on $($phoneLink.PhoneIp) ($($phoneLink.Interface)), laptop is on $LanIp - different subnet. The app will show Offline until both join the same network."
+                }
+                "phone-hotspot-no-client" {
+                    Write-Warning "Phone hotspot is on $($phoneLink.PhoneIp), but the laptop ($LanIp) is not on that subnet. Join the laptop to the phone hotspot, or use -Mode Usb."
+                }
+                default {
+                    Write-Warning "No shared LAN address between phone and laptop ($LanIp). The app will show Offline until both join the same network."
                 }
             }
+            Write-Host "USB remains the fallback: -Mode Usb uses adb reverse." -ForegroundColor Gray
         }
     } else {
-        Write-Warning "Phone not connected via USB. Connectivity is Wi-Fi only; open the app on the phone."
+        $phoneLinkText = "not checked (no USB)"
+        Write-Host "Phone not connected via USB; skipping LAN source check (Wi-Fi only)." -ForegroundColor Gray
+        Write-Host "If the app shows Offline, connect the phone and laptop to the same Wi-Fi/hotspot or use -Mode Usb." -ForegroundColor Gray
     }
 } else {
     Write-Host "Setting up ADB reverse tunnels..." -ForegroundColor Yellow
@@ -226,6 +337,8 @@ if ($Mode -eq "Lan") {
     if ($LASTEXITCODE -ne 0) { throw "ADB reverse 5000 failed" }
     & $Adb -s $PhoneId reverse "tcp:8082" "tcp:8082"
     if ($LASTEXITCODE -ne 0) { throw "ADB reverse 8082 failed" }
+    $phoneLinkText = "USB (adb reverse)"
+    Write-Host "Phone link: $phoneLinkText" -ForegroundColor Green
 }
 
 # 5. Metro: either start it here (default) or wait for the phone (phone-start)
@@ -340,6 +453,7 @@ Write-Host "=== ALL SERVICES STARTED ===" -ForegroundColor Green
 Write-Host "Mode           : $Mode"
 $listenerUrl = if ($Mode -eq "Lan" -and $LanIp) { "http://${LanIp}:8082" } else { "http://127.0.0.1:8082" }
 if ($Mode -eq "Lan" -and $LanIp) { Write-Host "LAN IP         : $LanIp" }
+Write-Host "Phone link     : $phoneLinkText"
 Write-Host "Metro Listener : $listenerUrl (wake endpoint)"
 Write-Host "Metro Manager  : watches trigger file, starts Metro"
 Write-Host "Flask API      : $ApiBaseUrl$(if ($NoFlask) { ' (PyCharm)' } else { '' })"
