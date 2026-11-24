@@ -2,7 +2,6 @@ export const colors = {
   brand: {
     dark: '#173D28',
     green: '#28633C',
-    greenSoft: '#E8F4EC',
     emerald: '#29965B',
     gold: '#FFCC00',
     goldSoft: '#FFF1C8',

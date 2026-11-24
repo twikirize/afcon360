@@ -705,7 +705,7 @@ def main() -> None:
     tap_text("Sign in securely", require_enabled=True)
 
     wait_for_text(
-        "Your world,",
+        "Your Africa.",
         "Good to see you, " + USERNAME + ".",
         timeout=45,
         label="authenticated Pamoja Home header",
@@ -717,9 +717,9 @@ def main() -> None:
         save_screen("02-home")
         wait_for_text_scrolling(
             "My Events",
-            "Event Calendar",
+            "No event registrations yet",
             timeout=35,
-            label="Pamoja Home My Events overview",
+            label="curated Home My Events list",
         )
         save_screen("02a-my-events-overview")
     mark_stage("authenticated_home")
@@ -749,7 +749,7 @@ def main() -> None:
     if login_navigation_only:
         tap_text("Home", last=True)
         wait_for_text(
-            "Your world,",
+            "Your Africa.",
             "Good to see you, " + USERNAME + ".",
             timeout=25,
             label="return to Home after primary tab navigation",
@@ -878,7 +878,7 @@ def main() -> None:
     # The native app restores to its actual User dashboard ("My Events").
     # The backend evidence check separately verifies the identity endpoint after relaunch.
     wait_for_text(
-        "Your world,",
+        "Your Africa.",
         "Good to see you, " + USERNAME + ".",
         timeout=45,
         label="restored Pamoja Home header after app relaunch",
@@ -886,9 +886,9 @@ def main() -> None:
     save_screen("10-session-restored")
     wait_for_text_scrolling(
         "My Events",
-        "Event Calendar",
+        "No event registrations yet",
         timeout=35,
-        label="restored Pamoja Home My Events overview",
+        label="restored curated Home My Events list",
     )
     save_screen("10a-restored-my-events-overview")
     mark_stage("session_restored")
