@@ -13,7 +13,7 @@ export type FeedMetadata = {
 
 export type FeedItem = {
   feed_id: string;
-  type: 'post' | 'event' | 'ad' | 'system_update' | 'property' | 'transport' | string;
+  type: "post" | "event" | "ad" | "system_update" | "property" | "transport" | string;
   title?: string | null;
   body?: string | null;
   image_url?: string | null;
@@ -34,4 +34,25 @@ export type FeedResponse = {
   error?: string;
 };
 
-export type LoadMode = 'initial' | 'refresh' | 'more';
+export type LoadMode = "initial" | "refresh" | "more";
+
+export type NativeEventRegistration = {
+  registration_reference: string;
+  ticket_number: string;
+  qr_code: string;
+  event: {
+    public_id: string | null;
+    name: string | null;
+    city: string | null;
+    country: string | null;
+    start_date: string | null;
+    end_date: string | null;
+  };
+  ticket_type: string;
+  attendee_name: string;
+  status: string;
+  payment_status: string;
+  amount: string;
+  currency: string;
+  created_at: string | null;
+};

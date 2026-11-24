@@ -3,7 +3,7 @@ import path from "node:path";
 
 const read = file => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 const checks = [
-  ["SDK 58 SQLite package is declared", read("apps/user/package.json").includes('"expo-sqlite": "~58.0.18"')],
+  ["SDK 58 SQLite package and lockfile remain aligned", (() => { const pkg = JSON.parse(read("apps/user/package.json")); const lock = read("pnpm-lock.yaml"); const spec = pkg.dependencies?.["expo-sqlite"]; const match = lock.match(/^\s{6}expo-sqlite:\s*\n^\s{8}specifier: ([^\n]+)\s*\n^\s{8}version: ([^\n]+)/m); return typeof spec === "string" && /^~58\.0\.\d+$/.test(spec) && match?.[1] === spec && /^58\.0\.\d+/.test(match?.[2] ?? ""); })()],
   ["SDK 58 cryptographic random package is declared", read("apps/user/package.json").includes('"expo-crypto": "~58.0.8"')],
   ["SQLCipher native build plugin is enabled", /useSQLCipher:\s*true/.test(read("apps/user/app.config.ts"))],
   ["Native app version is incremented for this binary change", /version:\s*"1\.0\.2"/.test(read("apps/user/app.config.ts"))],
@@ -16,20 +16,7 @@ const checks = [
   ["Offline mutation guard is enforced in the shared API client", /offlineReadOnly/.test(read("packages/core/src/auth/mobile-auth-client.ts")) && /offline_read_only/.test(read("packages/core/src/auth/mobile-auth-client.ts"))],
   ["Home feed cache is accessed through a repository", /readHomeFeed/.test(read("apps/user/src/offline/repositories.ts")) && /refreshHomeFeed/.test(read("apps/user/src/offline/repositories.ts"))],
   ["My Events cache excludes ticket QR payloads", /qr_code:\s*""/.test(read("apps/user/src/offline/repositories.ts"))],
-  ["Selected Pamoja Home composition and offline integration remain intact", (() => {
-    const home = read("apps/user/app/(tabs)/index.tsx");
-    const services = read("apps/user/src/components/ServiceGrid.tsx");
-    const expectedServices = ["Transport", "Stays", "Events & Tickets", "Adventure", "Wallet", "Tourism"];
-    return /<Header\s*\/>/.test(home) &&
-      /<HeroParallax\b/.test(home) &&
-      /<SearchBar\b/.test(home) &&
-      /<ServiceGrid\b/.test(home) &&
-      /MyEventsOverview/.test(home) &&
-      /userOfflineRepository\.refreshHomeFeed/.test(home) &&
-      /safeSameOriginUrl\(path, SITE\)/.test(home) &&
-      home.includes("router.push('/(service)/adventure' as never)") &&
-      expectedServices.every(label => services.includes('label: "' + label + '"'));
-  })()],
+  ["Selected curated Pamoja Home composition and offline integration remain intact", (() => { const home = read("apps/user/app/(tabs)/index.tsx"); return /<Header\s*\/>/.test(home) && /<HeroParallax/.test(home) && /<ServiceGrid/.test(home) && /<TrendingRail/.test(home) && /MyEventsSection/.test(home) && /userOfflineRepository\.refreshHomeFeed/.test(home) && /userOfflineRepository\.refreshEventRegistrations/.test(home); })()],
   ["Expo Updates native module remains installed", read("apps/user/package.json").includes('"expo-updates"')],
   ["Expo Updates native config plugin remains enabled", /"expo-updates"/.test(read("apps/user/app.config.ts"))],
   ["Native runtime fingerprint automatically gates OTA compatibility", /runtimeVersion:\s*\{\s*policy:\s*"fingerprint"\s*\}/.test(read("apps/user/app.config.ts"))],
@@ -168,7 +155,7 @@ const checks = [
   ["Login route has one authenticated-state redirect, not duplicate submit-handler navigation", read("apps/user/app/login.tsx").includes('if (!loading && user) router.replace("/(tabs)");') && !read("apps/user/app/login.tsx").includes('onPress={() => signIn(identifier, password).then') && !read("apps/user/app/login.tsx").includes('onPress={() => verifyMfa(code).then')],
   ["ServiceEntry receives serviceKey because React reserves the key attribute", /serviceKey: ServiceKey/.test(read("apps/user/src/components/ServiceEntry.tsx")) && /function ServiceEntry\(\{\s*serviceKey,/.test(read("apps/user/src/components/ServiceEntry.tsx")) && !/function ServiceEntry\(\{\s*key,/.test(read("apps/user/src/components/ServiceEntry.tsx"))],
   ["Every Pamoja Home service card supplies its explicit serviceKey", (read("apps/user/src/components/GeminiHomeTop.tsx").match(/<ServiceEntry\b[^>]*serviceKey=/g) || []).length === 6 && !/<ServiceEntry\b(?![^>]*serviceKey=)[^>]*>/.test(read("apps/user/src/components/GeminiHomeTop.tsx"))],
-  ["Focused login-and-navigation mode verifies Home, Activity, Wallet, Account and returns Home", /AFCON360_E2E_LOGIN_NAVIGATION_ONLY/.test(read("scripts/verify-user-authenticated-journey.py")) && /USER_ANDROID_E2E_LOGIN_NAVIGATION_PASS/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Activity", last=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Wallet", last=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Account", last=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Home", last=True\)/.test(read("scripts/verify-user-authenticated-journey.py"))],
+  ["Focused login-and-navigation mode verifies curated Home, safe Activity/Wallet/Account tab navigation and return Home", /AFCON360_E2E_LOGIN_NAVIGATION_ONLY/.test(read("scripts/verify-user-authenticated-journey.py")) && /USER_ANDROID_E2E_LOGIN_NAVIGATION_PASS/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Activity", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Wallet", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Account", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Home", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /allow_tab_bar: bool = False/.test(read("scripts/verify-user-authenticated-journey.py")) && /system_navigation_top_y = int\(screen_height \* 0\.96\)/.test(read("scripts/verify-user-authenticated-journey.py"))],
   ["Focused login-and-navigation gate blocks the complete authenticated journey", /name: Focused login and primary navigation gate[\s\S]*?id: login_navigation_journey[\s\S]*?AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Android-version matrix runs only after the primary journey succeeds", /needs\.user-authenticated-journey\.result == 'success'[\s\S]*?needs\.user-authenticated-journey\.outputs\.apk_rebuilt == 'true'/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Failure diagnostics capture the app process log independently", /failure-app-logcat\.txt/.test(read("scripts/verify-user-authenticated-journey.py")) && /failure-activity-top\.txt/.test(read("scripts/verify-user-authenticated-journey.py"))],

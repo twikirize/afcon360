@@ -16,7 +16,7 @@ const approved = [
   ["apps/user/src/components/wallet/WalletScreen.tsx", "Linking.openURL(checkout.toString())", "Open Flutterwave checkout"],
   ["apps/user/app/(service)/settings.tsx", "Linking.openURL(officialDownloadsUrl)", "Open official downloads"],
   ["apps/user/app/(service)/settings.tsx", "WebBrowser.openBrowserAsync(officialDownloadsUrl)", "Open official downloads"],
-  ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(`${SITE}/onboarding/choose`)', "Become a partner on website"],
+  ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/tourism")', "Explore tourism on website"],
   ["apps/user/app/server-settings.tsx", "Linking.openURL(deepLink)", "Save & Connect to Metro"],
   ["apps/user/app/connection.tsx", "Linking.openURL(deepLink)", "Save & Connect to Metro"],
 ];
@@ -25,13 +25,12 @@ const nativeInternalRoutes = [
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/events" as never)'],
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/stays" as never)'],
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/ride" as never)'],
-  ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/adventure" as never)'],
   ["apps/user/app/(tabs)/index.tsx", "router.push('/(service)/ride' as never)"],
   ["apps/user/app/(tabs)/index.tsx", "pathname: '/(service)/events'"],
   ["apps/user/app/(tabs)/index.tsx", "router.push('/(service)/stays' as never)"],
   ["apps/user/app/(tabs)/index.tsx", "router.push('/(tabs)/wallet' as never)"],
-  ["apps/user/app/(tabs)/index.tsx", "case 'adventure':"],
-  ["apps/user/app/(tabs)/index.tsx", "router.push('/(service)/adventure' as never)"],
+  ["apps/user/app/(tabs)/index.tsx", 'case "tourism":'],
+  ["apps/user/app/(tabs)/index.tsx", 'openWebsite("/tourism");'],
   ["apps/user/app/(tabs)/activity.tsx", 'pathname: "/(service)/ride-status/[reference]"'],
   ["apps/user/app/(tabs)/account.tsx", 'router.push("/(service)/delete-account" as never)'],
   ["apps/user/app/login.tsx", 'router.push("/server-settings" as never)'],
@@ -77,7 +76,7 @@ const publicRootRouteFiles = new Set([
   // Public preview-only route: users must be able to select the laptop API
   // before login when the installed preview APK initially targets loopback.
   "server-settings.tsx",
-  // Public preview/development route: lets developers connect Metro before sign-in.
+  // Hidden developer-only preview route, launched from the five-tap Account menu.
   "connection.tsx",
 ]);
 const userRootRoutes = path.join(root, "apps/user/app");

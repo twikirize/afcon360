@@ -30,16 +30,17 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text.ink,
-    fontSize: typography.headline.fontSize,
-    lineHeight: typography.headline.lineHeight,
+    fontSize: 19,
+    lineHeight: 24,
     fontWeight: '900',
-    letterSpacing: -0.3,
+    letterSpacing: -0.45,
   },
   subtitle: {
     color: colors.text.muted,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: '600',
+    letterSpacing: 0.1,
   },
   pulseContainer: {
     flexDirection: 'row',
