@@ -16,7 +16,7 @@ const checks = [
   ["Offline mutation guard is enforced in the shared API client", /offlineReadOnly/.test(read("packages/core/src/auth/mobile-auth-client.ts")) && /offline_read_only/.test(read("packages/core/src/auth/mobile-auth-client.ts"))],
   ["Home feed cache is accessed through a repository", /readHomeFeed/.test(read("apps/user/src/offline/repositories.ts")) && /refreshHomeFeed/.test(read("apps/user/src/offline/repositories.ts"))],
   ["My Events cache excludes ticket QR payloads", /qr_code:\s*""/.test(read("apps/user/src/offline/repositories.ts"))],
-  ["Selected Pamoja Home composition remains intact", /GeminiHomeTop/.test(read("apps/user/app/(tabs)/index.tsx")) && /MyEventsOverview/.test(read("apps/user/app/(tabs)/index.tsx"))],
+  ["Selected curated Pamoja Home composition and offline integration remain intact", (() => { const home = read("apps/user/app/(tabs)/index.tsx"); return /<Header\s*\/>/.test(home) && /<HeroParallax/.test(home) && /<ServiceGrid/.test(home) && /<TrendingRail/.test(home) && /MyEventsSection/.test(home) && /userOfflineRepository\.refreshHomeFeed/.test(home) && /userOfflineRepository\.refreshEventRegistrations/.test(home); })()],
   ["Expo Updates native module remains installed", read("apps/user/package.json").includes('"expo-updates"')],
   ["Expo Updates native config plugin remains enabled", /"expo-updates"/.test(read("apps/user/app.config.ts"))],
   ["Native runtime fingerprint automatically gates OTA compatibility", /runtimeVersion:\s*\{\s*policy:\s*"fingerprint"\s*\}/.test(read("apps/user/app.config.ts"))],
