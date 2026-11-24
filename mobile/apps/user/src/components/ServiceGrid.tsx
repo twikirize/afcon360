@@ -8,7 +8,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { colors, typography, spacing, radii, shadows } from "../theme/tokens";
 
-type ServiceKey = "rides" | "stays" | "events" | "adventure" | "wallet" | "tourism";
+type ServiceKey = "events" | "stays" | "rides" | "tourism";
 
 type Service = {
   key: ServiceKey;
@@ -23,12 +23,47 @@ type Service = {
 };
 
 const SERVICES: Service[] = [
-  { key: "rides", label: "Transport", hint: "Move with ease", icon: "\u{1F698}", bgColor: "#EAF0FA", borderColor: "#D9E3F3", iconBg: "#D8E4F6", accessibilityLabel: "Transport and rides" },
-  { key: "stays", label: "Stays", hint: "Find a place", icon: "\u{1F3E8}", bgColor: "#EAF3EB", borderColor: "#D6E5D8", iconBg: "#D7E8D9", accessibilityLabel: "Stays and accommodation" },
-  { key: "events", label: "Events & Tickets", hint: "Discover · Register", icon: "\u{1F3DF}\u{FE0F}", bgColor: "#FFF8E6", borderColor: "#F0E3BD", iconBg: "#FCE9B5", accessibilityLabel: "Events and tickets" },
-  { key: "adventure", label: "Adventure", hint: "Coming soon", icon: "\u{1F30D}", bgColor: "#F0F3E5", borderColor: "#E0E7C9", iconBg: "#E1E9C9", accessibilityLabel: "Adventure — coming soon" },
-  { key: "wallet", label: "Wallet", hint: "Payments & balance", icon: "\u{1F4B3}", bgColor: "#EEF0FA", borderColor: "#DFE2F3", iconBg: "#E0E4F6", accessibilityLabel: "Wallet and payments" },
-  { key: "tourism", label: "Tourism", hint: "Tours · Safaris", icon: "\u{1F3DE}\u{FE0F}", isWeb: true, bgColor: "#F0F3E5", borderColor: "#E0E7C9", iconBg: "#E1E9C9", accessibilityLabel: "Tourism on Pamoja website" },
+  {
+    key: "events",
+    label: "Events & Tickets",
+    hint: "Discover · Register",
+    icon: "\u{1F3DF}\u{FE0F}",
+    bgColor: "#FFF8E6",
+    borderColor: "#F0E3BD",
+    iconBg: "#FCE9B5",
+    accessibilityLabel: "Events and tickets",
+  },
+  {
+    key: "stays",
+    label: "Stays",
+    hint: "Find a place",
+    icon: "\u{1F3E8}",
+    bgColor: "#EAF3EB",
+    borderColor: "#D6E5D8",
+    iconBg: "#D7E8D9",
+    accessibilityLabel: "Stays and accommodation",
+  },
+  {
+    key: "rides",
+    label: "Mobility",
+    hint: "Move with ease",
+    icon: "\u{1F698}",
+    bgColor: "#EAF0FA",
+    borderColor: "#D9E3F3",
+    iconBg: "#D8E4F6",
+    accessibilityLabel: "Mobility and rides",
+  },
+  {
+    key: "tourism",
+    label: "Adventure",
+    hint: "Tourism \u00B7 Safaris",
+    icon: "\u{1F30D}",
+    isWeb: true,
+    bgColor: "#F0F3E5",
+    borderColor: "#E0E7C9",
+    iconBg: "#E1E9C9",
+    accessibilityLabel: "Adventure and tourism on website",
+  },
 ];
 
 const styles = StyleSheet.create({
