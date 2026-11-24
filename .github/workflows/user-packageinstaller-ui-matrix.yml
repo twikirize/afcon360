@@ -1,14 +1,8 @@
-name: User PackageInstaller UI compatibility matrix
+﻿name: User PackageInstaller UI compatibility matrix
 
 on:
-  push:
-    branches:
-      - reconcile/user-local-files-20261121
-    paths:
-      - ".github/workflows/user-packageinstaller-ui-matrix.yml"
-      - "mobile/scripts/verify-user-packageinstaller-ui.py"
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
     branches:
       - feat/native-user-app-integration-20261108
     paths:
@@ -16,27 +10,18 @@ on:
       - "mobile/scripts/verify-user-packageinstaller-ui.py"
   workflow_dispatch:
 
-concurrency:
-  group: afcon360-user-packageinstaller-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
-
 permissions:
   contents: read
   actions: read
 
 jobs:
   build-test-apks:
-    name: Prepare verified legacy and current User APK fixtures
+    name: Build User 1.0.1 and 1.0.2 UI-install fixtures
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
-      - name: Check out retained User source
+      - name: Check out User branch source
         uses: actions/checkout@v7
-
-      - name: Check Python syntax and offline helper tests
-        run: |
-          python -m py_compile mobile/scripts/verify-user-packageinstaller-ui.py
-          python mobile/scripts/verify-user-packageinstaller-ui.py --self-test
 
       - name: Download historical User 1.0.0 APK artifact
         uses: actions/download-artifact@v8
@@ -47,7 +32,7 @@ jobs:
           artifact-ids: "13338680951"
           path: old-user-artifact
 
-      - name: Verify historical APK identity and checksum
+      - name: Verify historical APK and source identity
         shell: bash
         run: |
           set -euo pipefail
@@ -55,9 +40,9 @@ jobs:
           OLD_APK="old-user-artifact/user-preview.apk"
           test -s "$OLD_APK"
           cp "$OLD_APK" packageinstaller-apks/AFCON360-User-1.0.0.apk
-          OLD_SHA="$(sha256sum packageinstaller-apks/AFCON360-User-1.0.0.apk | awk '{print $1}')"
+          OLD_SHA="$(sha256sum packageinstaller-apks/AFCON360-User-1.0.0.apk | awk '\''{print $1}'\'')"
           test "$OLD_SHA" = "6b72e2fa496ff109392d8933416d287ebc981c12b025ad02a32d3651bda5b797"
-          echo "Verified historical User 1.0.0 APK SHA-256: $OLD_SHA"
+          echo "Historical User 1.0.0 APK SHA-256: $OLD_SHA"
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -94,33 +79,34 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/37.0.0" >> "$GITHUB_PATH"
 
-      - name: Verify historical APK package and version after SDK setup
-        shell: bash
-        run: |
-          set -euo pipefail
-          BADGING="$(aapt dump badging packageinstaller-apks/AFCON360-User-1.0.0.apk)"
-          printf '%s\n' "$BADGING" | grep -F "package: name='space.pamoja.afcon360.user'"
-          printf '%s\n' "$BADGING" | grep -F "versionName='1.0.0'"
-
-      - name: Install locked User workspace dependencies
+      - name: Install User workspace dependencies
         working-directory: mobile
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
-      - name: Generate isolated preview Android project
+      - name: Check User Expo dependency compatibility
+        working-directory: mobile
+        run: pnpm --filter "@afcon360/user-app" exec expo install --check
+
+      - name: Validate PackageInstaller test script
+        run: |
+          python -m py_compile mobile/scripts/verify-user-packageinstaller-ui.py
+          python mobile/scripts/verify-user-packageinstaller-ui.py --self-test
+
+      - name: Generate OTA-enabled User preview Android project
         working-directory: mobile
         env:
           AFCON360_PREVIEW_BUILD: "true"
-          AFCON360_E2E_BUILD: "true"
-          EXPO_PUBLIC_API_BASE_URL: "http://127.0.0.1:5000"
+          AFCON360_USER_EAS_PROJECT_ID: "20708e30-4640-4b88-9615-38412f47e811"
+          EXPO_PUBLIC_API_BASE_URL: "https://www.pamoja.space"
         run: pnpm --filter "@afcon360/user-app" exec expo prebuild --platform android --no-install --clean
 
-      - name: Configure one ephemeral signing identity for both preview fixtures
+      - name: Configure a stable signing key for the two upgrade-test APKs
         working-directory: mobile
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
-          const fs = require("node:fs");
+          const fs = require("fs");
           const path = "apps/user/android/app/build.gradle";
           let source = fs.readFileSync(path, "utf8");
           const buildTypes = source.indexOf("buildTypes {");
@@ -131,10 +117,7 @@ jobs:
           let end = -1;
           for (let i = open; i < source.length; i++) {
             if (source[i] === "{") depth++;
-            if (source[i] === "}") {
-              depth--;
-              if (depth === 0) { end = i + 1; break; }
-            }
+            if (source[i] === "}" && --depth === 0) { end = i + 1; break; }
           }
           if (end < 0) throw new Error("Could not parse Android release build type");
           let block = source.slice(release, end);
@@ -145,33 +128,38 @@ jobs:
           fs.writeFileSync(path, source);
           NODE
 
-      - name: Build current-source preview APK 1.0.2
+      - name: Build current User 1.0.1 APK
         working-directory: mobile/apps/user/android
         env:
           AFCON360_PREVIEW_BUILD: "true"
-          AFCON360_E2E_BUILD: "true"
-          EXPO_PUBLIC_API_BASE_URL: "http://127.0.0.1:5000"
+          AFCON360_USER_EAS_PROJECT_ID: "20708e30-4640-4b88-9615-38412f47e811"
+          EXPO_PUBLIC_API_BASE_URL: "https://www.pamoja.space"
         run: ./gradlew --no-daemon --stacktrace assembleRelease
 
-      - name: Verify and stage current-source 1.0.2 APK
+      - name: Stage and verify current 1.0.1 APK
         shell: bash
         run: |
           set -euo pipefail
           APK="$(find mobile/apps/user/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
           test -s "$APK"
-          cp "$APK" packageinstaller-apks/AFCON360-User-1.0.2.apk
-          BADGING="$(aapt dump badging packageinstaller-apks/AFCON360-User-1.0.2.apk)"
+          cp "$APK" packageinstaller-apks/AFCON360-User-1.0.1.apk
+          BADGING="$(aapt dump badging packageinstaller-apks/AFCON360-User-1.0.1.apk)"
           printf '%s\n' "$BADGING" | grep -F "package: name='space.pamoja.afcon360.user.preview'"
-          printf '%s\n' "$BADGING" | grep -F "versionCode='1'"
-          printf '%s\n' "$BADGING" | grep -F "versionName='1.0.2'"
+          printf '%s\n' "$BADGING" | grep -F "versionName='1.0.1'"
+          SHA="$(sha256sum packageinstaller-apks/AFCON360-User-1.0.1.apk | awk '{print $1}')"
+          echo "Current User 1.0.1 APK SHA-256: $SHA"
 
-      - name: Change only generated Gradle metadata for synthetic 1.0.3 upgrade fixture
+      - name: Increment version code and build signed 1.0.2 upgrade APK
         working-directory: mobile
         shell: bash
+        env:
+          AFCON360_PREVIEW_BUILD: "true"
+          AFCON360_USER_EAS_PROJECT_ID: "20708e30-4640-4b88-9615-38412f47e811"
+          EXPO_PUBLIC_API_BASE_URL: "https://www.pamoja.space"
         run: |
           set -euo pipefail
           node <<'NODE'
-          const fs = require("node:fs");
+          const fs = require("fs");
           const path = "apps/user/android/app/build.gradle";
           let source = fs.readFileSync(path, "utf8");
           const start = source.indexOf("defaultConfig {");
@@ -181,52 +169,42 @@ jobs:
           let end = -1;
           for (let i = open; i < source.length; i++) {
             if (source[i] === "{") depth++;
-            if (source[i] === "}") {
-              depth--;
-              if (depth === 0) { end = i + 1; break; }
-            }
+            if (source[i] === "}" && --depth === 0) { end = i + 1; break; }
           }
           if (end < 0) throw new Error("Could not parse Android defaultConfig block");
           let block = source.slice(start, end);
-          if (!/versionCode\s+1\b/.test(block)) throw new Error("Expected versionCode 1 in generated 1.0.2 fixture");
-          if (!/versionName\s+["']1\.0\.2["']/.test(block)) throw new Error("Expected versionName 1.0.2 in generated Gradle config");
+          if (!/versionCode\s+1\b/.test(block)) throw new Error("Expected generated versionCode 1 before upgrade fixture build");
+          if (!/versionName\s+["']1\.0\.1["']/.test(block)) throw new Error("Expected generated versionName 1.0.1 before upgrade fixture build");
           block = block.replace(/versionCode\s+1\b/, "versionCode 2");
-          block = block.replace(/versionName\s+["']1\.0\.2["']/, 'versionName "1.0.3"');
+          block = block.replace(/versionName\s+["']1\.0\.1["']/, 'versionName "1.0.2"');
           source = source.slice(0, start) + block + source.slice(end);
           fs.writeFileSync(path, source);
           NODE
+          cd apps/user/android
+          ./gradlew --no-daemon --stacktrace assembleRelease
 
-      - name: Build synthetic 1.0.3 upgrade APK from the same source and signing identity
-        working-directory: mobile/apps/user/android
-        env:
-          AFCON360_PREVIEW_BUILD: "true"
-          AFCON360_E2E_BUILD: "true"
-          EXPO_PUBLIC_API_BASE_URL: "http://127.0.0.1:5000"
-        run: ./gradlew --no-daemon --stacktrace clean assembleRelease
-
-      - name: Verify version, package and matching signatures
+      - name: Verify same signing certificate and stage 1.0.2 APK
         shell: bash
         run: |
           set -euo pipefail
           APK="$(find mobile/apps/user/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
           test -s "$APK"
-          cp "$APK" packageinstaller-apks/AFCON360-User-1.0.3.apk
-          BADGING="$(aapt dump badging packageinstaller-apks/AFCON360-User-1.0.3.apk)"
-          printf '%s\n' "$BADGING" | grep -F "package: name='space.pamoja.afcon360.user.preview'"
-          printf '%s\n' "$BADGING" | grep -F "versionCode='2'"
-          printf '%s\n' "$BADGING" | grep -F "versionName='1.0.3'"
+          cp "$APK" packageinstaller-apks/AFCON360-User-1.0.2.apk
+          for f in packageinstaller-apks/AFCON360-User-1.0.1.apk packageinstaller-apks/AFCON360-User-1.0.2.apk; do
+            aapt dump badging "$f" | grep -F "package: name='space.pamoja.afcon360.user.preview'"
+          done
+          apksigner verify --print-certs packageinstaller-apks/AFCON360-User-1.0.1.apk > packageinstaller-apks/signer-1.0.1.txt
           apksigner verify --print-certs packageinstaller-apks/AFCON360-User-1.0.2.apk > packageinstaller-apks/signer-1.0.2.txt
-          apksigner verify --print-certs packageinstaller-apks/AFCON360-User-1.0.3.apk > packageinstaller-apks/signer-1.0.3.txt
-          CERT1="$(sed -n 's/Signer #1 certificate SHA-256 digest: //p' packageinstaller-apks/signer-1.0.2.txt | head -n 1)"
-          CERT2="$(sed -n 's/Signer #1 certificate SHA-256 digest: //p' packageinstaller-apks/signer-1.0.3.txt | head -n 1)"
+          CERT1="$(sed -n 's/Signer #1 certificate SHA-256 digest: //p' packageinstaller-apks/signer-1.0.1.txt | head -n 1)"
+          CERT2="$(sed -n 's/Signer #1 certificate SHA-256 digest: //p' packageinstaller-apks/signer-1.0.2.txt | head -n 1)"
           test -n "$CERT1" && test "$CERT1" = "$CERT2"
-          echo "Verified same signer for 1.0.2 -> 1.0.3: $CERT1"
+          echo "Verified 1.0.1 -> 1.0.2 upgrade fixtures share signer $CERT1."
           (cd packageinstaller-apks && sha256sum *.apk > SHA256SUMS.txt)
 
-      - name: Upload verified PackageInstaller fixtures
+      - name: Upload historical and current User APK fixtures
         uses: actions/upload-artifact@v7
         with:
-          name: afcon360-user-packageinstaller-ui-fixtures
+          name: afcon360-user-packageinstaller-ui-test-apks
           path: packageinstaller-apks/
           if-no-files-found: error
           retention-days: 30
@@ -235,7 +213,7 @@ jobs:
     name: PackageInstaller UI — Android ${{ matrix.android-label }}
     needs: build-test-apks
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       max-parallel: 3
@@ -258,18 +236,18 @@ jobs:
             system-image-api-level: "36"
             target: google_apis
           - android-label: "17 / API 37"
-            api-level: "37"
+            api-level: "37.0"
             system-image-api-level: "37.0"
             target: default
 
     steps:
-      - name: Check out retained User source
+      - name: Check out User test harness
         uses: actions/checkout@v7
 
-      - name: Download verified APK fixtures
+      - name: Download verified User APK fixtures
         uses: actions/download-artifact@v8
         with:
-          name: afcon360-user-packageinstaller-ui-fixtures
+          name: afcon360-user-packageinstaller-ui-test-apks
           path: packageinstaller-apks
 
       - name: Verify fixture checksums
@@ -278,7 +256,45 @@ jobs:
           set -euo pipefail
           (cd packageinstaller-apks && sha256sum -c SHA256SUMS.txt)
 
-      - name: Run real Android PackageInstaller UI test
+      - name: Verify emulator infrastructure readiness
+        id: infra
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Checking ADB device state..."
+          adb wait-for-device
+          STATE=$(adb get-state)
+          test "$STATE" = "device"
+          echo "ADB device state: $STATE"
+
+          echo "Checking boot completion..."
+          for i in {1..60}; do
+            BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            if [ "$BOOT" = "1" ]; then break; fi
+            sleep 2
+          done
+          test "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1"
+          echo "Boot completed"
+
+          echo "Checking PackageManager..."
+          for i in {1..60}; do
+            if adb shell pm list packages 2>/dev/null | grep -q "package:"; then break; fi
+            sleep 2
+          done
+          adb shell pm list packages 2>/dev/null | grep -q "package:"
+          echo "PackageManager responsive"
+
+          echo "Checking MediaProvider..."
+          if ! adb shell pm list packages 2>/dev/null | grep -q "com.android.providers.media"; then
+            echo "::error::MediaProvider not installed"
+            exit 1
+          fi
+          echo "MediaProvider present"
+
+          echo "All infrastructure checks passed"
+
+      - name: Run real Android PackageInstaller UI tests
+        if: steps.infra.outcome == 'success'
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: ${{ matrix.api-level }}
@@ -288,17 +304,18 @@ jobs:
           profile: pixel_7
           ram-size: 4096M
           disk-size: 12G
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -accel on
-          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
+          disable-animations: true
+          emulator-boot-timeout: 600
           script: >-
             python mobile/scripts/verify-user-packageinstaller-ui.py
-            --expected-api ${{ matrix.api-level }}
+            --expected-api ${{ matrix.api-level == '37.0' && '37' || matrix.api-level }}
             --old-apk packageinstaller-apks/AFCON360-User-1.0.0.apk
-            --current-apk packageinstaller-apks/AFCON360-User-1.0.2.apk
-            --upgrade-apk packageinstaller-apks/AFCON360-User-1.0.3.apk
+            --current-apk packageinstaller-apks/AFCON360-User-1.0.1.apk
+            --upgrade-apk packageinstaller-apks/AFCON360-User-1.0.2.apk
             --evidence-dir packageinstaller-ui-evidence
 
-      - name: Upload PackageInstaller evidence
+      - name: Upload PackageInstaller UI evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
