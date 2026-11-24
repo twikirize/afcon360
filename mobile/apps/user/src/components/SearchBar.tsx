@@ -10,7 +10,6 @@ type SearchBarProps = {
   recentSearches?: string[];
   onRecentPress?: (text: string) => void;
   onClearRecent?: () => void;
-  variant?: 'default' | 'gemini';
 };
 
 const styles = StyleSheet.create({
@@ -22,41 +21,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.lg,
+    minHeight: 54,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.xl,
     backgroundColor: colors.surface.white,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#D8E4DA',
     ...shadows.card,
   },
   inputWrapperFocused: {
     borderColor: colors.brand.emerald,
-  },
-  inputWrapperGemini: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.90)',
-    borderColor: 'rgba(255,255,255,0.98)',
-    shadowColor: '#082918',
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  inputWrapperGeminiFocused: {
-    borderColor: '#0E5B36',
-  },
-  iconGemini: {
-    color: '#093E24',
-    fontSize: 22,
-  },
-  inputGemini: {
-    color: '#082918',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  clearTextGemini: {
-    color: '#093E24',
   },
   icon: {
     color: colors.brand.emerald,
@@ -84,8 +58,8 @@ const styles = StyleSheet.create({
     top: '100%',
     left: 0,
     right: 0,
-    marginTop: spacing.xs,
-    borderRadius: radii.lg,
+    marginTop: spacing.sm,
+    borderRadius: radii.xl,
     backgroundColor: colors.surface.white,
     borderWidth: 1,
     borderColor: colors.border,
@@ -138,7 +112,6 @@ export const SearchBar = ({
   recentSearches = [],
   onRecentPress,
   onClearRecent,
-  variant = 'default',
 }: SearchBarProps) => {
   const [focused, setFocused] = useState(false);
   const [showRecent, setShowRecent] = useState(false);
@@ -179,8 +152,8 @@ export const SearchBar = ({
 
   return (
     <View style={styles.container}>
-      <View style={[styles.inputWrapper, variant === 'gemini' && styles.inputWrapperGemini, focused && (variant === 'gemini' ? styles.inputWrapperGeminiFocused : styles.inputWrapperFocused)]}>
-        <Text style={[styles.icon, variant === 'gemini' && styles.iconGemini]}>{'\u2315'}</Text>
+      <View style={[styles.inputWrapper, focused && styles.inputWrapperFocused]}>
+        <Text style={styles.icon}>{'\u2315'}</Text>
         <TextInput
           ref={inputRef}
           value={value}
@@ -192,9 +165,9 @@ export const SearchBar = ({
           placeholderTextColor='#87938C'
           returnKeyType='search'
           autoCorrect={false}
-          style={[styles.input, variant === 'gemini' && styles.inputGemini]}
-          accessibilityLabel={variant === 'gemini' ? 'Search Pamoja events and tickets' : 'Search Pamoja highlights'}
-          accessibilityHint={variant === 'gemini' ? 'Search events and tickets in AFCON360' : 'Filters the currently loaded trending highlights'}
+          style={styles.input}
+          accessibilityLabel='Search Pamoja highlights'
+          accessibilityHint='Filters the currently loaded trending highlights'
         />
         {value.length > 0 && (
           <Pressable
@@ -204,7 +177,7 @@ export const SearchBar = ({
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={styles.clearButton}
           >
-            <Text style={[styles.clearText, variant === 'gemini' && styles.clearTextGemini]}>{'\u00D7'}</Text>
+            <Text style={styles.clearText}>{'\u00D7'}</Text>
           </Pressable>
         )}
       </View>
