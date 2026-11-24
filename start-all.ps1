@@ -12,6 +12,9 @@
     Lan mode requires the phone and laptop on the same Wi-Fi network and Windows
     Firewall inbound allowances for TCP 8081, 8082, 5000. When this script is run
     as Administrator it adds the missing rules; otherwise it prints the commands.
+
+    Use -PhoneStart (alias -NoMetro) to leave Metro stopped and let the phone's
+    Developer screen wake it (Account -> Developer -> Wake Metro on Laptop).
 #>
 [CmdletBinding()]
 param(
@@ -21,7 +24,9 @@ param(
     [switch]$Restart,
     [switch]$NoLaunch,
     [switch]$ClearCache,
-    [switch]$NoFlask
+    [switch]$NoFlask,
+    [Alias("NoMetro")]
+    [switch]$PhoneStart
 )
 
 $ErrorActionPreference = "Stop"
@@ -123,8 +128,10 @@ Write-Host ""
 
 if ($Restart) {
     Write-Host "Stopping existing AFCON360 dev services..." -ForegroundColor Yellow
-    Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -match 'metro_manager\.py|metro_listener\.py' } |
+    $killPattern = 'metro_manager\.py|metro_listener\.py|start-user-metro\.ps1|expo start'
+    if (-not $NoFlask) { $killPattern += '|app\.py' }
+    Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'powershell.exe' OR Name = 'node.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match $killPattern } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     $ports = @(8081, 8082)
     if (-not $NoFlask) { $ports += 5000 }
@@ -221,6 +228,30 @@ if ($Mode -eq "Lan") {
     if ($LASTEXITCODE -ne 0) { throw "ADB reverse 8082 failed" }
 }
 
+# 5. Metro: either start it here (default) or wait for the phone (phone-start)
+$launched = $false
+if ($PhoneStart) {
+    $phoneListener = if ($Mode -eq "Lan" -and $LanIp) { "http://${LanIp}:8082" } else { "http://127.0.0.1:8082 (USB reverse)" }
+    Write-Host "Phone-start mode: Metro is not started by this launcher." -ForegroundColor Cyan
+    Write-Host "Waiting for the Metro Listener..." -ForegroundColor Cyan
+    $listenerReady = $false
+    for ($i = 0; $i -lt 20; $i++) {
+        try {
+            $null = Invoke-WebRequest -Uri "http://127.0.0.1:8082/health" -Method GET `
+                -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
+            $listenerReady = $true
+            break
+        } catch {
+            Start-Sleep -Seconds 1
+        }
+    }
+    if (-not $listenerReady) { throw "Metro listener did not start on port 8082" }
+    Write-Host "Listener ready: $phoneListener" -ForegroundColor Green
+    Write-Host "On the phone: Account -> Developer -> Wake Metro on Laptop." -ForegroundColor Yellow
+    Write-Host "Set Laptop IP (for auto-wake) to $(if ($Mode -eq 'Lan' -and $LanIp) { $LanIp } else { '127.0.0.1' }), then tap Save & Connect to Metro." -ForegroundColor Yellow
+    Write-Host "Metro will start on the laptop when the phone calls /wake: $MetroUrl" -ForegroundColor Yellow
+    Write-Host "Note: the app must already be open (or have a cached/embedded bundle) to wake Metro." -ForegroundColor Gray
+} else {
 # 5. Wake Metro via listener
 Write-Host "Waking Metro..." -ForegroundColor Yellow
 $wakeOk = $false
@@ -302,6 +333,7 @@ if ($NoLaunch) {
     Write-Host "If the dev launcher appears, choose 'Fetch development servers' or connect to:" -ForegroundColor Yellow
     Write-Host "  $MetroUrl" -ForegroundColor Yellow
 }
+}
 
 Write-Host ""
 Write-Host "=== ALL SERVICES STARTED ===" -ForegroundColor Green
@@ -311,13 +343,19 @@ if ($Mode -eq "Lan" -and $LanIp) { Write-Host "LAN IP         : $LanIp" }
 Write-Host "Metro Listener : $listenerUrl (wake endpoint)"
 Write-Host "Metro Manager  : watches trigger file, starts Metro"
 Write-Host "Flask API      : $ApiBaseUrl$(if ($NoFlask) { ' (PyCharm)' } else { '' })"
-Write-Host "Metro Bundler  : $MetroUrl"
-if ($launched) {
-    Write-Host "Phone app      : launched against $MetroUrl"
-} elseif ($NoLaunch) {
-    Write-Host "Phone app      : not launched (-NoLaunch)"
+if ($PhoneStart) {
+    Write-Host "Metro Bundler  : $MetroUrl (starts when the phone wakes it)"
+    Write-Host "Phone app      : open it and tap Wake Metro on Laptop"
+    Write-Host "Phone action   : Account -> Developer -> Wake Metro on Laptop -> Save & Connect"
 } else {
-    Write-Host "Phone app      : not launched (no USB device); open it manually"
+    Write-Host "Metro Bundler  : $MetroUrl"
+    if ($launched) {
+        Write-Host "Phone app      : launched against $MetroUrl"
+    } elseif ($NoLaunch) {
+        Write-Host "Phone app      : not launched (-NoLaunch)"
+    } else {
+        Write-Host "Phone app      : not launched (no USB device); open it manually"
+    }
 }
 Write-Host ""
 if ($Mode -eq "Lan") {
@@ -326,5 +364,9 @@ if ($Mode -eq "Lan") {
 } else {
     Write-Host "Usb mode: keep the cable connected. Use -Mode Lan for Wi-Fi/hotspot connectivity." -ForegroundColor Gray
 }
-Write-Host "Close this window to stop all services." -ForegroundColor Gray
+if ($PhoneStart) {
+    Write-Host "Phone-start mode: Metro is started by the phone, not by this window." -ForegroundColor Gray
+    Write-Host "The listener stays up; reopen the app and tap Wake Metro on Laptop after a network change." -ForegroundColor Gray
+}
+Write-Host "Keep the Metro/Flask windows open. Rerun this launcher (it restarts safely) after a network change." -ForegroundColor Gray
 Read-Host "Press Enter to exit"

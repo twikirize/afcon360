@@ -87,15 +87,21 @@ class MetroManager:
             print(f"[{time.strftime('%H:%M:%S')}] Command: {' '.join(self.build_metro_command())}")
             self.write_status("starting", "Metro start initiated")
 
+            for handle in (getattr(self, "metro_log", None), getattr(self, "metro_err_log", None)):
+                try:
+                    handle.close()
+                except Exception:
+                    pass
             self.metro_log = open(METRO_STDOUT_LOG, "w", encoding="utf-8", errors="replace")
             self.metro_err_log = open(METRO_STDERR_LOG, "w", encoding="utf-8", errors="replace")
             
-            # Start Metro in a new console window
+            # Start Metro without a console window. A console close sends SIGHUP,
+            # and Expo's 2g signal handler crashes on Windows with "kill ENOSYS".
             if sys.platform == "win32":
                 self.metro_process = subprocess.Popen(
                     self.build_metro_command(),
                     cwd=str(REPO_ROOT),
-                    creationflags=subprocess.CREATE_NEW_CONSOLE,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
                     stdout=self.metro_log,
                     stderr=self.metro_err_log,
                     stdin=subprocess.DEVNULL,
@@ -121,15 +127,22 @@ class MetroManager:
         if self.metro_process and self.metro_process.poll() is None:
             print(f"[{time.strftime('%H:%M:%S')}] Stopping Metro...")
             if sys.platform == "win32":
-                try:
-                    self.metro_process.send_signal(signal.CTRL_BREAK_EVENT)
-                except:
-                    pass
+                subprocess.run(
+                    ["taskkill", "/PID", str(self.metro_process.pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
             else:
                 self.metro_process.terminate()
             try:
                 self.metro_process.wait(timeout=10)
             except:
+                pass
+        for handle in (getattr(self, "metro_log", None), getattr(self, "metro_err_log", None)):
+            try:
+                handle.close()
+            except Exception:
                 pass
         self.metro_process = None
         self.write_status("stopped", "Metro stopped")
