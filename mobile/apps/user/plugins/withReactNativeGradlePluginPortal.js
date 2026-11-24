@@ -17,15 +17,24 @@ module.exports = function withReactNativeGradlePluginPortal(config) {
     async (modConfig) => {
       const mobileRoot = path.resolve(modConfig.modRequest.projectRoot, "../..");
       const pnpmStore = path.join(mobileRoot, "node_modules", ".pnpm");
-      if (!fs.existsSync(pnpmStore)) {
-        throw new Error("AFCON360 could not locate the mobile pnpm store for Gradle plugin setup.");
-      }
-
-      const candidates = fs.readdirSync(pnpmStore)
-        .filter((entry) => entry.startsWith("@react-native+gradle-plugin@"))
-        .sort();
-      const settingsFiles = candidates
-        .map((entry) => path.join(
+      // The workspace currently uses node-linker=hoisted, so the package may
+      // live directly under node_modules. Keep the virtual-store lookup too
+      // for standard pnpm isolated layouts.
+      const candidates = fs.existsSync(pnpmStore)
+        ? fs.readdirSync(pnpmStore)
+            .filter((entry) => entry.startsWith("@react-native+gradle-plugin@"))
+            .sort()
+        : [];
+      const directSettingsFile = path.join(
+        mobileRoot,
+        "node_modules",
+        "@react-native",
+        "gradle-plugin",
+        "settings.gradle.kts"
+      );
+      const settingsFiles = [
+        directSettingsFile,
+        ...candidates.map((entry) => path.join(
           pnpmStore,
           entry,
           "node_modules",
@@ -33,6 +42,8 @@ module.exports = function withReactNativeGradlePluginPortal(config) {
           "gradle-plugin",
           "settings.gradle.kts"
         ))
+      ]
+        .filter((file, index, all) => all.indexOf(file) === index)
         .filter((file) => fs.existsSync(file));
 
       if (settingsFiles.length === 0) {
