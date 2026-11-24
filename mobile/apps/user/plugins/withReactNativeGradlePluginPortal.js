@@ -16,27 +16,85 @@ module.exports = function withReactNativeGradlePluginPortal(config) {
     "android",
     async (modConfig) => {
       const mobileRoot = path.resolve(modConfig.modRequest.projectRoot, "../..");
-      const pnpmStore = path.join(mobileRoot, "node_modules", ".pnpm");
-      if (!fs.existsSync(pnpmStore)) {
-        throw new Error("AFCON360 could not locate the mobile pnpm store for Gradle plugin setup.");
+      // Resolve React Native first. With pnpm, its transitive Gradle plugin
+      // is linked beside the React Native package inside that package's
+      // virtual-store node_modules, which is not guaranteed to be discoverable
+      // by scanning only the workspace-level .pnpm directory.
+      const candidateRoots = new Set();
+      const addCandidate = (candidate) => {
+        if (!candidate) return;
+        candidateRoots.add(path.resolve(candidate));
+      };
+
+      let reactNativeRoot = null;
+      try {
+        const reactNativeEntry = require.resolve("react-native", {
+          paths: [modConfig.modRequest.projectRoot, mobileRoot],
+        });
+        let current = path.dirname(reactNativeEntry);
+        while (true) {
+          const manifestPath = path.join(current, "package.json");
+          if (fs.existsSync(manifestPath)) {
+            try {
+              const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+              if (manifest.name === "react-native") {
+                reactNativeRoot = fs.realpathSync(current);
+                break;
+              }
+            } catch {
+              // Continue toward the package root.
+            }
+          }
+          const parent = path.dirname(current);
+          if (parent === current) break;
+          current = parent;
+        }
+      } catch {
+        // Fall through to workspace pnpm-store discovery with useful diagnostics.
       }
 
-      const candidates = fs.readdirSync(pnpmStore)
-        .filter((entry) => entry.startsWith("@react-native+gradle-plugin@"))
-        .sort();
-      const settingsFiles = candidates
-        .map((entry) => path.join(
+      if (reactNativeRoot) {
+        const rnNodeModules = path.dirname(reactNativeRoot);
+        addCandidate(path.join(rnNodeModules, "@react-native", "gradle-plugin"));
+        addCandidate(path.join(reactNativeRoot, "node_modules", "@react-native", "gradle-plugin"));
+      }
+      addCandidate(path.join(mobileRoot, "node_modules", "@react-native", "gradle-plugin"));
+
+      const pnpmStore = path.join(mobileRoot, "node_modules", ".pnpm");
+      const candidates = fs.existsSync(pnpmStore)
+        ? fs.readdirSync(pnpmStore)
+            .filter((entry) => entry.startsWith("@react-native+gradle-plugin@"))
+            .sort()
+        : [];
+      for (const entry of candidates) {
+        addCandidate(path.join(
           pnpmStore,
           entry,
           "node_modules",
           "@react-native",
-          "gradle-plugin",
-          "settings.gradle.kts"
-        ))
-        .filter((file) => fs.existsSync(file));
+          "gradle-plugin"
+        ));
+      }
 
+      const settingsFiles = Array.from(candidateRoots)
+        .filter((packageRoot) => {
+          const manifestPath = path.join(packageRoot, "package.json");
+          if (!fs.existsSync(manifestPath)) return false;
+          try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+            return manifest.name === "@react-native/gradle-plugin";
+          } catch {
+            return false;
+          }
+        })
+        .map((packageRoot) => path.join(packageRoot, "settings.gradle.kts"))
+        .filter((file) => fs.existsSync(file));
       if (settingsFiles.length === 0) {
-        throw new Error("AFCON360 could not find React Native Gradle plugin settings.gradle.kts.");
+        throw new Error(
+          "AFCON360 could not find React Native Gradle plugin settings.gradle.kts. " +
+          "React Native package root: " + (reactNativeRoot || "not resolved") +
+          "; checked " + candidateRoots.size + " package locations."
+        );
       }
 
       for (const settingsFile of settingsFiles) {
