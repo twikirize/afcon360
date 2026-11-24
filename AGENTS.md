@@ -720,11 +720,12 @@ The check only becomes a hard merge gate when repository branch protection requi
 
 A Git commit records staged changes in the local repository. A push is **not** required to create that local commit. Pushing publishes a commit to a remote repository; it is a separate step used for remote backup, collaboration, or pull-request delivery.
 
-The accepted simple workflow, when run from the repository root and after reviewing the working tree, is:
+The preferred simple workflow is to run `git add .` **from the specific project folder whose changes you intend to save**, then commit:
 
 ```powershell
 git status --short
 git diff
+# Change into the specific project folder first, if needed.
 git add .
 git diff --cached --stat
 git diff --cached
@@ -734,11 +735,12 @@ git status --short --branch
 
 Rules:
 
-- `git add .` is an accepted and supported way to stage changes under the current directory. Run it from the repository root when the intention is to stage reviewed changes throughout the repository.
-- `git add -A` is also valid. It stages additions, modifications, and deletions across the repository.
-- Review the staged file list and staged diff before committing. `git add .` can stage generated files, runtime state, local-only configuration, or other files that should not be committed.
+- Prefer `git add .` with the current working directory set to the specific project folder being worked on. It stages changes only under that directory and its descendants.
+- **Do not use `git add -A` as the normal workflow.** It stages additions, modifications, and deletions across the repository, which can unintentionally include unrelated folders.
+- Be careful: running `git add .` at the repository root stages changes throughout the repository, including nested folders. When working on one app or module, change into that app/module folder first, or stage its exact relative path (for example, `git add mobile/apps/user`).
+- Review the staged file list and staged diff before committing. Even within the selected folder, `git add .` can stage generated files, runtime state, local-only configuration, or other files that should not be committed.
 - Never commit secrets, credentials, local environment files, database dumps, temporary runtime state, build output, or machine-specific artifacts. Use the repository's ignore rules and unstage unintended files before committing (for example, `git restore --staged <path>`); do not delete or discard the working file just to unstage it.
-- Do not use `git add .` or `git add -A` as a substitute for reviewing what will enter the commit.
+- Do not use `git add .` as a substitute for reviewing what will enter the commit.
 - Use a clear commit message describing the change. A commit is a local checkpoint; it does not, by itself, publish the change to GitHub.
 
 ### 54.2 Publish through the protected-branch workflow
