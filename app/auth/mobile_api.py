@@ -3071,7 +3071,9 @@ def mobile_wallet_pin_set():
 
     current = _native_wallet_user()
     try:
-        user = db.session.query(User).filter_by(id=current.id).with_for_update().one_or_none()
+        # Use with_for_update(of=User) to avoid "FOR UPDATE cannot be applied to the nullable side of an outer join"
+        # because User model has lazy="joined" relationships (default_org, roles, verifications)
+        user = db.session.query(User).filter_by(id=current.id).with_for_update(of=User).one_or_none()
         if user is None or not getattr(user, "is_active", False) or getattr(user, "is_deleted", False):
             return _error("account_unavailable", "This AFCON360 account is not available.", 403)
 
