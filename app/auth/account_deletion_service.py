@@ -1141,7 +1141,7 @@ def _anonymize_identity(user, now: datetime) -> tuple[dict, list[str]]:
     driver_profile = DriverProfile.query.filter_by(
         user_id=user.id,
         is_deleted=False,
-    ).with_for_update().first()
+    ).with_for_update(of=DriverProfile).first()
 
     user.is_deleted = True
     user.is_active = False
@@ -1363,7 +1363,7 @@ def request_account_deletion(
     )
     from app.identity.models.user import User
 
-    locked_user = User.query.filter_by(id=user.id).with_for_update().first()
+    locked_user = User.query.filter_by(id=user.id).with_for_update(of=User).first()
     if locked_user is None or not locked_user.is_active or locked_user.is_deleted:
         raise AccountDeletionError(
             "account_inactive",
@@ -1696,7 +1696,7 @@ def cancel_account_closure(token: str) -> dict:
             public_id=request_public_id,
             request_type=DataSubjectRequestType.DELETION,
         )
-        .with_for_update()
+        .with_for_update(of=DataSubjectRequest)
         .first()
     )
     if request_row is None:
@@ -1711,7 +1711,7 @@ def cancel_account_closure(token: str) -> dict:
             id=request_row.user_id,
             public_id=user_public_id,
         )
-        .with_for_update()
+        .with_for_update(of=User)
         .first()
     )
     if user is None:
@@ -1843,7 +1843,7 @@ def finalize_account_closure(request_row, details: dict | None = None) -> dict:
     request_id = getattr(request_row, "id", None)
     locked_request = (
         DataSubjectRequest.query.filter_by(id=request_id)
-        .with_for_update()
+        .with_for_update(of=DataSubjectRequest)
         .first()
     )
     if locked_request is None:
