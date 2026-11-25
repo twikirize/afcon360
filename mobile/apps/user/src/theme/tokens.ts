@@ -42,3 +42,23 @@ export const shadows = {
   cardPressed: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
   hero: { shadowColor: '#173D28', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 6 },
 };
+
+export const homeDesign = {
+  bgColor: '#FCFCFC',
+  primaryGreen: '#156C43',
+  heroBg: '#E9F3EE',
+  textDark: '#1A1A1A',
+  textGray: '#717B7A',
+  borderColor: '#E5E7EB',
+  cardBg: '#FFFFFF',
+  iconBgGreen: '#F0F6F2',
+  iconBgPeach: '#FDF3EE',
+  iconTextPeach: '#D97706',
+  peachActive: '#FDF3EE',
+  peachIcon: '#8B4513',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.03,
+  shadowRadius: 4,
+  elevation: 2,
+};
