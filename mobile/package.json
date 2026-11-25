@@ -19,5 +19,8 @@
   },
   "devDependencies": {
     "expo-doctor": "^1.21.8"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.1.1"
   }
 }
