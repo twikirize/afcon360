@@ -101,10 +101,7 @@ export default function UserHome() {
           <HomeSearchBar placeholder="Search destinations, events or services..." />
           <View style={styles.mainContent}>
             <View style={styles.sectionHeading}>
-              <View>
-                <Text style={styles.sectionTitle}>Explore Our Services</Text>
-                <Text style={styles.sectionSubtitle}>Everything you need, in one place</Text>
-              </View>
+              <Text style={styles.sectionTitle}>Our Services</Text>
               <Text
                 accessibilityRole="button"
                 onPress={() => router.push('/(tabs)/explore' as any)}
@@ -147,12 +144,12 @@ const styles = StyleSheet.create({
   mainContent: { paddingHorizontal: 20, paddingTop: 22 },
   sectionHeading: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 17,
   },
   sectionTitle: {
-    fontSize: 22, lineHeight: 27, fontWeight: '800',
-    color: homeDesign.textDark, letterSpacing: -0.5, fontFamily: 'serif',
+    fontSize: 30, lineHeight: 36, fontWeight: '900',
+    color: homeDesign.textDark, letterSpacing: -0.8, fontFamily: 'serif',
   },
   sectionSubtitle: { color: homeDesign.textGray, fontSize: 11, marginTop: 3 },
-  viewAll: { color: homeDesign.primaryGreen, fontSize: 13, fontWeight: '800' },
+  viewAll: { color: homeDesign.primaryGreen, fontSize: 17, fontWeight: '800' },
 });
