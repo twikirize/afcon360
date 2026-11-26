@@ -4,7 +4,7 @@ import path from "node:path";
 const read = file => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 const checks = [
   ["SDK 58 SQLite package and lockfile remain aligned", (() => { const pkg = JSON.parse(read("apps/user/package.json")); const lock = read("pnpm-lock.yaml"); const spec = pkg.dependencies?.["expo-sqlite"]; const match = lock.match(/^\s{6}expo-sqlite:\s*\n^\s{8}specifier: ([^\n]+)\s*\n^\s{8}version: ([^\n]+)/m); return typeof spec === "string" && /^~58\.0\.\d+$/.test(spec) && match?.[1] === spec && /^58\.0\.\d+/.test(match?.[2] ?? ""); })()],
-  ["SDK 58 cryptographic random package is declared", read("apps/user/package.json").includes('"expo-crypto": "~58.0.8"')],
+  ["SDK 58 cryptographic random package is declared", read("apps/user/package.json").includes('"expo-crypto": "~58.0.9"')],
   ["SQLCipher native build plugin is enabled", /useSQLCipher:\s*true/.test(read("apps/user/app.config.ts"))],
   ["Native app version is incremented for this binary change", /version:\s*"1\.0\.2"/.test(read("apps/user/app.config.ts"))],
   ["Runtime SQLCipher support is verified", /PRAGMA cipher_version/.test(read("apps/user/src/offline/storage.ts"))],
