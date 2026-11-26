@@ -15,7 +15,8 @@ if (!configPath) {
   fail("Usage: node verify-user-dev-delivery-contract.mjs <resolved-expo-config.json>");
 }
 
-const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+const raw = fs.readFileSync(configPath, "utf8");
+const config = JSON.parse(raw.replace(/^\uFEFF/, ''));
 const eas = JSON.parse(fs.readFileSync(path.join(userRoot, "eas.json"), "utf8"));
 const appConfigSource = fs.readFileSync(path.join(userRoot, "app.config.ts"), "utf8");
 const gradlePlugin = fs.readFileSync(
@@ -101,8 +102,18 @@ add("EAS Updates use the isolated development channel",
 add("EAS update checks do not delay ordinary bundle startup",
   config.updates?.checkAutomatically === "ON_LOAD" &&
   config.updates?.fallbackToCacheTimeout === 0);
-add("OTA compatibility is enforced through the native fingerprint runtime",
-  config.runtimeVersion?.policy === "fingerprint");
+const productionProfile = eas.build?.production;
+
+add(
+  "Internal development uses app-version runtime while production retains native fingerprint compatibility",
+  config.runtimeVersion?.policy === "appVersion" &&
+    productionProfile?.environment === "production" &&
+    productionProfile?.channel === "production" &&
+    productionProfile?.env?.AFCON360_RELEASE_BUILD === "true" &&
+    productionProfile?.env?.AFCON360_PREVIEW_BUILD === "false" &&
+    /const isReleaseBuild = process\.env\.AFCON360_RELEASE_BUILD === "true"/.test(appConfigSource) &&
+    /runtimeVersion:\s*isReleaseBuild\s*\?\s*\{\s*policy:\s*"fingerprint"\s*\}\s*:\s*\{\s*policy:\s*"appVersion"\s*\}/.test(appConfigSource)
+);
 add("laptop/live backend selection is enabled independently of Metro",
   config.extra?.allowServerSelection === true &&
   config.extra?.apiBaseUrl === "http://127.0.0.1:5000" &&
