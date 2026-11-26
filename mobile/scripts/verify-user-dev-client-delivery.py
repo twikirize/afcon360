@@ -375,7 +375,7 @@ def main() -> None:
     # bundle rather than leave the user on the development launcher.
     set_network_offline()
     cold_launch("fresh-install-offline-startup.txt")
-    fresh_offline_ok, fresh_offline_ui = wait_for_text("Your journey starts here.", timeout=90)
+    fresh_offline_ok, fresh_offline_ui = wait_for_text("THE WORLD, OPEN TO YOU", "Make every journey matter.", timeout=90)
     record(
         "fresh first launch opens embedded AFCON360 with Metro and internet unavailable",
         fresh_offline_ok,
@@ -430,7 +430,7 @@ def main() -> None:
     automatic_fallback = False
     while time.monotonic() < metro_off_deadline:
         metro_off_ui = visible_text()
-        if "Your journey starts here." in metro_off_ui or "AFCON360_EAS_UPDATE_" in metro_off_ui:
+        if ("THE WORLD, OPEN TO YOU" in metro_off_ui or "Make every journey matter." in metro_off_ui) or "AFCON360_EAS_UPDATE_" in metro_off_ui:
             automatic_fallback = True
             break
         time.sleep(1)
@@ -459,7 +459,7 @@ def main() -> None:
     cold_launch("eas-update-offline-cold-launch.txt")
     offline_ui = visible_text()
     offline_cached_marker = "AFCON360_EAS_UPDATE_" + update_marker in offline_ui
-    offline_embedded_fallback = "Your journey starts here." in offline_ui
+    offline_embedded_fallback = ("THE WORLD, OPEN TO YOU" in offline_ui or "Make every journey matter." in offline_ui)
     offline_ok = offline_cached_marker or offline_embedded_fallback
     RESULTS["offline_startup_source"] = (
         "eas_update_marker" if offline_cached_marker

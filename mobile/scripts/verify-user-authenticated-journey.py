@@ -721,8 +721,8 @@ def main() -> None:
     tap_text("Sign in securely", require_enabled=True)
 
     wait_for_text(
-        "Your Africa.",
-        "Your journey.",
+        "THE WORLD, OPEN TO YOU",
+        "Make every journey matter.",
         timeout=45,
         label="authenticated curated Pamoja Home header",
     )
@@ -765,8 +765,8 @@ def main() -> None:
     if login_navigation_only:
         tap_text("Home", last=True, allow_tab_bar=True)
         wait_for_text(
-            "Your Africa.",
-            "Your journey.",
+            "THE WORLD, OPEN TO YOU",
+            "Make every journey matter.",
             timeout=25,
             label="return to Home after primary tab navigation",
         )
@@ -894,8 +894,8 @@ def main() -> None:
     # The native app restores to its actual User dashboard ("My Events").
     # The backend evidence check separately verifies the identity endpoint after relaunch.
     wait_for_text(
-        "Your Africa.",
-        "Your journey.",
+        "THE WORLD, OPEN TO YOU",
+        "Make every journey matter.",
         timeout=45,
         label="restored Pamoja Home header after app relaunch",
     )
