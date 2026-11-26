@@ -13,7 +13,9 @@ import {
   HomeHeroBanner,
   HomeServiceGrid,
   WalletCard,
+  AdventureShowcase,
   HomeDiscoveryFeed,
+  HomeQuickAction,
   BookingsCard,
 } from '../../src/components/home';
 
@@ -27,19 +29,12 @@ export default function UserHome() {
   const [feedRefreshKey, setFeedRefreshKey] = useState(0);
   const [cachedFeedAt, setCachedFeedAt] = useState<number | null>(null);
   const requestInFlight = useRef(false);
-
   const scrollY = useSharedValue(0);
-  const onScroll = useAnimatedScrollHandler({
-    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
-  });
+  const onScroll = useAnimatedScrollHandler({ onScroll: (event) => { scrollY.value = event.contentOffset.y; } });
 
   useEffect(() => {
     let mounted = true;
-    void getSelectedApiBaseUrl().then((url) => {
-      if (mounted) setApiBaseUrl(url);
-    }).catch(() => {
-      if (mounted) setApiBaseUrl(SITE);
-    });
+    void getSelectedApiBaseUrl().then((url) => { if (mounted) setApiBaseUrl(url); }).catch(() => { if (mounted) setApiBaseUrl(SITE); });
     return () => { mounted = false; };
   }, []);
 
@@ -53,51 +48,27 @@ export default function UserHome() {
         const cachedEntry = await userOfflineRepository.readHomeFeed(user.public_id);
         if (cachedEntry) setCachedFeedAt(cachedEntry.storedAt);
       }
-    } catch {
-      // Keep the current home content if cache is unavailable.
-    }
+    } catch { /* Keep current content if cache is unavailable. */ }
     setRefreshing(false);
     requestInFlight.current = false;
   }, [user?.public_id]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <Animated.ScrollView
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={homeDesign.gold}
-            colors={[homeDesign.primaryGreen]}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
+      <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={homeDesign.gold} colors={[homeDesign.primaryGreen]} />}
+        showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.scrollViewContent}>
           <HomeHeader />
           {(isOffline || offlineStorageError) ? (
             <View style={styles.offlineBanner}>
-              <Text style={styles.offlineTitle}>
-                {isOffline ? 'Offline mode' : 'Offline cache unavailable'}
-              </Text>
+              <Text style={styles.offlineTitle}>{isOffline ? 'Offline mode' : 'Offline cache unavailable'}</Text>
               <Text style={styles.offlineText}>
-                {cachedFeedAt
-                  ? 'Saved highlights from ' + new Date(cachedFeedAt).toLocaleString()
-                  : lastVerifiedAt
-                  ? 'Account last verified ' + new Date(lastVerifiedAt).toLocaleString()
+                {cachedFeedAt ? 'Saved highlights from ' + new Date(cachedFeedAt).toLocaleString()
+                  : lastVerifiedAt ? 'Account last verified ' + new Date(lastVerifiedAt).toLocaleString()
                   : (offlineStorageError || 'Reconnect to refresh your Pamoja information.')}
               </Text>
-              <Text
-                accessibilityRole="button"
-                onPress={() => void retryRestoreSession()}
-                style={styles.retryText}
-              >
-                Retry connection
-              </Text>
+              <Text accessibilityRole="button" onPress={() => void retryRestoreSession()} style={styles.retryText}>Retry connection</Text>
             </View>
           ) : null}
           <HomeHeroBanner onExplorePress={() => router.push('/(tabs)/explore' as any)} />
@@ -105,17 +76,13 @@ export default function UserHome() {
           <View style={styles.mainContent}>
             <View style={styles.sectionHeading}>
               <Text style={styles.sectionTitle}>Our Services</Text>
-              <Text
-                accessibilityRole="button"
-                onPress={() => router.push('/(tabs)/explore' as any)}
-                style={styles.viewAll}
-              >
-                View all  ›
-              </Text>
+              <Text accessibilityRole="button" onPress={() => router.push('/(tabs)/explore' as any)} style={styles.viewAll}>View all  ›</Text>
             </View>
             <HomeServiceGrid />
             <WalletCard />
+            <AdventureShowcase />
             <HomeDiscoveryFeed baseUrl={apiBaseUrl} refreshKey={feedRefreshKey} />
+            <HomeQuickAction />
             <BookingsCard />
           </View>
         </View>
@@ -128,26 +95,12 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: homeDesign.bgColor },
   scrollContent: { paddingBottom: 100 },
   scrollViewContent: { paddingTop: 0 },
-  offlineBanner: {
-    backgroundColor: homeDesign.iconBgGreen,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    marginHorizontal: spacing.lg,
-    marginVertical: spacing.md,
-    gap: spacing.sm,
-  },
+  offlineBanner: { backgroundColor: homeDesign.iconBgGreen, borderRadius: radii.lg, padding: spacing.lg, marginHorizontal: spacing.lg, marginVertical: spacing.md, gap: spacing.sm },
   offlineTitle: { color: homeDesign.primaryGreen, fontSize: 13, fontWeight: '900' },
   offlineText: { color: homeDesign.textGray, fontSize: 11, lineHeight: 16 },
   retryText: { color: homeDesign.primaryGreen, fontSize: 12, fontWeight: '900', marginTop: spacing.xs },
   mainContent: { paddingHorizontal: 20, paddingTop: 22 },
-  sectionHeading: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 17,
-  },
-  sectionTitle: {
-    fontSize: 30, lineHeight: 36, fontWeight: '900',
-    color: homeDesign.textDark, letterSpacing: -0.8, fontFamily: 'serif',
-  },
-  sectionSubtitle: { color: homeDesign.textGray, fontSize: 11, marginTop: 3 },
+  sectionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 17 },
+  sectionTitle: { fontSize: 30, lineHeight: 36, fontWeight: '900', color: homeDesign.textDark, letterSpacing: -0.8, fontFamily: 'serif' },
   viewAll: { color: homeDesign.primaryGreen, fontSize: 17, fontWeight: '800' },
 });
