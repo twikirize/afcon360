@@ -3,5 +3,7 @@ export { HomeSearchBar } from './HomeSearchBar';
 export { HomeHeroBanner } from './HomeHeroBanner';
 export { HomeServiceGrid } from './HomeServiceGrid';
 export { WalletCard } from './WalletCard';
+export { AdventureShowcase } from './AdventureShowcase';
 export { HomeDiscoveryFeed } from './HomeDiscoveryFeed';
+export { HomeQuickAction } from './HomeQuickAction';
 export { BookingsCard } from './BookingsCard';
