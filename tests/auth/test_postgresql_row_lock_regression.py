@@ -12,6 +12,10 @@ Layer 1: PostgreSQL behaviour (direct ORM tests)
 Layer 2: Production-path regression (service/endpoint tests)
 """
 
+import os
+os.environ["TEST_REDIS_URL"] = "redis://localhost:6379/0"
+os.environ["DISABLE_REDIS"] = "0"
+
 import pytest
 import uuid
 from sqlalchemy.exc import DBAPIError, OperationalError
@@ -277,16 +281,23 @@ class TestProductionPathRegression:
         mobile_wallet_pin_set() endpoint uses scoped User lock.
         Exercises the actual mobile API endpoint.
         """
-        # Configure Redis for this test
+        # Configure Redis for this test (use database 0 to match app default)
         from app.extensions import redis_client
-        redis_client.configure("redis://localhost:6379/15")
+        redis_client.configure("redis://localhost:6379/0")
 
         # Create mobile bearer token context for the user
         from app.auth.mobile_tokens import issue_mobile_tokens
-        from app.auth.sessions import start_device_session
+        from app.auth.sessions import start_device_session, start_server_session
 
         with app.app_context():
             user = db.session.merge(test_user)
+            # Create a server session first (required for mobile token authentication)
+            server_session_id = start_server_session(
+                str(user.public_id),
+                "127.0.0.1",
+                "test-agent",
+                ttl_hours=12,
+            )
             device_session_id = start_device_session(
                 user,
                 "127.0.0.1",
@@ -297,7 +308,7 @@ class TestProductionPathRegression:
             credentials = issue_mobile_tokens(
                 user_public_id=user.public_id,
                 session_id=device_session_id,
-                server_session_id="test-server-session",
+                server_session_id=server_session_id,
                 client="user",
                 device_id="test-device-123",
             )
@@ -307,16 +318,16 @@ class TestProductionPathRegression:
         headers = {"Authorization": f"Bearer {access_token}"}
         resp = client.post(
             "/api/mobile/v1/wallet/pin",
-            json={"pin": "123456", "confirm_pin": "123456"},
+            json={"pin": "123456", "confirm_pin": "123456", "password": "TestPass123!"},
             headers=headers,
         )
-        # 200 = success, 400 = validation error, 401 = auth error
-        # We primarily verify the request executes the scoped lock without PostgreSQL error
-        assert resp.status_code in (200, 400, 401), (
+        # Expect successful PIN set - 200 with correct response body
+        assert resp.status_code == 200, (
             f"Unexpected status {resp.status_code}: {resp.get_json()}"
         )
-
-
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["data"]["pin_set"] is True
 class TestNegativeControlCleanup:
     """Ensure failed transactions from negative controls are properly rolled back."""
 
@@ -337,3 +348,6 @@ class TestNegativeControlCleanup:
             # Session should be clean - verify by running a simple query
             count = User.query.count()
             assert count >= 1
+
+
+
