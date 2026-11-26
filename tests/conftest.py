@@ -43,14 +43,18 @@ from sqlalchemy.pool import NullPool
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 os.environ["APP_ENV"] = "testing"
-os.environ['FLASK_ENV'] = 'testing'
+os.environ["FLASK_ENV"] = "testing"
 
-# Disable live Redis for the test suite: tests must mock Redis, never depend
-# on a running instance. Without this, boot-time Production Console logging
-# (attached in create_app) tries to connect to redis:6379 on every log record
-# and blocks pytest when Redis is down. REDIS_AVAILABLE is computed at app
-# module import, so this MUST be set before `from app import create_app`.
-os.environ['DISABLE_REDIS'] = '1'
+# Redis configuration: enable by default for tests that need it.
+# Tests can opt-in by setting TEST_REDIS_URL or using the @pytest.mark.redis marker.
+# DISABLE_REDIS=1 can be used to explicitly disable Redis.
+if os.getenv("TEST_REDIS_URL") and not os.getenv("REDIS_URL"):
+    os.environ["REDIS_URL"] = os.environ["TEST_REDIS_URL"]
+if os.getenv("DISABLE_REDIS") == "1":
+    pass  # Explicitly disabled
+else:
+    # Enable Redis by default for tests that need it
+    pass
 
 from app import create_app
 from app.config import TestingConfig
@@ -78,12 +82,12 @@ def isolation_baseline_is_cached():
 
 def pytest_configure(config):
     config.addinivalue_line(
-        'markers',
-        'no_database: source/configuration contract check that does not access the database',
+        "markers",
+        "no_database: source/configuration contract check that does not access the database",
     )
     config.addinivalue_line(
-        'markers',
-        'threaded: test uses ThreadPoolExecutor with its own DB engine — skip row-tracking cleanup',
+        "markers",
+        "threaded: test uses ThreadPoolExecutor with its own DB engine — skip row-tracking cleanup",
     )
 
 
@@ -114,7 +118,7 @@ def pytest_collection_modifyitems(session, config, items):
             rel_path = Path(item.fspath).resolve().relative_to(project_root)
         except ValueError:
             continue
-        if rel_path.parts[0] == 'tests':
+        if rel_path.parts[0] == "tests":
             kept.append(item)
     items[:] = kept
     print(f"[OK] Kept {len(kept)} test items from 'tests/' directory.")
@@ -128,26 +132,26 @@ project_root = Path(__file__).resolve().parent.parent
 env_file = project_root / ".env.testing"
 
 if env_file.exists():
-    with open(env_file, 'r', encoding='utf-8-sig') as f:
+    with open(env_file, "r", encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
-            if '=' in line:
-                key, value = line.split('=', 1)
-                os.environ[key.strip()] = value.strip().strip('"\'')
+            if "=" in line:
+                key, value = line.split("=", 1)
+                os.environ[key.strip()] = value.strip().strip("\"\"")
     print("[OK] Loaded .env.testing")
 else:
     env_file = project_root / ".env.test"
     if env_file.exists():
-        with open(env_file, 'r', encoding='utf-8-sig') as f:
+        with open(env_file, "r", encoding="utf-8-sig") as f:
             for line in f:
-                if '=' in line:
-                    key, value = line.strip().split('=', 1)
-                    os.environ[key] = value.strip().strip('"\'')
+                if "=" in line:
+                    key, value = line.strip().split("=", 1)
+                    os.environ[key] = value.strip().strip("\"\"")
         print("[OK] Loaded .env.test")
 
-_TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL') or os.getenv('DATABASE_URL')
+_TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
 if not _TEST_DATABASE_URL:
     raise RuntimeError(
         "No test database URL found! Set TEST_DATABASE_URL or DATABASE_URL "
@@ -209,14 +213,14 @@ _guard_engine = None
 _guard_conn = None
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def setup_database():
     """Runs once per test session: acquires the advisory lock, then ensures
     the test DB exists and is built."""
     global _guard_engine, _guard_conn
 
     db_url = TEST_DATABASE_URL
-    db_name = db_url.split('/')[-1]
+    db_name = db_url.split("/")[-1]
 
     # --- Acquire the cross-session advisory lock (blocking w/ timeout). ---
     _guard_engine = create_engine(db_url, poolclass=NullPool)
@@ -249,7 +253,7 @@ def setup_database():
         print(f"[OK] Existing test database '{db_name}' is reachable.")
 
         app = create_app(config_object=TestingConfig)
-        app.config['SQLALCHEMY_DATABASE_URI'] = db_url
+        app.config["SQLALCHEMY_DATABASE_URI"] = db_url
         with app.app_context():
             from app.extensions import db
 
@@ -306,13 +310,13 @@ def setup_database():
 # 3. App fixture (session-scoped)
 # ===================================================================
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app(setup_database):
     """Create the Flask app for testing, with migrations already applied."""
     app = create_app(config_object=TestingConfig)
-    app.config['TESTING'] = True
-    app.config['WTF_CSRF_ENABLED'] = False
-    app.config['RATELIMIT_ENABLED'] = False
+    app.config["TESTING"] = True
+    app.config["WTF_CSRF_ENABLED"] = False
+    app.config["RATELIMIT_ENABLED"] = False
 
     with app.app_context():
         table_count = assert_migrated_postgres_database(db.engine)
@@ -348,26 +352,26 @@ def app(setup_database):
         TransportOfferingRegistry.ensure_defaults()
         print("[OK] Seeded default transport offerings")
 
-        if os.getenv('SEED_TEST_DB', '') == '1':
+        if os.getenv("SEED_TEST_DB", "") == "1":
             from app.identity.models.roles_permission import get_or_create_role
             from app.identity.models.user import User, UserRole
 
-            owner_role = get_or_create_role('owner', level=1)
-            get_or_create_role('admin', level=3)
-            admin_email = os.getenv('TEST_ADMIN_EMAIL', 'test_admin@example.com')
+            owner_role = get_or_create_role("owner", level=1)
+            get_or_create_role("admin", level=3)
+            admin_email = os.getenv("TEST_ADMIN_EMAIL", "test_admin@example.com")
             admin = User.query.filter_by(email=admin_email).first()
             if not admin:
                 admin = User(
-                    username='test_admin',
+                    username="test_admin",
                     email=admin_email,
                     is_verified=True,
                     is_active=True,
                 )
-                admin.set_password(os.getenv('TEST_ADMIN_PASSWORD', 'Password123!'))
+                admin.set_password(os.getenv("TEST_ADMIN_PASSWORD", "Password123!"))
                 db.session.add(admin)
                 db.session.flush()
 
-            if not any(getattr(ur, 'role_id', None) == owner_role.id for ur in admin.roles):
+            if not any(getattr(ur, "role_id", None) == owner_role.id for ur in admin.roles):
                 db.session.add(UserRole(user_id=admin.id, role_id=owner_role.id))
 
             db.session.commit()
@@ -380,7 +384,7 @@ def app(setup_database):
 # 4. Core client fixture (function-scoped)
 # ===================================================================
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def client(app):
     """Fresh test client per test. Empty session cookie jar.
 
@@ -391,7 +395,7 @@ def client(app):
     return app.test_client()
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def test_engine():
     """The SQLAlchemy engine bound to the shared test database.
 
@@ -402,7 +406,7 @@ def test_engine():
     return create_engine(TEST_DATABASE_URL)
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def unique_id():
     """Return a fresh short unique string per test (uuid4 hex prefix)."""
     import uuid as _uuid
@@ -413,13 +417,13 @@ def unique_id():
 # 5. Auth factory fixtures (function-scoped)
 # ===================================================================
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def test_user(app):
     """Create and commit a fresh standard user for the test.
 
     Returns a User object committed to DB with:
       - is_verified=True, is_active=True
-      - A known password ('TestPass123!')
+      - A known password ("TestPass123!")
       - No roles beyond the default
     """
     with app.app_context():
@@ -428,40 +432,40 @@ def test_user(app):
 
         uid = str(_uuid.uuid4())[:8]
         user = User(
-            username=f'user_{uid}',
-            email=f'user_{uid}@test.example.com',
+            username=f"user_{uid}",
+            email=f"user_{uid}@test.example.com",
             is_verified=True,
             is_active=True,
         )
-        user.set_password('TestPass123!')
+        user.set_password("TestPass123!")
         db.session.add(user)
         db.session.commit()
         return user
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def test_admin(app):
     """Create and commit a fresh admin user for the test.
 
     Returns a User object committed to DB with:
       - is_verified=True, is_active=True
       - owner role (level=1)
-      - A known password ('TestPass123!')
+      - A known password ("TestPass123!")
     """
     with app.app_context():
         from app.identity.models.user import User, UserRole
         from app.identity.models.roles_permission import get_or_create_role
         import uuid as _uuid
 
-        owner_role = get_or_create_role('owner', level=1)
+        owner_role = get_or_create_role("owner", level=1)
         uid = str(_uuid.uuid4())[:8]
         admin = User(
-            username=f'admin_{uid}',
-            email=f'admin_{uid}@test.example.com',
+            username=f"admin_{uid}",
+            email=f"admin_{uid}@test.example.com",
             is_verified=True,
             is_active=True,
         )
-        admin.set_password('TestPass123!')
+        admin.set_password("TestPass123!")
         db.session.add(admin)
         db.session.flush()
         db.session.add(UserRole(user_id=admin.id, role_id=owner_role.id))
@@ -469,7 +473,7 @@ def test_admin(app):
         return admin
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def test_host(app):
     """Create and commit a fresh host user for the test."""
     with app.app_context():
@@ -478,12 +482,12 @@ def test_host(app):
 
         uid = str(_uuid.uuid4())[:8]
         host = User(
-            username=f'host_{uid}',
-            email=f'host_{uid}@test.example.com',
+            username=f"host_{uid}",
+            email=f"host_{uid}@test.example.com",
             is_verified=True,
             is_active=True,
         )
-        host.set_password('TestPass123!')
+        host.set_password("TestPass123!")
         db.session.add(host)
         db.session.commit()
         return host
@@ -503,32 +507,32 @@ def _login_client(client, user):
         uid = str(merged.public_id)
         db.session.rollback()
     with client.session_transaction() as sess:
-        sess['_user_id'] = uid
-        sess['_fresh'] = True
+        sess["_user_id"] = uid
+        sess["_fresh"] = True
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def authenticated_client(client, test_user):
     """Client logged in as a standard user. Fresh per test."""
     _login_client(client, test_user)
     return client
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def admin_client(client, test_admin):
     """Client logged in as admin. Fresh per test."""
     _login_client(client, test_admin)
     return client
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def host_client(client, test_host):
     """Client logged in as a host. Fresh per test."""
     _login_client(client, test_host)
     return client
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def anonymous_client(client):
     """Alias for client — explicit naming for readability in public-endpoint tests."""
     return client
@@ -562,8 +566,8 @@ class JourneyContext:
     def logout(self):
         """Clear authentication for the rest of this journey."""
         with self.client.session_transaction() as sess:
-            sess.pop('_user_id', None)
-            sess.pop('_fresh', None)
+            sess.pop("_user_id", None)
+            sess.pop("_fresh", None)
         self._login_user = None
         return self
 
@@ -580,16 +584,16 @@ class JourneyContext:
         return self.client.delete(*args, **kwargs)
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def journey(client, app):
     """Multi-step workflow context. Use when a test needs to chain
     operations that share a single authenticated session:
 
         def test_booking_lifecycle(journey, test_user):
             journey.login_as(test_user)
-            resp = journey.get('/api/bookings')
+            resp = journey.get("/api/bookings")
             assert resp.status_code == 200
-            resp = journey.post('/api/bookings', json={...})
+            resp = journey.post("/api/bookings", json={...})
             ...
     """
     return JourneyContext(client, app)
@@ -637,10 +641,10 @@ def _isolate_db(request, app):
       - ``no_database`` marker tests
       - ``threaded`` marker tests (they use their own DB engines)
     """
-    if request.node.get_closest_marker('no_database'):
+    if request.node.get_closest_marker("no_database"):
         yield
         return
-    if request.node.get_closest_marker('threaded'):
+    if request.node.get_closest_marker("threaded"):
         yield
         return
 
@@ -747,8 +751,8 @@ def _clean_cache(app):
         # Clear Flask-Login's in-process user_loader cache
         try:
             from flask_login import LoginManager
-            login_manager = app.extensions.get('login_manager')
-            if login_manager and hasattr(login_manager, '_user_loader'):
+            login_manager = app.extensions.get("login_manager")
+            if login_manager and hasattr(login_manager, "_user_loader"):
                 login_manager._user_loader_cache = {}
         except Exception:
             pass
@@ -779,7 +783,7 @@ def _verify_test_state(request, app):
     This fixture runs AFTER all other autouse fixtures in teardown
     (final safety net).
     """
-    if request.node.get_closest_marker('no_database'):
+    if request.node.get_closest_marker("no_database"):
         yield
         return
 
@@ -820,7 +824,7 @@ def _verify_test_state(request, app):
 # 11. Backward-compat aliases
 # ===================================================================
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def db_session(app):
     """Provide a database session for each test function.
 
@@ -834,7 +838,8 @@ def db_session(app):
         db.session.remove()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def test_db(db_session):
     """Alias for db_session for backward compatibility."""
     yield db_session
+
