@@ -7,7 +7,6 @@ const root = path.resolve(import.meta.dirname, "..");
 const approved = [
   ["apps/user/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', "Privacy notice"],
   ["apps/user/app/(tabs)/account.tsx", "WebBrowser.openBrowserAsync(target.toString())", "Opens on Pamoja website"],
-  ["apps/user/app/(tabs)/index.tsx", "WebBrowser.openBrowserAsync(target)", null],
   ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")', "Continue driver registration on website"],
   ["apps/user/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", "Back to AFCON360 website home"],
   ["apps/driver/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", "Back to AFCON360 website home"],
@@ -21,16 +20,27 @@ const approved = [
   ["apps/user/app/connection.tsx", "Linking.openURL(deepLink)", "Save & Connect to Metro"],
 ];
 
+// Check navigation where it is actually implemented.
+// HomeServiceGrid owns the service destinations and their common router handler.
+// WalletCard owns wallet navigation.
+// Explore owns its native service links.
 const nativeInternalRoutes = [
+  // Explore screen native routes
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/events" as never)'],
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/stays" as never)'],
   ["apps/user/app/(tabs)/explore.tsx", 'router.push("/(service)/ride" as never)'],
-  ["apps/user/app/(tabs)/index.tsx", "router.push('/(service)/ride' as never)"],
-  ["apps/user/app/(tabs)/index.tsx", "pathname: '/(service)/events'"],
-  ["apps/user/app/(tabs)/index.tsx", "router.push('/(service)/stays' as never)"],
-  ["apps/user/app/(tabs)/index.tsx", "router.push('/(tabs)/wallet' as never)"],
-  ["apps/user/app/(tabs)/index.tsx", 'case "tourism":'],
-  ["apps/user/app/(tabs)/index.tsx", 'openWebsite("/tourism");'],
+
+  // Home service grid destinations
+  ["apps/user/src/components/home/HomeServiceGrid.tsx", "destination: '/(service)/ride'"],
+  ["apps/user/src/components/home/HomeServiceGrid.tsx", "destination: '/(service)/stays'"],
+  ["apps/user/src/components/home/HomeServiceGrid.tsx", "destination: '/(service)/events'"],
+  ["apps/user/src/components/home/HomeServiceGrid.tsx", "destination: '/(service)/adventure'"],
+  ["apps/user/src/components/home/HomeServiceGrid.tsx", "router.push(service.destination as any)"],
+
+  // Home wallet navigation
+  ["apps/user/src/components/home/WalletCard.tsx", "router.push('/(tabs)/wallet' as any)"],
+
+  // Existing protected routes and account flows
   ["apps/user/app/(tabs)/activity.tsx", 'pathname: "/(service)/ride-status/[reference]"'],
   ["apps/user/app/(tabs)/account.tsx", 'router.push("/(service)/delete-account" as never)'],
   ["apps/user/app/login.tsx", 'router.push("/server-settings" as never)'],
@@ -59,9 +69,12 @@ const forbiddenUnprotectedRoutes = [
   "apps/user/app/ride-status/[reference].tsx",
   "apps/user/app/delete-account.tsx",
 ];
+
 for (const relative of forbiddenUnprotectedRoutes) {
   if (fs.existsSync(path.join(root, relative))) {
-    throw new Error(`Authenticated User route must remain inside the guarded service stack: ${relative}`);
+    throw new Error(
+      `Authenticated User route must remain inside the guarded service stack: ${relative}`
+    );
   }
 }
 
@@ -79,51 +92,135 @@ const publicRootRouteFiles = new Set([
   // Hidden developer-only preview route, launched from the five-tap Account menu.
   "connection.tsx",
 ]);
+
 const userRootRoutes = path.join(root, "apps/user/app");
+
 for (const entry of fs.readdirSync(userRootRoutes, { withFileTypes: true })) {
-  if (entry.isFile() && [".tsx", ".ts", ".jsx", ".js"].some((extension) => entry.name.endsWith(extension)) && !publicRootRouteFiles.has(entry.name)) {
-    throw new Error(`Unclassified User root route ${entry.name}; private routes belong in a guarded route group.`);
+  if (
+    entry.isFile() &&
+    [".tsx", ".ts", ".jsx", ".js"].some((extension) =>
+      entry.name.endsWith(extension)
+    ) &&
+    !publicRootRouteFiles.has(entry.name)
+  ) {
+    throw new Error(
+      `Unclassified User root route ${entry.name}; private routes belong in a guarded route group.`
+    );
   }
 }
 
-for (const [relative, snippet] of [...nativeInternalRoutes, ...nativeResetRoutes]) {
-  const source = fs.readFileSync(path.join(root, relative), "utf8");
-  if (!source.includes(snippet)) throw new Error(`Required native route or password-recovery flow is missing or changed: ${relative}`);
+// Verify that required native routes and password-recovery flows still exist.
+for (const [relative, snippet] of [
+  ...nativeInternalRoutes,
+  ...nativeResetRoutes,
+]) {
+  const sourcePath = path.join(root, relative);
+
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error(`Required navigation source file is missing: ${relative}`);
+  }
+
+  const source = fs.readFileSync(sourcePath, "utf8");
+
+  if (!source.includes(snippet)) {
+    throw new Error(
+      `Required native route or password-recovery flow is missing or changed: ${relative}\nExpected: ${snippet}`
+    );
+  }
 }
 
 function walk(directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
-    if (entry.name === "node_modules" || entry.name === ".expo" || entry.name === "dist" || entry.name === ".dist-check") return [];
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (
+      entry.name === "node_modules" ||
+      entry.name === ".expo" ||
+      entry.name === "dist" ||
+      entry.name === ".dist-check"
+    ) {
+      return [];
+    }
+
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) return walk(full);
+
+    if (entry.isDirectory()) {
+      return walk(full);
+    }
+
     return /\.tsx?$/.test(entry.name) ? [full] : [];
   });
 }
 
+// Build the approved count per source file.
+// A file may deliberately contain more than one approved handoff.
 const expected = new Map();
+
 for (const [relative, snippet, visibleLabel] of approved) {
   const key = path.join(root, relative);
+
   expected.set(key, (expected.get(key) ?? 0) + 1);
+
+  if (!fs.existsSync(key)) {
+    throw new Error(`Approved external navigation source is missing: ${relative}`);
+  }
+
   const source = fs.readFileSync(key, "utf8");
-  if (!source.includes(snippet)) throw new Error(`Approved external navigation changed or disappeared: ${relative}\nExpected: ${snippet}`);
-  if (visibleLabel && !source.includes(visibleLabel)) throw new Error(`External browser handoff must be visibly labelled as a website action: ${relative}\nExpected: ${visibleLabel}`);
+
+  if (!source.includes(snippet)) {
+    throw new Error(
+      `Approved external navigation changed or disappeared: ${relative}\nExpected: ${snippet}`
+    );
+  }
+
+  if (visibleLabel && !source.includes(visibleLabel)) {
+    throw new Error(
+      `External browser handoff must be visibly labelled as a website action: ${relative}\nExpected: ${visibleLabel}`
+    );
+  }
 }
 
+// Reject any unapproved browser or external URL-opening calls.
 const violations = [];
 let actualTotal = 0;
+
 for (const file of walk(path.join(root, "apps"))) {
   const source = fs.readFileSync(file, "utf8");
-  const calls = source.match(/(?:WebBrowser\.openBrowserAsync|Linking\.openURL)\s*\(/g) ?? [];
+
+  const calls =
+    source.match(/(?:WebBrowser\.openBrowserAsync|Linking\.openURL)\s*\(/g) ?? [];
+
   actualTotal += calls.length;
+
   const allowedCount = expected.get(file) ?? 0;
-  if (calls.length !== allowedCount) violations.push(`${path.relative(root, file)}: found ${calls.length} browser/URL-opening call(s), approved ${allowedCount}`);
-  if (source.includes("/apps/delete-account")) violations.push(`${path.relative(root, file)}: account deletion must stay in the native app`);
+
+  if (calls.length !== allowedCount) {
+    violations.push(
+      `${path.relative(root, file)}: found ${calls.length} browser/URL-opening call(s), approved ${allowedCount}`
+    );
+  }
+
+  if (source.includes("/apps/delete-account")) {
+    violations.push(
+      `${path.relative(root, file)}: account deletion must stay in the native app`
+    );
+  }
 }
 
-if (actualTotal !== approved.length) violations.push(`Total browser/URL-opening calls: ${actualTotal}; approved ${approved.length}`);
+if (actualTotal !== approved.length) {
+  violations.push(
+    `Total browser/URL-opening calls: ${actualTotal}; approved ${approved.length}`
+  );
+}
+
 if (violations.length) {
   console.error("Native navigation contract FAILED:");
-  for (const violation of violations) console.error(" - " + violation);
+
+  for (const violation of violations) {
+    console.error(" - " + violation);
+  }
+
   process.exit(1);
 }
-console.log(`Native navigation contract passed: ${approved.length} explicitly labelled website handoffs; password recovery and account deletion remain native.`);
+
+console.log(
+  `Native navigation contract passed: ${approved.length} explicitly labelled website handoffs; password recovery and account deletion remain native.`
+);

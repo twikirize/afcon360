@@ -16,10 +16,44 @@ const checks = [
   ["Offline mutation guard is enforced in the shared API client", /offlineReadOnly/.test(read("packages/core/src/auth/mobile-auth-client.ts")) && /offline_read_only/.test(read("packages/core/src/auth/mobile-auth-client.ts"))],
   ["Home feed cache is accessed through a repository", /readHomeFeed/.test(read("apps/user/src/offline/repositories.ts")) && /refreshHomeFeed/.test(read("apps/user/src/offline/repositories.ts"))],
   ["My Events cache excludes ticket QR payloads", /qr_code:\s*""/.test(read("apps/user/src/offline/repositories.ts"))],
-  ["Selected curated Pamoja Home composition and offline integration remain intact", (() => { const home = read("apps/user/app/(tabs)/index.tsx"); return /<Header\s*\/>/.test(home) && /<HeroParallax/.test(home) && /<ServiceGrid/.test(home) && /<TrendingRail/.test(home) && /MyEventsSection/.test(home) && /userOfflineRepository\.refreshHomeFeed/.test(home) && /userOfflineRepository\.refreshEventRegistrations/.test(home); })()],
+  ["Selected Pamoja Home composition and offline cache integration remain intact",
+  (() => {
+    const home = read("apps/user/app/(tabs)/index.tsx");
+
+    return (
+      /<HomeHeader\s*\/>/.test(home) &&
+      /<HomeHeroBanner\b/.test(home) &&
+      /<HomeServiceGrid\s*\/>/.test(home) &&
+      /<OurServicesHeader\b/.test(home) &&
+      /<WalletCard\s*\/>/.test(home) &&
+      /<BookingsCard\s*\/>/.test(home) &&
+      /<RefreshControl\b/.test(home) &&
+      /onRefresh=\{onRefresh\}/.test(home) &&
+      /userOfflineRepository\.readHomeFeed\(user\.public_id\)/.test(home) &&
+      /setCachedFeedAt\(cachedEntry\.storedAt\)/.test(home) &&
+      /isOffline \|\| offlineStorageError/.test(home) &&
+      /retryRestoreSession/.test(home)
+    );
+  })()
+],
   ["Expo Updates native module remains installed", read("apps/user/package.json").includes('"expo-updates"')],
   ["Expo Updates native config plugin remains enabled", /"expo-updates"/.test(read("apps/user/app.config.ts"))],
-  ["Native runtime fingerprint automatically gates OTA compatibility", /runtimeVersion:\s*\{\s*policy:\s*"fingerprint"\s*\}/.test(read("apps/user/app.config.ts"))],
+  ["Production release OTA compatibility uses native fingerprint; internal builds use app version",
+  (() => {
+    const config = read("apps/user/app.config.ts");
+    const eas = JSON.parse(read("apps/user/eas.json"));
+    const production = eas.build?.production;
+
+    return (
+      /const isReleaseBuild = process\.env\.AFCON360_RELEASE_BUILD === "true"/.test(config) &&
+      /runtimeVersion:\s*isReleaseBuild\s*\?\s*\{\s*policy:\s*"fingerprint"\s*\}\s*:\s*\{\s*policy:\s*"appVersion"\s*\}/.test(config) &&
+      production?.environment === "production" &&
+      production?.channel === "production" &&
+      production?.env?.AFCON360_RELEASE_BUILD === "true" &&
+      production?.env?.AFCON360_PREVIEW_BUILD === "false"
+    );
+  })()
+],
   ["Internal preview builds alone opt into Android cleartext for private laptop testing", /withPreviewCleartextTraffic/.test(read("apps/user/app.config.ts")) && /enabled:\s*isPreview/.test(read("apps/user/app.config.ts")) && /options\.enabled !== true/.test(read("apps/user/plugins/withPreviewCleartextTraffic.js")) && /android:usesCleartextTraffic/.test(read("apps/user/plugins/withPreviewCleartextTraffic.js"))],
   ["Preview API validation permits USB ADB-reverse loopback only on port 5000", /isUsbLoopback/.test(read("apps/user/src/services/api.ts")) && /parsed\.port === "5000"/.test(read("apps/user/src/services/api.ts"))],
   ["Server settings uses the active Metro runtime API address", /Constants\.expoConfig\?\.extra\?\.apiBaseUrl/.test(read("apps/user/app/server-settings.tsx")) && /Use server for this development session/.test(read("apps/user/app/server-settings.tsx"))],

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, StyleSheet, Text, View, StatusBar } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedScrollHandler,
@@ -16,6 +16,7 @@ import {
   HomeSearchBar,
   HomeHeroBanner,
   HomeServiceGrid,
+  OurServicesHeader,
   WalletCard,
   BookingsCard,
 } from '../../src/components/home';
@@ -69,6 +70,7 @@ export default function UserHome() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" />
       <Animated.ScrollView
         onScroll={onScroll}
         scrollEventThrottle={16}
@@ -114,7 +116,7 @@ export default function UserHome() {
           <HomeSearchBar placeholder="Find a ride, event or stay..." />
 
           <View style={styles.mainContent}>
-            <Text style={styles.sectionTitle}>Make yourself at home</Text>
+            <OurServicesHeader onViewAllPress={() => router.push('/(tabs)/explore' as any)} />
 
             <HomeServiceGrid />
 
@@ -134,7 +136,9 @@ const styles = StyleSheet.create({
     backgroundColor: homeDesign.bgColor,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingTop: 35,
+    paddingBottom: 35,
+    paddingHorizontal: 24,
   },
   scrollViewContent: {
     paddingTop: spacing.sm,
@@ -163,8 +167,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   mainContent: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   sectionTitle: {
     fontSize: 18,
