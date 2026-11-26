@@ -50,6 +50,8 @@ const SERVICES: Service[] = [
   },
 ];
 
+const NARROW_CARD_THRESHOLD = 160;
+
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
@@ -77,19 +79,25 @@ const styles = StyleSheet.create({
     backgroundColor: homeDesign.cardShade,
   },
   cardContent: {
-    minHeight: 100,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    minHeight: 88,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
     backgroundColor: homeDesign.cardContentBg,
+  },
+  cardContentHorizontal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardContentVertical: {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
   serviceIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     borderWidth: 2,
     borderColor: homeDesign.serviceIconBorder,
     backgroundColor: homeDesign.serviceIconBg,
@@ -97,9 +105,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
+  serviceIconHorizontal: {
+    marginRight: 8,
+  },
+  serviceIconVertical: {
+    marginBottom: 4,
+  },
   serviceText: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     textAlign: 'center',
+  },
+  serviceTextHorizontal: {
+    textAlign: 'left',
+    alignItems: 'flex-start',
   },
   serviceTitle: {
     fontSize: 16,
@@ -109,7 +129,7 @@ const styles = StyleSheet.create({
   serviceSubtitle: {
     fontSize: 12,
     color: '#F5F2E8',
-    marginTop: 2,
+    marginTop: 4,
   },
   arrowCircle: {
     width: 28,
@@ -118,9 +138,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  arrowCircleHorizontal: {
+    flexShrink: 0,
+    marginLeft: 4,
+  },
+  arrowCircleVertical: {
     position: 'absolute',
-    right: 12,
-    bottom: 12,
+    right: 10,
+    bottom: 10,
   },
 });
 
@@ -137,6 +163,7 @@ export const HomeServiceGrid = ({ onServicePress }: HomeServiceGridProps) => {
   const horizontalPadding = 24;
   const columnGap = 16;
   const cardWidth = (screenWidth - horizontalPadding * 2 - columnGap) / 2;
+  const isNarrow = cardWidth < NARROW_CARD_THRESHOLD;
 
   const handlePress = (service: Service) => {
     if (onServicePress) {
@@ -164,16 +191,28 @@ export const HomeServiceGrid = ({ onServicePress }: HomeServiceGridProps) => {
             resizeMode="cover"
           >
             <View style={styles.imageShade} />
-            <View style={styles.cardContent}>
-              <View style={styles.serviceIcon}>
-                <Ionicons name={service.icon as IoniconsName} size={28} color="#FFFFFF" />
+            <View style={[
+              styles.cardContent,
+              isNarrow ? styles.cardContentVertical : styles.cardContentHorizontal,
+            ]}>
+              <View style={[
+                styles.serviceIcon,
+                isNarrow ? styles.serviceIconVertical : styles.serviceIconHorizontal,
+              ]}>
+                <Ionicons name={service.icon as IoniconsName} size={isNarrow ? 28 : 26} color="#FFFFFF" />
               </View>
-              <View style={styles.serviceText}>
+              <View style={[
+                styles.serviceText,
+                isNarrow ? styles.serviceTextHorizontal : {},
+              ]}>
                 <Text style={styles.serviceTitle}>{service.title}</Text>
                 <Text style={styles.serviceSubtitle}>{service.subtitle}</Text>
               </View>
-              <View style={styles.arrowCircle}>
-                <Ionicons name="arrow-forward" size={16} color={homeDesign.primaryGreenDark} />
+              <View style={[
+                styles.arrowCircle,
+                isNarrow ? styles.arrowCircleVertical : styles.arrowCircleHorizontal,
+              ]}>
+                <Ionicons name="arrow-forward" size={isNarrow ? 16 : 18} color={homeDesign.primaryGreenDark} />
               </View>
             </View>
           </ImageBackground>
