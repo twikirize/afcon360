@@ -90,9 +90,12 @@ const config: ExpoConfig = {
   slug: "afcon360-user",
   scheme: appScheme,
   version: "1.0.2",
-  // Native fingerprint changes produce a new runtime version automatically.
-  // JS/TS-only changes keep the same runtime and remain OTA-compatible.
-  runtimeVersion: { policy: "fingerprint" },
+  // Production keeps the native fingerprint so OTA updates are always
+  // binary-compatible. Preview/development builds use the app version so a
+  // stale local node_modules can never block an internal APK build.
+  runtimeVersion: isReleaseBuild
+    ? { policy: "fingerprint" }
+    : { policy: "appVersion" },
   developmentClient: isDevelopmentClient ? { silentLaunch: true } : undefined,
   updates: easProjectId
     ? {

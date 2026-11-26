@@ -11,7 +11,7 @@ import { useRouter } from "expo-router";
 import { palette as basePalette } from "@afcon360/mobile-ui";
 import { PamojaScreen as AppScreen, PamojaPageHeader as PageHeader } from "../../src/components/PamojaScreen";
 import { useAuth } from "../../src/auth/AuthProvider";
-import { getSelectedApiBaseUrl } from "../../src/services/api";
+import { getSelectedApiBaseUrl, SERVER_SELECTION_ENABLED } from "../../src/services/api";
 
 const palette = {
   ...basePalette,
@@ -329,8 +329,26 @@ export default function Account() {
           symbol="⬆"
           onPress={() => router.push("/(service)/settings" as never)}
           external={false}
-          last
         />
+        {SERVER_SELECTION_ENABLED ? (
+          <WebsiteMenuRow
+            title="Connection settings"
+            description="Choose the preview server used by this app"
+            symbol="⇄"
+            onPress={() => router.push("/server-settings" as never)}
+            external={false}
+            last
+          />
+        ) : (
+          <WebsiteMenuRow
+            title="Version & updates"
+            description="View the installed version, check for updates and manage preview connections"
+            symbol="⬆"
+            onPress={() => router.push("/(service)/settings" as never)}
+            external={false}
+            last
+          />
+        )}
       </AccountMenuSection>
 
       {__DEV__ && (
@@ -344,8 +362,17 @@ export default function Account() {
             symbol="⚡"
             onPress={() => router.push("/connection" as never)}
             external={false}
-            last
           />
+          {SERVER_SELECTION_ENABLED ? (
+            <WebsiteMenuRow
+              title="Connection settings"
+              description="Choose the preview server used by this app"
+              symbol="⇄"
+              onPress={() => router.push("/server-settings" as never)}
+              external={false}
+              last
+            />
+          ) : null}
         </AccountMenuSection>
       )}
 

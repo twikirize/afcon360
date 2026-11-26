@@ -30,7 +30,8 @@
       "credentialsSource": "remote",
       "env": {
         "AFCON360_PREVIEW_BUILD": "true",
-        "AFCON360_RELEASE_BUILD": "false"
+        "AFCON360_RELEASE_BUILD": "false",
+        "AFCON360_USER_EAS_PROJECT_ID": "20708e30-4640-4b88-9615-38412f47e811"
       }
     },
     "production": {
