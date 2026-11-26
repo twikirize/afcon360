@@ -733,12 +733,12 @@ def main() -> None:
     else:
         save_screen("02-home")
         wait_for_text_scrolling(
-            "My Events",
-            "No event registrations yet",
+            "My bookings",
+            "Manage your stays and rides",
             timeout=35,
-            label="curated Home My Events list",
+            label="curated Home My bookings card",
         )
-        save_screen("02a-my-events-overview")
+        save_screen("02a-my-bookings-overview")
     mark_stage("authenticated_home")
 
     mark_stage("activity_navigation_started")
@@ -904,12 +904,12 @@ def main() -> None:
     )
     save_screen("10-session-restored")
     wait_for_text_scrolling(
-        "My Events",
-        "No event registrations yet",
+        "My bookings",
+        "Manage your stays and rides",
         timeout=35,
-        label="restored curated Home My Events list",
+        label="restored curated Home My bookings card",
     )
-    save_screen("10a-restored-my-events-overview")
+    save_screen("10a-restored-my-bookings-overview")
     mark_stage("session_restored")
 
     tap_text("Account", last=True, allow_tab_bar=True)
