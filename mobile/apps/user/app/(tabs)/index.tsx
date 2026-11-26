@@ -1,16 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedScrollHandler,
-} from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { getSelectedApiBaseUrl } from '../../src/services/api';
 import { userOfflineRepository } from '../../src/offline/repositories';
 import { useAuth } from '../../src/auth/AuthProvider';
-import { spacing, radii } from '../../src/theme/tokens';
-import { homeDesign } from '../../src/theme/tokens';
+import { spacing, radii, homeDesign } from '../../src/theme/tokens';
 import {
   HomeHeader,
   HomeSearchBar,
@@ -32,9 +28,7 @@ export default function UserHome() {
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
-    },
+    onScroll: (event) => { scrollY.value = event.contentOffset.y; },
   });
 
   useEffect(() => {
@@ -51,18 +45,14 @@ export default function UserHome() {
     if (requestInFlight.current) return;
     requestInFlight.current = true;
     setRefreshing(true);
-
     try {
       if (user?.public_id) {
         const cachedEntry = await userOfflineRepository.readHomeFeed(user.public_id);
-        if (cachedEntry) {
-          setCachedFeedAt(cachedEntry.storedAt);
-        }
+        if (cachedEntry) setCachedFeedAt(cachedEntry.storedAt);
       }
     } catch {
-      // Ignore cache read errors
+      // Keep the current home content if cache is unavailable.
     }
-
     setRefreshing(false);
     requestInFlight.current = false;
   }, [user?.public_id]);
@@ -77,7 +67,7 @@ export default function UserHome() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={homeDesign.primaryGreen}
+            tintColor={homeDesign.gold}
             colors={[homeDesign.primaryGreen]}
           />
         }
@@ -86,7 +76,6 @@ export default function UserHome() {
       >
         <View style={styles.scrollViewContent}>
           <HomeHeader />
-
           {(isOffline || offlineStorageError) ? (
             <View style={styles.offlineBanner}>
               <Text style={styles.offlineTitle}>
@@ -108,18 +97,30 @@ export default function UserHome() {
               </Text>
             </View>
           ) : null}
-
           <HomeHeroBanner onExplorePress={() => router.push('/(tabs)/explore' as any)} />
-
-          <HomeSearchBar placeholder="Find a ride, event or stay..." />
-
+          <HomeSearchBar placeholder="Search destinations, events or services..." />
           <View style={styles.mainContent}>
-            <Text style={styles.sectionTitle}>Make yourself at home</Text>
-
+            <View style={styles.sectionHeading}>
+              <View>
+                <Text style={styles.sectionTitle}>Explore Our Services</Text>
+                <Text style={styles.sectionSubtitle}>Everything you need, in one place</Text>
+              </View>
+              <Text
+                accessibilityRole="button"
+                onPress={() => router.push('/(tabs)/explore' as any)}
+                style={styles.viewAll}
+              >
+                View all  ›
+              </Text>
+            </View>
             <HomeServiceGrid />
-
             <WalletCard />
-
+            <View style={styles.sectionHeading}>
+              <View>
+                <Text style={styles.sectionTitle}>Your Next Adventure</Text>
+                <Text style={styles.sectionSubtitle}>Your plans, all together</Text>
+              </View>
+            </View>
             <BookingsCard />
           </View>
         </View>
@@ -129,47 +130,29 @@ export default function UserHome() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: homeDesign.bgColor,
-  },
-  scrollContent: {
-    paddingBottom: 100,
-  },
-  scrollViewContent: {
-    paddingTop: spacing.sm,
-  },
+  safe: { flex: 1, backgroundColor: homeDesign.bgColor },
+  scrollContent: { paddingBottom: 100 },
+  scrollViewContent: { paddingTop: 0 },
   offlineBanner: {
-    backgroundColor: homeDesign.heroBg,
+    backgroundColor: homeDesign.iconBgGreen,
     borderRadius: radii.lg,
     padding: spacing.lg,
     marginHorizontal: spacing.lg,
+    marginVertical: spacing.md,
     gap: spacing.sm,
   },
-  offlineTitle: {
-    color: homeDesign.primaryGreen,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  offlineText: {
-    color: homeDesign.textGray,
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  retryText: {
-    color: homeDesign.primaryGreen,
-    fontSize: 12,
-    fontWeight: '900',
-    marginTop: spacing.xs,
-  },
-  mainContent: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
+  offlineTitle: { color: homeDesign.primaryGreen, fontSize: 13, fontWeight: '900' },
+  offlineText: { color: homeDesign.textGray, fontSize: 11, lineHeight: 16 },
+  retryText: { color: homeDesign.primaryGreen, fontSize: 12, fontWeight: '900', marginTop: spacing.xs },
+  mainContent: { paddingHorizontal: 20, paddingTop: 22 },
+  sectionHeading: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 15,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: homeDesign.textDark,
-    marginBottom: 16,
+    fontSize: 22, lineHeight: 27, fontWeight: '800',
+    color: homeDesign.textDark, letterSpacing: -0.5, fontFamily: 'serif',
   },
+  sectionSubtitle: { color: homeDesign.textGray, fontSize: 11, marginTop: 3 },
+  viewAll: { color: homeDesign.primaryGreen, fontSize: 13, fontWeight: '800' },
 });
