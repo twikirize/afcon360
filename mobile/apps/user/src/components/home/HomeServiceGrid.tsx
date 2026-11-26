@@ -1,19 +1,17 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ImageBackground, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { spacing, radii } from '../../theme/tokens';
 import { homeDesign } from '../../theme/tokens';
 
-type ServiceKey = 'transport' | 'stays' | 'events' | 'tickets';
+type ServiceKey = 'transport' | 'stays' | 'events' | 'adventure';
 
 interface Service {
   key: ServiceKey;
   label: string;
   hint: string;
   icon: string;
-  iconColor: string;
-  bgColor: string;
+  image: string;
   destination: string;
 }
 
@@ -21,105 +19,72 @@ const SERVICES: Service[] = [
   {
     key: 'transport',
     label: 'Transport',
-    hint: 'Find your ride',
+    hint: 'Ride with ease',
     icon: 'directions-car',
-    iconColor: homeDesign.primaryGreen,
-    bgColor: homeDesign.iconBgGreen,
+    image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=85',
     destination: '/(service)/ride',
   },
   {
     key: 'stays',
     label: 'Stays',
-    hint: 'Find a place to stay',
-    icon: 'bed',
-    iconColor: homeDesign.iconTextPeach,
-    bgColor: homeDesign.iconBgPeach,
+    hint: 'Find the best stays',
+    icon: 'hotel',
+    image: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=800&q=85',
     destination: '/(service)/stays',
   },
   {
     key: 'events',
-    label: 'Events',
-    hint: "See what's happening",
-    icon: 'calendar-month',
-    iconColor: homeDesign.iconTextPeach,
-    bgColor: homeDesign.iconBgPeach,
+    label: 'Events & Tickets',
+    hint: 'Be part of it',
+    icon: 'confirmation-number',
+    image: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=800&q=85',
     destination: '/(service)/events',
   },
   {
-    key: 'tickets',
-    label: 'Tickets',
-    hint: 'Your event tickets',
-    icon: 'confirmation-number',
-    iconColor: homeDesign.primaryGreen,
-    bgColor: homeDesign.iconBgGreen,
-    destination: '/(tabs)/activity',
+    key: 'adventure',
+    label: 'Adventure',
+    hint: 'Explore more',
+    icon: 'explore',
+    image: 'https://images.unsplash.com/photo-1516026672322-bc52d61a55d5?auto=format&fit=crop&w=800&q=85',
+    destination: '/(service)/adventure',
   },
 ];
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  card: {
-    width: '48%',
-    backgroundColor: homeDesign.cardBg,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    marginBottom: 16,
-    shadowColor: homeDesign.shadowColor,
-    shadowOffset: homeDesign.shadowOffset,
-    shadowOpacity: homeDesign.shadowOpacity,
-    shadowRadius: homeDesign.shadowRadius,
-    elevation: homeDesign.elevation,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',
     marginBottom: 20,
   },
-  iconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+  card: {
+    width: '48.5%', height: 142, borderRadius: 17, overflow: 'hidden',
+    marginBottom: 13, backgroundColor: homeDesign.primaryGreen,
   },
-  arrowIcon: {
-    color: homeDesign.textGray,
-    fontSize: 18,
+  image: { borderRadius: 17 },
+  shade: {
+    flex: 1, justifyContent: 'flex-end', padding: 13,
+    backgroundColor: 'rgba(3, 25, 15, 0.42)',
   },
-  title: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: homeDesign.textDark,
-    marginBottom: 4,
+  iconRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 7 },
+  iconWrap: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(13, 59, 37, 0.88)',
+    borderWidth: 1, borderColor: '#E6C56B', alignItems: 'center', justifyContent: 'center',
   },
-  hint: {
-    fontSize: 12,
-    color: homeDesign.textGray,
-    lineHeight: 16,
+  arrow: {
+    marginLeft: 'auto', width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#FFFDF6', alignItems: 'center', justifyContent: 'center',
   },
+  title: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  hint: { color: '#F5F0E4', fontSize: 11, marginTop: 2, fontWeight: '500' },
 });
 
-type MaterialIconName = 'directions-car' | 'bed' | 'calendar-month' | 'confirmation-number' | 'arrow-outward';
+type MaterialIconName = 'directions-car' | 'hotel' | 'confirmation-number' | 'explore' | 'arrow-forward';
 
-interface HomeServiceGridProps {
-  onServicePress?: (key: ServiceKey) => void;
-}
+interface HomeServiceGridProps { onServicePress?: (key: ServiceKey) => void; }
 
 export const HomeServiceGrid = ({ onServicePress }: HomeServiceGridProps) => {
   const router = useRouter();
-
   const handlePress = (service: Service) => {
-    if (onServicePress) {
-      onServicePress(service.key);
-    }
+    onServicePress?.(service.key);
     router.push(service.destination as any);
   };
 
@@ -132,25 +97,22 @@ export const HomeServiceGrid = ({ onServicePress }: HomeServiceGridProps) => {
           accessibilityLabel={service.label}
           onPress={() => handlePress(service)}
           style={styles.card}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.88}
         >
-          <View style={styles.cardTop}>
-            <View
-              style={[
-                styles.iconWrapper,
-                { backgroundColor: service.bgColor },
-              ]}
-            >
-              <MaterialIcons
-                name={service.icon as MaterialIconName}
-                size={20}
-                color={service.iconColor}
-              />
+          <ImageBackground source={{ uri: service.image }} style={StyleSheet.absoluteFill} imageStyle={styles.image}>
+            <View style={styles.shade}>
+              <View style={styles.iconRow}>
+                <View style={styles.iconWrap}>
+                  <MaterialIcons name={service.icon as MaterialIconName} size={19} color={homeDesign.gold} />
+                </View>
+                <View style={styles.arrow}>
+                  <MaterialIcons name="arrow-forward" size={17} color={homeDesign.primaryGreen} />
+                </View>
+              </View>
+              <Text style={styles.title}>{service.label}</Text>
+              <Text style={styles.hint}>{service.hint}</Text>
             </View>
-            <MaterialIcons name="arrow-outward" size={18} color={homeDesign.textGray} />
-          </View>
-          <Text style={styles.title}>{service.label}</Text>
-          <Text style={styles.hint}>{service.hint}</Text>
+          </ImageBackground>
         </TouchableOpacity>
       ))}
     </View>
