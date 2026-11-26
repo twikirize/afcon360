@@ -374,8 +374,30 @@ jobs:
         run: |
           node - <<'NODE'
           const fs = require("node:fs");
-          const settings = fs.readFileSync("apps/user/app/(service)/settings.tsx", "utf8");
+
+          const settings = fs.readFileSync(
+            "apps/user/app/(service)/settings.tsx",
+            "utf8"
+          );
+
           const config = fs.readFileSync("apps/user/app.config.ts", "utf8");
+
+          const eas = JSON.parse(
+            fs.readFileSync("apps/user/eas.json", "utf8")
+          );
+
+          const production = eas.build?.production;
+
+          const usesReleaseFingerprint =
+            /const isReleaseBuild = process\.env\.AFCON360_RELEASE_BUILD === "true"/.test(config) &&
+            /runtimeVersion:\s*isReleaseBuild\s*\?\s*\{\s*policy:\s*"fingerprint"\s*\}\s*:\s*\{\s*policy:\s*"appVersion"\s*\}/.test(config);
+
+          const productionProfileEnablesFingerprint =
+            production?.channel === "production" &&
+            production?.environment === "production" &&
+            production?.env?.AFCON360_RELEASE_BUILD === "true" &&
+            production?.env?.AFCON360_PREVIEW_BUILD === "false";
+
           const checks = {
             otaCheck: settings.includes("Updates.checkForUpdateAsync()"),
             otaDownload: settings.includes("Updates.fetchUpdateAsync()"),
@@ -383,20 +405,31 @@ jobs:
             otaAutomaticOnLaunch: config.includes('checkAutomatically: "ON_LOAD"'),
             e2eOtaChannelIsIsolated: config.includes('"afcon360-user-e2e"'),
             e2eOtaIsEnabled: !config.includes("updates: isE2EBuild ? { enabled: false }"),
-            nativeFingerprintRuntime: config.includes('runtimeVersion: { policy: "fingerprint" }'),
-            nativeBinaryHandoff: settings.includes("https://www.pamoja.space/download") &&
+
+            // Production must use fingerprinting; internal builds use appVersion.
+            nativeFingerprintRuntime:
+              usesReleaseFingerprint && productionProfileEnablesFingerprint,
+
+            nativeBinaryHandoff:
+              settings.includes("https://www.pamoja.space/download") &&
               settings.includes("Linking.openURL(officialDownloadsUrl)"),
+
             methodOneVisible: settings.includes("Method 1 · Compatible app updates"),
             methodTwoVisible: settings.includes("Method 2 · Full app update"),
+
             noRestrictedSelfInstaller:
               !settings.includes("REQUEST_INSTALL_PACKAGES") &&
               !settings.includes("PackageInstaller.Session") &&
               !config.includes("REQUEST_INSTALL_PACKAGES")
           };
+
           for (const [name, passed] of Object.entries(checks)) {
             console.log(`${passed ? "PASS" : "FAIL"} User update contract: ${name}`);
           }
-          if (Object.values(checks).some((passed) => !passed)) process.exit(1);
+
+          if (Object.values(checks).some((passed) => !passed)) {
+            process.exit(1);
+          }
           NODE
 
       - name: Validate hybrid Metro and EAS development delivery configuration
