@@ -2,75 +2,53 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { spacing, radii } from '../../theme/tokens';
 import { homeDesign } from '../../theme/tokens';
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 20,
-    marginBottom: 12,
-  },
+  container: { marginBottom: 18 },
   card: {
-    backgroundColor: homeDesign.primaryGreen,
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    backgroundColor: homeDesign.primaryGreen, borderRadius: 19, padding: 17,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    overflow: 'hidden',
   },
-  rowCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
+  left: { flexDirection: 'row', alignItems: 'center', gap: 13 },
+  icon: {
+    width: 48, height: 48, borderRadius: 15, backgroundColor: 'rgba(231,195,91,0.16)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  walletIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  title: { fontSize: 16, fontWeight: '800', color: '#FFFDF6', marginBottom: 3 },
+  subtitle: { fontSize: 12, color: '#E2E9DF' },
+  action: {
+    backgroundColor: homeDesign.gold, paddingHorizontal: 17, paddingVertical: 11,
+    borderRadius: 24, flexDirection: 'row', alignItems: 'center', gap: 5,
   },
-  title: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  subtitle: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-  },
+  actionText: { color: '#173D28', fontWeight: '800', fontSize: 12 },
 });
-
-type MaterialIconName = 'account-balance-wallet' | 'chevron-right';
 
 export const WalletCard = () => {
   const router = useRouter();
-
-  const handlePress = () => {
-    router.push('/(tabs)/wallet' as any);
-  };
-
   return (
     <View style={styles.container}>
       <TouchableOpacity
         style={styles.card}
-        onPress={handlePress}
+        onPress={() => router.push('/(tabs)/wallet' as any)}
         accessibilityRole="button"
         accessibilityLabel="Open your Pamoja wallet"
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        activeOpacity={0.9}
       >
-        <View style={styles.rowCenter}>
-          <View style={styles.walletIcon}>
-            <MaterialIcons name="account-balance-wallet" size={22} color="#FFFFFF" />
+        <View style={styles.left}>
+          <View style={styles.icon}>
+            <MaterialIcons name="account-balance-wallet" size={27} color={homeDesign.gold} />
           </View>
           <View>
-            <Text style={styles.title}>Your Pamoja wallet</Text>
-            <Text style={styles.subtitle}>Payments, all in one place</Text>
+            <Text style={styles.title}>Your Pamoja Wallet</Text>
+            <Text style={styles.subtitle}>Pay, book and enjoy more</Text>
           </View>
         </View>
-        <MaterialIcons name="chevron-right" size={24} color="#FFFFFF" />
+        <View style={styles.action}>
+          <Text style={styles.actionText}>Open</Text>
+          <MaterialIcons name="arrow-forward" size={15} color="#173D28" />
+        </View>
       </TouchableOpacity>
     </View>
   );
