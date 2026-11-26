@@ -26,28 +26,28 @@ const tabLabels: Record<string, string> = {
 export default function UserTabs() {
   const insets = useSafeAreaInsets();
   const { user, loading, restoreError, retryRestoreSession } = useAuth();
-  if (loading) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.canvas }}><ActivityIndicator color={palette.green} /></View>;
-  if (restoreError && !user) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: palette.canvas }}><Text style={{ color: palette.ink, textAlign: 'center', lineHeight: 22 }}>{restoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retryRestoreSession()} style={{ marginTop: 16, padding: 14, backgroundColor: palette.green, borderRadius: 10 }}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Retry saved session</Text></Pressable></View>;
+  if (loading) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.canvas }}><ActivityIndicator color={homeDesign.primaryGreen} /></View>;
+  if (restoreError && !user) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: palette.canvas }}><Text style={{ color: palette.ink, textAlign: 'center', lineHeight: 22 }}>{restoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retryRestoreSession()} style={{ marginTop: 16, padding: 14, backgroundColor: homeDesign.primaryGreen, borderRadius: 10 }}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Retry saved session</Text></Pressable></View>;
   if (!user) return <Redirect href="/login" />;
   return (
     <Tabs
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: homeDesign.peachIcon,
-        tabBarInactiveTintColor: palette.muted,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
+        tabBarActiveTintColor: homeDesign.primaryGreen,
+        tabBarInactiveTintColor: '#8B918A',
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         tabBarStyle: {
           height: 66 + insets.bottom,
-          paddingTop: 12,
-          paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 30,
+          paddingTop: 9,
+          paddingBottom: insets.bottom > 0 ? insets.bottom + 7 : 25,
           borderTopWidth: 1,
           borderTopColor: homeDesign.borderColor,
-          backgroundColor: homeDesign.cardBg,
+          backgroundColor: '#FFFEFA',
         },
         tabBarIcon: ({ color, focused }) => (
           <View
             style={{
-              backgroundColor: focused ? homeDesign.peachActive : 'transparent',
+              backgroundColor: focused ? '#E8F0E8' : 'transparent',
               borderRadius: 20,
               paddingHorizontal: 16,
               paddingVertical: 4,
@@ -55,7 +55,7 @@ export default function UserTabs() {
           >
             <MaterialIcons
               name={tabIcons[route.name] ?? 'home'}
-              size={24}
+              size={23}
               color={typeof color === 'number' ? String(color) : (color ?? palette.muted)}
             />
           </View>
