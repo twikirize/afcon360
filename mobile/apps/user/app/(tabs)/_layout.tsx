@@ -18,7 +18,7 @@ const tabIcons: Record<string, TabIconName> = {
 
 const tabLabels: Record<string, string> = {
   index: 'Home',
-  activity: 'Bookings',
+  activity: 'Activity',
   wallet: 'Wallet',
   account: 'Account',
 };
