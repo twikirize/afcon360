@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
   },
   media: {
     width: 106,
-    minHeight: 120,
+    height: 120,
     borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: homeDesign.primaryGreen,
