@@ -80,42 +80,43 @@ const styles = StyleSheet.create({
     minHeight: 88,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
     backgroundColor: homeDesign.cardContentBg,
   },
   serviceIcon: {
-    width: 67,
-    height: 67,
-    borderRadius: 36,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     borderWidth: 2,
     borderColor: homeDesign.serviceIconBorder,
     backgroundColor: homeDesign.serviceIconBg,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
+    marginRight: 8,
   },
   serviceText: {
     flex: 1,
+    minWidth: 0,
   },
   serviceTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
     color: '#FFFFFF',
   },
   serviceSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#F5F2E8',
-    marginTop: 5,
+    marginTop: 4,
   },
   arrowCircle: {
-    width: 39,
-    height: 39,
-    borderRadius: 22,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 4,
+    flexShrink: 0,
   },
 });
 
@@ -161,14 +162,14 @@ export const HomeServiceGrid = ({ onServicePress }: HomeServiceGridProps) => {
             <View style={styles.imageShade} />
             <View style={styles.cardContent}>
               <View style={styles.serviceIcon}>
-                <Ionicons name={service.icon as IoniconsName} size={34} color="#FFFFFF" />
+                <Ionicons name={service.icon as IoniconsName} size={26} color="#FFFFFF" />
               </View>
               <View style={styles.serviceText}>
                 <Text style={styles.serviceTitle}>{service.title}</Text>
                 <Text style={styles.serviceSubtitle}>{service.subtitle}</Text>
               </View>
               <View style={styles.arrowCircle}>
-                <Ionicons name="arrow-forward" size={23} color={homeDesign.primaryGreenDark} />
+                <Ionicons name="arrow-forward" size={18} color={homeDesign.primaryGreenDark} />
               </View>
             </View>
           </ImageBackground>
