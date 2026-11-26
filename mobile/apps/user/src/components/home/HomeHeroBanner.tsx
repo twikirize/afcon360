@@ -115,7 +115,7 @@ export const HomeHeroBanner = ({ onExplorePress }: HomeHeroBannerProps) => {
         </View>
         <View style={styles.heroContent}>
           <Text style={styles.heroKicker}>THE WORLD, OPEN TO YOU</Text>
-          <Text style={styles.heroTitle}>Make every{'\\n'}journey matter.</Text>
+          <Text style={styles.heroTitle}>Make every{'\n'}journey matter.</Text>
           <Text style={styles.heroDescription}>
             Move, stay, explore and experience more — all in one place.
           </Text>
