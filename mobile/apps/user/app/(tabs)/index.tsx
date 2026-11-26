@@ -13,6 +13,7 @@ import {
   HomeHeroBanner,
   HomeServiceGrid,
   WalletCard,
+  HomeDiscoveryFeed,
   BookingsCard,
 } from '../../src/components/home';
 
@@ -23,6 +24,7 @@ export default function UserHome() {
   const { user, isOffline, lastVerifiedAt, offlineStorageError, retryRestoreSession } = useAuth();
   const [apiBaseUrl, setApiBaseUrl] = useState(SITE);
   const [refreshing, setRefreshing] = useState(false);
+  const [feedRefreshKey, setFeedRefreshKey] = useState(0);
   const [cachedFeedAt, setCachedFeedAt] = useState<number | null>(null);
   const requestInFlight = useRef(false);
 
@@ -45,6 +47,7 @@ export default function UserHome() {
     if (requestInFlight.current) return;
     requestInFlight.current = true;
     setRefreshing(true);
+    setFeedRefreshKey((value) => value + 1);
     try {
       if (user?.public_id) {
         const cachedEntry = await userOfflineRepository.readHomeFeed(user.public_id);
@@ -112,12 +115,7 @@ export default function UserHome() {
             </View>
             <HomeServiceGrid />
             <WalletCard />
-            <View style={styles.sectionHeading}>
-              <View>
-                <Text style={styles.sectionTitle}>Your Next Adventure</Text>
-                <Text style={styles.sectionSubtitle}>Your plans, all together</Text>
-              </View>
-            </View>
+            <HomeDiscoveryFeed baseUrl={apiBaseUrl} refreshKey={feedRefreshKey} />
             <BookingsCard />
           </View>
         </View>
