@@ -115,12 +115,12 @@ export const HomeHeroBanner = ({ onExplorePress }: HomeHeroBannerProps) => {
         </View>
         <View style={styles.heroContent}>
           <Text style={styles.heroKicker}>THE WORLD, OPEN TO YOU</Text>
-          <Text style={styles.heroTitle}>Make every{'\\n'}journey matter.</Text>
+          <Text style={styles.heroTitle}>Make every{'\n'}journey matter.</Text>
           <Text style={styles.heroDescription}>
             Move, stay, explore and experience more — all in one place.
           </Text>
           <TouchableOpacity style={styles.heroButton} onPress={handleExplorePress} accessibilityRole="button" accessibilityLabel="Explore Pamoja" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.heroButtonText}>Explore Pamoja  \u2197</Text>
+            <Text style={styles.heroButtonText}>Explore Pamoja  {'\u2197'}</Text>
           </TouchableOpacity>
         </View>
       </ImageBackground>
