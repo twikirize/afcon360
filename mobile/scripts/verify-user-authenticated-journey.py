@@ -816,7 +816,7 @@ def main() -> None:
     save_screen("05b-account-restored-after-uninstall-cancel")
     mark_stage("account_restored_after_uninstall_cancel")
 
-    tap_text("Explore", last=True)
+    tap_text("Explore", last=True, allow_tab_bar=True)
     wait_for_text("Make more of the journey.", "Rides", label="Explore services")
     save_screen("06-explore")
     mark_stage("explore_screen")
