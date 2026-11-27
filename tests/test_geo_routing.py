@@ -73,12 +73,20 @@ FAKE_MATRIX = {
         "durations": [[3240.0, None], [720.0, 0.0]],
     },
 }
+FAKE_ZERO_ROUTE = {
+    "trip": {
+        "units": "kilometers",
+        "summary": {"length": 0.0, "time": 0.0},
+        "legs": [{"shape": _encode_polyline([(0.3476, 32.5825)])}],
+        "status": 0,
+    }
+}
 
 
 class _FakeValhallaHandler(BaseHTTPRequestHandler):
     """Controlled stand-in. Records request bodies for order assertions."""
     bodies = []
-    mode = "ok"  # ok | error | malformed | slow | matrix_bad_shape
+    mode = "ok"  # ok | error | malformed | slow | matrix_bad_shape | zero_route
 
     def log_message(self, *args):
         pass
@@ -93,6 +101,14 @@ class _FakeValhallaHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"boom")
         elif self.mode == "malformed":
             payload = json.dumps({"unexpected": True}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        elif self.mode == "zero_route" and self.path == "/route":
+            response_data = FAKE_ZERO_ROUTE
+            payload = json.dumps(response_data).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -164,6 +180,19 @@ def test_valid_route_returns_normalized_road_result(fake_valhalla):
     ]
 
 
+def test_successful_zero_length_route_is_not_an_unresolved_miss(fake_valhalla):
+    base_url, handler = fake_valhalla
+    handler.mode = "zero_route"
+    try:
+        result = _router(base_url).route(KAMPALA, KAMPALA)
+    finally:
+        handler.mode = "ok"
+    assert result.resolved is True
+    assert result.distance_m == 0.0
+    assert result.duration_s == 0.0
+    assert result.geometry
+
+
 def test_road_distance_is_not_straight_line(fake_valhalla):
     base_url, _ = fake_valhalla
     result = _router(base_url).route(KAMPALA, ENTEBBE)
@@ -217,6 +246,10 @@ def test_disabled_adapter_never_touches_network(monkeypatch):
     assert result.resolved is False
     assert result.distance_m is None
     assert result.duration_s is None
+    matrix = router.matrix([KAMPALA], [ENTEBBE])
+    assert matrix[0][0].resolved is False
+    assert matrix[0][0].distance_m is None
+    assert matrix[0][0].duration_s is None
     assert posted == []
 
 
@@ -303,6 +336,14 @@ def test_matrix_provider_failure_returns_dimensionally_correct_unresolved(fake_v
     assert all(len(row) == 1 for row in table)
     assert all(not cell.resolved and cell.distance_m is None
                and cell.duration_s is None for row in table for cell in row)
+
+
+def test_matrix_rejects_invalid_coordinate_before_network(fake_valhalla):
+    base_url, handler = fake_valhalla
+    handler.bodies = []
+    with pytest.raises(ValidationError):
+        _router(base_url).matrix([GeoPoint(91.0, 0.0)], [ENTEBBE])
+    assert handler.bodies == []
 
 
 def test_matrix_malformed_dimensions_are_not_partially_accepted(fake_valhalla):
