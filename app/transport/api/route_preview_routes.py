@@ -9,7 +9,7 @@ basis and lifecycle.
 import logging
 import math
 
-from flask import request
+from flask import jsonify, make_response, request
 from flask_login import current_user
 from flask_restful import Resource
 
@@ -20,6 +20,14 @@ from app.geo.services import get_routing_service
 from app.utils.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
+
+
+def _json_response(payload, status):
+    """Route geometry is location-sensitive; prevent shared/browser caching."""
+    response = make_response(jsonify(payload), status)
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["Vary"] = "Cookie"
+    return response
 
 
 def _rate_limit_key():
@@ -46,10 +54,16 @@ def _read_point(data, prefix):
         )
 
     try:
-        validate_coordinates(latitude, longitude)
+        validate_coordinates(latitude, 0)
     except ValidationError as exc:
         raise ValidationError(
-            f"Invalid coordinates for {prefix}", field=prefix
+            f"Invalid coordinate: {latitude_key}", field=latitude_key
+        ) from exc
+    try:
+        validate_coordinates(0, longitude)
+    except ValidationError as exc:
+        raise ValidationError(
+            f"Invalid coordinate: {longitude_key}", field=longitude_key
         ) from exc
 
     # Conversion occurs only after the canonical validator has accepted the
@@ -142,22 +156,22 @@ class RoutePreviewResource(Resource):
     def post(self):
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
-            return {
+            return _json_response({
                 "success": False,
                 "error": "A JSON object with pickup and destination coordinates is required.",
                 "code": "INVALID_ROUTE_INPUT",
-            }, 400
+            }, 400)
 
         try:
             origin = _read_point(data, "pickup")
             destination = _read_point(data, "dropoff")
         except ValidationError as exc:
-            return {
+            return _json_response({
                 "success": False,
                 "error": exc.message,
                 "field": exc.field,
                 "code": "INVALID_ROUTE_INPUT",
-            }, 400
+            }, 400)
 
         try:
             service = get_routing_service()
@@ -171,4 +185,4 @@ class RoutePreviewResource(Resource):
             )
             route_data = _unresolved_payload()
 
-        return {"success": True, "data": route_data}, 200
+        return _json_response({"success": True, "data": route_data}, 200)
