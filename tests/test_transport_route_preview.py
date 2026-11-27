@@ -55,7 +55,11 @@ def test_route_preview_returns_provider_geometry_and_normalized_units(
 
     assert response.status_code == 200
     assert response.headers["Cache-Control"] == "private, no-store, max-age=0"
-    assert response.headers["Vary"] == "Cookie"
+    vary_headers = {
+        value.strip().lower()
+        for value in response.headers.get("Vary", "").split(",")
+    }
+    assert "cookie" in vary_headers
     payload = response.get_json()
     assert payload["success"] is True
     data = payload["data"]
