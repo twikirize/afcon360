@@ -142,8 +142,9 @@ def test_routing_without_provider_is_truthful_miss():
     service = get_routing_service()
     result = service.route(GeoPoint(0.3, 32.5), GeoPoint(0.0, 32.4))
     assert result.resolved is False
-    assert result.provider == "haversine-fallback"
-    assert result.distance_m > 0  # labelled straight-line, not road
+    assert result.provider == "unresolved"
+    assert result.distance_m is None
+    assert result.duration_s is None
 
 
 def test_geocoding_without_provider_is_truthful_miss():

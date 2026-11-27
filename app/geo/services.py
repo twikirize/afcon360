@@ -2,14 +2,14 @@
 """
 AFCON360 GEO - domain-neutral foundation services (slice 1).
 
-What lives here NOW (pure Python, no network, no DB, no Redis):
+What lives here NOW:
 - canonical straight-line distance (haversine, radians-correct)
+- provider-neutral road routing facade (Valhalla adapter; network only per call)
 - duration → ETA conversion (explicit; NO distance×k heuristics here)
 - location freshness boundary helper (shares TrackingService 300 s default)
 
-What lives here LATER (behind interfaces, separate nodes):
-- road routing (Valhalla adapter), geocoding (Photon adapter),
-  Redis current-state + Postgres history, SSE delivery.
+Separate nodes own geocoding, Redis current-state + Postgres history, and
+SSE delivery. Provider I/O is confined to adapter calls.
 
 Function naming rule: straight-line results are ALWAYS named
 `straight_line_*` so no caller can mistake them for road distance.
@@ -61,7 +61,7 @@ def straight_line_distance_m(origin: GeoPoint,
 def straight_line_distance_matrix_m(
         origins: List[GeoPoint],
         destinations: List[GeoPoint]) -> List[List[float]]:
-    """Straight-line matrix (planning fallback; road matrix comes later)."""
+    """Straight-line matrix for geographic screening, never road distance."""
     return [[straight_line_distance_m(o, d) for d in destinations]
             for o in origins]
 
@@ -74,7 +74,7 @@ def eta_from_duration(duration_s: float,
                       now: Optional[datetime] = None) -> datetime:
     """
     ETA = now + provider duration. `duration_s` must come from a routing
-    engine (later) or an explicitly-labelled estimate - NEVER distance×k.
+    engine or an explicitly-labelled estimate - NEVER distance×k.
     """
     if duration_s < 0:
         raise ValidationError("Invalid duration: must be >= 0",
@@ -113,10 +113,10 @@ class LocationService:
 
 class RoutingService:
     """
-    GEO routing facade. Until the Valhalla adapter node lands, every call
-    returns a TRUTHFUL unresolved result: straight-line distance labelled
-    provider="haversine-fallback", duration unknown (None). Domains MUST
-    treat resolved=False as "no road data yet", never as road distance.
+    GEO routing facade. Road distance exists only when a configured
+    provider resolves the route. No-provider results carry no measurements;
+    straight-line proximity remains available through its separately named
+    GEO helper. Domains MUST check resolved before using route measurements.
     """
 
     def __init__(self, provider=None):
@@ -131,22 +131,16 @@ class RoutingService:
               profile: str = "auto") -> RouteResult:
         if self._provider is not None:
             return self._provider.route(origin, destination, profile=profile)
-        return RouteResult(
-            distance_m=straight_line_distance_m(origin, destination),
-            duration_s=0.0,
-            geometry=[origin, destination],
-            provider="haversine-fallback",
-            resolved=False,
-        )
+        # Road distance is unavailable. Haversine remains available through
+        # the separately named straight_line_distance_m() API only.
+        return RouteResult(provider="unresolved", resolved=False)
 
     def matrix(self, origins: List[GeoPoint],
                destinations: List[GeoPoint]) -> List[List[RouteResult]]:
         if self._provider is not None:
             return self._provider.matrix(origins, destinations)
-        table = straight_line_distance_matrix_m(origins, destinations)
-        return [[RouteResult(distance_m=d, duration_s=0.0,
-                             provider="haversine-fallback", resolved=False)
-                 for d in row] for row in table]
+        return [[RouteResult(provider="unresolved", resolved=False)
+                 for _ in destinations] for _ in origins]
 
 
 def geoapify_needs_secondary(hits: List[GeocodeResult]) -> bool:
@@ -450,9 +444,29 @@ def get_location_service() -> LocationService:
 
 
 def get_routing_service() -> RoutingService:
+    """Return the routing service built from this app's effective GEO config.
+
+    Flask applications receive isolated instances through app.extensions so
+    test/app configurations cannot leak across application contexts. Calls
+    outside an app context retain one lazy environment-configured singleton.
+    Building the service performs no provider network I/O.
+    """
+    from flask import current_app, has_app_context
+
+    if has_app_context():
+        app = current_app._get_current_object()
+        key = "geo.routing_service"
+        service = app.extensions.get(key)
+        if service is None:
+            from app.geo.config import load_geo_config
+            service = build_routing_service(load_geo_config(app))
+            app.extensions[key] = service
+        return service
+
     global _routing_service
     if _routing_service is None:
-        _routing_service = RoutingService()
+        from app.geo.config import load_geo_config
+        _routing_service = build_routing_service(load_geo_config())
     return _routing_service
 
 
@@ -467,7 +481,7 @@ def build_routing_service(config) -> RoutingService:
     """Wire a RoutingService from a GeoConfig (no I/O at build time).
 
     Returns a Valhalla-backed service only when the operator explicitly
-    enabled + configured the endpoint; otherwise the truthful-fallback
+    enabled + configured the endpoint; otherwise the unresolved-only
     service. Callers check `.resolved` on every result.
     """
     valhalla = getattr(config, "valhalla", None)

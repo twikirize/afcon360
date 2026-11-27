@@ -14,10 +14,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 import requests
+from flask import Flask
 
 from app.geo.interfaces import GeoPoint
+from app.geo.routes import _health_payload
 from app.geo.services import (
     RoutingService,
+    get_routing_service,
     straight_line_distance_m,
 )
 from app.utils.exceptions import ValidationError
@@ -56,8 +59,25 @@ FAKE_SHAPE = _encode_polyline(
 
 FAKE_TRIP = {
     "trip": {
+        "units": "kilometers",
         "summary": {"length": ROAD_LENGTH_KM, "time": ROAD_TIME_S},
         "legs": [{"shape": FAKE_SHAPE}],
+        "status": 0,
+    }
+}
+
+FAKE_MATRIX = {
+    "units": "kilometers",
+    "sources_to_targets": {
+        "distances": [[45.2, None], [12.0, 0.0]],
+        "durations": [[3240.0, None], [720.0, 0.0]],
+    },
+}
+FAKE_ZERO_ROUTE = {
+    "trip": {
+        "units": "kilometers",
+        "summary": {"length": 0.0, "time": 0.0},
+        "legs": [{"shape": _encode_polyline([(0.3476, 32.5825)])}],
         "status": 0,
     }
 }
@@ -66,7 +86,7 @@ FAKE_TRIP = {
 class _FakeValhallaHandler(BaseHTTPRequestHandler):
     """Controlled stand-in. Records request bodies for order assertions."""
     bodies = []
-    mode = "ok"  # ok | error | malformed | slow
+    mode = "ok"  # ok | error | malformed | slow | matrix_bad_shape | zero_route
 
     def log_message(self, *args):
         pass
@@ -86,6 +106,14 @@ class _FakeValhallaHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
+        elif self.mode == "zero_route" and self.path == "/route":
+            response_data = FAKE_ZERO_ROUTE
+            payload = json.dumps(response_data).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
         elif self.mode == "slow":
             import time
             time.sleep(2.0)
@@ -99,7 +127,16 @@ class _FakeValhallaHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass  # client timed out and went away: expected
         else:
-            payload = json.dumps(FAKE_TRIP).encode()
+            response_data = FAKE_MATRIX if self.path == "/sources_to_targets" else FAKE_TRIP
+            if self.mode == "matrix_bad_shape" and self.path == "/sources_to_targets":
+                response_data = {
+                    "units": "kilometers",
+                    "sources_to_targets": {
+                        "distances": [[1.0]],
+                        "durations": [[60.0]],
+                    },
+                }
+            payload = json.dumps(response_data).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -143,6 +180,19 @@ def test_valid_route_returns_normalized_road_result(fake_valhalla):
     ]
 
 
+def test_successful_zero_length_route_is_not_an_unresolved_miss(fake_valhalla):
+    base_url, handler = fake_valhalla
+    handler.mode = "zero_route"
+    try:
+        result = _router(base_url).route(KAMPALA, KAMPALA)
+    finally:
+        handler.mode = "ok"
+    assert result.resolved is True
+    assert result.distance_m == 0.0
+    assert result.duration_s == 0.0
+    assert result.geometry
+
+
 def test_road_distance_is_not_straight_line(fake_valhalla):
     base_url, _ = fake_valhalla
     result = _router(base_url).route(KAMPALA, ENTEBBE)
@@ -162,6 +212,7 @@ def test_request_uses_lat_lon_order_and_costing(fake_valhalla):
     assert body["locations"][0] == {"lat": 0.3476, "lon": 32.5825}
     assert body["locations"][1] == {"lat": 0.0515, "lon": 32.4467}
     assert body["costing"] == "auto"
+    assert body["units"] == "kilometers"
 
 
 # --- invalid input ---------------------------------------------------------------
@@ -193,6 +244,12 @@ def test_disabled_adapter_never_touches_network(monkeypatch):
     assert router.is_available() is False
     result = router.route(KAMPALA, ENTEBBE)
     assert result.resolved is False
+    assert result.distance_m is None
+    assert result.duration_s is None
+    matrix = router.matrix([KAMPALA], [ENTEBBE])
+    assert matrix[0][0].resolved is False
+    assert matrix[0][0].distance_m is None
+    assert matrix[0][0].duration_s is None
     assert posted == []
 
 
@@ -229,10 +286,76 @@ def test_timeout_is_unresolved(fake_valhalla):
 
 # --- deferred surface -----------------------------------------------------------------
 
-def test_matrix_returns_unresolved_deferred(fake_valhalla):
-    base_url, _ = fake_valhalla
-    table = _router(base_url).matrix([KAMPALA], [ENTEBBE])
-    assert table[0][0].resolved is False
+def test_matrix_preserves_order_shape_units_and_unreachable_pairs(fake_valhalla):
+    base_url, handler = fake_valhalla
+    origins = [KAMPALA, GeoPoint(0.4, 32.7)]
+    destinations = [ENTEBBE, GeoPoint(0.2, 32.8)]
+    handler.bodies = []
+
+    table = _router(base_url).matrix(origins, destinations)
+
+    assert len(table) == 2
+    assert all(len(row) == 2 for row in table)
+    assert table[0][0].resolved is True
+    assert table[0][0].distance_m == pytest.approx(45_200.0)
+    assert table[0][0].duration_s == pytest.approx(3240.0)
+    assert table[0][1].resolved is False
+    assert table[0][1].distance_m is None
+    assert table[0][1].duration_s is None
+    assert table[1][0].resolved is True
+    assert table[1][0].distance_m == pytest.approx(12_000.0)
+    assert table[1][0].duration_s == pytest.approx(720.0)
+    # A valid same-point matrix result may be zero; it is not unresolved.
+    assert table[1][1].resolved is True
+    assert table[1][1].distance_m == 0.0
+    assert table[1][1].duration_s == 0.0
+
+    path, body = handler.bodies[-1]
+    assert path == "/sources_to_targets"
+    assert body["sources"] == [
+        {"lat": KAMPALA.latitude, "lon": KAMPALA.longitude},
+        {"lat": origins[1].latitude, "lon": origins[1].longitude},
+    ]
+    assert body["targets"] == [
+        {"lat": ENTEBBE.latitude, "lon": ENTEBBE.longitude},
+        {"lat": destinations[1].latitude, "lon": destinations[1].longitude},
+    ]
+    assert body["costing"] == "auto"
+    assert body["units"] == "kilometers"
+    assert body["verbose"] is False
+
+
+def test_matrix_provider_failure_returns_dimensionally_correct_unresolved(fake_valhalla):
+    base_url, handler = fake_valhalla
+    handler.mode = "error"
+    try:
+        table = _router(base_url).matrix([KAMPALA, ENTEBBE], [ENTEBBE])
+    finally:
+        handler.mode = "ok"
+    assert len(table) == 2
+    assert all(len(row) == 1 for row in table)
+    assert all(not cell.resolved and cell.distance_m is None
+               and cell.duration_s is None for row in table for cell in row)
+
+
+def test_matrix_rejects_invalid_coordinate_before_network(fake_valhalla):
+    base_url, handler = fake_valhalla
+    handler.bodies = []
+    with pytest.raises(ValidationError):
+        _router(base_url).matrix([GeoPoint(91.0, 0.0)], [ENTEBBE])
+    assert handler.bodies == []
+
+
+def test_matrix_malformed_dimensions_are_not_partially_accepted(fake_valhalla):
+    base_url, handler = fake_valhalla
+    handler.mode = "matrix_bad_shape"
+    try:
+        table = _router(base_url).matrix([KAMPALA, ENTEBBE], [ENTEBBE])
+    finally:
+        handler.mode = "ok"
+    assert len(table) == 2
+    assert all(len(row) == 1 for row in table)
+    assert all(not cell.resolved for row in table for cell in row)
 
 
 # --- wiring factory ----------------------------------------------------------------------
@@ -250,7 +373,9 @@ def test_build_routing_service_disabled_keeps_fallback():
     assert service.provider_name == "unresolved"
     result = service.route(KAMPALA, ENTEBBE)
     assert result.resolved is False
-    assert result.provider == "haversine-fallback"
+    assert result.provider == "unresolved"
+    assert result.distance_m is None
+    assert result.duration_s is None
 
 
 def test_build_routing_service_enabled_wires_adapter_without_io(fake_valhalla):
@@ -268,6 +393,51 @@ def test_build_routing_service_enabled_wires_adapter_without_io(fake_valhalla):
     assert service.provider_name == "valhalla"
     assert len(handler.bodies) == before  # wiring performs no I/O
     assert isinstance(service, RoutingService)
+
+
+def test_health_payload_uses_effective_app_config_without_network(fake_valhalla):
+    base_url, handler = fake_valhalla
+    before = len(handler.bodies)
+    app = Flask("geo-routing-health-test")
+    app.config["GEO"] = {
+        "valhalla_url": base_url,
+        "valhalla_enabled": True,
+    }
+
+    payload = _health_payload(app)
+
+    assert payload["adapters"]["valhalla"] == {
+        "enabled": True,
+        "configured": True,
+    }
+    assert len(handler.bodies) == before
+
+
+def test_get_routing_service_uses_and_caches_each_app_configuration(fake_valhalla):
+    base_url, handler = fake_valhalla
+    before = len(handler.bodies)
+
+    enabled_app = Flask("geo-routing-enabled-test")
+    enabled_app.config["GEO"] = {
+        "valhalla_url": base_url,
+        "valhalla_enabled": True,
+    }
+    with enabled_app.app_context():
+        enabled_service = get_routing_service()
+        assert enabled_service is get_routing_service()
+        assert enabled_service.provider_name == "valhalla"
+
+    disabled_app = Flask("geo-routing-disabled-test")
+    disabled_app.config["GEO"] = {
+        "valhalla_url": base_url,
+        "valhalla_enabled": False,
+    }
+    with disabled_app.app_context():
+        disabled_service = get_routing_service()
+        assert disabled_service is get_routing_service()
+        assert disabled_service.provider_name == "unresolved"
+
+    assert len(handler.bodies) == before  # building services performs no I/O
 
 
 # --- polyline decoder truth ---------------------------------------------------------------

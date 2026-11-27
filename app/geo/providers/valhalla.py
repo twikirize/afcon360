@@ -2,30 +2,18 @@
 """
 AFCON360 GEO - Valhalla routing adapter.
 
-Locked stack: Valhalla is the primary routing engine (OSRM optional later).
+Valhalla is the primary road-routing engine behind the provider-neutral GEO
+interface. All measurements crossing this boundary are normalized to metres
+and seconds; unresolved measurements remain None.
 
-Behavior:
-- Configured + enabled + reachable Valhalla → normalized road RouteResult
-  (resolved=True, provider="valhalla").
-- Anything else (disabled, unconfigured, timeout, HTTP error, malformed
-  response) → truthful unresolved RouteResult (resolved=False). Domains
-  MUST treat resolved=False as "no road data", never as road distance.
-- Network happens ONLY inside route()/matrix(). Import, construction,
-  is_available(), and health checks perform zero I/O.
-- No retries: provider failures must not produce runaway request loops.
-
-Valhalla wire details assumed (documented public /route contract):
-- POST {base_url}/route, JSON {"locations": [{"lat", "lon"} x2],
-  "costing": profile}. Note: Valhalla uses lat-first "lat"/"lon" keys,
-  matching AFCON360's latitude-first convention — no axis swap.
-- Response trip.summary.length is KILOMETRES, trip.summary.time is
-  SECONDS. Leg shapes are precision-6 encoded polylines ([lng,lat] pairs
-  after decoding — converted back to latitude-first GeoPoints here).
+Network I/O occurs only inside route() and matrix(). Provider construction,
+is_available(), and health inspection are network-free. There are no retries.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import List, Tuple
 
@@ -49,8 +37,8 @@ class ValhallaConfig:
 def _decode_polyline(shape: str, precision: int = 6) -> List[Tuple[float, float]]:
     """Decode an encoded polyline to [(latitude, longitude), ...].
 
-    Precision 6 is Valhalla's shape default. Raises ValueError on
-    truncated input so callers can map it to an unresolved result.
+    Precision 6 is Valhalla's shape default. Raises ValueError on truncated
+    input so callers can map it to an unresolved result.
     """
     factor = 10 ** precision
     points: List[Tuple[float, float]] = []
@@ -66,11 +54,15 @@ def _decode_polyline(shape: str, precision: int = 6) -> List[Tuple[float, float]
                 if index >= size:
                     raise ValueError("Truncated polyline shape")
                 byte = ord(shape[index]) - 63
+                if byte < 0 or byte > 0x3F:
+                    raise ValueError("Invalid polyline character")
                 index += 1
                 value |= (byte & 0x1F) << shift
                 shift += 5
                 if byte < 0x20:
                     break
+                if shift > 60:
+                    raise ValueError("Invalid polyline coordinate")
             delta = ~(value >> 1) if (value & 1) else (value >> 1)
             if axis == "lat":
                 lat += delta
@@ -81,7 +73,7 @@ def _decode_polyline(shape: str, precision: int = 6) -> List[Tuple[float, float]
 
 
 class ValhallaRouter(BaseProvider, RoutingProvider):
-    """Valhalla adapter. Live when configured; truthful miss otherwise."""
+    """Valhalla adapter. Live only when explicitly enabled and configured."""
 
     name = "valhalla"
 
@@ -107,49 +99,184 @@ class ValhallaRouter(BaseProvider, RoutingProvider):
                 field=name,
             )
 
+    @staticmethod
+    def _unresolved() -> RouteResult:
+        return RouteResult(provider="valhalla", resolved=False)
+
+    @staticmethod
+    def _nonnegative_number(value, field: str) -> float:
+        if isinstance(value, bool) or value is None:
+            raise ValueError(f"Invalid Valhalla {field}")
+        number = float(value)
+        if not math.isfinite(number) or number < 0:
+            raise ValueError(f"Invalid Valhalla {field}")
+        return number
+
+    @classmethod
+    def _kilometres_to_metres(cls, value, field: str) -> float:
+        metres = cls._nonnegative_number(value, field) * 1000.0
+        if not math.isfinite(metres):
+            raise ValueError(f"Invalid Valhalla {field}")
+        return metres
+
+    @staticmethod
+    def _is_kilometres(units) -> bool:
+        return isinstance(units, str) and units.strip().lower() in (
+            "kilometers", "kilometres", "km")
+
+    def _unresolved_matrix(self, rows: int, columns: int) -> List[List[RouteResult]]:
+        return [[self._unresolved() for _ in range(columns)]
+                for _ in range(rows)]
+
     def route(self, origin: GeoPoint, destination: GeoPoint,
               profile: str = "auto") -> RouteResult:
         self._validate_point(origin, "origin")
         self._validate_point(destination, "destination")
         if not self.is_available():
-            return RouteResult(distance_m=0.0, duration_s=0.0,
-                               provider=self.name, resolved=False)
+            return self._unresolved()
+
         payload = {
             "locations": [
                 {"lat": origin.latitude, "lon": origin.longitude},
                 {"lat": destination.latitude, "lon": destination.longitude},
             ],
             "costing": profile,
+            "units": "kilometers",
         }
         try:
             url = self.config.base_url.rstrip("/") + "/route"
             response = requests.post(url, json=payload,
                                      timeout=self.config.timeout_s)
             response.raise_for_status()
-            trip = response.json()["trip"]
+            data = response.json()
+            trip = data["trip"]
+            if not isinstance(trip, dict) or trip.get("status", 0) not in (0, "0"):
+                raise ValueError("Valhalla route did not succeed")
             summary = trip["summary"]
-            distance_m = float(summary["length"]) * 1000.0
-            duration_s = float(summary["time"])
+            units = trip.get("units", data.get("units"))
+            if not self._is_kilometres(units):
+                raise ValueError("Unexpected Valhalla route distance units")
+
+            distance_m = self._kilometres_to_metres(
+                summary["length"], "route distance")
+            duration_s = self._nonnegative_number(
+                summary["time"], "route duration")
+
             geometry: List[GeoPoint] = []
-            for leg in trip.get("legs", []):
+            legs = trip.get("legs")
+            if not isinstance(legs, list):
+                raise ValueError("Invalid Valhalla route legs")
+            for leg in legs:
+                if not isinstance(leg, dict):
+                    raise ValueError("Invalid Valhalla route leg")
                 shape = leg.get("shape")
-                if shape:
-                    geometry.extend(
-                        GeoPoint(latitude=lat, longitude=lng)
-                        for lat, lng in _decode_polyline(shape))
+                if not isinstance(shape, str) or not shape:
+                    raise ValueError("Missing Valhalla route shape")
+                for lat, lng in _decode_polyline(shape, precision=6):
+                    point = GeoPoint(latitude=lat, longitude=lng)
+                    self._validate_point(point, "route_geometry")
+                    geometry.append(point)
+            if not geometry:
+                raise ValueError("Valhalla returned no route geometry")
+
             return RouteResult(distance_m=distance_m,
                                duration_s=duration_s,
                                geometry=geometry,
-                               provider=self.name, resolved=True)
-        except Exception as e:
-            logger.warning("Valhalla route request failed: %s", e)
-            return RouteResult(distance_m=0.0, duration_s=0.0,
-                               provider=self.name, resolved=False)
+                               provider=self.name,
+                               resolved=True)
+        except Exception as exc:
+            # Provider exception messages can contain request URLs. Do not
+            # write them to logs; keep only the exception class.
+            logger.warning("Valhalla route request unresolved (%s)",
+                           type(exc).__name__)
+            return self._unresolved()
 
     def matrix(self, origins: List[GeoPoint],
                destinations: List[GeoPoint]) -> List[List[RouteResult]]:
-        # DEFERRED: sources_to_targets has no current product requirement.
-        # Interface-only until a matrix consumer is authorized.
-        return [[RouteResult(distance_m=0.0, duration_s=0.0,
-                             provider=self.name, resolved=False)
-                 for _ in destinations] for _ in origins]
+        rows = len(origins)
+        columns = len(destinations)
+        if not origins:
+            raise ValidationError("At least one origin is required",
+                                  field="origins")
+        if not destinations:
+            raise ValidationError("At least one destination is required",
+                                  field="destinations")
+
+        for index, point in enumerate(origins):
+            self._validate_point(point, f"origins[{index}]")
+        for index, point in enumerate(destinations):
+            self._validate_point(point, f"destinations[{index}]")
+
+        if not self.is_available():
+            return self._unresolved_matrix(rows, columns)
+
+        payload = {
+            "sources": [
+                {"lat": point.latitude, "lon": point.longitude}
+                for point in origins
+            ],
+            "targets": [
+                {"lat": point.latitude, "lon": point.longitude}
+                for point in destinations
+            ],
+            "costing": "auto",
+            "units": "kilometers",
+            "verbose": False,
+        }
+        try:
+            url = self.config.base_url.rstrip("/") + "/sources_to_targets"
+            response = requests.post(url, json=payload,
+                                     timeout=self.config.timeout_s)
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, dict) or not self._is_kilometres(
+                    data.get("units")):
+                raise ValueError("Invalid Valhalla matrix response units")
+
+            result = data["sources_to_targets"]
+            if not isinstance(result, dict):
+                raise ValueError("Invalid Valhalla matrix result")
+            distances = result["distances"]
+            durations = result["durations"]
+            if (not isinstance(distances, list)
+                    or not isinstance(durations, list)
+                    or len(distances) != rows
+                    or len(durations) != rows):
+                raise ValueError("Invalid Valhalla matrix row count")
+
+            matrix: List[List[RouteResult]] = []
+            for row_index in range(rows):
+                distance_row = distances[row_index]
+                duration_row = durations[row_index]
+                if (not isinstance(distance_row, list)
+                        or not isinstance(duration_row, list)
+                        or len(distance_row) != columns
+                        or len(duration_row) != columns):
+                    raise ValueError("Invalid Valhalla matrix column count")
+
+                result_row: List[RouteResult] = []
+                for column_index in range(columns):
+                    distance_km = distance_row[column_index]
+                    duration_s = duration_row[column_index]
+                    # Valhalla uses null/null for an unreachable pair.
+                    if distance_km is None and duration_s is None:
+                        result_row.append(self._unresolved())
+                        continue
+                    if distance_km is None or duration_s is None:
+                        raise ValueError("Incomplete Valhalla matrix cell")
+                    distance_m = self._kilometres_to_metres(
+                        distance_km, "matrix distance")
+                    duration_s = self._nonnegative_number(
+                        duration_s, "matrix duration")
+                    result_row.append(RouteResult(
+                        distance_m=distance_m,
+                        duration_s=duration_s,
+                        provider=self.name,
+                        resolved=True,
+                    ))
+                matrix.append(result_row)
+            return matrix
+        except Exception as exc:
+            logger.warning("Valhalla matrix request unresolved (%s)",
+                           type(exc).__name__)
+            return self._unresolved_matrix(rows, columns)

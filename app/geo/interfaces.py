@@ -33,11 +33,15 @@ class GeoPoint:
 
 @dataclass(frozen=True)
 class RouteResult:
-    """Provider-independent route answer. Distances in meters, duration sec."""
-    distance_m: float
-    duration_s: float
+    """Provider-independent road-route answer.
+
+    Resolved measurements use metres and seconds. Unavailable measurements
+    are None; zero is reserved for a valid zero-length/zero-duration route.
+    Straight-line proximity is not represented by this value object.
+    """
+    distance_m: Optional[float] = None
+    duration_s: Optional[float] = None
     geometry: List[GeoPoint] = field(default_factory=list)
-    # Straight-line fallback MUST be labelled: provider="haversine-fallback".
     provider: str = "unresolved"
     resolved: bool = False
 
