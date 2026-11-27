@@ -481,7 +481,7 @@ def build_routing_service(config) -> RoutingService:
     """Wire a RoutingService from a GeoConfig (no I/O at build time).
 
     Returns a Valhalla-backed service only when the operator explicitly
-    enabled + configured the endpoint; otherwise the truthful-fallback
+    enabled + configured the endpoint; otherwise the unresolved-only
     service. Callers check `.resolved` on every result.
     """
     valhalla = getattr(config, "valhalla", None)
