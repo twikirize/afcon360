@@ -1,3 +1,7 @@
+> **ARCHIVED HANDOVER SNAPSHOT — 18 November 2026**
+> This document records a historical User-app development setup. It is not a current release procedure or source of truth. Branch names, build numbers, device/network details, URLs, and service status may be stale; verify them before use. It does not override current backend or User-app instructions.
+
+---
 # AFCON360 User App — Dev Client Handover Document
 
 **Last Updated:** 2026-11-18  
