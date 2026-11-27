@@ -58,10 +58,13 @@ def test_route_preview_is_visually_mobile_responsive_and_truthful():
     template = _read("templates/transport/new_home.html")
     assert "@media (max-width: 420px)" in css
     assert '.road-route-summary[hidden]' in css
-    assert "Planned road route" in _read(
+    assert "Planned road route only" in _read(
         "static/js/modules/transport/road-route-preview.js"
     )
-    assert "fare calculations use their existing separate distance basis" in template
+    assert "Fare estimate continues to use straight-line distance" in _read(
+        "static/js/modules/transport/road-route-preview.js"
+    )
+    assert "fare estimates continue to use straight-line distance" in template
 
 
 def test_existing_ride_options_keeps_the_existing_fare_distance_basis():
