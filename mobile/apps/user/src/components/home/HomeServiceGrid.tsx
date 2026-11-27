@@ -87,21 +87,18 @@ export const HomeServiceGrid = ({ onServicePress }: HomeServiceGridProps) => {
             resizeMode="cover"
           >
             <LinearGradient
-              colors={['rgba(9, 56, 27, 0.95)', 'rgba(9, 56, 27, 0.38)'] as const}
-              start={{ x: 0, y: 0.2 }}
-              end={{ x: 1, y: 0.8 }}
+              colors={['rgba(9, 56, 27, 0.28)', 'rgba(9, 56, 27, 0.96)'] as const}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
               style={StyleSheet.absoluteFill}
             />
             <View style={styles.cardContent}>
               <View style={styles.iconCircle}>
-                <Ionicons name={service.icon} size={16} color="#FFFFFF" />
+                <Ionicons name={service.icon} size={19} color="#FFFFFF" />
               </View>
               <View style={styles.cardTextWrap}>
-                <Text style={styles.cardTitle} numberOfLines={1}>{service.title}</Text>
+                <Text style={styles.cardTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{service.title}</Text>
                 <Text style={styles.cardSubtitle} numberOfLines={1}>{service.subtitle}</Text>
-              </View>
-              <View style={styles.arrowCircle}>
-                <Ionicons name="arrow-forward" size={12} color="#09381B" />
               </View>
             </View>
           </ImageBackground>
@@ -119,7 +116,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   serviceCard: {
-    height: 105,
+    height: 138,
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: homeDesign.primaryGreenDark,
@@ -131,20 +128,20 @@ const styles = StyleSheet.create({
   },
   cardImage: {
     flex: 1,
-    justifyContent: 'center',
   },
   cardImageStyle: {
     borderRadius: 16,
   },
   cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
+    flex: 1,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    padding: 12,
   },
   iconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#0A4222',
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.8)',
@@ -152,27 +149,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardTextWrap: {
-    flex: 1,
-    marginLeft: 8,
+    width: '100%',
     minWidth: 0,
   },
   cardTitle: {
     color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: 'bold',
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '700',
   },
   cardSubtitle: {
-    color: '#E5E7EB',
-    fontSize: 9,
+    color: '#E8F0EA',
+    fontSize: 11,
+    lineHeight: 15,
     marginTop: 2,
-  },
-  arrowCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });
 

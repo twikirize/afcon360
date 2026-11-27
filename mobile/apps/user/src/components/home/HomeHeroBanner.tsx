@@ -30,7 +30,8 @@ const styles = StyleSheet.create({
   },
   heroContent: {
     paddingHorizontal: 23,
-    paddingBottom: 64,
+    // Leaves room for the search bar, which now sits inside the hero.
+    paddingBottom: 92,
   },
   heroKicker: {
     color: '#E7D5A5',
@@ -88,7 +89,8 @@ const styles = StyleSheet.create({
   },
   searchWrap: {
     position: 'absolute',
-    bottom: -25,
+    // Sits inside the hero rather than hanging 25pt past its bottom edge.
+    bottom: 22,
     left: 16,
     right: 16,
     height: 50,

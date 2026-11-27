@@ -116,7 +116,7 @@ export const PamojaTabBar = ({ state, navigateToTab, emitter, insets }: PamojaTa
             end={{ x: 0.8, y: 1 }}
             style={styles.fabFace}
           >
-            <PamojaMark size={17} showLeaf={false} />
+            <PamojaMark size={22} showLeaf={false} />
           </LinearGradient>
         </LinearGradient>
       </TouchableOpacity>
@@ -194,20 +194,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   fabRing: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     padding: 2,
-    // Drops the ring below the resting line of the icon row. The bar has
-    // paddingVertical 6 plus ~4pt of slack, so anything past ~9 clips.
-    transform: [{ translateY: 8 }],
+    // Dropped below the resting line of the icon row. translateY is 6, not 8,
+    // because the larger ring's bottom edge must stay on the line the smaller
+    // one used: offset = translateY + radius = 25. With paddingVertical 6 and
+    // `overflow: hidden`, this clips ~4pt of the circle, exactly as before.
+    transform: [{ translateY: 6 }],
     alignItems: 'center',
     justifyContent: 'center',
   },
   fabFace: {
     flex: 1,
     width: '100%',
-    borderRadius: 15,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
