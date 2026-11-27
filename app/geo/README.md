@@ -59,8 +59,8 @@ coordinates); no provider SDK objects cross into domains.
   (haversine great-circle, radians applied to all angular inputs).
 - Deterministic: same inputs → same output; identical points → `0.0`.
 - This is explicitly NOT road distance — the name says so, and
-  `RoutingService` labels its straight-line fallback
-  `provider="haversine-fallback"` with `resolved=False`.
+  `RoutingService` does not substitute straight-line distance for road
+  distance; unavailable road routes remain unresolved with null measurements.
 
 ### Nearby / radius / nearest
 
