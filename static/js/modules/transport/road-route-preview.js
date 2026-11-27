@@ -21,6 +21,7 @@
   var debounceTimer = null;
   var inflight = null;
   var sequence = 0;
+  var lastCoordinatesKey = null;
 
   var fields = {
     pickupLatitude: document.getElementById('pickup_latitude'),
@@ -171,7 +172,25 @@
     });
   }
 
-  function schedulePreview() {
+  function schedulePreview(force) {
+    var payload = readCoordinates();
+    if (!payload) {
+      sequence += 1;
+      lastCoordinatesKey = null;
+      if (debounceTimer) {
+        window.clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      cancelInflight();
+      clearRenderedRoute();
+      setState('idle', '', '');
+      return;
+    }
+
+    var coordinatesKey = JSON.stringify(payload);
+    if (!force && coordinatesKey === lastCoordinatesKey) return;
+    lastCoordinatesKey = coordinatesKey;
+
     sequence += 1;
     var mySequence = sequence;
 
@@ -180,13 +199,6 @@
       debounceTimer = null;
     }
     cancelInflight();
-
-    var payload = readCoordinates();
-    if (!payload) {
-      clearRenderedRoute();
-      setState('idle', '', '');
-      return;
-    }
 
     clearRenderedRoute();
     setState(
@@ -201,12 +213,16 @@
     }, 250);
   }
 
-  document.addEventListener('afcon360:route-preview-inputs-changed', schedulePreview);
+  document.addEventListener('afcon360:route-preview-inputs-changed', function () {
+    schedulePreview(false);
+  });
 
   // Allow explicit retry after a provider/network failure without changing
   // either endpoint selection or the existing ride-options flow.
   if (retryButton) {
-    retryButton.addEventListener('click', schedulePreview);
+    retryButton.addEventListener('click', function () {
+      schedulePreview(true);
+    });
   }
 
   // Keep the initial state hidden until the existing page script validates
