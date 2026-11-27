@@ -21,7 +21,6 @@ def test_rider_page_loads_road_route_preview_styles_and_script():
 
 def test_route_preview_client_uses_same_origin_api_and_csrf():
     client = _read("static/js/modules/transport/road-route-preview.js")
-    assert "data-endpoint" not in client  # endpoint comes from the rendered page
     assert "summary.getAttribute('data-endpoint')" in client
     assert "X-CSRFToken" in client
     assert "credentials: 'same-origin'" in client
