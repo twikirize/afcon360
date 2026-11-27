@@ -89,7 +89,7 @@ const config: ExpoConfig = {
   name: isDevelopmentClient ? "AFCON360 Developer" : isPreview ? "AFCON360 Preview" : "AFCON360",
   slug: "afcon360-user",
   scheme: appScheme,
-  version: "1.0.2",
+  version: "1.0.3",
   // Production keeps the native fingerprint so OTA updates are always
   // binary-compatible. Preview/development builds use the app version so a
   // stale local node_modules can never block an internal APK build.

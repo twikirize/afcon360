@@ -13,12 +13,11 @@ import { spacing, radii } from '../../src/theme/tokens';
 import { homeDesign } from '../../src/theme/tokens';
 import {
   HomeHeader,
-  HomeSearchBar,
   HomeHeroBanner,
+  HomeSectionHeader,
   HomeServiceGrid,
-  OurServicesHeader,
   WalletCard,
-  BookingsCard,
+  AdventureFeed,
 } from '../../src/components/home';
 
 const SITE = 'https://www.pamoja.space';
@@ -29,6 +28,7 @@ export default function UserHome() {
   const [apiBaseUrl, setApiBaseUrl] = useState(SITE);
   const [refreshing, setRefreshing] = useState(false);
   const [cachedFeedAt, setCachedFeedAt] = useState<number | null>(null);
+  const [query, setQuery] = useState('');
   const requestInFlight = useRef(false);
 
   const scrollY = useSharedValue(0);
@@ -68,6 +68,15 @@ export default function UserHome() {
     requestInFlight.current = false;
   }, [user?.public_id]);
 
+  const openExplore = useCallback(() => {
+    const trimmed = query.trim();
+    if (trimmed) {
+      router.push({ pathname: '/(tabs)/explore', params: { q: trimmed } } as any);
+    } else {
+      router.push('/(tabs)/explore' as any);
+    }
+  }, [query, router]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" />
@@ -86,45 +95,58 @@ export default function UserHome() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.scrollViewContent}>
-          <HomeHeader />
+        <HomeHeader />
 
-          {(isOffline || offlineStorageError) ? (
-            <View style={styles.offlineBanner}>
-              <Text style={styles.offlineTitle}>
-                {isOffline ? 'Offline mode' : 'Offline cache unavailable'}
-              </Text>
-              <Text style={styles.offlineText}>
-                {cachedFeedAt
-                  ? 'Saved highlights from ' + new Date(cachedFeedAt).toLocaleString()
-                  : lastVerifiedAt
-                  ? 'Account last verified ' + new Date(lastVerifiedAt).toLocaleString()
-                  : (offlineStorageError || 'Reconnect to refresh your Pamoja information.')}
-              </Text>
-              <Text
-                accessibilityRole="button"
-                onPress={() => void retryRestoreSession()}
-                style={styles.retryText}
-              >
-                Retry connection
-              </Text>
-            </View>
-          ) : null}
-
-          <HomeHeroBanner onExplorePress={() => router.push('/(tabs)/explore' as any)} />
-
-          <HomeSearchBar placeholder="Find a ride, event or stay..." />
-
-          <View style={styles.mainContent}>
-            <OurServicesHeader onViewAllPress={() => router.push('/(tabs)/explore' as any)} />
-
-            <HomeServiceGrid />
-
-            <WalletCard />
-
-            <BookingsCard />
+        {(isOffline || offlineStorageError) ? (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineTitle}>
+              {isOffline ? 'Offline mode' : 'Offline cache unavailable'}
+            </Text>
+            <Text style={styles.offlineText}>
+              {cachedFeedAt
+                ? 'Saved highlights from ' + new Date(cachedFeedAt).toLocaleString()
+                : lastVerifiedAt
+                ? 'Account last verified ' + new Date(lastVerifiedAt).toLocaleString()
+                : (offlineStorageError || 'Reconnect to refresh your Pamoja information.')}
+            </Text>
+            <Text
+              accessibilityRole="button"
+              onPress={() => void retryRestoreSession()}
+              style={styles.retryText}
+            >
+              Retry connection
+            </Text>
           </View>
+        ) : null}
+
+        <View style={styles.heroWrap}>
+          <HomeHeroBanner
+            onExplorePress={openExplore}
+            searchValue={query}
+            onSearchChange={setQuery}
+            onSearchSubmit={openExplore}
+            onSearchFilterPress={openExplore}
+          />
         </View>
+
+        <HomeSectionHeader
+          title="Explore Our Services"
+          actionLabel="View all"
+          onActionPress={openExplore}
+        />
+
+        <HomeServiceGrid />
+
+        <WalletCard />
+
+        <HomeSectionHeader
+          title="Your Next Adventure"
+          actionLabel="View Details"
+          onActionPress={openExplore}
+          style={styles.adventureHeader}
+        />
+
+        <AdventureFeed />
       </Animated.ScrollView>
     </SafeAreaView>
   );
@@ -136,18 +158,21 @@ const styles = StyleSheet.create({
     backgroundColor: homeDesign.bgColor,
   },
   scrollContent: {
-    paddingTop: 35,
-    paddingBottom: 35,
-    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 120,
   },
-  scrollViewContent: {
-    paddingTop: spacing.sm,
+  heroWrap: {
+    paddingHorizontal: 18,
+  },
+  adventureHeader: {
+    marginTop: 24,
   },
   offlineBanner: {
     backgroundColor: homeDesign.heroBg,
     borderRadius: radii.lg,
     padding: spacing.lg,
     marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
     gap: spacing.sm,
   },
   offlineTitle: {
@@ -165,15 +190,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     marginTop: spacing.xs,
-  },
-  mainContent: {
-    paddingHorizontal: 0,
-    paddingTop: 0,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: homeDesign.textDark,
-    marginBottom: 16,
   },
 });

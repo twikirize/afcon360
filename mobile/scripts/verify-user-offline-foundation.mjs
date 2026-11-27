@@ -6,7 +6,14 @@ const checks = [
   ["SDK 58 SQLite package and lockfile remain aligned", (() => { const pkg = JSON.parse(read("apps/user/package.json")); const lock = read("pnpm-lock.yaml"); const spec = pkg.dependencies?.["expo-sqlite"]; const match = lock.match(/^\s{6}expo-sqlite:\s*\n^\s{8}specifier: ([^\n]+)\s*\n^\s{8}version: ([^\n]+)/m); return typeof spec === "string" && /^~58\.0\.\d+$/.test(spec) && match?.[1] === spec && /^58\.0\.\d+/.test(match?.[2] ?? ""); })()],
   ["SDK 58 cryptographic random package is declared", read("apps/user/package.json").includes('"expo-crypto": "~58.0.9"')],
   ["SQLCipher native build plugin is enabled", /useSQLCipher:\s*true/.test(read("apps/user/app.config.ts"))],
-  ["Native app version is incremented for this binary change", /version:\s*"1\.0\.2"/.test(read("apps/user/app.config.ts"))],
+  // Floor, not a pinned literal: any version at or above the 1.0.2 binary change
+  // satisfies this, so a future legitimate bump does not read as a regression.
+  ["Native app version is incremented for this binary change", (() => {
+    const v = read("apps/user/app.config.ts").match(/version:\s*"(\d+)\.(\d+)\.(\d+)"/);
+    if (!v) return false;
+    const [major, minor, patch] = [Number(v[1]), Number(v[2]), Number(v[3])];
+    return major > 1 || (major === 1 && (minor > 0 || patch >= 2));
+  })()],
   ["Runtime SQLCipher support is verified", /PRAGMA cipher_version/.test(read("apps/user/src/offline/storage.ts"))],
   ["Database key is generated with secure random bytes", /getRandomBytesAsync\(32\)/.test(read("apps/user/src/offline/storage.ts"))],
   ["Database key is stored in platform secure storage", /SecureStore\.setItemAsync/.test(read("apps/user/src/offline/storage.ts"))],
@@ -24,9 +31,9 @@ const checks = [
       /<HomeHeader\s*\/>/.test(home) &&
       /<HomeHeroBanner\b/.test(home) &&
       /<HomeServiceGrid\s*\/>/.test(home) &&
-      /<OurServicesHeader\b/.test(home) &&
+      /<HomeSectionHeader\b/.test(home) &&
       /<WalletCard\s*\/>/.test(home) &&
-      /<BookingsCard\s*\/>/.test(home) &&
+      /<AdventureFeed\s*\/>/.test(home) &&
       /<RefreshControl\b/.test(home) &&
       /onRefresh=\{onRefresh\}/.test(home) &&
       /userOfflineRepository\.readHomeFeed\(user\.public_id\)/.test(home) &&

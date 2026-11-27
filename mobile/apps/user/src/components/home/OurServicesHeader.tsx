@@ -26,10 +26,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   sectionTitle: {
-    fontSize: 34,
-    fontWeight: '900',
+    fontSize: 20,
+    fontWeight: '700',
     color: homeDesign.primaryGreenDark,
-    letterSpacing: -1,
+    letterSpacing: -0.5,
   },
   viewAll: {
     flexDirection: 'row',
@@ -38,8 +38,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   viewAllText: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '600',
     color: homeDesign.primaryGreen,
   },
 });
