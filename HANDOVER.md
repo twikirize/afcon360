@@ -159,8 +159,8 @@ def server_urls():
 2. Start Metro: `npx expo start --dev-client --host lan --port 8081` (with `AFCON360_PREVIEW_BUILD=true`)
 3. Start Flask: `cd afcon360_app && .venv\Scripts\python.exe app.py`
 3. Open app → **Account → Connection settings (preview)**
-4. Tap detected API URL (e.g., `http://192.168.100.28:5000`) → "Test and save"
-5. Tap detected Metro URL (e.g., `http://192.168.100.28:8081`) → "Save & Connect to Metro"
+4. Tap detected API URL (e.g., `http://<laptop-ip>:5000`) → "Test and save"
+5. Tap detected Metro URL (e.g., `http://<laptop-ip>:8081`) → "Save & Connect to Metro"
 6. App reloads with wireless Fast Refresh — **no USB needed**
 
 ### USB Fallback (if hotspot fails)
@@ -177,8 +177,8 @@ adb reverse tcp:8081 tcp:8081
 | Component | Status |
 |-----------|--------|
 | Dev client installed | ✅ v10 on test device |
-| Metro (LAN) | ✅ Running on `192.168.100.28:8081` |
-| Flask API | ✅ Running on `192.168.100.28:5000` |
+| Metro (LAN) | ✅ Running on `<laptop-ip>:8081` |
+| Flask API | ✅ Running on `<laptop-ip>:5000` |
 | Fast Refresh | ✅ Verified (magenta→muted footer live) |
 | Server selection page | ✅ Auto-detects IPs, one-tap connect |
 | Metro deep-link connect | ✅ Opens dev client via `afcon360-preview://expo-development-client/?url=...` |
@@ -208,7 +208,7 @@ Get-Process -Name "node" | Where-Object {$_.CommandLine -like "*expo*"} | Stop-P
 ```bash
 cd C:\Users\OBED\Desktop\afcon360_app
 .\.venv\Scripts\python.exe app.py
-# Logs show bound IPs (e.g., 192.168.100.28:5000)
+# Logs show bound IPs (e.g., <laptop-ip>:5000)
 ```
 
 ### ADB
@@ -290,7 +290,7 @@ npx eas-cli update --branch preview --message "Hotfix"
 - **Repo:** `C:\Users\OBED\Desktop\afcon360-user-dev` (branch `feat/user-offline-first-foundation-20261117`)
 - **Main AFCON360 repo:** `C:\Users\OBED\Desktop\afcon360_app`
 - **EAS Account:** `twikirizeo` / Project `afcon360-user`
-- **Test Device:** `R92XC0H6Q5N` (Galaxy A05, Android 14)
+- **Test Device:** `[redacted local device identifier]` (Galaxy A05, Android 14)
 
 ---
 
