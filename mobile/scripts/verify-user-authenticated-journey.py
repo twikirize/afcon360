@@ -904,7 +904,7 @@ def main() -> None:
     mark_stage("explore_after_stays")
 
     mark_stage("events_navigation_started")
-    tap_text_scrolling("Discover events")
+    tap_text_scrolling("Discover events and tickets")
     wait_for_text("Be there for the moments.", timeout=30, label="native events screen")
     save_screen("09-events")
     mark_stage("events_screen")
