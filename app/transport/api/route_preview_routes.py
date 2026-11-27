@@ -71,6 +71,16 @@ def _finite_nonnegative(value):
     return math.isfinite(number) and number >= 0
 
 
+def _valid_coordinate(value, bound):
+    if isinstance(value, bool) or value is None:
+        return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(number) and -bound <= number <= bound
+
+
 def _unresolved_payload(provider="unresolved"):
     return {
         "resolved": False,
@@ -102,11 +112,8 @@ def _serialize_route(result):
     for point in geometry:
         latitude = getattr(point, "latitude", None)
         longitude = getattr(point, "longitude", None)
-        if not (_finite_nonnegative(abs(latitude)) if isinstance(latitude, (int, float)) else False):
-            return _unresolved_payload(provider)
-        if not (_finite_nonnegative(abs(longitude)) if isinstance(longitude, (int, float)) else False):
-            return _unresolved_payload(provider)
-        if float(latitude) > 90 or float(longitude) > 180:
+        if (not _valid_coordinate(latitude, 90)
+                or not _valid_coordinate(longitude, 180)):
             return _unresolved_payload(provider)
         # The provider contract supplies latitude-first points. Preserve that
         # order in the API response consumed by Leaflet.
