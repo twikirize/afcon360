@@ -946,9 +946,11 @@ def main() -> None:
 
     # Force-stop the Android process and prove that SecureStore credentials
     # restore the authenticated session after an actual app restart.
-    mark_stage("session_restore_started")
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
+    # Timestamp only after Android has stopped the process. The backend can
+    # then distinguish the cold-launch identity request from earlier reads.
+    mark_stage("session_restore_started")
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
     # A protected tab route and the synthetic user's identity must both restore.
     wait_for_text(
@@ -968,7 +970,7 @@ def main() -> None:
     save_screen("10a-restored-my-bookings-overview")
 
     tap_text("Account", last=True, allow_tab_bar=True)
-    restored_identity = wait_for_text(
+    restored_identity = wait_for_text_scrolling_to_top(
         "Your account.",
         USERNAME,
         EMAIL,
