@@ -61,7 +61,7 @@ def straight_line_distance_m(origin: GeoPoint,
 def straight_line_distance_matrix_m(
         origins: List[GeoPoint],
         destinations: List[GeoPoint]) -> List[List[float]]:
-    """Straight-line matrix (planning fallback; road matrix comes later)."""
+    """Straight-line matrix for geographic screening, never road distance."""
     return [[straight_line_distance_m(o, d) for d in destinations]
             for o in origins]
 
@@ -74,7 +74,7 @@ def eta_from_duration(duration_s: float,
                       now: Optional[datetime] = None) -> datetime:
     """
     ETA = now + provider duration. `duration_s` must come from a routing
-    engine (later) or an explicitly-labelled estimate - NEVER distance×k.
+    engine or an explicitly-labelled estimate - NEVER distance×k.
     """
     if duration_s < 0:
         raise ValidationError("Invalid duration: must be >= 0",
