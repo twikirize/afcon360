@@ -231,6 +231,15 @@ If any APK-only item changed: bump `version` in `apps/user/app.config.ts`, then 
   ```
 
 - [ ] `eas update:list --branch preview --platform android` lists a group whose runtime equals the installed binary's. It takes `--branch`, not `--channel`.
+- [ ] The **published manifest** declares the preview identity, not just the CLI printing a group ID. A publish from a shell without B1 ships a bundle that hides its own Connection settings:
+
+  ```powershell
+  $u = "https://u.expo.dev/20708e30-4640-4b88-9615-38412f47e811"
+  curl.exe -s -o "$env:TEMP\manifest.json" -H "expo-platform: android" -H "expo-protocol-version: 1" -H "expo-runtime-version: <installed version>" -H "expo-channel-name: preview" -H "accept: multipart/mixed,application/expo+json,application/json" $u
+  Select-String -LiteralPath "$env:TEMP\manifest.json" -Pattern '"allowServerSelection":\s*\w+|"name":"[^"]*"'
+  ```
+
+  Expect `"name":"AFCON360 Preview"` and `"allowServerSelection":true`. The endpoint returns 406 unless the accept header names `multipart/mixed`.
 - [ ] The device shows the new code after **two** launches. `checkAutomatically: "ON_LOAD"` with `fallbackToCacheTimeout: 0` downloads on the first launch and applies on the second, so a single reopen legitimately shows nothing.
 
 ### B5. Before and after building an APK
@@ -268,6 +277,7 @@ If any APK-only item changed: bump `version` in `apps/user/app.config.ts`, then 
 | `eas update` prints a published group and exits 0, but the phone is unchanged | The group's runtime matches no installed binary, or the channel is wrong. A green publish is not delivery. |
 | `eas build:list` fails with "Cannot automatically write to dynamic config" | Missing `AFCON360_USER_EAS_PROJECT_ID`. Nothing was unlinked and the project is not broken. |
 | The install prompt calls the APK an "update" | Same package name and a higher version code, so Android replaces the binary in place. It is still a full APK, not an OTA. |
+| Connection settings links vanish from the login page and Account after an update that used to show them | The published manifest carries the production identity, so `extra.allowServerSelection` is `false` and every link wrapped in `SERVER_SELECTION_ENABLED` renders nothing. The screens exist; the publish ran without `AFCON360_PREVIEW_BUILD=true`. Republish with B1 and check the manifest, not the CLI. |
 
 ---
 
