@@ -777,12 +777,11 @@ def main() -> None:
     else:
         save_screen("02-home")
         wait_for_text_scrolling(
-            "My bookings",
-            "Manage your stays and rides",
+            "Open your Pamoja wallet",
             timeout=35,
-            label="curated Home My bookings card",
+            label="updated curated Home wallet card",
         )
-        save_screen("02a-my-bookings-overview")
+        save_screen("02a-home-wallet-card")
     mark_stage("authenticated_home")
 
     mark_stage("activity_navigation_started")
@@ -962,12 +961,11 @@ def main() -> None:
     )
     save_screen("10-session-restored")
     wait_for_text_scrolling(
-        "My bookings",
-        "Manage your stays and rides",
+        "Open your Pamoja wallet",
         timeout=35,
-        label="restored curated Home My bookings card",
+        label="restored updated Home wallet card",
     )
-    save_screen("10a-restored-my-bookings-overview")
+    save_screen("10a-restored-home-wallet-card")
 
     tap_text("Account", last=True, allow_tab_bar=True)
     restored_identity = wait_for_text_scrolling_to_top(

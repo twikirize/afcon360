@@ -197,12 +197,17 @@ const checks = [
   ["ServiceEntry receives serviceKey because React reserves the key attribute", /serviceKey: ServiceKey/.test(read("apps/user/src/components/ServiceEntry.tsx")) && /function ServiceEntry\(\{\s*serviceKey,/.test(read("apps/user/src/components/ServiceEntry.tsx")) && !/function ServiceEntry\(\{\s*key,/.test(read("apps/user/src/components/ServiceEntry.tsx"))],
   ["Every Pamoja Home service card supplies its explicit serviceKey", (read("apps/user/src/components/GeminiHomeTop.tsx").match(/<ServiceEntry\b[^>]*serviceKey=/g) || []).length === 6 && !/<ServiceEntry\b(?![^>]*serviceKey=)[^>]*>/.test(read("apps/user/src/components/GeminiHomeTop.tsx"))],
   ["Focused login-and-navigation mode verifies curated Home, safe Activity/Wallet/Account tab navigation and return Home", /AFCON360_E2E_LOGIN_NAVIGATION_ONLY/.test(read("scripts/verify-user-authenticated-journey.py")) && /USER_ANDROID_E2E_LOGIN_NAVIGATION_PASS/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Activity", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Wallet", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Account", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Home", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /allow_tab_bar: bool = False/.test(read("scripts/verify-user-authenticated-journey.py")) && /system_navigation_top_y = int\(screen_height \* 0\.96\)/.test(read("scripts/verify-user-authenticated-journey.py"))],
-  ["Focused login-and-navigation gate blocks the complete authenticated journey", /name: Focused login and primary navigation gate[\s\S]*?id: login_navigation_journey[\s\S]*?AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1/.test(read("../.github/workflows/mobile-workspace.yml"))],
+  ["CI runs the complete authenticated User journey in one Android emulator session", (() => {
+    const workflow = read("../.github/workflows/mobile-workspace.yml");
+    return workflow.includes("Authenticate and verify updated User journeys") &&
+      workflow.includes("id: android_journey") &&
+      workflow.includes("script: python mobile/scripts/verify-user-authenticated-journey.py") &&
+      !workflow.includes("login_navigation_journey") &&
+      !workflow.includes("AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1");
+  })()],
   ["Android-version matrix runs only after the primary journey succeeds", /needs\.user-authenticated-journey\.result == 'success'[\s\S]*?needs\.user-authenticated-journey\.outputs\.apk_rebuilt == 'true'/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Failure diagnostics capture the app process log independently", /failure-app-logcat\.txt/.test(read("scripts/verify-user-authenticated-journey.py")) && /failure-activity-top\.txt/.test(read("scripts/verify-user-authenticated-journey.py"))],
-  ["CI runs focused login and primary navigation before the full authenticated journey", /name: Focused login and primary navigation gate[\s\S]*?id: login_navigation_journey[\s\S]*?AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1/.test(read("../.github/workflows/mobile-workspace.yml"))],
-  ["Full authenticated journey is gated on successful login-and-navigation proof", /name: Install, authenticate, test services, restore session and sign out\s+if: \$\{\{ steps\.login_navigation_journey\.outcome == 'success' \}\}/.test(read("../.github/workflows/mobile-workspace.yml"))],
-  ["Android journey scrolls Home to assert My Events instead of expecting the entire page in one viewport", /wait_for_text_scrolling/.test(read("scripts/verify-user-authenticated-journey.py")) && !/wait_for_text\("Your world,",\s*"My Events"/.test(read("scripts/verify-user-authenticated-journey.py"))],
+  ["Android journey checks the updated Home wallet card, not the removed My bookings tile", /wait_for_text_scrolling\(\s*"Open your Pamoja wallet"/.test(read("scripts/verify-user-authenticated-journey.py")) && !/My bookings|Manage your stays and rides/.test(read("scripts/verify-user-authenticated-journey.py"))],
   ["Active offline foundation branch is included in CI", /feat\/user-offline-first-foundation-20261117/.test(read("../.github/workflows/mobile-workspace.yml"))],
 ];
 
