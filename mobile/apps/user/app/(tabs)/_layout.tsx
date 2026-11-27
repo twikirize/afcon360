@@ -65,8 +65,8 @@ export default function UserTabs() {
       })}
     >
       <Tabs.Screen name="index" options={{ title: tabLabels.index }} />
-      <Tabs.Screen name="explore" options={{ title: tabLabels.explore }} />
       <Tabs.Screen name="activity" options={{ title: tabLabels.activity }} />
+      <Tabs.Screen name="explore" options={{ title: tabLabels.explore }} />
       <Tabs.Screen name="wallet" options={{ title: tabLabels.wallet }} />
       <Tabs.Screen name="account" options={{ title: tabLabels.account }} />
     </Tabs>
