@@ -194,6 +194,10 @@ const checks = [
   ["Account-to-settings journey taps the real Version & updates action, not the App settings section heading", /tap_text_scrolling\("Version & updates"\)/.test(read("scripts/verify-user-authenticated-journey.py"))],
   ["Account return restores the scroll position before asserting the heading", /def wait_for_text_scrolling_to_top/.test(read("scripts/verify-user-authenticated-journey.py")) && /wait_for_text_scrolling_to_top\(\s*"Your account\."/s.test(read("scripts/verify-user-authenticated-journey.py"))],
   ["Login route has one authenticated-state redirect, not duplicate submit-handler navigation", read("apps/user/app/login.tsx").includes('if (!loading && user) router.replace("/(tabs)");') && !read("apps/user/app/login.tsx").includes('onPress={() => signIn(identifier, password).then') && !read("apps/user/app/login.tsx").includes('onPress={() => verifyMfa(code).then')],
+  ["First launch always opens the tabs, never the login route", (() => {
+    const root = read("apps/user/app/index.tsx");
+    return root.includes('<Redirect href="/(tabs)" />') && !root.includes('"/login"') && !root.includes("useAuth");
+  })()],
   ["ServiceEntry receives serviceKey because React reserves the key attribute", /serviceKey: ServiceKey/.test(read("apps/user/src/components/ServiceEntry.tsx")) && /function ServiceEntry\(\{\s*serviceKey,/.test(read("apps/user/src/components/ServiceEntry.tsx")) && !/function ServiceEntry\(\{\s*key,/.test(read("apps/user/src/components/ServiceEntry.tsx"))],
   ["Every Pamoja Home service card supplies its explicit serviceKey", (read("apps/user/src/components/GeminiHomeTop.tsx").match(/<ServiceEntry\b[^>]*serviceKey=/g) || []).length === 6 && !/<ServiceEntry\b(?![^>]*serviceKey=)[^>]*>/.test(read("apps/user/src/components/GeminiHomeTop.tsx"))],
   ["Signed-out journey follows public Home, guest Wallet and Account-tab sign-in", (() => {
