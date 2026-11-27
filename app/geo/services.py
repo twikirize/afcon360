@@ -131,22 +131,16 @@ class RoutingService:
               profile: str = "auto") -> RouteResult:
         if self._provider is not None:
             return self._provider.route(origin, destination, profile=profile)
-        return RouteResult(
-            distance_m=straight_line_distance_m(origin, destination),
-            duration_s=0.0,
-            geometry=[origin, destination],
-            provider="haversine-fallback",
-            resolved=False,
-        )
+        # Road distance is unavailable. Haversine remains available through
+        # the separately named straight_line_distance_m() API only.
+        return RouteResult(provider="unresolved", resolved=False)
 
     def matrix(self, origins: List[GeoPoint],
                destinations: List[GeoPoint]) -> List[List[RouteResult]]:
         if self._provider is not None:
             return self._provider.matrix(origins, destinations)
-        table = straight_line_distance_matrix_m(origins, destinations)
-        return [[RouteResult(distance_m=d, duration_s=0.0,
-                             provider="haversine-fallback", resolved=False)
-                 for d in row] for row in table]
+        return [[RouteResult(provider="unresolved", resolved=False)
+                 for _ in destinations] for _ in origins]
 
 
 def geoapify_needs_secondary(hits: List[GeocodeResult]) -> bool:
@@ -450,9 +444,32 @@ def get_location_service() -> LocationService:
 
 
 def get_routing_service() -> RoutingService:
+    """Return the routing service built from this app's effective GEO config.
+
+    Flask applications receive isolated instances through app.extensions so
+    test/app configurations cannot leak across application contexts. Calls
+    outside an app context retain one lazy environment-configured singleton.
+    Building the service performs no provider network I/O.
+    """
+    try:
+        from flask import current_app, has_app_context
+    except ImportError:  # Flask is a core dependency; retain safe fallback.
+        has_app_context = lambda: False
+
+    if has_app_context():
+        app = current_app._get_current_object()
+        key = "geo.routing_service"
+        service = app.extensions.get(key)
+        if service is None:
+            from app.geo.config import load_geo_config
+            service = build_routing_service(load_geo_config(app))
+            app.extensions[key] = service
+        return service
+
     global _routing_service
     if _routing_service is None:
-        _routing_service = RoutingService()
+        from app.geo.config import load_geo_config
+        _routing_service = build_routing_service(load_geo_config())
     return _routing_service
 
 
