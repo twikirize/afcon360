@@ -11,6 +11,7 @@
   var summary = document.getElementById('roadRouteSummary');
   var title = document.getElementById('roadRouteSummaryTitle');
   var note = document.getElementById('roadRouteSummaryNote');
+  var retryButton = document.getElementById('roadRouteRetry');
   var form = document.getElementById('boltForm');
 
   if (!summary || !title || !note || !form) return;
@@ -65,6 +66,7 @@
     summary.setAttribute('data-route-state', state);
     title.textContent = heading || '';
     note.textContent = detail || '';
+    if (retryButton) retryButton.hidden = state !== 'unavailable';
   }
 
   function cancelInflight() {
@@ -203,10 +205,9 @@
 
   // Allow explicit retry after a provider/network failure without changing
   // either endpoint selection or the existing ride-options flow.
-  summary.addEventListener('click', function (event) {
-    if (!event.target || !event.target.matches('[data-route-retry]')) return;
-    schedulePreview();
-  });
+  if (retryButton) {
+    retryButton.addEventListener('click', schedulePreview);
+  }
 
   // Keep the initial state hidden until the existing page script validates
   // both pickup and destination and emits its coordinate-change event.
