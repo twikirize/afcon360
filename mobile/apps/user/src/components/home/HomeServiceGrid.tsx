@@ -97,6 +97,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
+  serviceIconHorizontal: {
+    marginRight: 8,
+  },
+  serviceIconVertical: {
+    marginBottom: 4,
+  },
   serviceText: {
     alignItems: 'center',
     textAlign: 'center',

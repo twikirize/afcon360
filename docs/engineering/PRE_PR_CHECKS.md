@@ -24,9 +24,19 @@ pnpm --filter @afcon360/user-app exec expo export --platform android --output-di
 
 # 6. iOS bundle export — proves the app bundles for iOS
 pnpm --filter @afcon360/user-app exec expo export --platform ios --output-dir "$env:TEMP\afcon360-user-ios"
+
+# 7. Development delivery contract — verifies Metro/EAS/OFB fallback config
+$env:AFCON360_PREVIEW_BUILD = "true"
+$env:AFCON360_RELEASE_BUILD = "false"
+$env:AFCON360_DEVELOPMENT_CLIENT = "true"
+$env:AFCON360_UPDATE_CHANNEL = "user-development-client"
+$env:EXPO_PUBLIC_API_BASE_URL = "http://127.0.0.1:5000"
+$env:AFCON360_USER_EAS_PROJECT_ID = "00000000-0000-4000-8000-000000000001"
+pnpm --filter @afcon360/user-app exec expo config --json 2>&1 | Out-File -Encoding utf8 "$env:TEMP\afcon360-user-dev-delivery-config.json"
+node scripts/verify-user-dev-delivery-contract.mjs "$env:TEMP\afcon360-user-dev-delivery-config.json"
 ```
 
-**All six must pass.** Do not push if any fail.
+**All seven must pass.** Do not push if any fail.
 
 ---
 
@@ -36,6 +46,30 @@ pnpm --filter @afcon360/user-app exec expo export --platform ios --output-dir "$
 - After adding/modifying screen files under `apps/user/app/**/*.tsx` or `apps/user/src/components/**/*.tsx`
 - After modifying `mobile/scripts/check-navigation-contracts.mjs`
 - After any TypeScript/React Native code change
+- After adding/removing bottom navigation tabs (requires updating `check-navigation-contracts.mjs` and E2E tests)
+
+---
+
+## Deep Navigation Validation (5-Tab Structure)
+
+After any navigation change, verify the complete 5-tab structure works:
+
+| Tab | Route | Icon | Key Actions to Verify |
+|-----|-------|------|----------------------|
+| 1. Home | `index` | `home` | Hero banner, OurServicesHeader, HomeServiceGrid, WalletCard, BookingsCard |
+| 2. Explore | `explore` | `explore` | Transport (Book a ride), Accommodation (Find and book a stay), Events, Tourism (website handoff) |
+| 3. Activity | `activity` | `event-available` | Ride status, My Events list |
+| 4. Wallet | `wallet` | `account-balance-wallet` | Balance, Top Up, transaction history |
+| 5. Account | `account` | `person-outline` | Profile, Settings, Sign out |
+
+**Navigation flow checks:**
+- Home → View all → Explore (same screen as tab 2)
+- Explore → Book a ride → native ride screen
+- Explore → Find and book a stay → native stays screen  
+- Explore → Discover events and tickets → native events screen
+- Explore → Explore tourism on website → WebBrowser handoff
+- Account → Home → Explore → back to Account (tab bar persistence)
+- Android Back from native screens returns to Explore tab
 
 ---
 
@@ -87,6 +121,12 @@ Before adding any `.tsx` or `.js` file:
 4. **TypeScript** — Run `pnpm user:typecheck` after adding the file.
 
 5. **Exports** — Run both Android and iOS exports to verify bundling.
+
+6. **Bottom tab changes** — If adding/removing tabs in `(tabs)/_layout.tsx`:
+   - Update `tabIcons` and `tabLabels` records
+   - Add/remove `Tabs.Screen` entries
+   - Update `check-navigation-contracts.mjs` with new `nativeInternalRoutes`
+   - Update E2E tests (`verify-user-authenticated-journey.py`) for new tab navigation
 
 ---
 

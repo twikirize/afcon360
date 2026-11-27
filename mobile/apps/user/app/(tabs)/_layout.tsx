@@ -7,10 +7,11 @@ import { useAuth } from '../../src/auth/AuthProvider';
 import { palette } from '@afcon360/mobile-ui';
 import { homeDesign } from '../../src/theme/tokens';
 
-type TabIconName = 'home' | 'event-available' | 'account-balance-wallet' | 'person-outline';
+type TabIconName = 'home' | 'explore' | 'event-available' | 'account-balance-wallet' | 'person-outline';
 
 const tabIcons: Record<string, TabIconName> = {
   index: 'home',
+  explore: 'explore',
   activity: 'event-available',
   wallet: 'account-balance-wallet',
   account: 'person-outline',
@@ -18,7 +19,8 @@ const tabIcons: Record<string, TabIconName> = {
 
 const tabLabels: Record<string, string> = {
   index: 'Home',
-  activity: 'Bookings',
+  explore: 'Explore',
+  activity: 'Activity',
   wallet: 'Wallet',
   account: 'Account',
 };
@@ -63,6 +65,7 @@ export default function UserTabs() {
       })}
     >
       <Tabs.Screen name="index" options={{ title: tabLabels.index }} />
+      <Tabs.Screen name="explore" options={{ title: tabLabels.explore }} />
       <Tabs.Screen name="activity" options={{ title: tabLabels.activity }} />
       <Tabs.Screen name="wallet" options={{ title: tabLabels.wallet }} />
       <Tabs.Screen name="account" options={{ title: tabLabels.account }} />

@@ -18,6 +18,7 @@ PACKAGE = "space.pamoja.afcon360.user.preview"
 APK_PATH = os.environ.get("AFCON360_USER_E2E_APK", "mobile-e2e-evidence/user-e2e.apk")
 
 USERNAME = os.environ.get("AFCON360_E2E_USERNAME", "native_e2e_user")
+EMAIL = os.environ.get("AFCON360_E2E_EMAIL", "native-e2e@afcon360.test")
 PASSWORD = os.environ.get("AFCON360_E2E_PASSWORD", "NativeE2ePassword2026")
 EVIDENCE = Path(os.environ.get("AFCON360_E2E_EVIDENCE_DIR", "mobile-e2e-evidence"))
 UI_XML = "/sdcard/afcon360-user-e2e-ui.xml"
@@ -26,20 +27,29 @@ PROGRESS = EVIDENCE / "journey-progress.json"
 
 
 def mark_stage(stage: str) -> None:
-    """Persist the last completed stage of the Android journey."""
-    completed = []
+    """Persist completed stages and wall-clock timestamps for backend correlation."""
+    progress = {"completed_stages": [], "stage_timestamps": {}}
     if PROGRESS.is_file():
         try:
-            completed = list(json.loads(PROGRESS.read_text(encoding="utf-8")).get("completed_stages", []))
+            loaded = json.loads(PROGRESS.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                progress.update(loaded)
         except (OSError, ValueError, TypeError):
-            completed = []
+            pass
+    completed = list(progress.get("completed_stages", []))
     if stage not in completed:
         completed.append(stage)
+    timestamps = progress.get("stage_timestamps", {})
+    if not isinstance(timestamps, dict):
+        timestamps = {}
+    timestamps[stage] = time.time()
+    progress.update({
+        "completed_stages": completed,
+        "stage_timestamps": timestamps,
+        "last_completed_stage": stage,
+    })
     EVIDENCE.mkdir(parents=True, exist_ok=True)
-    PROGRESS.write_text(
-        json.dumps({"completed_stages": completed, "last_completed_stage": stage}, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    PROGRESS.write_text(json.dumps(progress, indent=2) + "\n", encoding="utf-8")
 
 
 def run_adb(
@@ -292,6 +302,30 @@ def tap_text(
                     run_adb("shell", "input", "tap", str(x), str(y))
                     time.sleep(0.7)
                     return
+
+            # Fallback for tab bar: when allow_tab_bar=True and text was found but
+            # no clickable ancestor detected (common with React Native tab bars).
+            # Calculate tap coordinates based on tab label and screen width.
+            if allow_tab_bar:
+                tab_order = ["Home", "Explore", "Activity", "Wallet", "Account"]
+                if value in tab_order:
+                    tab_index = tab_order.index(value)
+                    # Each tab is 1/5 of screen width; tap center of tab.
+                    tab_center_x = int(screen_width * (tab_index + 0.5) / len(tab_order))
+                    tab_center_y = int((tab_bar_top_y + system_navigation_top_y) / 2)
+                    print(
+                        "ANDROID_TAP_TARGET (tab bar fallback): "
+                        + json.dumps({
+                            "label": value,
+                            "tab_index": tab_index,
+                            "center": [tab_center_x, tab_center_y],
+                        }, sort_keys=True),
+                        flush=True,
+                    )
+                    run_adb("shell", "input", "tap", str(tab_center_x), str(tab_center_y))
+                    time.sleep(0.7)
+                    return
+
             last_diagnostics = [
                 f"matching text {value!r} was found but no enabled clickable ancestor with valid bounds outside navigation area"
             ]
@@ -545,19 +579,29 @@ def save_screen(name: str) -> None:
 
 
 def return_to_explore() -> None:
-    """Return to Explore and verify a stable action, even when scroll is preserved."""
+    """Return to Explore and normalize its scroll position before checking actions."""
     run_adb("shell", "input", "keyevent", "4")
     time.sleep(1)
     try:
-        # Android can restore Explore at the previous scroll offset. The top
-        # heading is therefore not a reliable screen identity check. The Stays
-        # action is present on the Explore service list at both tested offsets.
-        wait_for_text("Make more of the journey.", "Book accommodation", timeout=8, label="Explore after Android Back")
+        # The Events card is lower on Explore than the Stays card. After tapping
+        # Events, Android restores the previous deep scroll offset on Back, so
+        # normalize the page to its top before checking the header and Stays CTA.
+        wait_for_text_scrolling_to_top(
+            "Make more of the journey.",
+            "Find and book a stay",
+            timeout=20,
+            label="Explore after Android Back",
+        )
     except AssertionError:
-        # If Back leaves us on another tab, explicitly select Explore and then
-        # verify its stable Stays action rather than assuming scroll-to-top.
-        tap_text("Explore", last=True)
-        wait_for_text("Make more of the journey.", "Book accommodation", timeout=20, label="Explore tab")
+        # If Back leaves us on another tab, explicitly select Explore and repeat
+        # the same scroll normalization rather than trusting a preserved offset.
+        tap_text("Explore", last=True, allow_tab_bar=True)
+        wait_for_text_scrolling_to_top(
+            "Make more of the journey.",
+            "Find and book a stay",
+            timeout=20,
+            label="Explore tab after Android Back",
+        )
 
 
 def save_failure_diagnostics() -> None:
@@ -721,8 +765,9 @@ def main() -> None:
     tap_text("Sign in securely", require_enabled=True)
 
     wait_for_text(
-        "Your Africa.",
-        "Your journey.",
+        "THE WORLD, OPEN TO YOU",
+        "Make every",
+        "journey matter.",
         timeout=45,
         label="authenticated curated Pamoja Home header",
     )
@@ -732,12 +777,12 @@ def main() -> None:
     else:
         save_screen("02-home")
         wait_for_text_scrolling(
-            "My Events",
-            "No event registrations yet",
+            "My bookings",
+            "Manage your stays and rides",
             timeout=35,
-            label="curated Home My Events list",
+            label="curated Home My bookings card",
         )
-        save_screen("02a-my-events-overview")
+        save_screen("02a-my-bookings-overview")
     mark_stage("authenticated_home")
 
     mark_stage("activity_navigation_started")
@@ -765,8 +810,9 @@ def main() -> None:
     if login_navigation_only:
         tap_text("Home", last=True, allow_tab_bar=True)
         wait_for_text(
-            "Your Africa.",
-            "Your journey.",
+            "THE WORLD, OPEN TO YOU",
+            "Make every",
+            "journey matter.",
             timeout=25,
             label="return to Home after primary tab navigation",
         )
@@ -814,7 +860,7 @@ def main() -> None:
     save_screen("05b-account-restored-after-uninstall-cancel")
     mark_stage("account_restored_after_uninstall_cancel")
 
-    tap_text("Explore", last=True)
+    tap_text("Explore", last=True, allow_tab_bar=True)
     wait_for_text("Make more of the journey.", "Rides", label="Explore services")
     save_screen("06-explore")
     mark_stage("explore_screen")
@@ -868,7 +914,7 @@ def main() -> None:
     save_screen("07b-explore-before-stays")
     mark_stage("explore_after_ride")
 
-    tap_text("Book accommodation")
+    tap_text("Find and book a stay")
     time.sleep(2)
     save_screen("08-stays-navigation-attempt")
     wait_for_text("Find your place to stay.", timeout=30, label="native accommodation screen")
@@ -878,8 +924,21 @@ def main() -> None:
     mark_stage("explore_after_stays")
 
     mark_stage("events_navigation_started")
-    tap_text_scrolling("Discover events")
-    wait_for_text("Be there for the moments.", timeout=30, label="native events screen")
+    tap_text_scrolling("Discover events and tickets")
+    wait_for_text(
+        "Be there for the moments.",
+        "Find events",
+        timeout=30,
+        label="native events screen",
+    )
+    # The disposable E2E database has no published event fixtures. Wait for
+    # the explicit empty result so the test proves the Events API finished
+    # loading instead of passing on the static page heading alone.
+    wait_for_text(
+        "No published events matched that search.",
+        timeout=30,
+        label="native Events discovery completed",
+    )
     save_screen("09-events")
     mark_stage("events_screen")
     return_to_explore()
@@ -887,32 +946,44 @@ def main() -> None:
 
     # Force-stop the Android process and prove that SecureStore credentials
     # restore the authenticated session after an actual app restart.
-    mark_stage("session_restore_started")
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
+    # Timestamp only after Android has stopped the process. The backend can
+    # then distinguish the cold-launch identity request from earlier reads.
+    mark_stage("session_restore_started")
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
-    # The native app restores to its actual User dashboard ("My Events").
-    # The backend evidence check separately verifies the identity endpoint after relaunch.
+    # A protected tab route and the synthetic user's identity must both restore.
     wait_for_text(
-        "Your Africa.",
-        "Your journey.",
+        "THE WORLD, OPEN TO YOU",
+        "Make every",
+        "journey matter.",
         timeout=45,
         label="restored Pamoja Home header after app relaunch",
     )
     save_screen("10-session-restored")
     wait_for_text_scrolling(
-        "My Events",
-        "No event registrations yet",
+        "My bookings",
+        "Manage your stays and rides",
         timeout=35,
-        label="restored curated Home My Events list",
+        label="restored curated Home My bookings card",
     )
-    save_screen("10a-restored-my-events-overview")
-    mark_stage("session_restored")
+    save_screen("10a-restored-my-bookings-overview")
 
     tap_text("Account", last=True, allow_tab_bar=True)
-    wait_for_text("Your account.", label="account before logout")
+    restored_identity = wait_for_text_scrolling_to_top(
+        "Your account.",
+        USERNAME,
+        EMAIL,
+        timeout=25,
+        label="restored synthetic account identity after process death",
+    )
+    if USERNAME not in restored_identity or EMAIL not in restored_identity:
+        raise AssertionError("The restored Account screen did not show the synthetic user's identity.")
+    mark_stage("session_restored")
+
+    # The first tap opens the native confirmation dialog. Wait for that
+    # dialog before selecting its unique uppercase destructive action.
     tap_text_scrolling("Sign out")
-    tap_text("Sign out")
     wait_for_text("Sign out of AFCON360 on this device?", timeout=12, label="logout confirmation")
     mark_stage("logout_started")
     # The Android confirmation action is rendered in uppercase; target that
