@@ -196,7 +196,31 @@ const checks = [
   ["Login route has one authenticated-state redirect, not duplicate submit-handler navigation", read("apps/user/app/login.tsx").includes('if (!loading && user) router.replace("/(tabs)");') && !read("apps/user/app/login.tsx").includes('onPress={() => signIn(identifier, password).then') && !read("apps/user/app/login.tsx").includes('onPress={() => verifyMfa(code).then')],
   ["ServiceEntry receives serviceKey because React reserves the key attribute", /serviceKey: ServiceKey/.test(read("apps/user/src/components/ServiceEntry.tsx")) && /function ServiceEntry\(\{\s*serviceKey,/.test(read("apps/user/src/components/ServiceEntry.tsx")) && !/function ServiceEntry\(\{\s*key,/.test(read("apps/user/src/components/ServiceEntry.tsx"))],
   ["Every Pamoja Home service card supplies its explicit serviceKey", (read("apps/user/src/components/GeminiHomeTop.tsx").match(/<ServiceEntry\b[^>]*serviceKey=/g) || []).length === 6 && !/<ServiceEntry\b(?![^>]*serviceKey=)[^>]*>/.test(read("apps/user/src/components/GeminiHomeTop.tsx"))],
-  ["Focused login-and-navigation mode verifies curated Home, safe Activity/Wallet/Account tab navigation and return Home", /AFCON360_E2E_LOGIN_NAVIGATION_ONLY/.test(read("scripts/verify-user-authenticated-journey.py")) && /USER_ANDROID_E2E_LOGIN_NAVIGATION_PASS/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Activity", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Wallet", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Account", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Home", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /allow_tab_bar: bool = False/.test(read("scripts/verify-user-authenticated-journey.py")) && /system_navigation_top_y = int\(screen_height \* 0\.96\)/.test(read("scripts/verify-user-authenticated-journey.py"))],
+  ["Signed-out journey follows public Home, guest Wallet and Account-tab sign-in", (() => {
+    const journey = read("scripts/verify-user-authenticated-journey.py");
+    const account = read("apps/user/app/(tabs)/account.tsx");
+    const wallet = read("apps/user/app/(tabs)/wallet.tsx");
+    const tabs = read("apps/user/app/(tabs)/_layout.tsx");
+    return /label="signed-out curated Pamoja Home"/.test(journey) &&
+      /tap_text\("Wallet", last=True, allow_tab_bar=True\)/.test(journey) &&
+      /label="signed-out Wallet guest page"/.test(journey) &&
+      /tap_text\("Account", last=True, allow_tab_bar=True\)/.test(journey) &&
+      /<SignInForm \/>/.test(account) &&
+      /WalletGuestView/.test(wallet) &&
+      !/if \(!user\) return <Redirect href="\/login" \/>/.test(tabs);
+  })()],
+  ["Authenticated journey models in-place Account sign-in and logout", (() => {
+    const journey = read("scripts/verify-user-authenticated-journey.py");
+    const account = read("apps/user/app/(tabs)/account.tsx");
+    const signInForm = read("apps/user/src/auth/SignInForm.tsx");
+    const signOut = account.slice(account.indexOf("const signOut"), account.indexOf("const displayName"));
+    return /label="authenticated Account after in-place sign-in"/.test(journey) &&
+      /tap_text\("Home", last=True, allow_tab_bar=True\)/.test(journey) &&
+      /label="signed-out Account-tab form after in-place logout"/.test(journey) &&
+      !journey.includes("AFCON360_E2E_LOGIN_NAVIGATION_ONLY") &&
+      !/router\.(replace|push)\("\/login"\)/.test(signOut) &&
+      !/router\.(replace|push)\("\/login"\)/.test(signInForm);
+  })()],
   ["CI runs the complete authenticated User journey in one Android emulator session", (() => {
     const workflow = read("../.github/workflows/mobile-workspace.yml");
     return workflow.includes("Authenticate and verify updated User journeys") &&
