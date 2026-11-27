@@ -2,6 +2,8 @@
 
 **Part A must pass before every commit or PR. Part B must pass before any APK build or OTA publish.** The CI workflow runs Part A's exact commands — failures there will block the PR.
 
+The seven commands below read source and bundles. One gate does not: the Android journey in [The Android journey gate](#the-android-journey-gate-required-before-every-pr), which presses the real app. **A PR that touches `mobile/apps/user/**` is not ready until that journey has passed**, locally or in CI at the exact head SHA.
+
 > The file name is unchanged so existing references keep working. Part B was merged here from `mobile/docs/PRE_CHECK.md`, which no longer exists.
 
 ## Where these commands run
@@ -61,8 +63,59 @@ node scripts/verify-user-dev-delivery-contract.mjs "$env:TEMP\afcon360-user-dev-
 
 ---
 
+## The Android journey gate (required before every PR)
+
+`mobile/scripts/verify-user-authenticated-journey.py` is the only check that presses the app. It launches the preview APK, waits for signed-out Home, signs in from the Account tab, walks Explore, Ride, Stays and Events, force-stops the process and proves the session restores, signs out in place, then confirms Home still works signed out. Navigation contracts and typecheck prove literals and types; **only this proves the app**. Its pass signal is exit code 0 and a final `USER_ANDROID_E2E_UI_PASS: ...` line.
+
+### Run it from the repository root
+
+```powershell
+cd C:\Users\OBED\Desktop\afcon360-user-dev
+python mobile/scripts/verify-user-authenticated-journey.py
+```
+
+The working directory is part of the command: `AFCON360_USER_E2E_APK` and `AFCON360_E2E_EVIDENCE_DIR` default to `mobile-e2e-evidence/`, resolved against wherever you stand. Run it from `mobile/` and the evidence lands in `mobile/mobile-e2e-evidence/`, where CI will not find it.
+
+### What it needs
+
+| Requirement | Why | If missing |
+|---|---|---|
+| `adb` on `PATH` with one authorised device or emulator | Every assertion is a read of the live UI hierarchy | `adb devices` prints nothing — the journey cannot run |
+| `space.pamoja.afcon360.user.preview` installed, or `AFCON360_USER_E2E_APK` pointing at an APK | The script launches the preview package by name | It fails at launch, before the first assertion |
+| A disposable backend with a fresh schema, and `EXPO_PUBLIC_API_BASE_URL` pointing at it | The journey signs in and reads real responses | Sign-in fails on a schema without the synthetic user |
+| `AFCON360_E2E_USERNAME` / `AFCON360_E2E_EMAIL` / `AFCON360_E2E_PASSWORD` | Optional; they default to `native_e2e_user` / `native-e2e@afcon360.test` / the CI password | Defaults apply |
+
+**Never point this at production.** The defaults are synthetic credentials that exist only in the throwaway PostgreSQL and Redis services of `.github/workflows/mobile-workspace.yml` (job `user-authenticated-journey`), which creates that account and leaves discovery with no published fixtures — a state the journey asserts on by waiting for the explicit empty result. Against production the sign-in fails — and making it "pass" there would mean writing test journeys into real data.
+
+### Reproducing the harness next to a device
+
+CI builds the backend with two commands, and both run locally against a disposable database:
+
+```powershell
+cd C:\Users\OBED\Desktop\afcon360-user-dev
+python mobile/scripts/mobile-user-e2e-backend.py seed    # creates native_e2e_user
+python mobile/scripts/mobile-user-e2e-backend.py serve   # Flask API on 127.0.0.1:5000
+```
+
+The helper boots `create_app(TestingConfig)`, so it reads the test database configuration. Confirm that the database name and migration revision belong to a disposable `*_test` schema **before** seeding (see `AGENTS.md` §9 and §10): create one with migrations rather than reusing a shared database, then point both the helper and the installed APK's `EXPO_PUBLIC_API_BASE_URL` at the same host.
+
+The installed preview APK must have been built against that URL. An APK pointing at `https://www.pamoja.space` sends real sign-in traffic to production no matter what the local API is doing — check `expo config` output before blaming the journey.
+
+### When this machine has no device
+
+The journey must then be proven by CI **for the exact head SHA**: `gh pr checks <n>` shows `User APK — login, protected journeys, restore and logout` green at the commit you are asking to merge. Three things decide whether that green run actually counts:
+
+- The job is skipped when nothing was classified as `native`, `ota` or `e2e_harness`. **A skipped job is not a pass.**
+- A green run on an earlier commit does not cover a later one. Re-read the SHA.
+- The one exception: a green run still stands when everything committed after it is documentation or gate scripts (`docs/**`, `*.md`, files that do not enter the bundle). Name that SHA in the PR. Any change under `mobile/apps/**` or to app-build configuration voids it.
+
+If the job was skipped and no device is available, the PR stays unproven — say so in the PR body rather than implying the journey passed.
+
+---
+
 ## When to Run These
 
+- **Always** before opening or updating a pull request, together with the Android journey gate above
 - After any change to: navigation, routing, screen components, `expo-router` usage, `Linking`/`WebBrowser` calls
 - After adding/modifying screen files under `apps/user/app/**/*.tsx` or `apps/user/src/components/**/*.tsx`
 - After modifying `mobile/scripts/check-navigation-contracts.mjs`
@@ -283,7 +336,7 @@ If any APK-only item changed: bump `version` in `apps/user/app.config.ts`, then 
 
 ## Optional Helper Script
 
-Not committed. If added, it must be reviewed like any other tooling and kept in sync with the seven commands above.
+Not committed. If added, it must be reviewed like any other tooling and kept in sync with the seven commands above. **It does not run the Android journey** — that needs a device — so its closing message must not be read as "the PR is proven". Run the journey separately, or cite the CI job for the head SHA.
 
 ```javascript
 import { spawnSync } from "node:child_process";
@@ -313,6 +366,7 @@ console.log("\nAll pre-PR checks passed");
 ## CI Workflow Reference
 
 - `.github/workflows/mobile-workspace.yml` runs the contract scripts (`check-navigation-contracts`, `verify-user-offline-foundation`, `verify-user-dev-apk-metadata --self-test`, `verify-user-dev-delivery-contract`) and both platform exports.
+- The same workflow's `user-authenticated-journey` job builds or reuses the disposable APK, seeds a throwaway PostgreSQL/Redis backend, and runs `python mobile/scripts/verify-user-authenticated-journey.py` on an Android emulator. It is the CI form of the journey gate above, and it is conditional — see "When this machine has no device".
 - `.github/workflows/user-preview-ota-update.yml` exports Android and iOS before publishing an OTA.
 
 A failure at any step stops the pipeline. The ~3-5 minute runtime you see in CI is these same commands executing.
