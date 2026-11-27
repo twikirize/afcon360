@@ -165,8 +165,8 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255, 255, 255, 0.14)',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 0, 0, 0.35)',
-    // No overflow: 'hidden' here — the raised centre disc and its gold glow must
-    // render outside the bar. The gradient rounds its own corners.
+    // No overflow: 'hidden' here — the centre disc's gold cast must render past
+    // the pill's edge. The gradient rounds its own corners.
     elevation: 12,
     shadowColor: '#04210F',
     shadowOffset: { width: 0, height: 12 },
