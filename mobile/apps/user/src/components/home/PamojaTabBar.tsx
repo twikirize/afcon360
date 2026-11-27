@@ -116,7 +116,7 @@ export const PamojaTabBar = ({ state, navigateToTab, emitter, insets }: PamojaTa
             end={{ x: 0.8, y: 1 }}
             style={styles.fabFace}
           >
-            <PamojaMark size={17} showLeaf={false} />
+            <PamojaMark size={32} showLeaf={false} />
           </LinearGradient>
         </LinearGradient>
       </TouchableOpacity>
@@ -194,22 +194,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   fabRing: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     padding: 2,
-    // Original size, still dropped below the resting line of the icon row.
-    // Bottom offset = translateY + radius = 8 + 17 = 25, the same line the
-    // larger rings were anchored to. paddingVertical 6 with `overflow: hidden`
-    // clips ~4pt of the circle.
-    transform: [{ translateY: 8 }],
+    // Sized so the drawn P (about 62% of its box) reads larger than the 19pt
+    // tab icons. Bottom offset is unchanged: translateY + radius = 2 + 23 = 25.
+    // The tab bar grows taller to fit the ring, and its paddingVertical absorbs
+    // the few points that overhang the rounded edge.
+    transform: [{ translateY: 2 }],
     alignItems: 'center',
     justifyContent: 'center',
   },
   fabFace: {
     flex: 1,
     width: '100%',
-    borderRadius: 15,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
   },
