@@ -4,7 +4,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PamojaMark } from '../PamojaMark';
+import Svg, { Path } from 'react-native-svg';
+
+const CenterLogo = () => (
+  <Svg
+    width="38"
+    height="38"
+    viewBox="0 0 100 100"
+    fill="none"
+    stroke="white"
+    strokeWidth="5.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M 35 85 L 35 45 C 35 20, 50 15, 65 15 C 85 15, 85 45, 65 55 C 55 60, 45 60, 45 60 L 45 85" />
+    <Path d="M 45 60 C 45 40, 60 30, 68 30 C 68 45, 55 60, 45 60" />
+    <Path d="M 35 50 C 20 50, 20 40, 30 40 C 33 40, 35 45, 35 50" />
+  </Svg>
+);
 
 type TabIcon = 'home' | 'clipboard-outline' | 'wallet' | 'person-outline';
 
@@ -104,22 +121,12 @@ export const PamojaTabBar = ({ state, navigateToTab, emitter, insets }: PamojaTa
         accessibilityState={{ selected: fabFocused }}
         onPress={() => press(fabRoute, fabFocused)}
       >
-        <View style={[styles.fabHalo, fabFocused ? styles.fabHaloFocused : null]}>
-          <LinearGradient
-            colors={fabFocused ? (['#FFE785', '#F7C815', '#C98F00'] as const) : (['#D8B94A', '#8A6A12'] as const)}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.fabRing, fabFocused ? styles.fabRingFocused : null]}
-          >
-            <LinearGradient
-              colors={['#0C4527', '#04210F'] as const}
-              start={{ x: 0.2, y: 0 }}
-              end={{ x: 0.8, y: 1 }}
-              style={styles.fabFace}
-            >
-              <PamojaMark size={30} showLeaf={false} />
-            </LinearGradient>
-          </LinearGradient>
+        <View style={styles.fabWrapper}>
+          <View style={[styles.fabGlow, fabFocused ? styles.fabGlowFocused : null]}>
+            <View style={[styles.fab, fabFocused ? styles.fabFocused : null]}>
+              <CenterLogo />
+            </View>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -158,7 +165,8 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255, 255, 255, 0.14)',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 0, 0, 0.35)',
-    overflow: 'hidden',
+    // No overflow: 'hidden' here — the raised centre disc and its gold glow must
+    // render outside the bar. The gradient rounds its own corners.
     elevation: 12,
     shadowColor: '#04210F',
     shadowOffset: { width: 0, height: 12 },
@@ -190,50 +198,49 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7C815',
     borderRadius: 2,
   },
+  // The disc is 78pt tall (72 + 3pt glow padding each side) inside a ~58pt bar,
+  // so it is lifted by cancelling most of its own height in the flex row and
+  // nudged up with a transform. Layout height gained: 78 - 24 = 54.
   fabItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    marginVertical: -12,
+    transform: [{ translateY: -6 }],
   },
-  // Soft gold halo, as in the reference: padding 3 around a 52pt disc, so the
-  // visible glow is 58pt across. translateY keeps the disc's bottom edge on the
-  // line the smaller versions used: offset = translateY + haloRadius = 25.
-  fabHalo: {
+  fabWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fabGlow: {
     padding: 3,
-    borderRadius: 29,
-    backgroundColor: 'rgba(247, 200, 21, 0.20)',
-    transform: [{ translateY: -4 }],
+    borderRadius: 45,
+    backgroundColor: 'rgba(247,200,21,0.2)',
   },
-  fabHaloFocused: {
-    backgroundColor: 'rgba(247, 200, 21, 0.30)',
+  fabGlowFocused: {
+    backgroundColor: 'rgba(247,200,21,0.34)',
   },
-  fabRing: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    padding: 2,
-    borderWidth: 2,
-    borderColor: 'rgba(247, 200, 21, 0.75)',
-    // Gold cast from the disc itself. The bar clips with overflow: hidden, so
-    // the halo carries most of the glow on Android.
-    shadowColor: '#F7C815',
+  fab: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#04210f',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#f7c815',
+    shadowColor: '#f7c815',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.55,
+    shadowOpacity: 0.6,
     shadowRadius: 15,
     elevation: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  fabRingFocused: {
+  // Selected cue only: brighter gold rim and a wider cast. The disc interior
+  // (dark green + white mark) stays exactly as specified.
+  fabFocused: {
     borderColor: '#FFE785',
-    shadowOpacity: 0.8,
-  },
-  fabFace: {
-    flex: 1,
-    width: '100%',
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    shadowOpacity: 0.85,
+    shadowRadius: 20,
+    elevation: 12,
   },
 });
 
