@@ -430,6 +430,51 @@ pgpass path used, entry count (never contents), ACL, probe commands with exit co
 
 ---
 
+## 11. Mobile Working Folders & Release Documents (Permanent Rule)
+
+**Applies to every agent doing any React Native, Expo, APK, OTA or mobile-test work.**
+
+### 11.1 Two checkouts, one repository
+
+| Folder | Contains | Mobile commands |
+|---|---|---|
+| `C:\Users\OBED\Desktop\afcon360-user-dev` | `mobile/` — the pnpm workspace holding the User and Driver Expo apps | all of them |
+| `C:\Users\OBED\Desktop\afcon360_app` | Flask/web tree with the Python `.venv`. Same origin (`https://github.com/twikirize/afcon360.git`), but **no `mobile/` directory** | none — nothing there can run or publish a mobile app |
+
+- A prompt reading `(.venv) PS C:\Users\OBED\Desktop\afcon360_app>` means you are in the wrong folder for mobile work. `pnpm`, `expo`, `eas` and the contract scripts are not available there.
+- Mobile commands run from `mobile/` in the first folder. The repository root is not a pnpm workspace: `pnpm --filter ...` there fails, and a stale copy (`_mobile_backup_*`) can answer the call with a different `expo` binary.
+- **Publishing is single-source.** `eas update` publishes whatever tree it is run in. Running it from a second copy pushes that copy's bundle to the same channel and silently replaces a good update. Confirm the working directory, the branch (`git rev-parse --abbrev-ref HEAD`) and the version before any publish.
+- Never bump `version` in `apps/user/app.config.ts` without building and installing the matching APK. A JS-only bump publishes to a runtime no installed binary has, which is a silent no-op.
+
+### 11.2 Three documents, three moments
+
+| Document | Use it | Answers |
+|---|---|---|
+| `docs/engineering/PRE_PR_CHECKS.md` | before every commit or PR | Is this tree safe to push? |
+| `mobile/docs/PRE_CHECK.md` | before any APK build or OTA publish | Is this tree safe to ship, and to whom? |
+| `mobile/docs/update_apk.md` | during the build or publish | What are the exact steps? |
+
+- Run the pre-PR checks before asking a human to review a mobile change, and the release pre-flight before `eas build` or `eas update`. Fill in the release sign-off table.
+- A green publish is not delivery: the update's runtime must match an installed binary, and the device must cold-start twice before the new bundle runs.
+- If your work changes a command, script name, environment variable or CI workflow these documents describe, update the affected document in the same change. Documentation that has drifted is worse than none, because agents trust it.
+
+### 11.3 Branch rules govern where this work may land
+
+The branch constitution exists in **both** checkout roots and the two copies are not identical:
+
+| Copy | State |
+|---|---|
+| `AGENTS_BRANCH_RULES.md` in this checkout | 134 lines, and **missing §8** (the PR workflow) |
+| `AGENTS_BRANCH_RULES.md` in `C:\Users\OBED\Desktop\afcon360_app` | 159 lines, including §8 "User APK Canonical Branch — PR Workflow" |
+
+- Canonical User app branch: `feat/native-user-app-integration-20261108`. It is protected, so changes arrive through a pull request only. **Never commit to it directly.**
+- Authorized flow for agent work: create `work/<feature-slug>-YYYYMMDD`, commit there with explicit file paths, push, open a PR into the canonical branch, and give the human the PR link. Never `git add -A`, and never stage runtime artifacts such as `metro_status.json` or `metro_trigger.json`.
+- Never open a native-app PR against `main`; the branch-boundary workflow (§53.3) rejects it, and a failing boundary check is intentional.
+- When the two copies disagree, the copy containing §8 is the newer one. Do not choose between them yourself: report the divergence and ask the human, who owns branch governance.
+- Verify where you are before any commit — `git rev-parse --abbrev-ref HEAD` — and stop if it is the protected canonical branch rather than a `work/` branch.
+
+---
+
 ## 48. Model Defaults & Migration Safety (Permanent Engineering Rule)
 
 **Applies to every agent, every future model, and every database change in AFCON360.**
