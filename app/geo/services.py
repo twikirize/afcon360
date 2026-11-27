@@ -2,14 +2,14 @@
 """
 AFCON360 GEO - domain-neutral foundation services (slice 1).
 
-What lives here NOW (pure Python, no network, no DB, no Redis):
+What lives here NOW:
 - canonical straight-line distance (haversine, radians-correct)
+- provider-neutral road routing facade (Valhalla adapter; network only per call)
 - duration → ETA conversion (explicit; NO distance×k heuristics here)
 - location freshness boundary helper (shares TrackingService 300 s default)
 
-What lives here LATER (behind interfaces, separate nodes):
-- road routing (Valhalla adapter), geocoding (Photon adapter),
-  Redis current-state + Postgres history, SSE delivery.
+Separate nodes own geocoding, Redis current-state + Postgres history, and
+SSE delivery. Provider I/O is confined to adapter calls.
 
 Function naming rule: straight-line results are ALWAYS named
 `straight_line_*` so no caller can mistake them for road distance.
@@ -451,10 +451,7 @@ def get_routing_service() -> RoutingService:
     outside an app context retain one lazy environment-configured singleton.
     Building the service performs no provider network I/O.
     """
-    try:
-        from flask import current_app, has_app_context
-    except ImportError:  # Flask is a core dependency; retain safe fallback.
-        has_app_context = lambda: False
+    from flask import current_app, has_app_context
 
     if has_app_context():
         app = current_app._get_current_object()
