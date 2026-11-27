@@ -1,3 +1,9 @@
+> **ARCHIVED / SCOPE WARNING — 27 November 2026**
+> This is a historical branch-constitution snapshot for the separate React Native User-app checkout at `C:\Users\OBED\Desktop\afcon360-user-dev` only.
+> It does **not** govern the `afcon360_app` backend checkout or this repository's `main` branch. In particular, its statements to “NEVER enter” `afcon360_app` and “No PRs to `main`” must not be applied to backend work in this repository.
+> Treat all branch names, PR numbers, CI gates, and local-state descriptions below as dated historical context; verify current repository policy before acting.
+
+---
 # AFCON360 React Native User App — Branch Constitution for Agents
 
 **Effective:** 2026-11-23  
