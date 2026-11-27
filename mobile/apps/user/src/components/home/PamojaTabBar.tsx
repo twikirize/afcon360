@@ -104,21 +104,23 @@ export const PamojaTabBar = ({ state, navigateToTab, emitter, insets }: PamojaTa
         accessibilityState={{ selected: fabFocused }}
         onPress={() => press(fabRoute, fabFocused)}
       >
-        <LinearGradient
-          colors={fabFocused ? (['#FFE785', '#F7C815', '#C98F00'] as const) : (['#C9A227', '#8A6A12'] as const)}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.fabRing}
-        >
+        <View style={[styles.fabHalo, fabFocused ? styles.fabHaloFocused : null]}>
           <LinearGradient
-            colors={['#0C4527', '#04210F'] as const}
-            start={{ x: 0.2, y: 0 }}
-            end={{ x: 0.8, y: 1 }}
-            style={styles.fabFace}
+            colors={fabFocused ? (['#FFE785', '#F7C815', '#C98F00'] as const) : (['#D8B94A', '#8A6A12'] as const)}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.fabRing, fabFocused ? styles.fabRingFocused : null]}
           >
-            <PamojaMark size={32} showLeaf={false} />
+            <LinearGradient
+              colors={['#0C4527', '#04210F'] as const}
+              start={{ x: 0.2, y: 0 }}
+              end={{ x: 0.8, y: 1 }}
+              style={styles.fabFace}
+            >
+              <PamojaMark size={30} showLeaf={false} />
+            </LinearGradient>
           </LinearGradient>
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -193,23 +195,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
+  // Soft gold halo, as in the reference: padding 3 around a 52pt disc, so the
+  // visible glow is 58pt across. translateY keeps the disc's bottom edge on the
+  // line the smaller versions used: offset = translateY + haloRadius = 25.
+  fabHalo: {
+    padding: 3,
+    borderRadius: 29,
+    backgroundColor: 'rgba(247, 200, 21, 0.20)',
+    transform: [{ translateY: -4 }],
+  },
+  fabHaloFocused: {
+    backgroundColor: 'rgba(247, 200, 21, 0.30)',
+  },
   fabRing: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     padding: 2,
-    // Sized so the drawn P (about 62% of its box) reads larger than the 19pt
-    // tab icons. Bottom offset is unchanged: translateY + radius = 2 + 23 = 25.
-    // The tab bar grows taller to fit the ring, and its paddingVertical absorbs
-    // the few points that overhang the rounded edge.
-    transform: [{ translateY: 2 }],
+    borderWidth: 2,
+    borderColor: 'rgba(247, 200, 21, 0.75)',
+    // Gold cast from the disc itself. The bar clips with overflow: hidden, so
+    // the halo carries most of the glow on Android.
+    shadowColor: '#F7C815',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 15,
+    elevation: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  fabRingFocused: {
+    borderColor: '#FFE785',
+    shadowOpacity: 0.8,
   },
   fabFace: {
     flex: 1,
     width: '100%',
-    borderRadius: 21,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
