@@ -329,6 +329,7 @@ export default function Account() {
           symbol="⬆"
           onPress={() => router.push("/(service)/settings" as never)}
           external={false}
+          last={!SERVER_SELECTION_ENABLED}
         />
         {SERVER_SELECTION_ENABLED ? (
           <WebsiteMenuRow
@@ -339,16 +340,7 @@ export default function Account() {
             external={false}
             last
           />
-        ) : (
-          <WebsiteMenuRow
-            title="Version & updates"
-            description="View the installed version, check for updates and manage preview connections"
-            symbol="⬆"
-            onPress={() => router.push("/(service)/settings" as never)}
-            external={false}
-            last
-          />
-        )}
+        ) : null}
       </AccountMenuSection>
 
       {__DEV__ && (
