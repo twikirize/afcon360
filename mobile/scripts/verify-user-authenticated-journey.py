@@ -552,12 +552,12 @@ def return_to_explore() -> None:
         # Android can restore Explore at the previous scroll offset. The top
         # heading is therefore not a reliable screen identity check. The Stays
         # action is present on the Explore service list at both tested offsets.
-        wait_for_text("Make more of the journey.", "Book accommodation", timeout=8, label="Explore after Android Back")
+        wait_for_text("Make more of the journey.", "Find and book a stay", timeout=8, label="Explore after Android Back")
     except AssertionError:
-        # If Back leaves us on another tab, explicitly select Explore and then
+        # If Back leaves us on another tab, explicitly select Explore tab and then
         # verify its stable Stays action rather than assuming scroll-to-top.
-        tap_text("Explore", last=True)
-        wait_for_text("Make more of the journey.", "Book accommodation", timeout=20, label="Explore tab")
+        tap_text("Explore", last=True, allow_tab_bar=True)
+        wait_for_text("Make more of the journey.", "Find and book a stay", timeout=20, label="Explore tab")
 
 
 def save_failure_diagnostics() -> None:
@@ -870,7 +870,7 @@ def main() -> None:
     save_screen("07b-explore-before-stays")
     mark_stage("explore_after_ride")
 
-    tap_text("Book accommodation")
+    tap_text("Find and book a stay")
     time.sleep(2)
     save_screen("08-stays-navigation-attempt")
     wait_for_text("Find your place to stay.", timeout=30, label="native accommodation screen")
