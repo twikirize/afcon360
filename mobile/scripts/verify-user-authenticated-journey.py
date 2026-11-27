@@ -569,19 +569,29 @@ def save_screen(name: str) -> None:
 
 
 def return_to_explore() -> None:
-    """Return to Explore and verify a stable action, even when scroll is preserved."""
+    """Return to Explore and normalize its scroll position before checking actions."""
     run_adb("shell", "input", "keyevent", "4")
     time.sleep(1)
     try:
-        # Android can restore Explore at the previous scroll offset. The top
-        # heading is therefore not a reliable screen identity check. The Stays
-        # action is present on the Explore service list at both tested offsets.
-        wait_for_text("Make more of the journey.", "Find and book a stay", timeout=8, label="Explore after Android Back")
+        # The Events card is lower on Explore than the Stays card. After tapping
+        # Events, Android restores the previous deep scroll offset on Back, so
+        # normalize the page to its top before checking the header and Stays CTA.
+        wait_for_text_scrolling_to_top(
+            "Make more of the journey.",
+            "Find and book a stay",
+            timeout=20,
+            label="Explore after Android Back",
+        )
     except AssertionError:
-        # If Back leaves us on another tab, explicitly select Explore tab and then
-        # verify its stable Stays action rather than assuming scroll-to-top.
+        # If Back leaves us on another tab, explicitly select Explore and repeat
+        # the same scroll normalization rather than trusting a preserved offset.
         tap_text("Explore", last=True, allow_tab_bar=True)
-        wait_for_text("Make more of the journey.", "Find and book a stay", timeout=20, label="Explore tab")
+        wait_for_text_scrolling_to_top(
+            "Make more of the journey.",
+            "Find and book a stay",
+            timeout=20,
+            label="Explore tab after Android Back",
+        )
 
 
 def save_failure_diagnostics() -> None:
@@ -917,7 +927,7 @@ def main() -> None:
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
-    # The native app restores to its actual User dashboard ("My Events").
+    # The native app restores to the curated Pamoja Home.
     # The backend evidence check separately verifies the identity endpoint after relaunch.
     wait_for_text(
         "THE WORLD, OPEN TO YOU",
