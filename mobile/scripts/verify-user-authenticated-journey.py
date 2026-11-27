@@ -292,6 +292,30 @@ def tap_text(
                     run_adb("shell", "input", "tap", str(x), str(y))
                     time.sleep(0.7)
                     return
+
+            # Fallback for tab bar: when allow_tab_bar=True and text was found but
+            # no clickable ancestor detected (common with React Native tab bars).
+            # Calculate tap coordinates based on tab label and screen width.
+            if allow_tab_bar:
+                tab_order = ["Home", "Explore", "Activity", "Wallet", "Account"]
+                if value in tab_order:
+                    tab_index = tab_order.index(value)
+                    # Each tab is 1/5 of screen width; tap center of tab.
+                    tab_center_x = int(screen_width * (tab_index + 0.5) / len(tab_order))
+                    tab_center_y = int((tab_bar_top_y + system_navigation_top_y) / 2)
+                    print(
+                        "ANDROID_TAP_TARGET (tab bar fallback): "
+                        + json.dumps({
+                            "label": value,
+                            "tab_index": tab_index,
+                            "center": [tab_center_x, tab_center_y],
+                        }, sort_keys=True),
+                        flush=True,
+                    )
+                    run_adb("shell", "input", "tap", str(tab_center_x), str(tab_center_y))
+                    time.sleep(0.7)
+                    return
+
             last_diagnostics = [
                 f"matching text {value!r} was found but no enabled clickable ancestor with valid bounds outside navigation area"
             ]
