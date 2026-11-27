@@ -205,6 +205,7 @@ const checks = [
       !workflow.includes("login_navigation_journey") &&
       !workflow.includes("AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1");
   })()],
+  ["Android E2E selects Explore through the FAB accessibility label, not the obsolete five-equal-tab coordinate fallback", read("scripts/verify-user-authenticated-journey.py").includes('tap_text("Explore Pamoja", last=True, allow_tab_bar=True)') && /accessibilityLabel="Explore Pamoja"/.test(read("apps/user/src/components/home/PamojaTabBar.tsx"))],
   ["Android-version matrix runs only after the primary journey succeeds", /needs\.user-authenticated-journey\.result == 'success'[\s\S]*?needs\.user-authenticated-journey\.outputs\.apk_rebuilt == 'true'/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Failure diagnostics capture the app process log independently", /failure-app-logcat\.txt/.test(read("scripts/verify-user-authenticated-journey.py")) && /failure-activity-top\.txt/.test(read("scripts/verify-user-authenticated-journey.py"))],
   ["Android journey checks the updated Home wallet card, not the removed My bookings tile", /wait_for_text_scrolling\(\s*"Open your Pamoja wallet"/.test(read("scripts/verify-user-authenticated-journey.py")) && !/My bookings|Manage your stays and rides/.test(read("scripts/verify-user-authenticated-journey.py"))],
