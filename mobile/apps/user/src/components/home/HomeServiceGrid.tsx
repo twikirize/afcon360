@@ -134,8 +134,9 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     flex: 1,
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    // Icon and words sit together at the bottom of the tile, both centred.
+    justifyContent: 'flex-end',
+    alignItems: 'center',
     padding: 12,
   },
   iconCircle: {
@@ -151,18 +152,22 @@ const styles = StyleSheet.create({
   cardTextWrap: {
     width: '100%',
     minWidth: 0,
+    marginTop: 8,
+    alignItems: 'center',
   },
   cardTitle: {
     color: '#FFFFFF',
     fontSize: 15,
     lineHeight: 19,
     fontWeight: '700',
+    textAlign: 'center',
   },
   cardSubtitle: {
     color: '#E8F0EA',
     fontSize: 11,
     lineHeight: 15,
     marginTop: 2,
+    textAlign: 'center',
   },
 });
 
