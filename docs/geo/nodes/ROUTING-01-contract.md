@@ -202,5 +202,5 @@ ROUTING-01 is accepted only when:
 - [x] I approve `docs/geo/nodes/` as the canonical location for GEO node contracts, evidence and records.
 - [x] I approve the narrowly scoped exception that allowed this draft to be prepared on my behalf; this document is adopted as the human-owned contract.
 
-**Repository-owner approval:** Approved — 27 November 2026  
+**Repository-owner approval:** Approved — 27 November 2026
 **Implementation authorization:** Approved for ROUTING-01 only, subject to the stated scope, EGGE process and constraints. Production routing enablement remains explicitly excluded.
