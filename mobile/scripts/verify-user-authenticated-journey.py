@@ -744,7 +744,10 @@ def main() -> None:
     install_user_apk_with_retries(APK_PATH)
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
 
-    wait_for_text("AFCON360 User", "Sign in securely", label="native sign-in screen")
+    wait_for_text("Make every", "THE WORLD, OPEN TO YOU", timeout=45, label="signed-out curated Pamoja Home")
+    # A signed-out launch stays on the tabs; the sign-in form is the Account tab.
+    tap_text("Account", last=True, allow_tab_bar=True)
+    wait_for_text("Sign in securely", "Username or email", label="native sign-in screen")
     save_screen("01-login")
     mark_stage("login_screen")
 

@@ -11,6 +11,8 @@ import { useRouter } from "expo-router";
 import { palette as basePalette } from "@afcon360/mobile-ui";
 import { PamojaScreen as AppScreen, PamojaPageHeader as PageHeader } from "../../src/components/PamojaScreen";
 import { useAuth } from "../../src/auth/AuthProvider";
+import { SignInForm } from "../../src/auth/SignInForm";
+import { AuthLink } from "@afcon360/mobile-ui/auth";
 import { getSelectedApiBaseUrl, SERVER_SELECTION_ENABLED } from "../../src/services/api";
 
 const palette = {
@@ -128,16 +130,15 @@ export default function Account() {
   const signOut = async () => {
     try {
       await logout();
-      router.replace("/login");
     } catch {
       // Local credentials are cleared by AuthProvider even if the server is
       // unreachable. Tell the user that remote revocation could not be proven.
-      router.replace("/login");
       Alert.alert(
         "Server sign-out not confirmed",
         "This device has been signed out, but AFCON360 could not confirm that the server session was revoked. Connect to the internet and sign in again to refresh your session, and review any other devices where you are signed in."
       );
     }
+    // No navigation: signing out turns this tab back into its sign-in form.
   };
 
   const displayName = user?.display_name || user?.username || "AFCON360 member";
@@ -155,6 +156,26 @@ export default function Account() {
       router.push("/connection" as never);
     }
   }, [router]);
+
+  // Signed out, this tab is the app's sign-in surface: the form appears in
+  // place instead of the app detouring through /login on launch.
+  if (!user) {
+    return (
+      <AppScreen>
+        <PageHeader
+          eyebrow="Account"
+          title="Sign in to Pamoja."
+          description="Your profile, security and preferences live behind your Pamoja identity."
+        />
+        <View style={styles.signedOutCard}>
+          <SignInForm />
+        </View>
+        {SERVER_SELECTION_ENABLED ? (
+          <AuthLink label="Connection settings (preview)" onPress={() => router.push("/server-settings" as never)} />
+        ) : null}
+      </AppScreen>
+    );
+  }
 
   return (
     <AppScreen>
@@ -522,6 +543,14 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   accountActions: { gap: 9, paddingTop: 2 },
+  signedOutCard: {
+    backgroundColor: palette.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.border,
+    padding: 18,
+    gap: 10,
+  },
   footerText: { color: palette.muted, textAlign: "center", fontSize: 10, paddingBottom: 4 },
   signOutText: { color: palette.ink, fontSize: 12, fontWeight: "900" },
 });

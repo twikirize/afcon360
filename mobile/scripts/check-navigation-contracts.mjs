@@ -56,7 +56,10 @@ const nativeInternalRoutes = [
 ];
 
 const nativeResetRoutes = [
-  ["apps/user/app/login.tsx", 'router.push("/forgot-password")'],
+  // Sign-in is shared by the /login route and the Account tab, so the contract
+  // follows the form: login must render it, and it must keep recovery native.
+  ["apps/user/app/login.tsx", "<SignInForm />"],
+  ["apps/user/src/auth/SignInForm.tsx", 'router.push("/forgot-password")'],
   ["apps/driver/app/login.tsx", 'router.push("/forgot-password")'],
   ["apps/user/app/forgot-password.tsx", "<PasswordResetFlow"],
   ["apps/driver/app/forgot-password.tsx", "<PasswordResetFlow"],
