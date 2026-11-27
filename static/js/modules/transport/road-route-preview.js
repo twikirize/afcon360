@@ -161,7 +161,7 @@
         'resolved',
         'Driving route · ' + distanceKm + ' km · ' + duration,
         rendered
-          ? 'Planned road route. Fare calculation continues to use the existing separate pricing basis.'
+          ? 'Planned road route only. Fare estimate continues to use straight-line distance.'
           : 'Road measurements resolved, but the map could not display the route geometry.'
       );
     }).catch(function (error) {
@@ -204,7 +204,7 @@
     setState(
       'loading',
       'Calculating driving route…',
-      'The road route is informational; it does not change your fare.'
+      'The road preview is informational; fare estimates still use straight-line distance.'
     );
 
     debounceTimer = window.setTimeout(function () {
