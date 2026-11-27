@@ -17,6 +17,7 @@ import requests
 from flask import Flask
 
 from app.geo.interfaces import GeoPoint
+from app.geo.routes import _health_payload
 from app.geo.services import (
     RoutingService,
     get_routing_service,
@@ -351,6 +352,24 @@ def test_build_routing_service_enabled_wires_adapter_without_io(fake_valhalla):
     assert service.provider_name == "valhalla"
     assert len(handler.bodies) == before  # wiring performs no I/O
     assert isinstance(service, RoutingService)
+
+
+def test_health_payload_uses_effective_app_config_without_network(fake_valhalla):
+    base_url, handler = fake_valhalla
+    before = len(handler.bodies)
+    app = Flask("geo-routing-health-test")
+    app.config["GEO"] = {
+        "valhalla_url": base_url,
+        "valhalla_enabled": True,
+    }
+
+    payload = _health_payload(app)
+
+    assert payload["adapters"]["valhalla"] == {
+        "enabled": True,
+        "configured": True,
+    }
+    assert len(handler.bodies) == before
 
 
 def test_get_routing_service_uses_and_caches_each_app_configuration(fake_valhalla):
