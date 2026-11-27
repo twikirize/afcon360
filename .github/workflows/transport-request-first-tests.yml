@@ -368,6 +368,7 @@ jobs:
           node --check static/js/modules/transport/driver_offer_poll.js
           node --check static/js/modules/transport/rider_matching.js
           node --check static/js/modules/transport/rider_status_sync.js
+          node --check static/js/modules/transport/road-route-preview.js
           node --check static/js/geo/geo-realtime.js
           node --input-type=module --check < static/js/modules/transport/offer-poller.js
           node tests/test_rider_sync_driver_card.cjs
@@ -404,6 +405,9 @@ jobs:
               tests/test_transport_concurrent_claim.py::TestOfferService::test_sweep_expired_cleans_index
               tests/transport/test_driver_console.py
               tests/test_transport_frontend_contracts.py
+              tests/test_transport_route_preview.py
+              tests/test_transport_road_route_preview_frontend.py
+              tests/test_transport_ride_options.py
             )
             if [[ ${#TARGETS[@]} -eq 0 ]]; then
               echo "No failed-test targets are recorded."

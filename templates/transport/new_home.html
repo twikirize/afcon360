@@ -4,6 +4,7 @@
 {% block styles %}
 {{ super() }}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/mobile-booking.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/transport/road-route-preview.css') }}">
 <style nonce="{{ csp_nonce }}">
 /* ============================================================
    AFCON360 Transport — Rider Booking Flow
@@ -1186,6 +1187,16 @@
       <div class="bolt-map-panel t3-map-panel" aria-label="Live map">
         <div class="map-target-indicator" id="mapTargetIndicator" aria-live="polite" aria-atomic="true"></div>
         <div id="pickMap"></div>
+        <div class="road-route-summary" id="roadRouteSummary"
+             data-endpoint="{{ url_for('transport_api.route_preview') }}"
+             data-route-state="idle" role="status" aria-live="polite" hidden>
+          <div class="road-route-summary__copy">
+            <strong class="road-route-summary__title" id="roadRouteSummaryTitle"></strong>
+            <span class="road-route-summary__note" id="roadRouteSummaryNote"></span>
+          </div>
+          <button type="button" class="road-route-summary__retry"
+                  id="roadRouteRetry" hidden>Retry</button>
+        </div>
         <div class="t3-map-controls">
           <div class="t3-map-search">
             <i class="bi bi-search"></i>
@@ -1203,7 +1214,7 @@
     <p class="bolt-map-hint t3-map-hint">
       <i class="bi bi-info-circle"></i>
       Tap the map to place your pickup and destination pins.
-      Distance is a straight-line estimate.
+      The planned driving route is shown when available; fare estimates continue to use straight-line distance.
     </p>
 
   </section>
@@ -1460,6 +1471,7 @@
   <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/pickup-search.js') }}"></script>
   <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/dropoff-search.js') }}"></script>
   <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/reverse-label.js') }}"></script>
+  <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/modules/transport/road-route-preview.js') }}"></script>
 {% endblock %}
 
 {% block scripts %}
@@ -1743,6 +1755,9 @@
     if (pickupHint) pickupHint.style.display = state.pickup ? 'none' : '';
     updateMapTarget();
     updateContinueReason();
+    // RIDER-ROAD-ROUTE-PREVIEW-01: request preview only from resolved
+    // coordinate fields. The external module debounces and sequences calls.
+    document.dispatchEvent(new CustomEvent('afcon360:route-preview-inputs-changed'));
   }
   // UI-01: bridge — external pickup-search revalidates after a selection.
   window.__boltValidateA = validateA;
@@ -2268,20 +2283,54 @@
         document.getElementById('dropoff_geocode').value = '';
       }
     }
+    function clearRoadRoute(){
+      if (routeLine && handle && handle.map) {
+        handle.map.removeLayer(routeLine);
+      }
+      routeLine = null;
+    }
     function refreshRoute(){
       if (!handle || !handle.map) return;
       var p = pins.pickup, d = pins.dropoff;
-      if (routeLine) { handle.map.removeLayer(routeLine); routeLine = null; }
+      clearRoadRoute();
       if (p && d) {
-        routeLine = L.polyline([[p.lat, p.lng], [d.lat, d.lng]], {
-          color: '#0E6B4F', weight: 4, dashArray: '8 8', opacity: .85
-        }).addTo(handle.map);
         handle.map.fitBounds(
           [L.latLng(p.lat, p.lng), L.latLng(d.lat, d.lng)],
           {padding: [60, 60]}
         );
       }
     }
+    // The only line presented as a road route comes from the validated
+    // latitude-first geometry returned by the Transport preview API.
+    window.__mapClearRoadRoute = clearRoadRoute;
+    window.__mapRenderRoadRoute = function(geometry){
+      if (!handle || !handle.map || !Array.isArray(geometry) || !geometry.length) {
+        return false;
+      }
+      var points = [];
+      geometry.forEach(function(point){
+        if (!point || typeof point !== 'object') return;
+        var lat = Number(point.latitude), lng = Number(point.longitude);
+        if (!isFinite(lat) || !isFinite(lng) ||
+            lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+        points.push([lat, lng]);
+      });
+      if (!points.length) return false;
+      clearRoadRoute();
+      if (points.length === 1) {
+        routeLine = L.circleMarker(points[0], {
+          radius: 6, color: '#0A4E3A', fillColor: '#23A66B',
+          fillOpacity: 1, weight: 2
+        }).addTo(handle.map);
+      } else {
+        routeLine = L.polyline(points, {
+          color: '#0E6B4F', weight: 5, opacity: .92,
+          lineJoin: 'round', lineCap: 'round'
+        }).addTo(handle.map);
+      }
+      handle.map.fitBounds(routeLine.getBounds(), {padding: [60, 60]});
+      return true;
+    };
     function writeFields(){ syncCoords(); refreshRoute(); }
     function pinnedLabel(ll){
       return 'Pinned · ' + Number(ll.lat).toFixed(5) + ', ' + Number(ll.lng).toFixed(5);
