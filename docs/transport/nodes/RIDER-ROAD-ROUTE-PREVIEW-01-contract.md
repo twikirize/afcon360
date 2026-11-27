@@ -1,8 +1,8 @@
 # RIDER-ROAD-ROUTE-PREVIEW-01 — Contract
 
-**Owning domain:** Transport  
-**Dependency:** GEO / ROUTING-01 (merged in PR #155)  
-**Status:** OWNER-APPROVED SCOPE — 27 November 2026  
+**Owning domain:** Transport
+**Dependency:** GEO / ROUTING-01 (merged in PR #155)
+**Status:** OWNER-APPROVED SCOPE — 27 November 2026
 **Branch:** `feat/transport-rider-road-route-preview-20261127`
 
 This file records the repository owner's approval on 27 November 2026 of the scope and behavior described below. It is limited to a non-persistent planned-road-route preview for the existing web rider journey. The React Native client is a later consumer and is not part of this node.
