@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(
@@ -46,7 +47,9 @@ def build_app():
         # cookies, bearer tokens, query-string values, or personal data.
         EVIDENCE.mkdir(parents=True, exist_ok=True)
         with REQUEST_LOG.open("a", encoding="utf-8") as handle:
-            handle.write(f"{response.status_code}\t{request.method}\t{request.path}\n")
+            handle.write(
+                f"{response.status_code}\t{request.method}\t{request.path}\t{time.time():.6f}\n"
+            )
 
         # Capture only the session IDs resolved from the logout bearer token.
         # Never write access tokens, refresh tokens, headers, or request bodies.
@@ -65,6 +68,9 @@ def build_app():
                             "session_id": str(record.get("session_id") or ""),
                             "server_session_id": str(record.get("server_session_id") or ""),
                             "user_public_id": str(record.get("user_public_id") or ""),
+                            # Store only the SHA-256 digest already used in the
+                            # Redis key; never persist the bearer credential.
+                            "access_token_hash": str(context.get("token_hash") or ""),
                         },
                         separators=(",", ":"),
                     ),
@@ -281,17 +287,21 @@ def assert_evidence(app) -> None:
     records = []
     for line in REQUEST_LOG.read_text(encoding="utf-8").splitlines():
         parts = line.split("\t")
-        if len(parts) == 3:
-            status, method, path = parts
-            records.append((int(status), method, path))
+        if len(parts) == 4:
+            status, method, path, timestamp = parts
+            records.append((int(status), method, path, float(timestamp)))
 
     def count_ok(method: str, path: str) -> int:
-        return sum(status == 200 and actual_method == method and actual_path == path
-                   for status, actual_method, actual_path in records)
+        return sum(
+            status == 200 and actual_method == method and actual_path == path
+            for status, actual_method, actual_path, _ in records
+        )
 
     def attempted(method: str, path: str) -> bool:
-        return any(actual_method == method and actual_path == path
-                   for _, actual_method, actual_path in records)
+        return any(
+            actual_method == method and actual_path == path
+            for _, actual_method, actual_path, _ in records
+        )
 
     progress = {"completed_stages": []}
     progress_path = EVIDENCE / "journey-progress.json"
@@ -302,6 +312,12 @@ def assert_evidence(app) -> None:
             progress = {"completed_stages": []}
     stages = set(progress.get("completed_stages", []))
     restore_started = "session_restore_started" in stages
+    stage_timestamps = progress.get("stage_timestamps", {})
+    restore_started_at = (
+        float(stage_timestamps.get("session_restore_started"))
+        if isinstance(stage_timestamps, dict) and stage_timestamps.get("session_restore_started") is not None
+        else None
+    )
     activity_started = "activity_navigation_started" in stages
     wallet_started = "wallet_navigation_started" in stages
     logout_started = "logout_started" in stages or attempted(
@@ -313,7 +329,17 @@ def assert_evidence(app) -> None:
         "successful password login": "PASS" if count_ok("POST", "/api/mobile/v1/auth/login") >= 1 else "FAIL",
         "identity endpoint after initial login": "PASS" if count_ok("GET", "/api/mobile/v1/auth/me") >= 1 else "FAIL",
         "identity endpoint after app relaunch": (
-            ("PASS" if count_ok("GET", "/api/mobile/v1/auth/me") >= 2 else "FAIL")
+            (
+                "PASS"
+                if restore_started_at is not None and any(
+                    status == 200
+                    and method == "GET"
+                    and path == "/api/mobile/v1/auth/me"
+                    and timestamp >= restore_started_at
+                    for status, method, path, timestamp in records
+                )
+                else "FAIL"
+            )
             if restore_started else "NOT_EXERCISED"
         ),
         "protected Activity read": (
@@ -351,6 +377,7 @@ def assert_evidence(app) -> None:
             target_device_id = str(target.get("session_id") or "")
             target_server_id = str(target.get("server_session_id") or "")
             target_user_id = str(target.get("user_public_id") or "")
+            target_access_hash = str(target.get("access_token_hash") or "")
             target_matches_user = target_user_id == str(user.public_id)
             device_session = (
                 DeviceSession.query.filter_by(
@@ -380,10 +407,18 @@ def assert_evidence(app) -> None:
                     redis_client.client.exists(_revoked_key(target_device_id))
                 ) else "FAIL"
             )
+            access_key = (
+                f"afcon360:mobile:access:{target_access_hash}"
+                if target_access_hash else ""
+            )
+            checks["exact logged-out access token removed from Redis"] = (
+                "PASS" if access_key and not redis_client.client.exists(access_key) else "FAIL"
+            )
         else:
             checks["server session revoked on logout"] = "NOT_EXERCISED"
             checks["device session revoked on logout"] = "NOT_EXERCISED"
             checks["Redis mobile session revoked on logout"] = "NOT_EXERCISED"
+            checks["exact logged-out access token removed from Redis"] = "NOT_EXERCISED"
 
         service_api_requests = {}
         for name, method, path, required_stage in (
@@ -393,7 +428,7 @@ def assert_evidence(app) -> None:
             ("Event registration history", "GET", "/api/mobile/v1/events/registrations", "events_screen"),
         ):
             statuses = [
-                status for status, actual_method, actual_path in records
+                status for status, actual_method, actual_path, _ in records
                 if actual_method == method and actual_path == path
             ]
             service_api_requests[name] = statuses or ["not-requested"]
@@ -421,8 +456,8 @@ def assert_evidence(app) -> None:
         "journey_progress": progress,
         "native_service_api_requests": service_api_requests,
         "backend_request_audit": [
-            {"status": status, "method": method, "path": path}
-            for status, method, path in records
+            {"status": status, "method": method, "path": path, "timestamp": timestamp}
+            for status, method, path, timestamp in records
         ],
         "production_backend_used": False,
         "money_moved": False,

@@ -103,6 +103,7 @@ const styles = StyleSheet.create({
     backgroundColor: homeDesign.serviceIconBg,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 4,
   },
   serviceIconHorizontal: {
     marginRight: 8,
