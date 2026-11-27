@@ -14,8 +14,8 @@ A plain-English guide for developing, testing, and updating the Pamoja User app 
 > says `1.0.2`, read `1.0.3`; every mechanism described here is unchanged. See `../README.md`
 > ("Runtime version discipline: APK versus OTA").
 >
-> **This guide is the procedure, not the gate.** Before a commit use `docs/engineering/PRE_PR_CHECKS.md`;
-> before a build or publish use `PRE_CHECK.md` in this folder. Commands run from
+> **This guide is the procedure, not the gate.** Before a commit, and again before a build or publish,
+> run `docs/engineering/PRE_PR_CHECKS.md` (Part A for a commit, Part B for shipping). Commands run from
 > `C:\Users\OBED\Desktop\afcon360-user-dev\mobile` — the Flask checkout at `C:\Users\OBED\Desktop\afcon360_app`
 > (prompt `(.venv) PS ...`) has no `mobile/` directory and cannot build or publish the app.
 

@@ -1,6 +1,8 @@
-# Pre-PR Testing Checklist for AFCON360 Mobile
+# Mobile Pre-PR and Release Checklist (AFCON360)
 
-**Every agent must run these checks locally before pushing a PR.** The CI workflow runs these exact commands — failures here will block the PR.
+**Part A must pass before every commit or PR. Part B must pass before any APK build or OTA publish.** The CI workflow runs Part A's exact commands — failures there will block the PR.
+
+> The file name is unchanged so existing references keep working. Part B was merged here from `mobile/docs/PRE_CHECK.md`, which no longer exists.
 
 ## Where these commands run
 
@@ -11,13 +13,13 @@
 
 Run from the `mobile/` directory. The repository root is **not** a pnpm workspace: `pnpm --filter ...` there fails, and a stale copy of the project (`_mobile_backup_*`) can answer the call and run an entirely different `expo` binary.
 
-## The three mobile documents
+## The mobile documents
 
 | Document | Moment | Question it answers |
 |---|---|---|
-| `docs/engineering/PRE_PR_CHECKS.md` (this file) | Before every commit or PR | Is this tree safe to push? |
-| `mobile/docs/PRE_CHECK.md` | Before an APK build or an OTA publish | Is this tree safe to ship, and to whom? |
-| `mobile/docs/update_apk.md` | During the build/publish itself | What are the exact steps? |
+| `docs/engineering/PRE_PR_CHECKS.md` (this file) | Part A before every commit or PR; Part B before a build or publish | Is this tree safe to push — and safe to ship, to whom? |
+| `mobile/docs/update_apk.md` | During the build or publish itself | What are the exact steps? |
+| `AGENTS_BRANCH_RULES.md` (in both checkouts) | Before any branch, commit or push | Where may this work land? |
 
 ---
 
@@ -66,7 +68,7 @@ node scripts/verify-user-dev-delivery-contract.mjs "$env:TEMP\afcon360-user-dev-
 - After modifying `mobile/scripts/check-navigation-contracts.mjs`
 - After any TypeScript/React Native code change
 - After adding/removing bottom navigation tabs (also requires updating `check-navigation-contracts.mjs` and the E2E tests)
-- After any change to `app.config.ts`, `eas.json`, the lockfile, or a native dependency — those are release-affecting, so also read `mobile/docs/PRE_CHECK.md`
+- After any change to `app.config.ts`, `eas.json`, the lockfile, or a native dependency — those are release-affecting, so also run Part B
 
 ---
 
@@ -153,7 +155,104 @@ Before adding any `.tsx` or `.js` file:
    - `check-navigation-contracts.mjs`: update `nativeInternalRoutes`
    - E2E tests (`verify-user-authenticated-journey.py`): update tab navigation
 
-7. **New native module** — Typecheck and bundling cannot prove it links. It requires an APK build. See `mobile/docs/PRE_CHECK.md`.
+7. **New native module** — Typecheck and bundling cannot prove it links. It requires an APK build. Run Part B.
+
+---
+
+## Part B — Shipping gate (APK build or OTA publish)
+
+Part A proves the tree compiles. Part B decides **which binary** carries the change and **which channel** receives it.
+
+### B1. Set the identity variables
+
+Identity is computed from these variables. Unset variables do not error; they silently produce a different app.
+
+```powershell
+cd C:\Users\OBED\Desktop\afcon360-user-dev\mobile\apps\user
+$env:AFCON360_PREVIEW_BUILD="true"
+$env:AFCON360_RELEASE_BUILD="false"
+$env:AFCON360_DEVELOPMENT_CLIENT="false"
+$env:AFCON360_UPDATE_CHANNEL="preview"
+$env:AFCON360_USER_EAS_PROJECT_ID="20708e30-4640-4b88-9615-38412f47e811"
+$env:EXPO_PUBLIC_API_BASE_URL="https://www.pamoja.space"
+```
+
+| Variable | Decides | If missing |
+|---|---|---|
+| `AFCON360_PREVIEW_BUILD` | `.preview` package suffix, "AFCON360 Preview" name, preview plugin, server switcher | Production identity: `space.pamoja.afcon360.user`, channel `production` |
+| `AFCON360_RELEASE_BUILD` | Runtime policy and the HTTPS/no-loopback assertion | `appVersion` runtime, and the production API guard does not run |
+| `AFCON360_DEVELOPMENT_CLIENT` | Dev-client build versus standalone | Standalone app |
+| `AFCON360_UPDATE_CHANNEL` | The channel the app requests updates from | `preview` |
+| `AFCON360_USER_EAS_PROJECT_ID` | `extra.eas.projectId` and `updates.url` | Local `eas` commands prompt to link a project they cannot write, then fail |
+| `EXPO_PUBLIC_API_BASE_URL` | API base URL baked into the bundle | `https://www.pamoja.space` |
+
+Never answer the "Configure this project?" prompt by hand, and never continue a build after it appears.
+
+### B2. Prove the identity before trusting the terminal
+
+```powershell
+pnpm exec expo config --json | ConvertFrom-Json | Select-Object name,version,@{n='pkg';e={$_.android.package}},@{n='policy';e={$_.runtimeVersion.policy}},@{n='channel';e={$_.updates.requestHeaders.'expo-channel-name'}}
+```
+
+| Field | Expected on the preview lane |
+|---|---|
+| `name` | `AFCON360 Preview` |
+| `android.package` | `space.pamoja.afcon360.user.preview` |
+| `version` | the version you intend to ship |
+| `runtimeVersion.policy` | `appVersion` |
+| channel header | `preview` |
+
+Do not continue if any row differs from what you intend to ship.
+
+### B3. Decide: APK or OTA
+
+Decide before you build, not after.
+
+| Change | APK | OTA |
+|---|---|---|
+| Screen layout, text, styles, navigation, business logic, images | No | Yes |
+| New or removed native module, native plugin, native code | **Yes** | No |
+| Android permission or `app.config.ts` change | **Yes** | No |
+| `eas.json`, `package.json`, lockfile, Expo SDK version | **Yes** | No |
+| Backend/API only | No | No |
+
+If any APK-only item changed: bump `version` in `apps/user/app.config.ts`, then build and install the APK in the same step. Never bump `version` without a matching build — a JS-only bump publishes to a runtime no installed binary has, which is a silent no-op. See `mobile/README.md`, "Runtime version discipline".
+
+`android.versionCode` in `app.config.ts` is ignored because `cli.appVersionSource` is `remote`; EAS increments the remote value.
+
+### B4. Before publishing an OTA
+
+- [ ] `version` in `app.config.ts` is unchanged since the installed binary was built.
+- [ ] The channel's runtime matches that version: `eas channel:view preview`.
+- [ ] The publish names channel, environment and platform explicitly:
+
+  ```powershell
+  eas update --channel preview --environment preview --platform android --message "describe the change"
+  ```
+
+- [ ] `eas update:list --branch preview --platform android` lists a group whose runtime equals the installed binary's. It takes `--branch`, not `--channel`.
+- [ ] The device shows the new code after **two** launches. `checkAutomatically: "ON_LOAD"` with `fallbackToCacheTimeout: 0` downloads on the first launch and applies on the second, so a single reopen legitimately shows nothing.
+
+### B5. Before and after building an APK
+
+- [ ] Part A and B1-B3 are green.
+- [ ] `version` was bumped only because a native change required it.
+- [ ] The build reaches `finished`. An empty `Application Archive URL` means "still running", not "failed".
+- [ ] `eas build:list --platform android --limit 1` shows the intended `Runtime Version`, `Version`, `Version code` and `Commit`.
+- [ ] The APK is installed and launched once while watching the first screen paint. That is the only proof that new native modules link; typecheck and bundling cannot show it.
+- [ ] Build ID, runtime, version code and artifact URL are recorded in the release report.
+
+### B6. Release sign-off
+
+| Field | Value |
+|---|---|
+| Date | |
+| App and lane | User preview / Driver preview / production |
+| Gates | Part A seven commands, plus Part B checks |
+| Version / runtime | |
+| Build ID or update group | |
+| Installed and launched on device | yes / no |
+| Verified by | |
 
 ---
 
@@ -165,7 +264,10 @@ Before adding any `.tsx` or `.js` file:
 | A green result after a long edit session | Gates only prove the tree as it exists. Confirm the symbols you intended are present. |
 | PowerShell shows `node.exe : ... NativeCommandError` | Expo's spinner writes to stderr; PowerShell wraps it as an error. The result printed below it is valid. |
 | A chained command exits 1 with no output | `expo export` combined with cleanup in the same pipeline is unreliable. Run it alone. |
-| `expo-doctor` warns about a duplicate `expo-modules-jsi` | Pre-existing in this workspace. Not part of a PR gate's pass criteria. |
+| `expo-doctor` warns about a duplicate `expo-modules-jsi` | Pre-existing in this workspace. Not part of a gate's pass criteria. |
+| `eas update` prints a published group and exits 0, but the phone is unchanged | The group's runtime matches no installed binary, or the channel is wrong. A green publish is not delivery. |
+| `eas build:list` fails with "Cannot automatically write to dynamic config" | Missing `AFCON360_USER_EAS_PROJECT_ID`. Nothing was unlinked and the project is not broken. |
+| The install prompt calls the APK an "update" | Same package name and a higher version code, so Android replaces the binary in place. It is still a full APK, not an OTA. |
 
 ---
 

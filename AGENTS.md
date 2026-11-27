@@ -446,31 +446,34 @@ pgpass path used, entry count (never contents), ACL, probe commands with exit co
 - **Publishing is single-source.** `eas update` publishes whatever tree it is run in. Running it from a second copy pushes that copy's bundle to the same channel and silently replaces a good update. Confirm the working directory, the branch (`git rev-parse --abbrev-ref HEAD`) and the version before any publish.
 - Never bump `version` in `apps/user/app.config.ts` without building and installing the matching APK. A JS-only bump publishes to a runtime no installed binary has, which is a silent no-op.
 
-### 11.2 Three documents, three moments
+### 11.2 Two documents and one constitution
 
 | Document | Use it | Answers |
 |---|---|---|
-| `docs/engineering/PRE_PR_CHECKS.md` | before every commit or PR | Is this tree safe to push? |
-| `mobile/docs/PRE_CHECK.md` | before any APK build or OTA publish | Is this tree safe to ship, and to whom? |
+| `docs/engineering/PRE_PR_CHECKS.md` | Part A before every commit or PR; Part B before a build or publish | Is this tree safe to push — and safe to ship, to whom? |
 | `mobile/docs/update_apk.md` | during the build or publish | What are the exact steps? |
+| `AGENTS_BRANCH_RULES.md` | before any branch, commit or push | Where may this work land? |
 
-- Run the pre-PR checks before asking a human to review a mobile change, and the release pre-flight before `eas build` or `eas update`. Fill in the release sign-off table.
+- Run Part A before asking a human to review a mobile change, and Part B before `eas build` or `eas update`. Fill in the release sign-off table.
 - A green publish is not delivery: the update's runtime must match an installed binary, and the device must cold-start twice before the new bundle runs.
 - If your work changes a command, script name, environment variable or CI workflow these documents describe, update the affected document in the same change. Documentation that has drifted is worse than none, because agents trust it.
 
-### 11.3 Branch rules govern where this work may land
+### 11.3 Branch rules must exist in both checkouts
 
-The branch constitution exists in **both** checkout roots and the two copies are not identical:
+`AGENTS_BRANCH_RULES.md` must be present in **both** checkout roots and stay byte-identical, so an agent working in either folder reads the same rules:
 
-| Copy | State |
+| Copy | Serves |
 |---|---|
-| `AGENTS_BRANCH_RULES.md` in this checkout | 134 lines, and **missing §8** (the PR workflow) |
-| `AGENTS_BRANCH_RULES.md` in `C:\Users\OBED\Desktop\afcon360_app` | 159 lines, including §8 "User APK Canonical Branch — PR Workflow" |
+| `C:\Users\OBED\Desktop\afcon360-user-dev\AGENTS_BRANCH_RULES.md` | all mobile work |
+| `C:\Users\OBED\Desktop\afcon360_app\AGENTS_BRANCH_RULES.md` | backend work in that checkout |
+
+- **Neither copy may be deleted.** A checkout without the file has agents working without branch rules.
+- If the two differ, copy this checkout's version over the other, report the difference, and confirm with `Get-FileHash`.
 
 - Canonical User app branch: `feat/native-user-app-integration-20261108`. It is protected, so changes arrive through a pull request only. **Never commit to it directly.**
 - Authorized flow for agent work: create `work/<feature-slug>-YYYYMMDD`, commit there with explicit file paths, push, open a PR into the canonical branch, and give the human the PR link. Never `git add -A`, and never stage runtime artifacts such as `metro_status.json` or `metro_trigger.json`.
 - Never open a native-app PR against `main`; the branch-boundary workflow (§53.3) rejects it, and a failing boundary check is intentional.
-- When the two copies disagree, the copy containing §8 is the newer one. Do not choose between them yourself: report the divergence and ask the human, who owns branch governance.
+- If a checkout is missing the branch constitution entirely, copy it there and report it rather than proceeding without rules.
 - Verify where you are before any commit — `git rev-parse --abbrev-ref HEAD` — and stop if it is the protected canonical branch rather than a `work/` branch.
 
 ---
