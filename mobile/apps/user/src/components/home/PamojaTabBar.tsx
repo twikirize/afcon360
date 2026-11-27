@@ -8,8 +8,8 @@ import Svg, { Path } from 'react-native-svg';
 
 const CenterLogo = () => (
   <Svg
-    width="38"
-    height="38"
+    width="26"
+    height="26"
     viewBox="0 0 100 100"
     fill="none"
     stroke="white"
@@ -198,49 +198,48 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7C815',
     borderRadius: 2,
   },
-  // The disc is 78pt tall (72 + 3pt glow padding each side) inside a ~58pt bar,
-  // so it is lifted by cancelling most of its own height in the flex row and
-  // nudged up with a transform. Layout height gained: 78 - 24 = 54.
+  // The disc is 46pt tall including its 2pt halo, so it sits inside the pill's
+  // own height beside the 19pt tab icons instead of rising above them.
   fabItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: -12,
-    transform: [{ translateY: -6 }],
   },
   fabWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   fabGlow: {
-    padding: 3,
-    borderRadius: 45,
+    padding: 2,
+    borderRadius: 23,
     backgroundColor: 'rgba(247,200,21,0.2)',
   },
   fabGlowFocused: {
     backgroundColor: 'rgba(247,200,21,0.34)',
   },
   fab: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#04210f',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    // Lighter than the bar's darkest end so the disc reads as a raised control
+    // instead of a hole in the pill.
+    backgroundColor: '#0C4527',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: '#f7c815',
     shadowColor: '#f7c815',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 15,
-    elevation: 10,
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 6,
   },
   // Selected cue only: brighter gold rim and a wider cast. The disc interior
   // (dark green + white mark) stays exactly as specified.
   fabFocused: {
     borderColor: '#FFE785',
-    shadowOpacity: 0.85,
-    shadowRadius: 20,
-    elevation: 12,
+    shadowOpacity: 0.7,
+    shadowRadius: 14,
+    elevation: 8,
   },
 });
 
