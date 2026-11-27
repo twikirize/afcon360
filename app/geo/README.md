@@ -99,10 +99,26 @@ coordinates); no provider SDK objects cross into domains.
 
 | Capability | Status | Behavior when unconfigured |
 |---|---|---|
-| Routing (Valhalla) | STUB | `RouteResult(resolved=False, provider="haversine-fallback")` with straight-line distance; `duration_s=0.0` |
+| Routing (Valhalla) | READY WHEN ENABLED + CONFIGURED | unresolved route: `resolved=False`, `distance_m=None`, `duration_s=None`; no straight-line substitute |
 | Geocoding (Photon) | STUB | `geocode()` → `[]`; `reverse()` → unresolved `GeocodeResult` |
 | Tiles | CONFIG SEAM | `tile_url()` → `""` when unavailable; OSM attribution never stripped |
 | ETA | READY | `eta_from_duration(duration_s)` — duration must come from a routing engine or labelled estimate, never distance×k |
+
+**Road-routing result contract**
+
+- `get_routing_service()` builds from the active Flask application's `GEO`
+  configuration and caches the service on that app. Outside an app context,
+  it uses the existing environment-backed configuration and lazy singleton.
+- A resolved `RouteResult` carries road `distance_m` in metres,
+  `duration_s` in seconds, provider provenance, and latitude-first geometry.
+- An unresolved route has `resolved=False`, `distance_m=None`, and
+  `duration_s=None`. Zero is a valid measurement only when the provider
+  resolves a zero-length route; it is not an unavailable-value marker.
+- Straight-line measurements remain available only through the explicitly
+  named `straight_line_*` helpers and are not inserted into road results.
+- The Valhalla `sources_to_targets` matrix preserves input source order as
+  rows and target order as columns. Distances are normalized to metres,
+  durations remain seconds, and unreachable pairs remain unresolved.
 
 Paid/external providers stay disabled by default with server-side
 credentials only. A truthful unresolved result is always preferable to
@@ -120,7 +136,7 @@ and never exposes internal database IDs.
 
 | Capability | Primary | Later | Status |
 |---|---|---|---|
-| Routing | Valhalla | OSRM | adapter (live when operator configures `GEO_VALHALLA_URL` + enables it; truthful miss otherwise) |
+| Routing | Valhalla | OSRM | implemented adapter (live when operator configures `GEO_VALHALLA_URL` + enables it; truthful unresolved result otherwise) |
 | Geocoding | Geoapify | Photon (best-effort fallback) | chain: Geoapify when operator configures `GEOAPIFY_API_KEY` + enables it; Photon when it answers after a Geoapify miss (`GEO_PHOTON_URL` + enabled); honest `unresolved` on double failure; `[lon,lat]` converted at the boundary |
 | Tiles | PMTiles → Martin | external | config seam + shared Leaflet renderer (`map_renderer.py`, `static/js/geo/geo-map.js`, proven on `/geo/`) |
 
@@ -308,8 +324,8 @@ Current state: Redis. History: Postgres `geo_location_observations` (GEO-15; pla
 ## Roadmap (mandate §8 order)
 
 1. boundary ✅ (this slice) → 2. contracts ✅ → 3. validation ✅ →
-4. PostGIS → 5. current-location → 6. history → 7. routing adapter →
-8. distance/ETA → 9. geocoding → 10. nearby → 11. realtime → 12. map
-abstraction → 13. MapLibre component → 14. demand → 15/16. domain
+4. PostGIS → 5. current-location → 6. history → 7. routing adapter ✅ →
+8. distance/ETA integration → 9. geocoding → 10. nearby → 11. realtime →
+12. map abstraction → 13. MapLibre component → 14. demand → 15/16. domain
 integration → 17. legacy migration (incl. matching radians fix) →
 18. observability/scale → 19. docs.
