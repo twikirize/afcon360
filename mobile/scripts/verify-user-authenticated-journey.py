@@ -18,6 +18,7 @@ PACKAGE = "space.pamoja.afcon360.user.preview"
 APK_PATH = os.environ.get("AFCON360_USER_E2E_APK", "mobile-e2e-evidence/user-e2e.apk")
 
 USERNAME = os.environ.get("AFCON360_E2E_USERNAME", "native_e2e_user")
+EMAIL = os.environ.get("AFCON360_E2E_EMAIL", "native-e2e@afcon360.test")
 PASSWORD = os.environ.get("AFCON360_E2E_PASSWORD", "NativeE2ePassword2026")
 EVIDENCE = Path(os.environ.get("AFCON360_E2E_EVIDENCE_DIR", "mobile-e2e-evidence"))
 UI_XML = "/sdcard/afcon360-user-e2e-ui.xml"
@@ -26,20 +27,29 @@ PROGRESS = EVIDENCE / "journey-progress.json"
 
 
 def mark_stage(stage: str) -> None:
-    """Persist the last completed stage of the Android journey."""
-    completed = []
+    """Persist completed stages and wall-clock timestamps for backend correlation."""
+    progress = {"completed_stages": [], "stage_timestamps": {}}
     if PROGRESS.is_file():
         try:
-            completed = list(json.loads(PROGRESS.read_text(encoding="utf-8")).get("completed_stages", []))
+            loaded = json.loads(PROGRESS.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                progress.update(loaded)
         except (OSError, ValueError, TypeError):
-            completed = []
+            pass
+    completed = list(progress.get("completed_stages", []))
     if stage not in completed:
         completed.append(stage)
+    timestamps = progress.get("stage_timestamps", {})
+    if not isinstance(timestamps, dict):
+        timestamps = {}
+    timestamps[stage] = time.time()
+    progress.update({
+        "completed_stages": completed,
+        "stage_timestamps": timestamps,
+        "last_completed_stage": stage,
+    })
     EVIDENCE.mkdir(parents=True, exist_ok=True)
-    PROGRESS.write_text(
-        json.dumps({"completed_stages": completed, "last_completed_stage": stage}, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    PROGRESS.write_text(json.dumps(progress, indent=2) + "\n", encoding="utf-8")
 
 
 def run_adb(
@@ -915,7 +925,20 @@ def main() -> None:
 
     mark_stage("events_navigation_started")
     tap_text_scrolling("Discover events and tickets")
-    wait_for_text("Be there for the moments.", timeout=30, label="native events screen")
+    wait_for_text(
+        "Be there for the moments.",
+        "Find events",
+        timeout=30,
+        label="native events screen",
+    )
+    # The disposable E2E database has no published event fixtures. Wait for
+    # the explicit empty result so the test proves the Events API finished
+    # loading instead of passing on the static page heading alone.
+    wait_for_text(
+        "No published events matched that search.",
+        timeout=30,
+        label="native Events discovery completed",
+    )
     save_screen("09-events")
     mark_stage("events_screen")
     return_to_explore()
@@ -927,8 +950,7 @@ def main() -> None:
     run_adb("shell", "am", "force-stop", PACKAGE)
     time.sleep(1)
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
-    # The native app restores to the curated Pamoja Home.
-    # The backend evidence check separately verifies the identity endpoint after relaunch.
+    # A protected tab route and the synthetic user's identity must both restore.
     wait_for_text(
         "THE WORLD, OPEN TO YOU",
         "Make every",
@@ -944,12 +966,22 @@ def main() -> None:
         label="restored curated Home My bookings card",
     )
     save_screen("10a-restored-my-bookings-overview")
-    mark_stage("session_restored")
 
     tap_text("Account", last=True, allow_tab_bar=True)
-    wait_for_text("Your account.", label="account before logout")
+    restored_identity = wait_for_text(
+        "Your account.",
+        USERNAME,
+        EMAIL,
+        timeout=25,
+        label="restored synthetic account identity after process death",
+    )
+    if USERNAME not in restored_identity or EMAIL not in restored_identity:
+        raise AssertionError("The restored Account screen did not show the synthetic user's identity.")
+    mark_stage("session_restored")
+
+    # The first tap opens the native confirmation dialog. Wait for that
+    # dialog before selecting its unique uppercase destructive action.
     tap_text_scrolling("Sign out")
-    tap_text("Sign out")
     wait_for_text("Sign out of AFCON360 on this device?", timeout=12, label="logout confirmation")
     mark_stage("logout_started")
     # The Android confirmation action is rendered in uppercase; target that
