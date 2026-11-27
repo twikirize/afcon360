@@ -745,10 +745,26 @@ def main() -> None:
     run_adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
 
     wait_for_text("Make every", "THE WORLD, OPEN TO YOU", timeout=45, label="signed-out curated Pamoja Home")
-    # A signed-out launch stays on the tabs; the sign-in form is the Account tab.
+
+    # A signed-out user can browse the public Wallet page. Authentication is
+    # deliberately requested from the Account tab, not forced at app launch.
+    tap_text("Wallet", last=True, allow_tab_bar=True)
+    wait_for_text(
+        "Power your payments with our wallet.",
+        timeout=35,
+        label="signed-out Wallet guest page",
+    )
+    wait_for_text_scrolling(
+        "Why use the wallet?",
+        timeout=25,
+        label="signed-out Wallet benefits",
+    )
+    save_screen("01-wallet-guest")
+    mark_stage("signed_out_wallet_guest")
+
     tap_text("Account", last=True, allow_tab_bar=True)
-    wait_for_text("Sign in securely", "Username or email", label="native sign-in screen")
-    save_screen("01-login")
+    wait_for_text("Sign in securely", "Username or email", label="Account-tab sign-in form")
+    save_screen("01-account-sign-in")
     mark_stage("login_screen")
 
     tap_edit_field("Username or email")
@@ -767,24 +783,38 @@ def main() -> None:
     time.sleep(0.5)
     tap_text("Sign in securely", require_enabled=True)
 
+    # SignInForm is intentionally in-place: auth state changes the Account tab
+    # from the guest form to the signed-in profile. It does not redirect Home.
+    account_text = wait_for_text(
+        "Your account.",
+        USERNAME,
+        EMAIL,
+        timeout=45,
+        label="authenticated Account after in-place sign-in",
+    )
+    if USERNAME not in account_text or EMAIL not in account_text:
+        raise AssertionError(
+            "The in-place sign-in did not reveal the authenticated synthetic user's identity."
+        )
+    save_screen("02-account-authenticated")
+    mark_stage("authenticated_account")
+
+    # The journey explicitly navigates to Home after proving Account sign-in.
+    tap_text("Home", last=True, allow_tab_bar=True)
     wait_for_text(
         "THE WORLD, OPEN TO YOU",
         "Make every",
         "journey matter.",
-        timeout=45,
+        timeout=35,
         label="authenticated curated Pamoja Home header",
     )
-    login_navigation_only = os.environ.get("AFCON360_E2E_LOGIN_NAVIGATION_ONLY", "").strip().lower() in {"1", "true", "yes"}
-    if login_navigation_only:
-        save_screen("02-home-login-navigation-gate")
-    else:
-        save_screen("02-home")
-        wait_for_text_scrolling(
-            "Open your Pamoja wallet",
-            timeout=35,
-            label="updated curated Home wallet card",
-        )
-        save_screen("02a-home-wallet-card")
+    save_screen("02-home")
+    wait_for_text_scrolling(
+        "Open your Pamoja wallet",
+        timeout=35,
+        label="updated curated Home wallet card",
+    )
+    save_screen("02a-home-wallet-card")
     mark_stage("authenticated_home")
 
     mark_stage("activity_navigation_started")
@@ -808,24 +838,6 @@ def main() -> None:
         raise AssertionError("The authenticated account screen did not display the synthetic user's identity.")
     save_screen("05-account")
     mark_stage("account_screen")
-
-    if login_navigation_only:
-        tap_text("Home", last=True, allow_tab_bar=True)
-        wait_for_text(
-            "THE WORLD, OPEN TO YOU",
-            "Make every",
-            "journey matter.",
-            timeout=25,
-            label="return to Home after primary tab navigation",
-        )
-        save_screen("05-home-after-tab-navigation")
-        mark_stage("login_navigation_gate_passed")
-        print(
-            "USER_ANDROID_E2E_LOGIN_NAVIGATION_PASS: authenticated login, Home, Activity, "
-            "Wallet, Account identity, and return to Home.",
-            flush=True,
-        )
-        return
 
     # Verify an intentional uninstall has an AFCON360 confirmation first.
     # Cancel the app's prompt; never remove the test APK from the emulator.
@@ -990,13 +1002,34 @@ def main() -> None:
     # The Android confirmation action is rendered in uppercase; target that
     # actual dialog button, not its title or the underlying Account action.
     tap_text("SIGN OUT")
-    wait_for_text("Sign in securely", "Username or email", "Password", timeout=35, label="signed-out login screen")
-    save_screen("11-logged-out")
+    # Sign-out keeps the user on Account. The authenticated profile is replaced
+    # by the same in-place SignInForm; it must not redirect to the old /login route.
+    wait_for_text(
+        "Sign in securely",
+        "Username or email",
+        "Password",
+        timeout=35,
+        label="signed-out Account-tab form after in-place logout",
+    )
+    save_screen("11-account-signed-out")
     mark_stage("logout_completed")
 
+    # Public tabs remain usable after sign-out; Home and Wallet do not require
+    # an authentication redirect just to browse the app.
+    tap_text("Home", last=True, allow_tab_bar=True)
+    wait_for_text(
+        "THE WORLD, OPEN TO YOU",
+        "Make every",
+        timeout=25,
+        label="public Home remains accessible after sign-out",
+    )
+    save_screen("12-signed-out-home")
+    mark_stage("signed_out_home_accessible")
+
     print(
-        "USER_ANDROID_E2E_UI_PASS: login, authenticated home, Activity, Wallet reads, "
-        "Account, Explore, Ride, Stays, Events, process-death session restore, and logout.",
+        "USER_ANDROID_E2E_UI_PASS: signed-out Home and Wallet guest, Account-tab sign-in, "
+        "authenticated Home/Activity/Wallet/Account, Explore, Ride, Stays, Events, "
+        "process-death session restore, in-place logout and public Home after sign-out.",
         flush=True,
     )
 
