@@ -104,6 +104,7 @@ def register_api_resources(api):
     )
     from .fare_routes import FareConfigResource, FareEstimateResource
     from .ride_options_routes import RideOptionsResource
+    from .route_preview_routes import RoutePreviewResource
     # BOOKING-LIFECYCLE-REQUEST-CREATE (Stage 3B, Phase 2A): request-first
     # hailing and public-reference tracking until acceptance conversion.
     from .ride_request_routes import (
@@ -196,6 +197,10 @@ def register_api_resources(api):
     # Ride options (hailing node: per-class availability priced by the
     # canonical engine; anonymous-allowed, booking stays gated)
     safe_add_resource(RideOptionsResource, "/ride-options", endpoint="ride_options")
+    # RIDER-ROAD-ROUTE-PREVIEW-01: informational planned driving route.
+    safe_add_resource(
+        RoutePreviewResource, "/route-preview", endpoint="route_preview"
+    )
 
     # BOOKING-LIFECYCLE-REQUEST-CREATE (Stage 3B, Phase 2A): pre-Booking
     # ride-request creation (authenticated + commitment-gated).
