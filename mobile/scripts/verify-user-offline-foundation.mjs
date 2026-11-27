@@ -205,7 +205,8 @@ const checks = [
       /tap_text\("Wallet", last=True, allow_tab_bar=True\)/.test(journey) &&
       /label="signed-out Wallet guest page"/.test(journey) &&
       /tap_text\("Account", last=True, allow_tab_bar=True\)/.test(journey) &&
-      /<SignInForm \/>/.test(account) &&
+      /<SignInScreen \/>/.test(account) &&
+      /<SignInForm \/>/.test(read("apps/user/src/auth/SignInScreen.tsx")) &&
       /WalletGuestView/.test(wallet) &&
       !/if \(!user\) return <Redirect href="\/login" \/>/.test(tabs);
   })()],

@@ -11,7 +11,7 @@ import { useRouter } from "expo-router";
 import { palette as basePalette } from "@afcon360/mobile-ui";
 import { PamojaScreen as AppScreen, PamojaPageHeader as PageHeader } from "../../src/components/PamojaScreen";
 import { useAuth } from "../../src/auth/AuthProvider";
-import { SignInForm } from "../../src/auth/SignInForm";
+import { SignInScreen } from "../../src/auth/SignInScreen";
 import { AuthLink } from "@afcon360/mobile-ui/auth";
 import { getSelectedApiBaseUrl, SERVER_SELECTION_ENABLED } from "../../src/services/api";
 
@@ -157,24 +157,11 @@ export default function Account() {
     }
   }, [router]);
 
-  // Signed out, this tab is the app's sign-in surface: the form appears in
-  // place instead of the app detouring through /login on launch.
+  // Signed out, this tab is the app's sign-in surface: the same screen the app
+  // used to open on, mounted here in place. It brings its own screen and scroll
+  // view, so signing out of a long account page never leaves a blank viewport.
   if (!user) {
-    return (
-      <AppScreen>
-        <PageHeader
-          eyebrow="Account"
-          title="Sign in to Pamoja."
-          description="Your profile, security and preferences live behind your Pamoja identity."
-        />
-        <View style={styles.signedOutCard}>
-          <SignInForm />
-        </View>
-        {SERVER_SELECTION_ENABLED ? (
-          <AuthLink label="Connection settings (preview)" onPress={() => router.push("/server-settings" as never)} />
-        ) : null}
-      </AppScreen>
-    );
+    return <SignInScreen />;
   }
 
   return (
@@ -543,14 +530,6 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   accountActions: { gap: 9, paddingTop: 2 },
-  signedOutCard: {
-    backgroundColor: palette.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: palette.border,
-    padding: 18,
-    gap: 10,
-  },
   footerText: { color: palette.muted, textAlign: "center", fontSize: 10, paddingBottom: 4 },
   signOutText: { color: palette.ink, fontSize: 12, fontWeight: "900" },
 });

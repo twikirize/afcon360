@@ -8,7 +8,7 @@ const approved = [
   ["apps/user/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', "Privacy notice"],
   ["apps/user/app/(tabs)/account.tsx", "WebBrowser.openBrowserAsync(target.toString())", "Opens on Pamoja website"],
   ["apps/driver/app/login.tsx", 'WebBrowser.openBrowserAsync(SITE + "/transport/become-driver")', "Continue driver registration on website"],
-  ["apps/user/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", "Back to AFCON360 website home"],
+  ["apps/user/src/auth/SignInScreen.tsx", "WebBrowser.openBrowserAsync(SITE)", "Back to AFCON360 website home"],
   ["apps/driver/app/login.tsx", "WebBrowser.openBrowserAsync(SITE)", "Back to AFCON360 website home"],
   ["apps/driver/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', "Privacy notice"],
   ["apps/user/src/components/wallet/WalletScreen.tsx", "Linking.openURL(checkout.toString())", "Starting secure checkout…"],
@@ -43,7 +43,7 @@ const nativeInternalRoutes = [
   // Existing protected routes and account flows
   ["apps/user/app/(tabs)/activity.tsx", 'pathname: "/(service)/ride-status/[reference]"'],
   ["apps/user/app/(tabs)/account.tsx", 'router.push("/(service)/delete-account" as never)'],
-  ["apps/user/app/login.tsx", 'router.push("/server-settings" as never)'],
+  ["apps/user/src/auth/SignInScreen.tsx", 'router.push("/server-settings" as never)'],
   ["apps/user/app/server-settings.tsx", "export default function ServerSettingsScreen()"],
   ["apps/user/app/(service)/_layout.tsx", 'if (!user) return <Redirect href="/login" />;'],
   ["apps/user/app/(service)/_layout.tsx", 'return <Stack screenOptions={{ headerShown: false }} />;'],
@@ -57,8 +57,9 @@ const nativeInternalRoutes = [
 
 const nativeResetRoutes = [
   // Sign-in is shared by the /login route and the Account tab, so the contract
-  // follows the form: login must render it, and it must keep recovery native.
-  ["apps/user/app/login.tsx", "<SignInForm />"],
+  // follows the screen both must mount; recovery stays native inside the form.
+  ["apps/user/app/login.tsx", "<SignInScreen />"],
+  ["apps/user/app/(tabs)/account.tsx", "<SignInScreen />"],
   ["apps/user/src/auth/SignInForm.tsx", 'router.push("/forgot-password")'],
   ["apps/driver/app/login.tsx", 'router.push("/forgot-password")'],
   ["apps/user/app/forgot-password.tsx", "<PasswordResetFlow"],
