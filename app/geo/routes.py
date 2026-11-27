@@ -76,11 +76,15 @@ def _geo_rate_limited(error):
     }), 429
 
 
-def _health_payload():
-    """GEO health payload shared by the JSON (tooling) and UX endpoints."""
+def _health_payload(app=None):
+    """GEO health payload based on the effective Flask app configuration."""
+    from flask import has_app_context
+
     from app.geo.config import load_geo_config
 
-    config = load_geo_config()
+    if app is None and has_app_context():
+        app = current_app._get_current_object()
+    config = load_geo_config(app)
     geoapify = getattr(config, "geoapify", None)
     return {
         "module": "geo",
@@ -125,7 +129,7 @@ def health_json():
     Intentionally without module/login guards so infra monitors and CI keep
     polling it regardless of GEO module flag or session state.
     """
-    return jsonify(_health_payload()), 200
+    return jsonify(_health_payload(current_app._get_current_object())), 200
 
 
 @geo_bp.get("/health")
@@ -146,7 +150,7 @@ def health():
     from app.utils.module_toggle_service import ModuleToggleService
 
     config = load_geo_config(current_app)
-    payload = _health_payload()
+    payload = _health_payload(current_app._get_current_object())
     return render_template(
         "geo/health.html",
         status=payload["status"],
