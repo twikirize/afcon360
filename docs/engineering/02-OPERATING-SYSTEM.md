@@ -71,6 +71,7 @@ The domain is selected by the business behavior or authoritative state owner—n
 | Transport and ride lifecycle | `docs/transport/nodes/` |
 | Accommodation and lodging | `docs/accommodation/nodes/` |
 | Identity, authentication, authorization | `docs/identity/nodes/` |
+| GEO — geographic platform services (coordinates, routing, geocoding, proximity, maps and location infrastructure) | `docs/geo/nodes/` |
 | Shared runtime infrastructure, Celery, Redis, backup/restore operations | `docs/operations/nodes/` |
 | Release readiness, go/no-go gates | `docs/release/nodes/` |
 | Repository-wide engineering governance/tooling with no business-domain owner | `docs/engineering/nodes/` |
