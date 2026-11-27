@@ -54,6 +54,8 @@ def test_route_preview_returns_provider_geometry_and_normalized_units(
     )
 
     assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "private, no-store, max-age=0"
+    assert response.headers["Vary"] == "Cookie"
     payload = response.get_json()
     assert payload["success"] is True
     data = payload["data"]
@@ -129,7 +131,7 @@ def test_route_preview_rejects_invalid_raw_coordinates_before_provider_io(
     payload = response.get_json()
     assert payload["success"] is False
     assert payload["code"] == "INVALID_ROUTE_INPUT"
-    assert payload["field"]
+    assert payload["field"] == field
     assert service.calls == []
 
 
