@@ -54,7 +54,7 @@ def _decode_polyline(shape: str, precision: int = 6) -> List[Tuple[float, float]
                 if index >= size:
                     raise ValueError("Truncated polyline shape")
                 byte = ord(shape[index]) - 63
-                if byte < 0:
+                if byte < 0 or byte > 0x3F:
                     raise ValueError("Invalid polyline character")
                 index += 1
                 value |= (byte & 0x1F) << shift
@@ -112,6 +112,13 @@ class ValhallaRouter(BaseProvider, RoutingProvider):
             raise ValueError(f"Invalid Valhalla {field}")
         return number
 
+    @classmethod
+    def _kilometres_to_metres(cls, value, field: str) -> float:
+        metres = cls._nonnegative_number(value, field) * 1000.0
+        if not math.isfinite(metres):
+            raise ValueError(f"Invalid Valhalla {field}")
+        return metres
+
     @staticmethod
     def _is_kilometres(units) -> bool:
         return isinstance(units, str) and units.strip().lower() in (
@@ -143,13 +150,15 @@ class ValhallaRouter(BaseProvider, RoutingProvider):
             response.raise_for_status()
             data = response.json()
             trip = data["trip"]
+            if not isinstance(trip, dict) or trip.get("status", 0) not in (0, "0"):
+                raise ValueError("Valhalla route did not succeed")
             summary = trip["summary"]
             units = trip.get("units", data.get("units"))
             if not self._is_kilometres(units):
                 raise ValueError("Unexpected Valhalla route distance units")
 
-            distance_m = self._nonnegative_number(
-                summary["length"], "route distance") * 1000.0
+            distance_m = self._kilometres_to_metres(
+                summary["length"], "route distance")
             duration_s = self._nonnegative_number(
                 summary["time"], "route duration")
 
@@ -255,8 +264,8 @@ class ValhallaRouter(BaseProvider, RoutingProvider):
                         continue
                     if distance_km is None or duration_s is None:
                         raise ValueError("Incomplete Valhalla matrix cell")
-                    distance_m = self._nonnegative_number(
-                        distance_km, "matrix distance") * 1000.0
+                    distance_m = self._kilometres_to_metres(
+                        distance_km, "matrix distance")
                     duration_s = self._nonnegative_number(
                         duration_s, "matrix duration")
                     result_row.append(RouteResult(
