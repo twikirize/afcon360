@@ -1182,21 +1182,7 @@ jobs:
           ls -l /dev/kvm
           test -r /dev/kvm
           test -w /dev/kvm
-      - name: Focused login and primary navigation gate — sign in, Home, Activity, Wallet and Account
-        id: login_navigation_journey
-        uses: reactivecircus/android-emulator-runner@v2.38.0
-        with:
-          disable-linux-hw-accel: false
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -accel on
-          disable-animations: true
-          emulator-boot-timeout: 600
-          script: AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1 python mobile/scripts/verify-user-authenticated-journey.py
-      - name: Install, authenticate, test services, restore session and sign out
-        if: ${{ steps.login_navigation_journey.outcome == 'success' }}
+      - name: Authenticate and verify updated User journeys — Home, Activity, Wallet, Account, protected services, restore and logout
         id: android_journey
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
