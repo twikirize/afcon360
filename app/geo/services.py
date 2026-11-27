@@ -113,10 +113,10 @@ class LocationService:
 
 class RoutingService:
     """
-    GEO routing facade. Until the Valhalla adapter node lands, every call
-    returns a TRUTHFUL unresolved result: straight-line distance labelled
-    provider="haversine-fallback", duration unknown (None). Domains MUST
-    treat resolved=False as "no road data yet", never as road distance.
+    GEO routing facade. Road distance exists only when a configured
+    provider resolves the route. No-provider results carry no measurements;
+    straight-line proximity remains available through its separately named
+    GEO helper. Domains MUST check resolved before using route measurements.
     """
 
     def __init__(self, provider=None):
