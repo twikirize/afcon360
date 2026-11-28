@@ -110,7 +110,9 @@ def _seed_booking(app, **over):
         "service_type": "on_demand", "passenger_count": 1,
     }
     payload.update(over)
+    from tests.transport_road_quote_helpers import add_test_road_quote
     with app.app_context():
+        add_test_road_quote(payload)
         result = get_booking_service().create_booking(user_id, payload)
     assert result["success"] is True
     return result["data"]["booking_id"]
