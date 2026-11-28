@@ -130,7 +130,31 @@ class TestRequestCreate:
         assert data["cycle"]["number"] == 1
         assert data["cycle"]["status"] == "searching"
         assert data["cycle"]["deadline"]
+        body = _payload(app)
+        resp = client.post(URL, json=body)
+        assert resp.status_code == 201, resp.get_data(as_text=True)
+        data = resp.get_json()["data"]
+        assert data["request_id"] and len(data["request_id"]) >= 16
+        assert data["status"] == "searching"
+        assert data["cycle"]["number"] == 1
+        assert data["cycle"]["status"] == "searching"
+        assert data["cycle"]["deadline"]
         assert data["fare_estimate"]["amount"] > 0
+        from app.transport.models import RideRequest
+        with app.app_context():
+            request_row = RideRequest.query.filter_by(
+                user_id=rider_id, idempotency_key=body["idempotency_key"],
+                is_deleted=False,
+            ).first()
+            # The route quote is authoritative; the durable request retains
+            # exactly its measured road distance, duration and provider.
+            assert request_row is not None
+            route_meta = request_row.request_metadata
+            assert route_meta["distance_basis"] == "road_network"
+            assert route_meta["distance_km"] == pytest.approx(8.75)
+            assert route_meta["route_duration_s"] == pytest.approx(1260.0)
+            assert route_meta["estimated_duration_minutes"] == 21
+            assert route_meta["route_provider"] == "test-routing-provider"
         from app.wallet.models.marketplace_invoice import MarketplaceInvoice
         with app.app_context():
             invoice = MarketplaceInvoice.query.filter_by(
