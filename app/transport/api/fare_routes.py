@@ -66,7 +66,6 @@ class FareEstimateResource(Resource):
                     "error": f"Unknown currency: {currency}"}, 400
 
         distance_km = data.get("estimated_distance_km")
-        distance_basis = "explicit_planning_input" if distance_km is not None else "planning_default"
         route = None
         coordinate_keys = (
             "pickup_latitude", "pickup_longitude",
@@ -75,7 +74,7 @@ class FareEstimateResource(Resource):
         supplied_coordinates = any(
             data.get(key) not in (None, "") for key in coordinate_keys
         )
-        if distance_km is None and supplied_coordinates:
+        if supplied_coordinates:
             if any(data.get(key) in (None, "") for key in coordinate_keys):
                 return {"success": False, "error": "All four resolved route coordinates are required."}, 400
             from app.transport.services.road_distance_service import measure_road_route
@@ -99,8 +98,15 @@ class FareEstimateResource(Resource):
                     "code": "ROUTING_UNAVAILABLE",
                     "error": exc.message,
                 }, 503
+            # Resolved endpoints outrank any client-supplied planning
+            # distance. A submitted number must never shadow a route.
             distance_km = route["distance_km"]
             distance_basis = "road_network"
+        else:
+            distance_basis = (
+                "explicit_planning_input"
+                if distance_km is not None else "planning_default"
+            )
 
         try:
             estimate = calculate_estimate(
