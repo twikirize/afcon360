@@ -243,7 +243,11 @@ def register_all_models():
     # GEO domain - durable location observation history (roadmap GEO-15).
     # Domain-neutral records; producing domains write via explicit contract.
     try:
-        from app.geo.models import LocationObservation
+        from app.geo.models import (
+            LocationObservation,
+            GeoServiceArea,
+            GeoServiceAreaPolicy,
+        )
     except ImportError as e:
         _record_failure("geo", e)
     # Shared / cross-domain models (app/models/ package).
