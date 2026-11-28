@@ -417,6 +417,30 @@ class MatchingService:
         now = datetime.now(timezone.utc)
         freshness_cutoff = now - timedelta(seconds=TrackingService.LOCATION_TTL_SECONDS)
 
+        # Load the owner-managed policy once per ranking pass, not once per
+        # candidate. If it cannot be read, fail closed rather than widening
+        # the dispatch pool.
+        try:
+            from app.geo.service_areas import (
+                assess_driver_for_pickup_area,
+                get_service_area_config,
+            )
+            service_area_config = get_service_area_config()
+        except Exception:
+            current_app.logger.exception(
+                "Service-area configuration unavailable during driver matching"
+            )
+            return []
+
+        geofencing_enabled = service_area_config.get("enabled") is True
+        pickup_lat = pickup_lon = None
+        if geofencing_enabled:
+            pickup_lat, pickup_lon = MatchingService._coordinates_or_none(
+                booking.pickup_location
+            )
+            if pickup_lat is None or pickup_lon is None:
+                return []
+
         ranked_drivers = []
 
         for driver in drivers:
@@ -440,37 +464,20 @@ class MatchingService:
             if not is_matchable:
                 continue
 
-            # When geofencing is enabled, a driver may only receive offers
-            # for pickups in the same active Transport service area as the
-            # driver's fresh canonical location. This shared ranker serves
-            # legacy bookings and request-first dispatch.
-            try:
-                from app.geo.service_areas import (
-                    assess_driver_for_pickup_area,
-                    get_service_area_config,
+            # Drivers outside the pickup's active Transport area are
+            # excluded before ranking/offer generation.
+            if geofencing_enabled:
+                driver_lat, driver_lon = MatchingService._coordinates_or_none(
+                    driver_location
                 )
-                service_area_config = get_service_area_config()
-                if service_area_config.get("enabled") is True:
-                    driver_lat, driver_lon = MatchingService._coordinates_or_none(
-                        driver_location
-                    )
-                    pickup_lat, pickup_lon = MatchingService._coordinates_or_none(
-                        booking.pickup_location
-                    )
-                    if driver_lat is None or pickup_lat is None:
-                        continue
-                    area_check = assess_driver_for_pickup_area(
-                        driver_lat, driver_lon, pickup_lat, pickup_lon,
-                        service="transport", config=service_area_config,
-                    )
-                    if not area_check.get("supported"):
-                        continue
-            except Exception:
-                # Geofence configuration failures must not broaden dispatch.
-                current_app.logger.exception(
-                    "Service-area eligibility could not be verified for driver matching"
+                if driver_lat is None or driver_lon is None:
+                    continue
+                area_check = assess_driver_for_pickup_area(
+                    driver_lat, driver_lon, pickup_lat, pickup_lon,
+                    service="transport", config=service_area_config,
                 )
-                continue
+                if not area_check.get("supported"):
+                    continue
 
             score = 0
 
