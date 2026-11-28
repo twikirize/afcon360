@@ -443,7 +443,10 @@
       {% endif %}
       {% endif %}
       {% if o0.get('distance_km') is not none %}
-      <span>·</span><span>Est. {{ ('%.1f'|format(o0.get('distance_km')|float)) }} km</span>
+      <span>·</span><span>{{ 'Road route' if o0.get('distance_basis') == 'road_network' else 'Est.' }} {{ ('%.1f'|format(o0.get('distance_km')|float)) }} km</span>
+      {% endif %}
+      {% if o0.get('distance_basis') == 'road_network' and o0.get('estimated_duration_minutes') is not none %}
+      <span>·</span><span>approx. {{ o0.get('estimated_duration_minutes') }} min driving</span>
       {% endif %}
       {% if o0_veh.get('license_plate') %}
       <span>·</span><span>{{ o0_veh.get('license_plate') }}{% if o0_veh.get('make') %} · {{ o0_veh.get('make') }} {{ o0_veh.get('model') or '' }}{% endif %}</span>
