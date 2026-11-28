@@ -327,6 +327,23 @@ Reuse the existing development setup rather than inventing new ports or launchin
 - **Local HTTP test server: port 500** — where supported by the task and repository configuration.
 - **Playwright D3 test server: port 5611** — defined in `playwright.config.js` (`D3_TEST_PORT`), serves the real app via `tests/browser/start_test_server.py` with `TestingConfig` against the isolated `*_test` database.
 
+### Android Device Control (adb)
+
+`adb` is installed on this machine but has not always been on PATH, so a bare `adb devices` can fail with "The term 'adb' is not recognized". That is a PATH problem, not an absent device — never report the phone as unreachable on that error. Use the wrapper, which resolves the binary and a single target:
+
+```
+mobile/scripts/adb-phone.ps1 devices                  # devices, kind, state, real screen size
+mobile/scripts/adb-phone.ps1 -Serial <serial> dump    # labelled nodes + exact tap points
+mobile/scripts/adb-phone.ps1 -Serial <serial> shot    # screenshot pulled to %TEMP%
+mobile/scripts/adb-phone.ps1 tap <x> <y>              # also swipe, key, launch
+```
+
+- **An emulator may be attached beside the phone.** While two devices are ready, every plain adb command fails with `more than one device/emulator`. Pass `-Serial`.
+- **Tap coordinates come from `dump`, never from screenshot pixels.** The pulled PNG can be 720x1520 while the screen is 720x1496, so a guessed tap lands off-target and fails silently.
+- **`launch 2` exists for OTA verification.** The first cold start downloads the update, the second applies it. Assert only after both.
+- **A screenshot you have not opened proves nothing.** Open the PNG and describe what it shows, or report that the check was not run.
+- Device control is for inspection and evidence. Do **not** install, uninstall, clear app data, reboot, or change device settings as part of a node without explicit authorization in the contract.
+
 ### Verify the Target Before Acting
 
 - Establish the host, protocol, application configuration, and database target **before** performing state-changing browser actions.
