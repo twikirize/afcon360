@@ -440,6 +440,38 @@ class MatchingService:
             if not is_matchable:
                 continue
 
+            # When geofencing is enabled, a driver may only receive offers
+            # for pickups in the same active Transport service area as the
+            # driver's fresh canonical location. This shared ranker serves
+            # legacy bookings and request-first dispatch.
+            try:
+                from app.geo.service_areas import (
+                    assess_driver_for_pickup_area,
+                    get_service_area_config,
+                )
+                service_area_config = get_service_area_config()
+                if service_area_config.get("enabled") is True:
+                    driver_lat, driver_lon = MatchingService._coordinates_or_none(
+                        driver_location
+                    )
+                    pickup_lat, pickup_lon = MatchingService._coordinates_or_none(
+                        booking.pickup_location
+                    )
+                    if driver_lat is None or pickup_lat is None:
+                        continue
+                    area_check = assess_driver_for_pickup_area(
+                        driver_lat, driver_lon, pickup_lat, pickup_lon,
+                        service="transport", config=service_area_config,
+                    )
+                    if not area_check.get("supported"):
+                        continue
+            except Exception:
+                # Geofence configuration failures must not broaden dispatch.
+                current_app.logger.exception(
+                    "Service-area eligibility could not be verified for driver matching"
+                )
+                continue
+
             score = 0
 
             # 1. Proximity
