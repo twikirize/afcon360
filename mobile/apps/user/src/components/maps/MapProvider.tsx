@@ -62,13 +62,27 @@ html,body,#map{height:100%;width:100%;margin:0;background:#dfe7e0}
     maxZoom:19,
     attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   });
-  var tileOk=0,tileFailed=0,reportedDown=false;
-  tiles.on('tileload',function(){tileOk++;if(tileOk===1)send({type:'map_ready'});});
+  var tileOk=0,tileFailed=0,reportedDown=false,failedTimer=null;
+  tiles.on('tileload',function(){
+    tileOk++;
+    if(tileOk===1){
+      if(failedTimer){clearTimeout(failedTimer);failedTimer=null;}
+      send({type:'map_ready'});
+    }
+  });
   tiles.on('tileerror',function(){
     tileFailed++;
-    // A single missing tile is normal at the edge of a viewport. Only a
-    // viewport with no successful tile at all is a real outage.
-    if(tileOk===0&&tileFailed>=4&&!reportedDown){reportedDown=true;send({type:'map_tiles_unavailable'});}
+    // Tile requests are independent. Give the rest of the viewport time to
+    // return before declaring the entire map unavailable.
+    if(tileOk===0&&tileFailed>=4&&!reportedDown&&!failedTimer){
+      failedTimer=setTimeout(function(){
+        failedTimer=null;
+        if(tileOk===0&&tileFailed>=4&&!reportedDown){
+          reportedDown=true;
+          send({type:'map_tiles_unavailable'});
+        }
+      },3000);
+    }
   });
   tiles.addTo(map);
   var pins={pickup:null,dropoff:null},line=null;
@@ -179,7 +193,6 @@ export function WebViewMap({ pickup, dropoff, onMapReady, onMapError, onMapMessa
       nestedScrollEnabled={false}
       onMessage={handleMessage}
       onError={() => onMapError(MAP_TILE_ERROR_MESSAGE)}
-      onHttpError={() => onMapError(MAP_TILE_ERROR_MESSAGE)}
       style={[styles.fill, style]}
     />
   );
