@@ -5,6 +5,7 @@
 {% block head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css">
 <style>
   .geo-admin-wrap{max-width:1180px;margin:0 auto}
   #serviceAreaMap{height:440px;border:1px solid #d8dee5;border-radius:12px;z-index:0}
@@ -215,7 +216,13 @@
   var mapNode = document.getElementById('serviceAreaMap');
   var geoField = document.getElementById('geometry');
   var boundaryStatus = document.getElementById('areaBoundaryStatus');
-  if (!mapNode || !geoField || !window.L) return;
+  if (!mapNode || !geoField) return;
+  if (!window.L) {
+    if (boundaryStatus) {
+      boundaryStatus.textContent = 'Map tools could not load. Open the advanced GeoJSON editor or check the map asset connection.';
+    }
+    return;
+  }
 
   var mapConfig = {{ map_config|tojson }};
   var searchInput = document.getElementById('areaMapSearch');
