@@ -122,14 +122,6 @@ class TestRequestCreate:
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
 
-        resp = client.post(URL, json=_payload(app))
-        assert resp.status_code == 201, resp.get_data(as_text=True)
-        data = resp.get_json()["data"]
-        assert data["request_id"] and len(data["request_id"]) >= 16
-        assert data["status"] == "searching"
-        assert data["cycle"]["number"] == 1
-        assert data["cycle"]["status"] == "searching"
-        assert data["cycle"]["deadline"]
         body = _payload(app)
         resp = client.post(URL, json=body)
         assert resp.status_code == 201, resp.get_data(as_text=True)
