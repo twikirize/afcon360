@@ -272,13 +272,48 @@ switch ($Action) {
     $times = 1
     if ($Arg1) { $times = [int]$Arg1 }
     if ($times -lt 1) { $times = 1 }
+
+    # adb writes progress and warnings to stderr, and $ErrorActionPreference = "Stop"
+    # turns any of that into a terminating error even when the command succeeded.
+    # Relax it here and judge each step by its exit code instead.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+
+    $component = $null
+    foreach ($line in (& $adb -s $script:target shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER $Package 2>&1)) {
+      if ("$line" -match "\S+/\S+") { $component = "$line".Trim() }
+    }
+    if (-not $component) {
+      $ErrorActionPreference = $previous
+      throw "Could not resolve a launcher activity for $Package on $script:target."
+    }
+
     for ($run = 1; $run -le $times; $run++) {
-      Adb shell am force-stop $Package
+      & $adb -s $script:target shell am force-stop $Package 2>&1 | Out-Null
       Start-Sleep -Milliseconds 800
-      Adb shell monkey -p $Package -c android.intent.category.LAUNCHER 1 2>&1 | Out-Null
-      "Cold start ${run} of ${times}: $Package on $script:target"
+      # -W waits for the process, which is what makes this a cold start rather
+      # than a request the shell forgets about.
+      $startOutput = & $adb -s $script:target shell am start -W -n $component 2>&1
+      $code = $LASTEXITCODE
+      if ($code -ne 0) {
+        $ErrorActionPreference = $previous
+        throw "am start failed (exit $code) for $component on $script:target."
+      }
+      $status = ($startOutput | Select-String -Pattern "Status:" | Select-Object -First 1)
+      $label = "Cold start ${run} of ${times}: $component on $script:target"
+      if ($status) { $label = $label + " (" + $status.ToString().Trim() + ")" }
+      $label
       if ($run -lt $times) { Start-Sleep -Seconds 20 }
     }
+
+    foreach ($line in (& $adb -s $script:target shell dumpsys window 2>&1)) {
+      if ("$line" -match "mCurrentFocus") {
+        "In front: " + ("$line".Trim() -replace "\s+", " ")
+        break
+      }
+    }
+    $ErrorActionPreference = $previous
+
     if ($times -gt 1) {
       "Note: the first launch downloads the update, the second applies it. Let both settle before asserting anything on screen."
     }
