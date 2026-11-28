@@ -11,6 +11,8 @@ import { useRouter } from "expo-router";
 import { palette as basePalette } from "@afcon360/mobile-ui";
 import { PamojaScreen as AppScreen, PamojaPageHeader as PageHeader } from "../../src/components/PamojaScreen";
 import { useAuth } from "../../src/auth/AuthProvider";
+import { SignInScreen } from "../../src/auth/SignInScreen";
+import { AuthLink } from "@afcon360/mobile-ui/auth";
 import { getSelectedApiBaseUrl, SERVER_SELECTION_ENABLED } from "../../src/services/api";
 
 const palette = {
@@ -128,16 +130,15 @@ export default function Account() {
   const signOut = async () => {
     try {
       await logout();
-      router.replace("/login");
     } catch {
       // Local credentials are cleared by AuthProvider even if the server is
       // unreachable. Tell the user that remote revocation could not be proven.
-      router.replace("/login");
       Alert.alert(
         "Server sign-out not confirmed",
         "This device has been signed out, but AFCON360 could not confirm that the server session was revoked. Connect to the internet and sign in again to refresh your session, and review any other devices where you are signed in."
       );
     }
+    // No navigation: signing out turns this tab back into its sign-in form.
   };
 
   const displayName = user?.display_name || user?.username || "AFCON360 member";
@@ -155,6 +156,13 @@ export default function Account() {
       router.push("/connection" as never);
     }
   }, [router]);
+
+  // Signed out, this tab is the app's sign-in surface: the same screen the app
+  // used to open on, mounted here in place. It brings its own screen and scroll
+  // view, so signing out of a long account page never leaves a blank viewport.
+  if (!user) {
+    return <SignInScreen />;
+  }
 
   return (
     <AppScreen>
@@ -329,6 +337,7 @@ export default function Account() {
           symbol="⬆"
           onPress={() => router.push("/(service)/settings" as never)}
           external={false}
+          last={!SERVER_SELECTION_ENABLED}
         />
         {SERVER_SELECTION_ENABLED ? (
           <WebsiteMenuRow
@@ -339,16 +348,7 @@ export default function Account() {
             external={false}
             last
           />
-        ) : (
-          <WebsiteMenuRow
-            title="Version & updates"
-            description="View the installed version, check for updates and manage preview connections"
-            symbol="⬆"
-            onPress={() => router.push("/(service)/settings" as never)}
-            external={false}
-            last
-          />
-        )}
+        ) : null}
       </AccountMenuSection>
 
       {__DEV__ && (

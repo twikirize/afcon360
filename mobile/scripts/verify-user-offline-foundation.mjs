@@ -6,7 +6,14 @@ const checks = [
   ["SDK 58 SQLite package and lockfile remain aligned", (() => { const pkg = JSON.parse(read("apps/user/package.json")); const lock = read("pnpm-lock.yaml"); const spec = pkg.dependencies?.["expo-sqlite"]; const match = lock.match(/^\s{6}expo-sqlite:\s*\n^\s{8}specifier: ([^\n]+)\s*\n^\s{8}version: ([^\n]+)/m); return typeof spec === "string" && /^~58\.0\.\d+$/.test(spec) && match?.[1] === spec && /^58\.0\.\d+/.test(match?.[2] ?? ""); })()],
   ["SDK 58 cryptographic random package is declared", read("apps/user/package.json").includes('"expo-crypto": "~58.0.9"')],
   ["SQLCipher native build plugin is enabled", /useSQLCipher:\s*true/.test(read("apps/user/app.config.ts"))],
-  ["Native app version is incremented for this binary change", /version:\s*"1\.0\.2"/.test(read("apps/user/app.config.ts"))],
+  // Floor, not a pinned literal: any version at or above the 1.0.2 binary change
+  // satisfies this, so a future legitimate bump does not read as a regression.
+  ["Native app version is incremented for this binary change", (() => {
+    const v = read("apps/user/app.config.ts").match(/version:\s*"(\d+)\.(\d+)\.(\d+)"/);
+    if (!v) return false;
+    const [major, minor, patch] = [Number(v[1]), Number(v[2]), Number(v[3])];
+    return major > 1 || (major === 1 && (minor > 0 || patch >= 2));
+  })()],
   ["Runtime SQLCipher support is verified", /PRAGMA cipher_version/.test(read("apps/user/src/offline/storage.ts"))],
   ["Database key is generated with secure random bytes", /getRandomBytesAsync\(32\)/.test(read("apps/user/src/offline/storage.ts"))],
   ["Database key is stored in platform secure storage", /SecureStore\.setItemAsync/.test(read("apps/user/src/offline/storage.ts"))],
@@ -24,9 +31,9 @@ const checks = [
       /<HomeHeader\s*\/>/.test(home) &&
       /<HomeHeroBanner\b/.test(home) &&
       /<HomeServiceGrid\s*\/>/.test(home) &&
-      /<OurServicesHeader\b/.test(home) &&
+      /<HomeSectionHeader\b/.test(home) &&
       /<WalletCard\s*\/>/.test(home) &&
-      /<BookingsCard\s*\/>/.test(home) &&
+      /<AdventureFeed\s*\/>/.test(home) &&
       /<RefreshControl\b/.test(home) &&
       /onRefresh=\{onRefresh\}/.test(home) &&
       /userOfflineRepository\.readHomeFeed\(user\.public_id\)/.test(home) &&
@@ -187,15 +194,50 @@ const checks = [
   ["Account-to-settings journey taps the real Version & updates action, not the App settings section heading", /tap_text_scrolling\("Version & updates"\)/.test(read("scripts/verify-user-authenticated-journey.py"))],
   ["Account return restores the scroll position before asserting the heading", /def wait_for_text_scrolling_to_top/.test(read("scripts/verify-user-authenticated-journey.py")) && /wait_for_text_scrolling_to_top\(\s*"Your account\."/s.test(read("scripts/verify-user-authenticated-journey.py"))],
   ["Login route has one authenticated-state redirect, not duplicate submit-handler navigation", read("apps/user/app/login.tsx").includes('if (!loading && user) router.replace("/(tabs)");') && !read("apps/user/app/login.tsx").includes('onPress={() => signIn(identifier, password).then') && !read("apps/user/app/login.tsx").includes('onPress={() => verifyMfa(code).then')],
+  ["First launch always opens the tabs, never the login route", (() => {
+    const root = read("apps/user/app/index.tsx");
+    return root.includes('<Redirect href="/(tabs)" />') && !root.includes('"/login"') && !root.includes("useAuth");
+  })()],
   ["ServiceEntry receives serviceKey because React reserves the key attribute", /serviceKey: ServiceKey/.test(read("apps/user/src/components/ServiceEntry.tsx")) && /function ServiceEntry\(\{\s*serviceKey,/.test(read("apps/user/src/components/ServiceEntry.tsx")) && !/function ServiceEntry\(\{\s*key,/.test(read("apps/user/src/components/ServiceEntry.tsx"))],
   ["Every Pamoja Home service card supplies its explicit serviceKey", (read("apps/user/src/components/GeminiHomeTop.tsx").match(/<ServiceEntry\b[^>]*serviceKey=/g) || []).length === 6 && !/<ServiceEntry\b(?![^>]*serviceKey=)[^>]*>/.test(read("apps/user/src/components/GeminiHomeTop.tsx"))],
-  ["Focused login-and-navigation mode verifies curated Home, safe Activity/Wallet/Account tab navigation and return Home", /AFCON360_E2E_LOGIN_NAVIGATION_ONLY/.test(read("scripts/verify-user-authenticated-journey.py")) && /USER_ANDROID_E2E_LOGIN_NAVIGATION_PASS/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Activity", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Wallet", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Account", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /tap_text\("Home", last=True, allow_tab_bar=True\)/.test(read("scripts/verify-user-authenticated-journey.py")) && /allow_tab_bar: bool = False/.test(read("scripts/verify-user-authenticated-journey.py")) && /system_navigation_top_y = int\(screen_height \* 0\.96\)/.test(read("scripts/verify-user-authenticated-journey.py"))],
-  ["Focused login-and-navigation gate blocks the complete authenticated journey", /name: Focused login and primary navigation gate[\s\S]*?id: login_navigation_journey[\s\S]*?AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1/.test(read("../.github/workflows/mobile-workspace.yml"))],
+  ["Signed-out journey follows public Home, guest Wallet and Account-tab sign-in", (() => {
+    const journey = read("scripts/verify-user-authenticated-journey.py");
+    const account = read("apps/user/app/(tabs)/account.tsx");
+    const wallet = read("apps/user/app/(tabs)/wallet.tsx");
+    const tabs = read("apps/user/app/(tabs)/_layout.tsx");
+    return /label="signed-out curated Pamoja Home"/.test(journey) &&
+      /tap_text\("Wallet", last=True, allow_tab_bar=True\)/.test(journey) &&
+      /label="signed-out Wallet guest page"/.test(journey) &&
+      /tap_text\("Account", last=True, allow_tab_bar=True\)/.test(journey) &&
+      /<SignInScreen \/>/.test(account) &&
+      /<SignInForm \/>/.test(read("apps/user/src/auth/SignInScreen.tsx")) &&
+      /WalletGuestView/.test(wallet) &&
+      !/if \(!user\) return <Redirect href="\/login" \/>/.test(tabs);
+  })()],
+  ["Authenticated journey models in-place Account sign-in and logout", (() => {
+    const journey = read("scripts/verify-user-authenticated-journey.py");
+    const account = read("apps/user/app/(tabs)/account.tsx");
+    const signInForm = read("apps/user/src/auth/SignInForm.tsx");
+    const signOut = account.slice(account.indexOf("const signOut"), account.indexOf("const displayName"));
+    return /label="authenticated Account after in-place sign-in"/.test(journey) &&
+      /tap_text\("Home", last=True, allow_tab_bar=True\)/.test(journey) &&
+      /label="signed-out Account-tab form after in-place logout"/.test(journey) &&
+      !journey.includes("AFCON360_E2E_LOGIN_NAVIGATION_ONLY") &&
+      !/router\.(replace|push)\("\/login"\)/.test(signOut) &&
+      !/router\.(replace|push)\("\/login"\)/.test(signInForm);
+  })()],
+  ["CI runs the complete authenticated User journey in one Android emulator session", (() => {
+    const workflow = read("../.github/workflows/mobile-workspace.yml");
+    return workflow.includes("Authenticate and verify updated User journeys") &&
+      workflow.includes("id: android_journey") &&
+      workflow.includes("script: python mobile/scripts/verify-user-authenticated-journey.py") &&
+      !workflow.includes("login_navigation_journey") &&
+      !workflow.includes("AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1");
+  })()],
+  ["Android E2E selects Explore through the FAB accessibility label, not the obsolete five-equal-tab coordinate fallback", read("scripts/verify-user-authenticated-journey.py").includes('tap_text("Explore Pamoja", last=True, allow_tab_bar=True)') && /accessibilityLabel="Explore Pamoja"/.test(read("apps/user/src/components/home/PamojaTabBar.tsx"))],
   ["Android-version matrix runs only after the primary journey succeeds", /needs\.user-authenticated-journey\.result == 'success'[\s\S]*?needs\.user-authenticated-journey\.outputs\.apk_rebuilt == 'true'/.test(read("../.github/workflows/mobile-workspace.yml"))],
   ["Failure diagnostics capture the app process log independently", /failure-app-logcat\.txt/.test(read("scripts/verify-user-authenticated-journey.py")) && /failure-activity-top\.txt/.test(read("scripts/verify-user-authenticated-journey.py"))],
-  ["CI runs focused login and primary navigation before the full authenticated journey", /name: Focused login and primary navigation gate[\s\S]*?id: login_navigation_journey[\s\S]*?AFCON360_E2E_LOGIN_NAVIGATION_ONLY=1/.test(read("../.github/workflows/mobile-workspace.yml"))],
-  ["Full authenticated journey is gated on successful login-and-navigation proof", /name: Install, authenticate, test services, restore session and sign out\s+if: \$\{\{ steps\.login_navigation_journey\.outcome == 'success' \}\}/.test(read("../.github/workflows/mobile-workspace.yml"))],
-  ["Android journey scrolls Home to assert My Events instead of expecting the entire page in one viewport", /wait_for_text_scrolling/.test(read("scripts/verify-user-authenticated-journey.py")) && !/wait_for_text\("Your world,",\s*"My Events"/.test(read("scripts/verify-user-authenticated-journey.py"))],
+  ["Android journey checks the updated Home wallet card, not the removed My bookings tile", /wait_for_text_scrolling\(\s*"Open your Pamoja wallet"/.test(read("scripts/verify-user-authenticated-journey.py")) && !/My bookings|Manage your stays and rides/.test(read("scripts/verify-user-authenticated-journey.py"))],
   ["Active offline foundation branch is included in CI", /feat\/user-offline-first-foundation-20261117/.test(read("../.github/workflows/mobile-workspace.yml"))],
 ];
 

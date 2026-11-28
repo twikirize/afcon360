@@ -108,6 +108,7 @@ def load_geo_config(app=None) -> GeoConfig:
             kind=get("tiles_kind", "GEO_TILES_KIND", "pmtiles") or "pmtiles",
             base_url=get("tiles_url", "GEO_TILES_URL"),
             style_url=get("tiles_style_url", "GEO_TILES_STYLE_URL"),
+            upstream_url=get("tiles_upstream_url", "GEO_TILES_UPSTREAM_URL"),
             enabled=True,
         ),
         location_ttl_seconds=ttl,

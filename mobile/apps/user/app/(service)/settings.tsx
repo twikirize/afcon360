@@ -97,7 +97,6 @@ function AppUpdateControls() {
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
   const [availableUpdate, setAvailableUpdate] = useState<AvailableUpdate | null>(null);
 
-  const appVersion = Constants.expoConfig?.version ?? "Unknown";
   const runtimeVersion = Updates.runtimeVersion ?? "Not reported";
   const channel = Updates.channel ?? "Not configured";
   const runningUpdateId = Updates.updateId;
@@ -221,7 +220,7 @@ function AppUpdateControls() {
         </Text>
       </View>
 
-      <InfoRow label="Installed version" value={appVersion} hint="Version reported by this installation" />
+      {/* The installed version is shown once, in the summary panel above. */}
       <InfoRow label="Compatible runtime" value={runtimeVersion} hint="OTA updates must match this runtime version" />
       <InfoRow label="Update channel" value={channel} />
       <InfoRow

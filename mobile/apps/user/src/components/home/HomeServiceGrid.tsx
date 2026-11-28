@@ -1,16 +1,18 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ImageBackground, useWindowDimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { homeDesign } from '../../theme/tokens';
 
 type ServiceKey = 'transport' | 'stays' | 'events' | 'adventure';
+type ServiceIcon = 'car-outline' | 'bed-outline' | 'calendar-outline' | 'compass-outline';
 
 interface Service {
   key: ServiceKey;
   title: string;
   subtitle: string;
-  icon: string;
+  icon: ServiceIcon;
   image: string;
   destination: string;
 }
@@ -21,7 +23,7 @@ const SERVICES: Service[] = [
     title: 'Transport',
     subtitle: 'Ride with ease',
     icon: 'car-outline',
-    image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=900',
+    image: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?q=80&w=400&auto=format&fit=crop',
     destination: '/(service)/ride',
   },
   {
@@ -29,7 +31,7 @@ const SERVICES: Service[] = [
     title: 'Stays',
     subtitle: 'Find the best stays',
     icon: 'bed-outline',
-    image: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=900',
+    image: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?q=80&w=400&auto=format&fit=crop',
     destination: '/(service)/stays',
   },
   {
@@ -37,7 +39,7 @@ const SERVICES: Service[] = [
     title: 'Events & Tickets',
     subtitle: 'Be part of it',
     icon: 'calendar-outline',
-    image: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?w=900',
+    image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=400&auto=format&fit=crop',
     destination: '/(service)/events',
   },
   {
@@ -45,112 +47,10 @@ const SERVICES: Service[] = [
     title: 'Adventure',
     subtitle: 'Explore more',
     icon: 'compass-outline',
-    image: 'https://images.unsplash.com/photo-1516026672322-bc52d61a55d5?w=900',
+    image: 'https://images.unsplash.com/photo-1516026672322-bc52d61a55d5?q=80&w=400&auto=format&fit=crop',
     destination: '/(service)/adventure',
   },
 ];
-
-const NARROW_CARD_THRESHOLD = 160;
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 24,
-  },
-  serviceCard: {
-    height: 185,
-    borderRadius: 29,
-    overflow: 'hidden',
-    backgroundColor: homeDesign.primaryGreenDark,
-    elevation: homeDesign.elevation,
-    shadowColor: homeDesign.shadowColor,
-    shadowOffset: homeDesign.shadowOffset,
-    shadowOpacity: homeDesign.shadowOpacity,
-    shadowRadius: homeDesign.shadowRadius,
-  },
-  cardImage: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  imageShade: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: homeDesign.cardShade,
-  },
-  cardContent: {
-    minHeight: 88,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    backgroundColor: homeDesign.cardContentBg,
-  },
-  cardContentHorizontal: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  cardContentVertical: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  serviceIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    borderWidth: 2,
-    borderColor: homeDesign.serviceIconBorder,
-    backgroundColor: homeDesign.serviceIconBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  serviceIconHorizontal: {
-    marginRight: 8,
-  },
-  serviceIconVertical: {
-    marginBottom: 4,
-  },
-  serviceText: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'center',
-    textAlign: 'center',
-  },
-  serviceTextHorizontal: {
-    textAlign: 'left',
-    alignItems: 'flex-start',
-  },
-  serviceTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  serviceSubtitle: {
-    fontSize: 12,
-    color: '#F5F2E8',
-    marginTop: 4,
-  },
-  arrowCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  arrowCircleHorizontal: {
-    flexShrink: 0,
-    marginLeft: 4,
-  },
-  arrowCircleVertical: {
-    position: 'absolute',
-    right: 10,
-    bottom: 10,
-  },
-});
-
-type IoniconsName = 'car-outline' | 'bed-outline' | 'calendar-outline' | 'compass-outline' | 'arrow-forward';
 
 interface HomeServiceGridProps {
   onServicePress?: (key: ServiceKey) => void;
@@ -158,12 +58,8 @@ interface HomeServiceGridProps {
 
 export const HomeServiceGrid = ({ onServicePress }: HomeServiceGridProps) => {
   const router = useRouter();
-  const { width: screenWidth } = useWindowDimensions();
-
-  const horizontalPadding = 24;
-  const columnGap = 16;
-  const cardWidth = (screenWidth - horizontalPadding * 2 - columnGap) / 2;
-  const isNarrow = cardWidth < NARROW_CARD_THRESHOLD;
+  const { width } = useWindowDimensions();
+  const cardWidth = (width - 20 * 2 - 12) / 2;
 
   const handlePress = (service: Service) => {
     if (onServicePress) {
@@ -181,38 +77,28 @@ export const HomeServiceGrid = ({ onServicePress }: HomeServiceGridProps) => {
           accessibilityLabel={service.title}
           onPress={() => handlePress(service)}
           style={[styles.serviceCard, { width: cardWidth }]}
-          activeOpacity={0.88}
+          activeOpacity={0.9}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <ImageBackground
             source={{ uri: service.image }}
             style={styles.cardImage}
-            imageStyle={{ borderRadius: 29 }}
+            imageStyle={styles.cardImageStyle}
             resizeMode="cover"
           >
-            <View style={styles.imageShade} />
-            <View style={[
-              styles.cardContent,
-              isNarrow ? styles.cardContentVertical : styles.cardContentHorizontal,
-            ]}>
-              <View style={[
-                styles.serviceIcon,
-                isNarrow ? styles.serviceIconVertical : styles.serviceIconHorizontal,
-              ]}>
-                <Ionicons name={service.icon as IoniconsName} size={isNarrow ? 28 : 26} color="#FFFFFF" />
+            <LinearGradient
+              colors={['rgba(9, 56, 27, 0.28)', 'rgba(9, 56, 27, 0.96)'] as const}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.cardContent}>
+              <View style={styles.iconCircle}>
+                <Ionicons name={service.icon} size={19} color="#FFFFFF" />
               </View>
-              <View style={[
-                styles.serviceText,
-                isNarrow ? styles.serviceTextHorizontal : {},
-              ]}>
-                <Text style={styles.serviceTitle}>{service.title}</Text>
-                <Text style={styles.serviceSubtitle}>{service.subtitle}</Text>
-              </View>
-              <View style={[
-                styles.arrowCircle,
-                isNarrow ? styles.arrowCircleVertical : styles.arrowCircleHorizontal,
-              ]}>
-                <Ionicons name="arrow-forward" size={isNarrow ? 16 : 18} color={homeDesign.primaryGreenDark} />
+              <View style={styles.cardTextWrap}>
+                <Text style={styles.cardTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{service.title}</Text>
+                <Text style={styles.cardSubtitle} numberOfLines={1}>{service.subtitle}</Text>
               </View>
             </View>
           </ImageBackground>
@@ -221,5 +107,68 @@ export const HomeServiceGrid = ({ onServicePress }: HomeServiceGridProps) => {
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  serviceCard: {
+    height: 138,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: homeDesign.primaryGreenDark,
+    elevation: 4,
+    shadowColor: '#09381B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  cardImage: {
+    flex: 1,
+  },
+  cardImageStyle: {
+    borderRadius: 16,
+  },
+  cardContent: {
+    flex: 1,
+    // Icon and words sit together at the bottom of the tile, both centred.
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    padding: 12,
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0A4222',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardTextWrap: {
+    width: '100%',
+    minWidth: 0,
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  cardTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  cardSubtitle: {
+    color: '#E8F0EA',
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+});
 
 export default HomeServiceGrid;

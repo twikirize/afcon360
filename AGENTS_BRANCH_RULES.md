@@ -3,6 +3,8 @@
 **Effective:** 2026-11-23  
 **Authority:** This document governs all agent work in the User app repository.  
 **Repository:** `C:\Users\OBED\Desktop\afcon360-user-dev` (only)
+**Consolidated:** 2026-11-27 — merged with the copy that was held in `C:\Users\OBED\Desktop\afcon360_app`, which contributed §8. This is now the single copy; that checkout no longer carries its own.
+**Precedence:** where §3.2 and §8 name different commit targets, §8 governs, because it is the only flow that GitHub branch protection on the canonical branch permits.
 
 ---
 
@@ -81,7 +83,7 @@ The local workspace runs a **live Metro + Flask + ADB reverse tunnel** stack:
 
 ---
 
-## 4. Current State (2026-11-23)
+## 4. Current State (2026-11-23 — dated snapshot, not current state)
 
 | Item | Status |
 |------|--------|
@@ -126,6 +128,31 @@ The local workspace runs a **live Metro + Flask + ADB reverse tunnel** stack:
 | `git status --short` | See 6 modified + 11 untracked (expected) |
 | `gh pr view 128 --repo twikirize/afcon360 --json statusCheckRollup` | Check PR gates |
 | `cat metro_status.json` | Verify Metro running |
+
+---
+
+## 8. User APK Canonical Branch — PR Workflow (GitHub Branch Protection)
+
+The User APK canonical branch is `feat/native-user-app-integration-20261108`.
+GitHub branch protection on that branch requires changes to arrive via pull request.
+
+**MANDATORY: agents must always create a pull request with a shareable link for human review and merge. Direct pushes to the canonical branch are blocked by branch protection.**
+
+**Authorized workflow for agents:**
+
+1. Create a temporary branch: `work/<feature-slug>-YYYYMMDD` (e.g. `work/user-tabs-docs-20261127`)
+2. Commit changes to the temporary branch (use explicit `git add <files>`, not `git add -A`)
+3. Push the temporary branch to origin
+4. Create a PR from the temporary branch into `feat/native-user-app-integration-20261108`:
+   ```bash
+   gh pr create --base feat/native-user-app-integration-20261108 --head work/<feature-slug>-YYYYMMDD --title "type(scope): description" --body "## Summary\n...\n\n## Testing\n..."
+   ```
+5. **Share the PR URL with the human** for review and squash-merge (`https://github.com/twikirize/afcon360/pull/<number>`)
+6. After merge, delete the temporary branch (auto-deleted by squash-merge when `--delete-branch` is used)
+
+**Runtime file guard:** never stage `metro_status.json`, `metro_trigger.json`, or other runtime artifacts. Use explicit file paths in `git add`.
+
+**No PRs to `main`** — the native app branch-boundary guard (AGENTS.md §53.3) auto-rejects them.
 
 ---
 

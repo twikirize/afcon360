@@ -327,6 +327,23 @@ Reuse the existing development setup rather than inventing new ports or launchin
 - **Local HTTP test server: port 500** — where supported by the task and repository configuration.
 - **Playwright D3 test server: port 5611** — defined in `playwright.config.js` (`D3_TEST_PORT`), serves the real app via `tests/browser/start_test_server.py` with `TestingConfig` against the isolated `*_test` database.
 
+### Android Device Control (adb)
+
+`adb` is installed on this machine but has not always been on PATH, so a bare `adb devices` can fail with "The term 'adb' is not recognized". That is a PATH problem, not an absent device — never report the phone as unreachable on that error. Use the wrapper, which resolves the binary and a single target:
+
+```
+mobile/scripts/adb-phone.ps1 devices                  # devices, kind, state, real screen size
+mobile/scripts/adb-phone.ps1 -Serial <serial> dump    # labelled nodes + exact tap points
+mobile/scripts/adb-phone.ps1 -Serial <serial> shot    # screenshot pulled to %TEMP%
+mobile/scripts/adb-phone.ps1 tap <x> <y>              # also swipe, key, launch
+```
+
+- **An emulator may be attached beside the phone.** While two devices are ready, every plain adb command fails with `more than one device/emulator`. Pass `-Serial`.
+- **Tap coordinates come from `dump`, never from screenshot pixels.** The pulled PNG can be 720x1520 while the screen is 720x1496, so a guessed tap lands off-target and fails silently.
+- **`launch 2` exists for OTA verification.** The first cold start downloads the update, the second applies it. Assert only after both.
+- **A screenshot you have not opened proves nothing.** Open the PNG and describe what it shows, or report that the check was not run.
+- Device control is for inspection and evidence. Do **not** install, uninstall, clear app data, reboot, or change device settings as part of a node without explicit authorization in the contract.
+
 ### Verify the Target Before Acting
 
 - Establish the host, protocol, application configuration, and database target **before** performing state-changing browser actions.
@@ -427,6 +444,54 @@ pgpass path used, entry count (never contents), ACL, probe commands with exit co
 - Backups, dump files, and credentials remain outside source control. Never commit `.env.local`, `.env.local.pre_cutover`, dump archives, or credential-bearing files. `.env.local.pre_cutover` is a configuration snapshot only; its database name must be re-checked before any rollback use.
 - `afcon360_p1_candidate` is an isolated rehearsal copy of production (restored at `1793011323`, M3 applied and verified). It must not be used by application services, scheduled jobs, notifications, or external integrations, and must not be promoted to production.
 - Any future agent performing database-reliability work must read the documented recovery information in `README.md` before proposing operations that could affect production data.
+
+---
+
+## 11. Mobile Working Folders & Release Documents (Permanent Rule)
+
+**Applies to every agent doing any React Native, Expo, APK, OTA or mobile-test work.**
+
+### 11.1 Two checkouts, one repository
+
+| Folder | Contains | Mobile commands |
+|---|---|---|
+| `C:\Users\OBED\Desktop\afcon360-user-dev` | `mobile/` — the pnpm workspace holding the User and Driver Expo apps | all of them |
+| `C:\Users\OBED\Desktop\afcon360_app` | Flask/web tree with the Python `.venv`. Same origin (`https://github.com/twikirize/afcon360.git`), but **no `mobile/` directory** | none — nothing there can run or publish a mobile app |
+
+- A prompt reading `(.venv) PS C:\Users\OBED\Desktop\afcon360_app>` means you are in the wrong folder for mobile work. `pnpm`, `expo`, `eas` and the contract scripts are not available there.
+- Mobile commands run from `mobile/` in the first folder. The repository root is not a pnpm workspace: `pnpm --filter ...` there fails, and a stale copy (`_mobile_backup_*`) can answer the call with a different `expo` binary.
+- **Publishing is single-source.** `eas update` publishes whatever tree it is run in. Running it from a second copy pushes that copy's bundle to the same channel and silently replaces a good update. Confirm the working directory, the branch (`git rev-parse --abbrev-ref HEAD`) and the version before any publish.
+- Never bump `version` in `apps/user/app.config.ts` without building and installing the matching APK. A JS-only bump publishes to a runtime no installed binary has, which is a silent no-op.
+
+### 11.2 Two documents and one constitution
+
+| Document | Use it | Answers |
+|---|---|---|
+| `docs/engineering/PRE_PR_CHECKS.md` | Part A before every commit or PR; Part B before a build or publish | Is this tree safe to push — and safe to ship, to whom? |
+| `mobile/docs/update_apk.md` | during the build or publish | What are the exact steps? |
+| `AGENTS_BRANCH_RULES.md` | before any branch, commit or push | Where may this work land? |
+
+- Run Part A before asking a human to review a mobile change, and Part B before `eas build` or `eas update`. Fill in the release sign-off table.
+- A green publish is not delivery: the update's runtime must match an installed binary, and the device must cold-start twice before the new bundle runs.
+- If your work changes a command, script name, environment variable or CI workflow these documents describe, update the affected document in the same change. Documentation that has drifted is worse than none, because agents trust it.
+
+### 11.3 Branch rules must exist in both checkouts
+
+`AGENTS_BRANCH_RULES.md` must be present in **both** checkout roots and stay byte-identical, so an agent working in either folder reads the same rules:
+
+| Copy | Serves |
+|---|---|
+| `C:\Users\OBED\Desktop\afcon360-user-dev\AGENTS_BRANCH_RULES.md` | all mobile work |
+| `C:\Users\OBED\Desktop\afcon360_app\AGENTS_BRANCH_RULES.md` | backend work in that checkout |
+
+- **Neither copy may be deleted.** A checkout without the file has agents working without branch rules.
+- If the two differ, copy this checkout's version over the other, report the difference, and confirm with `Get-FileHash`.
+
+- Canonical User app branch: `feat/native-user-app-integration-20261108`. It is protected, so changes arrive through a pull request only. **Never commit to it directly.**
+- Authorized flow for agent work: create `work/<feature-slug>-YYYYMMDD`, commit there with explicit file paths, push, open a PR into the canonical branch, and give the human the PR link. Never `git add -A`, and never stage runtime artifacts such as `metro_status.json` or `metro_trigger.json`.
+- Never open a native-app PR against `main`; the branch-boundary workflow (§53.3) rejects it, and a failing boundary check is intentional.
+- If a checkout is missing the branch constitution entirely, copy it there and report it rather than proceeding without rules.
+- Verify where you are before any commit — `git rev-parse --abbrev-ref HEAD` — and stop if it is the protected canonical branch rather than a `work/` branch.
 
 ---
 

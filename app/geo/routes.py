@@ -294,6 +294,38 @@ def geocode_search():
     return jsonify(payload), 200
 
 
+@geo_bp.get("/api/tiles/<int:z>/<int:x>/<int:y>.png")
+@rate_limit("geo_tiles", limit=600, period=60)
+def raster_tile(z, x, y):
+    """Raster basemap tile for the rider map (map availability node).
+
+    DISCOVERY boundary, same as geocode/reverse: anonymous-or-authenticated,
+    no ``geo.view`` (owner-only) and no GEO module hard-gate. A rider who
+    cannot load a map must still be able to search a place, so this endpoint
+    never blocks the picker.
+
+    Why a proxy: OpenStreetMap refuses tile requests that arrive from an app
+    or WebView with "418 Access blocked". Our server identifies itself with a
+    first-party User-Agent and caches each tile in Redis for a week, which is
+    the sanctioned way to consume the volunteer servers. Never a direct
+    client->OSM call.
+
+    Contract:
+        GET /geo/api/tiles/<z>/<x>/<y>.png
+        - 200 image/png + Cache-Control (public, immutable) when a tile
+          exists; X-Pamoja-Tile-Source is "cache" or "upstream".
+        - 404 when the index cannot exist (z out of 0..19, x/y out of range).
+        - 502 when the upstream refused, timed out, or did not answer an
+          image. The client renders its "Map unavailable" fallback; it never
+          receives a grey tile pretending to be a map.
+        - A provider/upstream failure is logged, never raised: a map outage
+          must not become a 500 for the booking screen.
+    """
+    from app.geo.tile_proxy import tile_response
+
+    return tile_response(z, x, y)
+
+
 @geo_bp.get("/api/reverse")
 @rate_limit("geo_reverse", limit=60, period=60)
 def reverse_lookup():

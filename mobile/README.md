@@ -70,3 +70,20 @@ Never submit preview APKs to Google Play. iOS simulator builds are not distribut
 ## Native User booking map runtime
 
 The User booking flow uses `expo-location` for user-initiated foreground pickup GPS and `react-native-webview` to render the interactive Leaflet/OpenStreetMap surface with draggable pickup and destination pins. These are native dependencies: the User app version/runtime is advanced to **1.0.1**, so the updated booking screen must be paired with one newly built and installed OTA-enabled User binary. Do not send this JavaScript update to the earlier 1.0.0 binary. Once the 1.0.1 OTA-enabled binary is installed, subsequent compatible booking UI, copy and workflow refinements can use Expo Updates without another APK rebuild. Location is requested only after the rider taps the pickup-location control; no background location tracking is enabled.
+
+## Runtime version discipline: APK versus OTA
+
+A new APK is required whenever native code, native configuration or the runtime version changes. Everything that is only JavaScript — layout, styles, copy, images, route and workflow logic — can be delivered with Expo Updates and needs no rebuild.
+
+Never change `version` in `apps/user/app.config.ts` or `apps/driver/app.config.ts` without building and installing a matching APK in the same step. Preview builds derive `runtimeVersion` from that version (`policy: "appVersion"`); production builds derive it from the native fingerprint (`policy: "fingerprint"`). An OTA update is stamped with the runtime of the binary that produced it, and a binary only accepts updates matching its own runtime. Bumping the version without a new binary therefore publishes JavaScript to a runtime **no installed phone reports**.
+
+That failure is silent. `eas update` reports a published update group and exits 0 while every device ignores the update and keeps running its embedded bundle, so a green publish is never proof of delivery. Verify against the channel's runtime and the runtime the device reports, not against the command's exit code.
+
+Current User app state: version and preview runtime are **1.0.3**. The `react-native-svg`, `expo-blur` and `expo-linear-gradient` dependencies added for the home screen are native modules compiled into the binary, which is why that release required a newly built and installed APK. Once a 1.0.3 binary is installed, compatible UI changes can ship as OTA updates.
+
+```powershell
+cd mobile/apps/user
+eas update --channel preview --environment preview --platform android --message "describe the change"
+```
+
+A version bump without a matching build, or an update published for a runtime newer than the installed binary, counts as a failed release even when the command succeeds.
