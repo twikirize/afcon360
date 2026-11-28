@@ -2,8 +2,8 @@
 
 **Status:** Implementation proposal on `feat/geo-service-area-management-20261128`
 **Owner:** GEO
-**Configuration:** `SystemConfig` JSON key `GEO_SERVICE_AREAS`
-**Schema impact:** None. Uses the existing system configuration store.
+**Configuration:** GEO-owned tables `geo_service_areas` and `geo_service_area_policies`
+**Schema impact:** New tables detected by Alembic autogenerate; the operator generates and reviews the migration.
 
 ## 1. Guarantee
 
@@ -48,7 +48,13 @@ The page is `/admin/owner/geofencing` and is guarded by the existing `owner_or_s
 - drawing Polygon/MultiPolygon outlines on the map or pasting GeoJSON;
 - assigning one or more supported services to each area.
 
-Settings are written through `SystemConfig.set(..., value_type='json', category='geo', updated_by=...)`. No Alembic migration is needed.
+Area boundaries and service assignments are persisted in `geo_service_areas`.
+Global enforcement settings are persisted in `geo_service_area_policies`.
+Both models are registered in `app.core.model_registry`, so the repository
+owner can run `flask db migrate` and review the generated table/index/foreign-key
+changes. Until that migration exists, a temporary SystemConfig JSON fallback
+keeps the feature backwards-compatible; it stops being authoritative once the
+new tables are present and the owner saves the configuration.
 
 Enforcement defaults to disabled to avoid unexpectedly rejecting existing journeys before an operator has configured and validated areas. The global switch cannot be enabled unless at least one active area exists. If no Transport area is active, the manager warns that ride quotes and bookings will be rejected while enforcement is on.
 
