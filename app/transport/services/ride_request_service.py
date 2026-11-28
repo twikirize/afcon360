@@ -26,6 +26,7 @@ No second fare path. No second location-validation path.
 import hashlib
 import json
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -483,7 +484,7 @@ class RideRequestService:
                     "distance_basis": "road_network",
                     "route_duration_s": route_duration_s,
                     "estimated_duration_minutes": int(
-                        (route_duration_s + 59.999) // 60
+                        math.ceil(route_duration_s / 60.0)
                     ),
                     "route_provider": route_provider,
                     "created_via": "ride_request_api",
