@@ -1981,8 +1981,11 @@
   }
 
   function optionsError(message){
+    var errorText = (typeof message === 'string' && message.trim())
+      ? message
+      : 'We couldn\'t reach the ride service. Please retry.';
     optionsBox.innerHTML =
-      '<div class="bolt-empty">' + esc(message || 'We couldn\'t reach the ride service. Please retry.') + ' ' +
+      '<div class="bolt-empty">' + esc(errorText) + ' ' +
       '<button type="button" class="bolt-retry" id="retryBtn">Retry</button></div>';
     var rb = document.getElementById('retryBtn');
     if (rb) rb.addEventListener('click', function(){ loadOptions(); });
