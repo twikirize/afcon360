@@ -150,8 +150,8 @@ def test_booking_valid_coordinates_still_books(app):
     valid_payload = _payload(
         pickup_latitude=LAT_A, pickup_longitude=LNG_A,
         dropoff_latitude=LAT_B, dropoff_longitude=LNG_B)
-    add_test_road_quote(valid_payload)
     with app.app_context():
+        add_test_road_quote(valid_payload)
         result = get_booking_service().create_booking(user_id, valid_payload)
     assert result["success"] is True
     with app.app_context():
