@@ -566,7 +566,7 @@ class OfferService:
                 if isinstance(metadata, dict)
                 else None
             )
-            if basis == "straight_line_planner" and distance is not None:
+            if basis in ("road_network", "straight_line_planner") and distance is not None:
                 try:
                     detail["distance_km"] = float(distance)
                     detail["distance_basis"] = basis
@@ -576,6 +576,17 @@ class OfferService:
             else:
                 detail["distance_km"] = None
                 detail["distance_basis"] = basis
+            detail["estimated_duration_minutes"] = getattr(
+                booking, "estimated_duration_minutes", None
+            )
+            detail["route_duration_s"] = (
+                metadata.get("route_duration_s")
+                if isinstance(metadata, dict) else None
+            )
+            detail["route_provider"] = (
+                metadata.get("route_provider")
+                if isinstance(metadata, dict) else None
+            )
 
             detail["vehicle"] = cls._offer_vehicle_or_none(
                 offer, booking, ref
