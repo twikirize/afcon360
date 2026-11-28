@@ -111,9 +111,13 @@ def _annotate_service_area_payload(payload):
     Geocoding candidates are cached, but service-area decisions are not:
     an owner may activate, disable or redraw an area at any time.
     """
-    from app.geo.service_areas import check_service_area_point
+    from app.geo.service_areas import (
+        check_service_area_point,
+        get_service_area_config,
+    )
 
     response = dict(payload or {})
+    settings = get_service_area_config()
     annotated = []
     for item in response.get("results", []):
         if not isinstance(item, dict):
@@ -121,7 +125,7 @@ def _annotate_service_area_payload(payload):
         candidate = dict(item)
         status = check_service_area_point(
             candidate.get("latitude"), candidate.get("longitude"),
-            service="transport",
+            service="transport", config=settings,
         )
         candidate["service_area"] = status
         annotated.append(candidate)
@@ -161,10 +165,12 @@ def service_area_check():
             )
         else:
             point = normalize_point(data.get("latitude"), data.get("longitude"))
+            service_name = str(data.get("service") or "transport").lower()
             result = check_service_area_point(
                 point.latitude, point.longitude,
-                service=str(data.get("service") or "transport").lower(),
+                service=service_name,
             )
+            result.setdefault("field", "location")
     except Exception as exc:
         return jsonify({
             "success": False,
@@ -173,6 +179,8 @@ def service_area_check():
         }), 400
 
     response_data = dict(result)
+    response = jsonify({"success": True, "data": response_data})
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
     if not result.get("supported"):
         response_data["message"] = service_area_error(result)
     elif result.get("enabled"):
@@ -183,7 +191,9 @@ def service_area_check():
         )
     else:
         response_data["message"] = "Service-area enforcement is disabled."
-    return jsonify({"success": True, "data": response_data}), 200
+    response.set_data(json.dumps({"success": True, "data": response_data}))
+    response.headers["Content-Type"] = "application/json"
+    return response, 200
 
 
 def _provider_attribution(provider: str):
