@@ -242,12 +242,19 @@ def check_service_area_point(latitude: Any, longitude: Any,
             matching.append(area)
 
     if matching:
-        area = matching[0]
+        first = matching[0]
         return {
             "enabled": True, "supported": True,
             "reason": "inside_active_area",
-            "area_id": str(area.get("id") or ""),
-            "area_name": str(area.get("name") or ""),
+            "area_id": str(first.get("id") or ""),
+            "area_name": str(first.get("name") or ""),
+            "area_ids": [
+                str(area.get("id") or "") for area in matching
+                if str(area.get("id") or "")
+            ],
+            "area_names": [
+                str(area.get("name") or "") for area in matching
+            ],
             "service": service,
         }
 
@@ -294,15 +301,27 @@ def assess_driver_for_pickup_area(
             "enabled": True, "supported": False,
             "reason": "driver_outside_active_area",
         }
-    if driver_status.get("area_id") != pickup_status.get("area_id"):
+    pickup_area_ids = set(
+        pickup_status.get("area_ids") or [pickup_status.get("area_id")]
+    )
+    driver_area_ids = set(
+        driver_status.get("area_ids") or [driver_status.get("area_id")]
+    )
+    common_area_ids = pickup_area_ids.intersection(driver_area_ids)
+    if not common_area_ids:
         return {
             "enabled": True, "supported": False,
             "reason": "driver_in_different_service_area",
         }
+    area_id = next(
+        (area_id for area_id in (pickup_status.get("area_ids") or [])
+         if area_id in common_area_ids),
+        pickup_status.get("area_id"),
+    )
     return {
         "enabled": True, "supported": True,
         "reason": "driver_in_pickup_service_area",
-        "area_id": pickup_status.get("area_id"),
+        "area_id": area_id,
     }
 
 
@@ -333,27 +352,44 @@ def assess_service_area_trip(pickup: dict, dropoff: dict,
     elif not dropoff_status["supported"]:
         reason = dropoff_status["reason"]
         field = "dropoff"
-    elif (
-        pickup_status.get("area_id") != dropoff_status.get("area_id")
-        and not (
-            service == "transport"
-            and settings.get("allow_cross_area_routes") is True
+    else:
+        pickup_area_ids = pickup_status.get("area_ids") or [
+            pickup_status.get("area_id")
+        ]
+        dropoff_area_ids = set(
+            dropoff_status.get("area_ids") or [dropoff_status.get("area_id")]
         )
-    ):
+        common_area_ids = [
+            area_id for area_id in pickup_area_ids
+            if area_id and area_id in dropoff_area_ids
+        ]
+        if common_area_ids:
+            chosen_id = common_area_ids[0]
+            chosen_name = pickup_status.get("area_name")
+            for area_id, area_name in zip(
+                pickup_status.get("area_ids") or [],
+                pickup_status.get("area_names") or [],
+            ):
+                if area_id == chosen_id:
+                    chosen_name = area_name
+                    break
+            return {
+                "enabled": True, "supported": True,
+                "reason": "inside_active_area", "area_id": chosen_id,
+                "area_name": chosen_name, "service": service,
+                "pickup": pickup_status, "dropoff": dropoff_status,
+            }
+
+        if service == "transport" and settings.get("allow_cross_area_routes") is True:
+            return {
+                "enabled": True, "supported": True,
+                "reason": "inside_active_area", "area_id": None,
+                "area_name": "Multiple supported areas", "service": service,
+                "pickup": pickup_status, "dropoff": dropoff_status,
+            }
+
         reason = "cross_area_route_not_enabled"
         field = "dropoff"
-    else:
-        area_id = pickup_status.get("area_id")
-        area_name = pickup_status.get("area_name")
-        if pickup_status.get("area_id") != dropoff_status.get("area_id"):
-            area_id = None
-            area_name = "Multiple supported areas"
-        return {
-            "enabled": True, "supported": True,
-            "reason": "inside_active_area", "area_id": area_id,
-            "area_name": area_name, "service": service, "pickup": pickup_status,
-            "dropoff": dropoff_status,
-        }
 
     return {
         "enabled": True, "supported": False, "reason": reason,
