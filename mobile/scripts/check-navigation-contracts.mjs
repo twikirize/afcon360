@@ -258,6 +258,46 @@ if (violations.length) {
   process.exit(1);
 }
 
+
+const homeSearchSource = fs.readFileSync(
+  path.join(root, "apps/user/app/(tabs)/index.tsx"),
+  "utf8"
+);
+const exploreSearchSource = fs.readFileSync(
+  path.join(root, "apps/user/app/(tabs)/explore.tsx"),
+  "utf8"
+);
+
+// Home's non-empty query must arrive on Explore as q, and Explore must
+// consume it into the visible input and filter the real service directory.
+if (!homeSearchSource.includes("params: { q: trimmed }")) {
+  throw new Error(
+    "Home search must send a non-empty trimmed query to Explore using the q parameter."
+  );
+}
+if (
+  !exploreSearchSource.includes("useLocalSearchParams") ||
+  !exploreSearchSource.includes("params.q") ||
+  !exploreSearchSource.includes("setSearchQuery(routeQuery)") ||
+  !exploreSearchSource.includes("getMatchingServices(activeQuery)")
+) {
+  throw new Error(
+    "Explore must read the q route parameter, show it in the search field, and filter the service directory."
+  );
+}
+for (const service of [
+  'id: "rides"',
+  'id: "stays"',
+  'id: "experiences"',
+  'id: "events"',
+]) {
+  if (!exploreSearchSource.includes(service)) {
+    throw new Error(
+      "Explore search catalogue is missing an expected service: " + service
+    );
+  }
+}
+
 console.log(
   `Native navigation contract passed: ${approved.length} explicitly labelled website handoffs; password recovery and account deletion remain native.`
 );
