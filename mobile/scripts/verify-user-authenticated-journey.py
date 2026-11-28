@@ -1017,7 +1017,7 @@ def main() -> None:
     # Public tabs remain usable after sign-out; Home and Wallet do not require
     # an authentication redirect just to browse the app.
     tap_text("Home", last=True, allow_tab_bar=True)
-    wait_for_text(
+    wait_for_text_scrolling_to_top(
         "THE WORLD, OPEN TO YOU",
         "Make every",
         timeout=25,
