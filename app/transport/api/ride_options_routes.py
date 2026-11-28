@@ -4,8 +4,8 @@
 This endpoint must not query live driver/vehicle supply or initiate matching.
 It returns short-lived signed fare quotes from the canonical fare engine;
 the rider must confirm the exact quote and payment method before a request
-is persisted and driver matching begins. Distance uses the GEO straight-line
-planner; no road-distance claim is made.
+is persisted and driver matching begins. Every quote uses a resolved GEO road
+route; straight-line distance is never used as a fare substitute.
 """
 import logging
 
@@ -120,16 +120,26 @@ class RideOptionsResource(Resource):
             except Exception:
                 logger.warning("Could not resolve rider home currency; retaining fare currency")
 
-        # Fare discovery is quote-only: do not query online drivers, vehicles,
-        # availability, or ETA before the rider accepts an exact quote.
-        # Every supported class can be priced even when no driver is online.
-        distance_km = _straight_line_km(data)
-        if distance_km is None:
-            return {"success": False, "error": "Invalid coordinates for distance calculation"}, 400
-        distance_basis = "straight_line_planner"
+        # Fare discovery remains quote-only: no live supply lookup, driver
+        # matching, or ETA estimation. The GEO provider supplies one authoritative
+        # driving route, and its exact distance/duration are signed into every
+        # vehicle-class quote returned below.
         quote_at = datetime.now().replace(microsecond=0)
         pickup = {"latitude": float(pickup_lat), "longitude": float(pickup_lng)}
         dropoff = {"latitude": float(dropoff_lat), "longitude": float(dropoff_lng)}
+        from app.transport.services.road_distance_service import measure_road_route
+        from app.utils.exceptions import ServiceUnavailableError
+        try:
+            route = measure_road_route(pickup, dropoff)
+        except ServiceUnavailableError as exc:
+            return {
+                "success": False,
+                "code": "ROUTING_UNAVAILABLE",
+                "error": exc.message,
+            }, 503
+
+        distance_km = route["distance_km"]
+        distance_basis = route["distance_basis"]
 
         # The fare engine currently denominates transport quotes in its own
         # currency. A separate Wallet-currency amount is display-only.
@@ -171,6 +181,8 @@ class RideOptionsResource(Resource):
                     pickup=pickup,
                     dropoff=dropoff,
                     distance_km=distance_km,
+                    route_duration_s=route["duration_s"],
+                    route_provider=route["provider"],
                     quoted_at=quote_at,
                 )
             except Exception as exc:
@@ -202,8 +214,12 @@ class RideOptionsResource(Resource):
                 "currency":       (options[0]["currency"] if options else currency),
                 "home_currency":  preferred_currency,
                 "display_currency": (options[0]["display_currency"] if options else currency),
-                "distance_km":    float(distance_km) if distance_km is not None else None,
+                "distance_km":    float(distance_km),
                 "distance_basis": distance_basis,
+                "duration_s":     route["duration_s"],
+                "duration_minutes": route["duration_minutes"],
+                "route_provider": route["provider"],
+                "route_geometry": route["geometry"],
                 "options":        options,
                 "note": (
                     "Fare estimate only. This endpoint does not query driver "
@@ -217,31 +233,3 @@ class RideOptionsResource(Resource):
         }, 200
 
 
-# ----------------------------------------------------------------- helpers
-
-def _point(data, prefix):
-    try:
-        return (float(data[f"{prefix}_latitude"]),
-                float(data[f"{prefix}_longitude"]))
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-def _valid_coords(lat, lng):
-    return (-90.0 <= lat <= 90.0) and (-180.0 <= lng <= 180.0)
-
-
-def _straight_line_km(data):
-    try:
-        from app.geo.interfaces import GeoPoint
-        from app.geo.services import straight_line_distance_m
-        a, b = _point(data, "pickup"), _point(data, "dropoff")
-        if not a or not b:
-            return None
-        if not (_valid_coords(a[0], a[1]) and _valid_coords(b[0], b[1])):
-            return None
-        return straight_line_distance_m(
-            GeoPoint(a[0], a[1]), GeoPoint(b[0], b[1]),
-        ) / 1000.0
-    except Exception:
-        return None
