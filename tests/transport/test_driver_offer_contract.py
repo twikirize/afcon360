@@ -34,7 +34,7 @@ pytestmark = pytest.mark.usefixtures("db_session")
 
 
 def _make_rich_booking(app, rider_id, *, ref=None, coords_only=False,
-                       basis="straight_line_planner"):
+                       basis="road_network"):
     """Booking with addresses, class, fare, currency and distance basis."""
     from app.transport.models import (
         Booking,
@@ -126,7 +126,7 @@ class TestOfferApiContract:
         assert offer["service_type"] == "on_demand"
         assert offer["passenger_count"] == 2
         assert offer["distance_km"] == pytest.approx(7.5)
-        assert offer["distance_basis"] == "straight_line_planner"
+        assert offer["distance_basis"] == "road_network"
         assert offer["expires_at"] > int(time.time())
         assert 0 < offer["ttl_remaining"] <= 300
         assert offer["vehicle"]["license_plate"] is not None
