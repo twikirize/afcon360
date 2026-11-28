@@ -1,11 +1,11 @@
-"""Transport booking -> GEO geocoding consumption (geocoding node).
+"""Transport booking -> GEO geocoding and road-fare integration.
 
 Proves the integration: map-pin flat coordinates resolve to canonical
-booking endpoints, measured GEO straight-line distance prices the
-booking (instead of the silent 5 km default), text-only bookings keep
-exact legacy behavior, invalid coordinates fail honestly, and
-coordinate bookings become matchable while text bookings stay
-excluded. No Photon/live provider required; no road-distance claims.
+booking endpoints, the signed GEO road distance/duration price and persist
+on the booking (instead of a straight-line measurement or silent 5 km
+default), text-only bookings remain unbookable, invalid coordinates fail
+honestly, and coordinate bookings become matchable. Routing is stubbed;
+no live Photon or Valhalla service is required by these tests.
 """
 
 import uuid
@@ -117,7 +117,7 @@ def test_out_of_range_coordinates_rejected(app):
 
 # --- signed road distance --------------------------------------------------------------------
 
-def test_measured_distance_prices_booking(app):
+def test_signed_road_distance_prices_booking(app):
     user_id = _user(app)
     booking_id = _create(
         app, user_id, pickup_latitude=LAT_A, pickup_longitude=LNG_A,
