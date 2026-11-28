@@ -168,7 +168,11 @@
       if (mySequence !== sequence) return;
       inflight = null;
       if (error && error.name === 'AbortError') return;
-      showUnavailable();
+      var blockedMessage = error && error.payload &&
+        error.payload.code === 'OUTSIDE_SERVICE_AREA'
+        ? error.payload.error
+        : undefined;
+      showUnavailable(blockedMessage);
     });
   }
 
