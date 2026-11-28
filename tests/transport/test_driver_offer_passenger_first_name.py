@@ -100,7 +100,7 @@ def _make_booking(app, rider_id, passenger_count=1):
             status=BookingStatus.CONFIRMED,
             booking_metadata={
                 "vehicle_class": "comfort",
-                "distance_basis": "straight_line_planner",
+                "distance_basis": "road_network",
             },
         )
         db.session.add(booking)
@@ -293,7 +293,7 @@ class TestExistingContractIntact:
         assert offer["service_type"] == "on_demand"
         assert offer["passenger_count"] == 2
         assert offer["distance_km"] == pytest.approx(7.5)
-        assert offer["distance_basis"] == "straight_line_planner"
+        assert offer["distance_basis"] == "road_network"
         assert offer["expires_at"] > int(time.time())
         assert 0 < offer["ttl_remaining"] <= 300
         assert offer["vehicle"]["license_plate"] is not None
