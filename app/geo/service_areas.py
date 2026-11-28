@@ -26,6 +26,7 @@ DEFAULT_SERVICE_AREA_CONFIG = {
 _ALLOWED_SERVICES = frozenset({"transport", "accommodation", "events", "tourism"})
 _MAX_AREAS = 100
 _MAX_RING_POINTS = 5000
+_MAX_TOTAL_CONFIG_POINTS = 25000
 _EPSILON = 1e-10
 
 
@@ -60,9 +61,12 @@ def get_service_area_config() -> dict:
                 continue
             prepared = dict(area)
             try:
-                prepared["_validated_geometry"] = validate_geometry(
-                    area.get("geometry")
-                )
+                if area.get("active") is True:
+                    prepared["_validated_geometry"] = validate_geometry(
+                        area.get("geometry")
+                    )
+                else:
+                    prepared["_validated_geometry"] = None
             except (TypeError, ValueError):
                 # An invalid saved polygon never grants service eligibility.
                 prepared["_validated_geometry"] = None
@@ -132,6 +136,18 @@ def validate_geometry(geometry: Any) -> dict:
                 and math.isclose(first[1], previous[1], abs_tol=_EPSILON)
             ):
                 raise ValueError(f"{label} must be closed (first and last points must match)")
+            unique_vertices = {
+                (float(pair[0]), float(pair[1])) for pair in ring[:-1]
+            }
+            if len(unique_vertices) < 3:
+                raise ValueError(f"{label} must contain at least three distinct vertices")
+            signed_area_twice = sum(
+                float(ring[index][0]) * float(ring[index + 1][1])
+                - float(ring[index + 1][0]) * float(ring[index][1])
+                for index in range(len(ring) - 1)
+            )
+            if abs(signed_area_twice) <= _EPSILON:
+                raise ValueError(f"{label} must enclose a non-zero area")
     if total_points > _MAX_RING_POINTS:
         raise ValueError(f"Service-area geometry exceeds {_MAX_RING_POINTS} total points")
     # Copy only the supported GeoJSON shape; provider properties are not persisted.
@@ -453,6 +469,7 @@ def validate_service_area_config(raw: Any) -> dict:
 
     cleaned = []
     seen_ids = set()
+    total_config_points = 0
     for index, area in enumerate(areas):
         if not isinstance(area, dict):
             raise ValueError(f"Service area {index + 1} must be an object")
@@ -477,6 +494,21 @@ def validate_service_area_config(raw: Any) -> dict:
         if not services or not set(services).issubset(_ALLOWED_SERVICES | {"*"}):
             raise ValueError(f"{name}: select at least one valid service")
         geometry = validate_geometry(area.get("geometry"))
+        polygons = (
+            [geometry["coordinates"]]
+            if geometry["type"] == "Polygon"
+            else geometry["coordinates"]
+        )
+        total_config_points += sum(
+            len(ring)
+            for polygon in polygons
+            for ring in polygon
+        )
+        if total_config_points > _MAX_TOTAL_CONFIG_POINTS:
+            raise ValueError(
+                "Combined service-area boundaries exceed "
+                f"{_MAX_TOTAL_CONFIG_POINTS} coordinate points"
+            )
         cleaned.append({
             "id": area_id,
             "name": name,
