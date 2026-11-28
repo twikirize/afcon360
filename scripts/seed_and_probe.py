@@ -15,6 +15,13 @@ with app.app_context():
     from app.identity.models.user import User
     from app.transport.models import Booking
     from app.transport.services.booking_service import get_booking_service
+    from app.transport.services.road_distance_service import measure_road_route
+
+    # Resolve the required route before seeding any probe data. If Valhalla is
+    # disabled/unavailable, the script exits without leaving a probe user behind.
+    pickup = {"latitude": 0.3136, "longitude": 32.5811}
+    dropoff = {"latitude": 0.3476, "longitude": 32.5825}
+    route = measure_road_route(pickup, dropoff)
 
     TEST_EMAIL = "probe_do_not_commit@afcon360.local"
 
@@ -66,13 +73,9 @@ with app.app_context():
             "vehicle_class": "comfort",
             "booking_mode": mode,
         }
-        from app.transport.services.road_distance_service import measure_road_route
         from app.transport.services.fare_service import calculate_estimate
         from app.transport.services.fare_quote_service import issue_fare_quote, money_amount
 
-        pickup = {"latitude": payload["pickup_latitude"], "longitude": payload["pickup_longitude"]}
-        dropoff = {"latitude": payload["dropoff_latitude"], "longitude": payload["dropoff_longitude"]}
-        route = measure_road_route(pickup, dropoff)
         quoted_at = datetime.now().replace(microsecond=0)
         estimate = calculate_estimate(
             service_type=payload["service_type"],
