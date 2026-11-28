@@ -236,7 +236,7 @@ def test_preview_uses_road_distance_when_coordinates_are_supplied(
     )
     body = {"service_type": "on_demand", "pickup_latitude": 0.3136,
             "pickup_longitude": 32.5811, "dropoff_latitude": 0.32,
-            "dropoff_longitude": 32.59}
+            "dropoff_longitude": 32.59, "estimated_distance_km": 1.0}
     resp = authenticated_client.post("/api/transport/fare/estimate",
                                      json=body)
     assert resp.status_code == 200
