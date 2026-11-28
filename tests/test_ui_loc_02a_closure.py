@@ -5,7 +5,7 @@ Node-owned additive tests. Proves, against the REAL server boundary:
      (0,0) + valid Kampala accepted; out-of-range rejected)
   2. create_booking rejects unresolved/invalid endpoints; valid books
   3. POST /api/transport/ride-options rejects the six classes server-side
-     WITHOUT reaching fare calculation; valid still 200 straight_line_planner
+     WITHOUT reaching fare calculation; valid still 200 road_network
   4. explicit estimate (fare/estimate) still serves planning_default while
      real booking with no coordinates is refused
 """
@@ -122,14 +122,17 @@ def test_booking_valid_coordinates_still_books(app):
     from app.transport.models import Booking
     from app.transport.services.booking_service import get_booking_service
     user_id = _user(app)
+    from tests.transport_road_quote_helpers import add_test_road_quote
+    valid_payload = _payload(
+        pickup_latitude=LAT_A, pickup_longitude=LNG_A,
+        dropoff_latitude=LAT_B, dropoff_longitude=LNG_B)
+    add_test_road_quote(valid_payload)
     with app.app_context():
-        result = get_booking_service().create_booking(user_id, _payload(
-            pickup_latitude=LAT_A, pickup_longitude=LNG_A,
-            dropoff_latitude=LAT_B, dropoff_longitude=LNG_B))
+        result = get_booking_service().create_booking(user_id, valid_payload)
     assert result["success"] is True
     with app.app_context():
         booking = db.session.get(Booking, result["data"]["booking_id"])
-        assert booking.booking_metadata["distance_basis"] == "straight_line_planner"
+        assert booking.booking_metadata["distance_basis"] == "road_network"
 
 
 # --- Steps 6-7: ride_options server boundary (direct POST) ------------------
