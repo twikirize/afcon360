@@ -164,8 +164,6 @@ def test_calculate_distance_delegates_to_canonical_geo():
 
 
 def test_active_service_area_excludes_driver_outside_pickup_area(monkeypatch):
-    from app.geo.service_areas import get_service_area_config
-
     settings = {
         "version": 1,
         "enabled": True,
