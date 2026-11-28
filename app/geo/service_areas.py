@@ -34,6 +34,20 @@ def get_service_area_config() -> dict:
     if not isinstance(raw, dict):
         return deepcopy(DEFAULT_SERVICE_AREA_CONFIG)
     areas = raw.get("areas")
+    prepared_areas = []
+    if isinstance(areas, list):
+        for area in areas:
+            if not isinstance(area, dict):
+                continue
+            prepared = dict(area)
+            try:
+                prepared["_validated_geometry"] = validate_geometry(
+                    area.get("geometry")
+                )
+            except (TypeError, ValueError):
+                # An invalid saved polygon never grants service eligibility.
+                prepared["_validated_geometry"] = None
+            prepared_areas.append(prepared)
     try:
         version = max(1, int(raw.get("version") or 1))
     except (TypeError, ValueError):
@@ -42,7 +56,7 @@ def get_service_area_config() -> dict:
         "version": version,
         "enabled": raw.get("enabled") is True,
         "allow_cross_area_routes": raw.get("allow_cross_area_routes") is True,
-        "areas": areas if isinstance(areas, list) else [],
+        "areas": prepared_areas,
     }
 
 
@@ -127,6 +141,23 @@ def _point_in_ring(lng: float, lat: float, ring: list) -> bool:
     return inside
 
 
+def _point_in_validated_geometry(latitude: float, longitude: float,
+                                  validated: dict) -> bool:
+    polygons = (
+        [validated["coordinates"]]
+        if validated["type"] == "Polygon"
+        else validated["coordinates"]
+    )
+    for polygon in polygons:
+        if not _point_in_ring(longitude, latitude, polygon[0]):
+            continue
+        # GeoJSON interior rings are holes; their boundary is excluded too.
+        if any(_point_in_ring(longitude, latitude, hole) for hole in polygon[1:]):
+            continue
+        return True
+    return False
+
+
 def point_in_geometry(latitude: float, longitude: float, geometry: dict) -> bool:
     """Return whether a point lies in a Polygon/MultiPolygon (boundary included)."""
     try:
@@ -137,20 +168,7 @@ def point_in_geometry(latitude: float, longitude: float, geometry: dict) -> bool
         validated = validate_geometry(geometry)
     except (TypeError, ValueError):
         return False
-
-    polygons = (
-        [validated["coordinates"]]
-        if validated["type"] == "Polygon"
-        else validated["coordinates"]
-    )
-    for polygon in polygons:
-        if not _point_in_ring(lng, lat, polygon[0]):
-            continue
-        # GeoJSON interior rings are holes; their boundary is excluded too.
-        if any(_point_in_ring(lng, lat, hole) for hole in polygon[1:]):
-            continue
-        return True
-    return False
+    return _point_in_validated_geometry(lat, lng, validated)
 
 
 def _service_matches(area: dict, service: str) -> bool:
@@ -178,7 +196,24 @@ def check_service_area_point(latitude: Any, longitude: Any,
             continue
         if not _service_matches(area, service):
             continue
-        if point_in_geometry(latitude, longitude, area.get("geometry")):
+        validated_geometry = area.get("_validated_geometry")
+        if validated_geometry is None:
+            try:
+                validated_geometry = validate_geometry(area.get("geometry"))
+            except (TypeError, ValueError):
+                continue
+        try:
+            lat = _number(latitude, "latitude")
+            lng = _number(longitude, "longitude")
+        except (TypeError, ValueError):
+            return {
+                "enabled": True, "supported": False,
+                "reason": "outside_active_area",
+                "area_id": None, "area_name": None,
+                "service": service,
+            }
+        if (-90 <= lat <= 90 and -180 <= lng <= 180
+                and _point_in_validated_geometry(lat, lng, validated_geometry)):
             matching.append(area)
 
     if matching:
@@ -275,7 +310,10 @@ def assess_service_area_trip(pickup: dict, dropoff: dict,
         field = "dropoff"
     elif (
         pickup_status.get("area_id") != dropoff_status.get("area_id")
-        and settings.get("allow_cross_area_routes") is not True
+        and not (
+            service == "transport"
+            and settings.get("allow_cross_area_routes") is True
+        )
     ):
         reason = "cross_area_route_not_enabled"
         field = "dropoff"
