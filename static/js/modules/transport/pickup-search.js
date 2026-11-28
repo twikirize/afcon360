@@ -3,7 +3,7 @@
  * Consumes the shared GEO endpoint contract (implemented by the server
  * side of UI-01):
  *
- *   GET /geo/api/geocode?q=<query>   (same-origin, @login_required)
+ *   GET /geo/api/geocode?service=transport&q=<query>   (same-origin, @login_required)
  *   -> 200 {success, query, provider, results:[{label, latitude, longitude,
  *            provider, osm_type, osm_id}]}
  *   -> results may be [] (truthful miss: show "No matches", invent nothing).
@@ -47,54 +47,6 @@
   var MIN_QUERY_LEN = 2;    // mirrors the server contract: len<2 is an
                             // honest no-result with zero provider traffic
   var BLUR_HIDE_MS = 150;   // keeps an option mousedown/click reachable
-
-  /* Geo session cache (client layer): stores provider responses under a
-   * normalised query key. Independent per-file copy so a bug in one
-   * search module cannot affect the other. sessionStorage only. */
-  var GEO_CACHE_KEY = 'geo:cached:v1';
-  var GEO_CACHE_MAX = 30;
-  var GEO_POS_TTL_MS = 24 * 60 * 60 * 1000;   // 24h
-  var GEO_NEG_TTL_MS = 5 * 60 * 1000;         // 5min
-
-  function geoNorm(s) {
-    return (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
-  }
-
-  function geoCacheGet(q) {
-    try {
-      var raw = sessionStorage.getItem(GEO_CACHE_KEY);
-      if (!raw) return null;
-      var store = JSON.parse(raw);
-      var entry = store[geoNorm(q)];
-      if (!entry) return null;
-      var age = Date.now() - entry.ts;
-      var ttl = entry.empty ? GEO_NEG_TTL_MS : GEO_POS_TTL_MS;
-      if (age > ttl) {
-        delete store[geoNorm(q)];
-        sessionStorage.setItem(GEO_CACHE_KEY, JSON.stringify(store));
-        return null;
-      }
-      return entry.results;
-    } catch (e) { return null; }
-  }
-
-  function geoCacheSet(q, results) {
-    try {
-      var raw = sessionStorage.getItem(GEO_CACHE_KEY);
-      var store = raw ? JSON.parse(raw) : {};
-      store[geoNorm(q)] = {
-        ts: Date.now(),
-        empty: !results || results.length === 0,
-        results: results || []
-      };
-      var keys = Object.keys(store);
-      if (keys.length > GEO_CACHE_MAX) {
-        keys.sort(function(a, b) { return store[a].ts - store[b].ts; });
-        for (var i = 0; i < keys.length - GEO_CACHE_MAX; i++) delete store[keys[i]];
-      }
-      sessionStorage.setItem(GEO_CACHE_KEY, JSON.stringify(store));
-    } catch (e) { /* quota or private mode — silently skip */ }
-  }
 
   var input    = document.getElementById('inputPickup');
   var wrap     = document.getElementById('pickupSearch');
@@ -313,7 +265,7 @@
     // geocoding itself remains cached on the server.
     var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
     inflight = ctrl;
-    fetch(ENDPOINT + '?q=' + encodeURIComponent(text), {
+    fetch(ENDPOINT + '?service=transport&q=' + encodeURIComponent(text), {
       headers: { 'Accept': 'application/json' },
       credentials: 'same-origin',
       signal: ctrl ? ctrl.signal : undefined
