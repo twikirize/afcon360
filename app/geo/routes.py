@@ -150,6 +150,14 @@ def service_area_check():
         return jsonify({"success": False, "error": "A JSON object is required.",
                         "code": "INVALID_SERVICE_AREA_INPUT"}), 400
 
+    service_name = str(data.get("service") or "transport").strip().lower()
+    if service_name not in {"transport", "accommodation", "events", "tourism"}:
+        return jsonify({
+            "success": False,
+            "error": "Unsupported service type for geographic availability.",
+            "code": "INVALID_SERVICE",
+        }), 400
+
     try:
         if isinstance(data.get("pickup"), dict) and isinstance(data.get("dropoff"), dict):
             pickup = normalize_point(
@@ -161,17 +169,16 @@ def service_area_check():
             result = assess_service_area_trip(
                 {"latitude": pickup.latitude, "longitude": pickup.longitude},
                 {"latitude": dropoff.latitude, "longitude": dropoff.longitude},
-                service=str(data.get("service") or "transport").lower(),
+                service=service_name,
             )
         else:
             point = normalize_point(data.get("latitude"), data.get("longitude"))
-            service_name = str(data.get("service") or "transport").lower()
             result = check_service_area_point(
                 point.latitude, point.longitude,
                 service=service_name,
             )
             result.setdefault("field", "location")
-    except Exception as exc:
+    except Exception:
         return jsonify({
             "success": False,
             "error": "Provide valid latitude and longitude coordinates.",
