@@ -154,7 +154,10 @@ def geofencing():
     active_area_count = sum(
         1 for area in config['areas']
         if isinstance(area, dict) and area.get('active') is True
-        and 'transport' in (area.get('services') or [])
+        and (
+            'transport' in (area.get('services') or [])
+            or '*' in (area.get('services') or [])
+        )
     )
     return render_template(
         'owner/geofencing.html',
