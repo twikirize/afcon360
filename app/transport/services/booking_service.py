@@ -181,41 +181,6 @@ def _resolve_canonical_location(raw_location: Any, data: Dict[str, Any],
     return resolved
 
 
-def _measured_distance_km(pickup_location: Any,
-                          dropoff_location: Any) -> Optional[float]:
-    """GEO straight-line kilometres between two canonical endpoints,
-    or None unless BOTH carry valid coordinates. Planning input only:
-    explicitly not road distance, ETA, or fare distance."""
-    def _coords(location: Any):
-        if not isinstance(location, dict):
-            return None
-        raw_lat = location.get("latitude")
-        raw_lng = location.get("longitude")
-        # Type narrowing (pyright) + 02A bool hygiene: only numeric scalars
-        # reach float(); bool can never be a coordinate (fail-closed None).
-        if (isinstance(raw_lat, bool) or isinstance(raw_lng, bool)
-                or not isinstance(raw_lat, (str, int, float))
-                or not isinstance(raw_lng, (str, int, float))):
-            return None
-        try:
-            lat = float(raw_lat)
-            lng = float(raw_lng)
-        except (TypeError, ValueError):
-            return None
-        if not (-90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
-            return None
-        return lat, lng
-
-    origin = _coords(pickup_location)
-    destination = _coords(dropoff_location)
-    if origin is None or destination is None:
-        return None
-    from app.geo.interfaces import GeoPoint
-    from app.geo.services import straight_line_distance_m
-    return straight_line_distance_m(
-        GeoPoint(origin[0], origin[1]),
-        GeoPoint(destination[0], destination[1])) / 1000.0
-
 
 # Valid status transitions - enforced server-side.
 # Single source of truth (moved here from api/booking_routes.py so the
