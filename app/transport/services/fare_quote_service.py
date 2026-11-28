@@ -1,9 +1,11 @@
-"""Short-lived signed fare quotes for the rider's explicit fare-acceptance step.
+"""Short-lived signed road-distance fare quotes.
 
-A quote is not a booking and does not query driver/vehicle availability.
-The signature binds the price to the requested route, service and vehicle
-class so the browser cannot silently change the amount at confirmation.
+A quote is a server-priced offer bound to resolved pickup/dropoff coordinates,
+the GEO routing provider's road distance and duration, fare version, class and
+currency. A booking must consume these exact signed facts rather than routing
+again or trusting client-supplied distance.
 """
+import math
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict
@@ -13,7 +15,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from app.utils.exceptions import ValidationError
 
-QUOTE_SALT = "transport-fare-quote-v1"
+QUOTE_SALT = "transport-fare-quote-v2"
 DEFAULT_QUOTE_MAX_AGE_SECONDS = 15 * 60
 _CENT = Decimal("0.01")
 
@@ -35,6 +37,16 @@ def money_amount(value: Any) -> Decimal:
     return amount
 
 
+def _finite_nonnegative(value: Any) -> bool:
+    if isinstance(value, bool) or value is None:
+        return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(number) and number >= 0
+
+
 def _serializer() -> URLSafeTimedSerializer:
     secret = current_app.config.get("SECRET_KEY")
     if not secret:
@@ -46,12 +58,40 @@ def _coords(location: Dict[str, Any]):
     try:
         lat = round(float(location["latitude"]), 7)
         lng = round(float(location["longitude"]), 7)
-    except (KeyError, TypeError, ValueError) as exc:
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
         raise ValidationError(
             message="Resolved pickup and destination coordinates are required.",
             field="pickup",
         ) from exc
+    if not (math.isfinite(lat) and math.isfinite(lng)
+            and -90 <= lat <= 90 and -180 <= lng <= 180):
+        raise ValidationError(
+            message="Resolved pickup and destination coordinates are required.",
+            field="pickup",
+        )
     return [lat, lng]
+
+
+def road_measurements_from_quote(quote: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and extract the signed road facts from a verified quote."""
+    distance_km = quote.get("distance_km")
+    duration_s = quote.get("route_duration_s")
+    provider = quote.get("route_provider")
+    if (quote.get("distance_basis") != "road_network"
+            or not _finite_nonnegative(distance_km)
+            or not _finite_nonnegative(duration_s)
+            or not isinstance(provider, str)
+            or not provider.strip()
+            or provider.strip().lower() == "unresolved"):
+        raise ValidationError(
+            message="Your road-route fare quote is invalid. Please review the fare again.",
+            field="fare_quote_token",
+        )
+    return {
+        "distance_km": round(float(distance_km), 6),
+        "route_duration_s": round(float(duration_s), 3),
+        "route_provider": provider.strip()[:64],
+    }
 
 
 def issue_fare_quote(
@@ -64,18 +104,27 @@ def issue_fare_quote(
     pickup: Dict[str, Any],
     dropoff: Dict[str, Any],
     distance_km: Any,
+    route_duration_s: Any,
+    route_provider: str,
     quoted_at: datetime,
 ) -> str:
-    """Sign a server-priced quote for one route/class and a single issue time."""
-    try:
-        distance = round(float(distance_km), 6)
-    except (TypeError, ValueError) as exc:
+    """Sign a fare offer and its authoritative GEO road measurements."""
+    if not _finite_nonnegative(distance_km) or not _finite_nonnegative(route_duration_s):
         raise ValidationError(
-            message="A resolved route is required before quoting a fare.",
+            message="A resolved road route is required before quoting a fare.",
             field="pickup",
-        ) from exc
+        )
+    if (not isinstance(route_provider, str) or not route_provider.strip()
+            or route_provider.strip().lower() == "unresolved"):
+        raise ValidationError(
+            message="A resolved road route is required before quoting a fare.",
+            field="pickup",
+        )
+    distance = round(float(distance_km), 6)
+    duration = round(float(route_duration_s), 3)
     payload = {
-        "v": 1,
+        "v": 2,
+        "distance_basis": "road_network",
         "service_type": str(service_type or "on_demand").strip().lower(),
         "vehicle_class": str(vehicle_class or "").strip().lower(),
         "currency": str(currency or "").strip().upper(),
@@ -84,6 +133,8 @@ def issue_fare_quote(
         "pickup": _coords(pickup),
         "dropoff": _coords(dropoff),
         "distance_km": distance,
+        "route_duration_s": duration,
+        "route_provider": route_provider.strip()[:64],
         "quoted_at": quoted_at.replace(microsecond=0).isoformat(),
     }
     if not payload["vehicle_class"] or not payload["currency"] or not payload["fare_version"]:
@@ -117,11 +168,12 @@ def load_fare_quote(token: Any) -> Dict[str, Any]:
             message="Your fare quote could not be verified. Please review the fare again.",
             field="fare_quote_token",
         ) from exc
-    if not isinstance(payload, dict) or payload.get("v") != 1:
+    if not isinstance(payload, dict) or payload.get("v") != 2:
         raise ValidationError(
             message="Your fare quote is invalid. Please review the fare again.",
             field="fare_quote_token",
         )
+    road_measurements_from_quote(payload)
     return payload
 
 
@@ -134,29 +186,35 @@ def validate_fare_quote(
     pickup: Dict[str, Any],
     dropoff: Dict[str, Any],
     distance_km: Any,
+    route_duration_s: Any,
+    route_provider: str,
     fare_version: Any,
     server_amount: Any,
     confirmed_amount: Any,
 ) -> Decimal:
-    """Require the accepted amount and trip facts to match the signed quote."""
+    """Require the accepted amount, trip and road-route facts to match."""
     accepted = money_amount(confirmed_amount)
     quoted = money_amount(quote.get("amount"))
     current = money_amount(server_amount)
-    try:
-        measured_distance = round(float(distance_km), 6)
-    except (TypeError, ValueError) as exc:
+    if not _finite_nonnegative(distance_km) or not _finite_nonnegative(route_duration_s):
         raise ValidationError(
             message="The route could not be verified. Please request a new fare.",
             field="pickup",
-        ) from exc
+        )
+    measured_distance = round(float(distance_km), 6)
+    measured_duration = round(float(route_duration_s), 3)
+    route_facts = road_measurements_from_quote(quote)
 
     matches = (
-        quote.get("service_type") == str(service_type or "on_demand").strip().lower()
+        quote.get("distance_basis") == "road_network"
+        and quote.get("service_type") == str(service_type or "on_demand").strip().lower()
         and quote.get("vehicle_class") == str(vehicle_class or "").strip().lower()
         and quote.get("currency") == str(currency or "").strip().upper()
         and quote.get("pickup") == _coords(pickup)
         and quote.get("dropoff") == _coords(dropoff)
-        and quote.get("distance_km") == measured_distance
+        and route_facts["distance_km"] == measured_distance
+        and route_facts["route_duration_s"] == measured_duration
+        and route_facts["route_provider"] == str(route_provider or "").strip()[:64]
         and quote.get("fare_version") == str(fare_version or "")
         and accepted == quoted == current
     )

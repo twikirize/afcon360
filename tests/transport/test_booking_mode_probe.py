@@ -53,8 +53,9 @@ def probe_user(app):
 
 
 def _payload(mode: str, pickup_time: datetime) -> dict:
-    """Mirror of the frontend form fields for create_booking."""
-    return {
+    """Mirror the frontend form and signed road-fare contract."""
+    from tests.transport_road_quote_helpers import add_test_road_quote
+    payload = {
         "service_type": "on_demand",
         "provider_type": "individual_driver",
         "pickup_latitude": 0.3136,
@@ -70,6 +71,7 @@ def _payload(mode: str, pickup_time: datetime) -> dict:
         "vehicle_class": "comfort",
         "booking_mode": mode,
     }
+    return add_test_road_quote(payload)
 
 
 class TestBookingModeFix:

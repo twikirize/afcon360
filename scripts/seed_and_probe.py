@@ -15,6 +15,13 @@ with app.app_context():
     from app.identity.models.user import User
     from app.transport.models import Booking
     from app.transport.services.booking_service import get_booking_service
+    from app.transport.services.road_distance_service import measure_road_route
+
+    # Resolve the required route before seeding any probe data. If Valhalla is
+    # disabled/unavailable, the script exits without leaving a probe user behind.
+    pickup = {"latitude": 0.3136, "longitude": 32.5811}
+    dropoff = {"latitude": 0.3476, "longitude": 32.5825}
+    route = measure_road_route(pickup, dropoff)
 
     TEST_EMAIL = "probe_do_not_commit@afcon360.local"
 
@@ -50,7 +57,7 @@ with app.app_context():
             results.append((label, type(e).__name__, str(e)[:80]))
 
     def base_payload(mode, pickup_time):
-        return {
+        payload = {
             "service_type": "on_demand",
             "provider_type": "individual_driver",
             "pickup_latitude": 0.3136,
@@ -66,6 +73,34 @@ with app.app_context():
             "vehicle_class": "comfort",
             "booking_mode": mode,
         }
+        from app.transport.services.fare_service import calculate_estimate
+        from app.transport.services.fare_quote_service import issue_fare_quote, money_amount
+
+        quoted_at = datetime.now().replace(microsecond=0)
+        estimate = calculate_estimate(
+            service_type=payload["service_type"],
+            vehicle_class=payload["vehicle_class"],
+            distance_km=route["distance_km"],
+            at=quoted_at,
+        )
+        amount = money_amount(estimate["total"])
+        payload["currency"] = str(estimate.get("currency") or "USD").upper()
+        payload["confirmed_fare_amount"] = format(amount, ".2f")
+        payload["fare_quote_token"] = issue_fare_quote(
+            service_type=payload["service_type"],
+            vehicle_class=payload["vehicle_class"],
+            currency=payload["currency"],
+            amount=amount,
+            fare_version=estimate.get("version"),
+            pickup=pickup,
+            dropoff=dropoff,
+            distance_km=route["distance_km"],
+            route_duration_s=route["duration_s"],
+            route_provider=route["provider"],
+            quoted_at=quoted_at,
+        )
+        return payload
+
 
     now = datetime.now(timezone.utc)
     nairobi = ZoneInfo("Africa/Nairobi")

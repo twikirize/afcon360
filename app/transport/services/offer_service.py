@@ -459,15 +459,17 @@ class OfferService:
             _passenger_first_name_or_none); the key is omitted
             entirely when no safe name exists,
           distance_km + distance_basis (only when the stored basis is
-            the measured straight-line planner value; the planning
-            default is withheld, never mislabelled),
+            an authoritative measured road route; legacy straight-line
+            planning values remain separately labelled),
+          estimated_duration_minutes + route_duration_s + route_provider
+            when the booking carries signed road-route facts,
           vehicle {license_plate, make, model, vehicle_class} | None,
             and only when a valid driver↔vehicle relationship is
             proven at read time (see _offer_vehicle_or_none).
 
-        ETA is deliberately absent: ``estimated_duration_minutes`` is
-        raw caller input, not an authoritative ETA. Passenger identity
-        is narrowed to exactly one safe field — ``passenger
+        Route duration is the estimated driving duration from the same
+        provider route used for the fare quote; it is not a live pickup ETA.
+        Passenger identity is narrowed to exactly one safe field — ``passenger
         {first_name}`` (1E) — the first name of the actual passenger
         only: no surname guarantee beyond the first token, no contact
         details, no passenger/user identifiers.
@@ -566,7 +568,7 @@ class OfferService:
                 if isinstance(metadata, dict)
                 else None
             )
-            if basis == "straight_line_planner" and distance is not None:
+            if basis in ("road_network", "straight_line_planner") and distance is not None:
                 try:
                     detail["distance_km"] = float(distance)
                     detail["distance_basis"] = basis
@@ -576,6 +578,21 @@ class OfferService:
             else:
                 detail["distance_km"] = None
                 detail["distance_basis"] = basis
+            # Only a signed road-route booking carries an authoritative
+            # driving duration/provider. Older estimates may be caller input
+            # and must not be presented to drivers as a route ETA.
+            if basis == "road_network":
+                detail["estimated_duration_minutes"] = getattr(
+                    booking, "estimated_duration_minutes", None
+                )
+                detail["route_duration_s"] = (
+                    metadata.get("route_duration_s")
+                    if isinstance(metadata, dict) else None
+                )
+                detail["route_provider"] = (
+                    metadata.get("route_provider")
+                    if isinstance(metadata, dict) else None
+                )
 
             detail["vehicle"] = cls._offer_vehicle_or_none(
                 offer, booking, ref

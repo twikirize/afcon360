@@ -5,6 +5,8 @@
 **Status:** OWNER-APPROVED SCOPE — 27 November 2026
 **Branch:** `feat/transport-rider-road-route-preview-20261127`
 
+> **Superseded in part by ROAD-DISTANCE-FARE-02:** the original scope below accurately records the approved preview-only work as of 27 November. The later ROAD-DISTANCE-FARE-02 change extends this implementation so that `ride-options` obtains the authoritative road measurement, signs route distance/duration/provider into quote v2, and the rider map is replaced with the exact route used to calculate the fare. The old statements below that fares remain `straight_line_planner` and that fare integration is out of scope are historical baseline statements, not the current behavior. See [ROAD-DISTANCE-FARE-02-contract.md](ROAD-DISTANCE-FARE-02-contract.md).
+
 This file records the repository owner's approval on 27 November 2026 of the scope and behavior described below. It is limited to a non-persistent planned-road-route preview for the existing web rider journey. The React Native client is a later consumer and is not part of this node.
 
 ---

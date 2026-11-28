@@ -320,6 +320,11 @@ class RideRequestDispatchService:
                 } if vehicle else None),
                 "distance_km": (request.request_metadata or {}).get("distance_km"),
                 "distance_basis": (request.request_metadata or {}).get("distance_basis"),
+                "estimated_duration_minutes": (
+                    request.request_metadata or {}
+                ).get("estimated_duration_minutes"),
+                "route_duration_s": (request.request_metadata or {}).get("route_duration_s"),
+                "route_provider": (request.request_metadata or {}).get("route_provider"),
             })
         return offers
 
@@ -754,6 +759,8 @@ class RideRequestDispatchService:
             request_received_at=request.created_at or now,
             passenger_count=int(request.passenger_count or 1),
             luggage_count=0,
+            estimated_distance_km=metadata.get("distance_km"),
+            estimated_duration_minutes=metadata.get("estimated_duration_minutes"),
             base_price=amount,
             subtotal=amount,
             total_amount=amount,
@@ -773,6 +780,8 @@ class RideRequestDispatchService:
                 "fare_effective_from": metadata.get("fare_effective_from"),
                 "distance_km": metadata.get("distance_km"),
                 "distance_basis": metadata.get("distance_basis"),
+                "route_duration_s": metadata.get("route_duration_s"),
+                "route_provider": metadata.get("route_provider"),
                 "trip_fingerprint": metadata.get("trip_hash"),
                 "payment_timing": "pay_on_completion",
                 "ride_request_public_id": request.public_id,

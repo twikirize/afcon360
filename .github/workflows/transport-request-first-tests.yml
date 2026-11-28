@@ -9,13 +9,17 @@ on:
     branches: [main]
     paths:
       - "app/transport/**"
+      - "app/auth/mobile_api.py"
       - "app/wallet/**"
+      - "tests/auth/test_mobile_transport_booking_parity_api.py"
       - "app/geo/**"
       - "static/js/geo/**"
       - "static/js/modules/transport/**"
       - "static/offline.html"
       - "static/transport/sw.js"
       - "scripts/seed_payment_methods.py"
+      - "scripts/probe_booking_modes.py"
+      - "scripts/seed_and_probe.py"
       - "app/tasks/transport_recovery.py"
       - "app/utils/validators.py"
       - "app/utils/module_toggle_service.py"
@@ -218,10 +222,13 @@ jobs:
         run: >-
           python -m compileall -q
           app/transport
+          app/auth/mobile_api.py
           app/wallet
           app/geo
           app/backup
           scripts/seed_payment_methods.py
+          scripts/probe_booking_modes.py
+          scripts/seed_and_probe.py
           app/tasks/transport_recovery.py
           app/tasks/transport_permission_purge.py
           app/transport/services/offer_service.py

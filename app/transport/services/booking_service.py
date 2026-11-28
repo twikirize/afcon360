@@ -9,6 +9,7 @@ import string
 import json
 import hashlib
 import logging
+import math
 import sqlalchemy as sa
 from flask import current_app
 from sqlalchemy import func
@@ -179,41 +180,6 @@ def _resolve_canonical_location(raw_location: Any, data: Dict[str, Any],
         resolved["address"] = raw_location.get("address")
     return resolved
 
-
-def _measured_distance_km(pickup_location: Any,
-                          dropoff_location: Any) -> Optional[float]:
-    """GEO straight-line kilometres between two canonical endpoints,
-    or None unless BOTH carry valid coordinates. Planning input only:
-    explicitly not road distance, ETA, or fare distance."""
-    def _coords(location: Any):
-        if not isinstance(location, dict):
-            return None
-        raw_lat = location.get("latitude")
-        raw_lng = location.get("longitude")
-        # Type narrowing (pyright) + 02A bool hygiene: only numeric scalars
-        # reach float(); bool can never be a coordinate (fail-closed None).
-        if (isinstance(raw_lat, bool) or isinstance(raw_lng, bool)
-                or not isinstance(raw_lat, (str, int, float))
-                or not isinstance(raw_lng, (str, int, float))):
-            return None
-        try:
-            lat = float(raw_lat)
-            lng = float(raw_lng)
-        except (TypeError, ValueError):
-            return None
-        if not (-90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
-            return None
-        return lat, lng
-
-    origin = _coords(pickup_location)
-    destination = _coords(dropoff_location)
-    if origin is None or destination is None:
-        return None
-    from app.geo.interfaces import GeoPoint
-    from app.geo.services import straight_line_distance_m
-    return straight_line_distance_m(
-        GeoPoint(origin[0], origin[1]),
-        GeoPoint(destination[0], destination[1])) / 1000.0
 
 
 # Valid status transitions - enforced server-side.
@@ -597,40 +563,49 @@ class BookingService:
             _ensure_canonical_coords(pickup_snapshot, "pickup_location")
             _ensure_canonical_coords(dropoff_snapshot, "dropoff_location")
 
-            # UI-LOC-02A: booking-bound pricing has no silent fallback.
-            # Measured GEO straight-line distance from resolved coordinates
-            # is the ONLY booking fare basis. Explicit estimates live in
-            # fare_routes.FareEstimateResource (planning_default labelled).
-            measured_km = _measured_distance_km(pickup_snapshot,
-                                                dropoff_snapshot)
-            if measured_km is None:
-                raise ValidationError(
-                    message="Resolved coordinates required for fare calculation",
-                    field="pickup_location",
-                )
-            distance_for_fare = measured_km
-            distance_basis = "straight_line_planner"
-
-            # Canonical fare engine (fare node): one computation feeds the
-            # stored price, the recorded surge, and the stored distance
-            # basis, so they can never diverge (e.g. across an hour
-            # boundary between two calls).
-            # Chosen class (hailing node): the ride picker submits the
-            # selected class; it is persisted in service_subtype and
-            # booking_metadata for class-aware matching.
-            chosen_class = sanitized_data.get("vehicle_class", "comfort")
+            # A booking must consume the exact signed road measurement the
+            # rider reviewed. Re-routing here could change distance/ETA after
+            # acceptance; a missing/legacy straight-line quote is rejected.
+            from app.transport.services.fare_quote_service import (
+                load_fare_quote,
+                road_measurements_from_quote,
+                validate_fare_quote,
+            )
             from app.transport.services.fare_service import calculate_estimate
+
+            fare_quote = load_fare_quote(
+                sanitized_data.get("fare_quote_token")
+            )
+            route_facts = road_measurements_from_quote(fare_quote)
+            distance_for_fare = route_facts["distance_km"]
+            route_duration_s = route_facts["route_duration_s"]
+            route_provider = route_facts["route_provider"]
+            route_duration_minutes = int(math.ceil(route_duration_s / 60.0))
+            distance_basis = "road_network"
+
+            # The quote's issue time freezes the active fare table/surge
+            # reference across the rider's review/confirmation interval.
+            try:
+                quoted_at = datetime.fromisoformat(
+                    str(fare_quote.get("quoted_at"))
+                )
+                if quoted_at.tzinfo is not None:
+                    raise ValueError("quoted_at must be the signed local reference time")
+            except (TypeError, ValueError) as exc:
+                raise ValidationError(
+                    message="Your fare quote is invalid. Please review the fare again.",
+                    field="fare_quote_token",
+                ) from exc
+
+            chosen_class = sanitized_data.get("vehicle_class", "comfort")
+            service_key = sanitized_data.get("service_type", "on_demand")
             _estimate = calculate_estimate(
-                service_type=sanitized_data.get("service_type", "on_demand"),
+                service_type=service_key,
                 vehicle_class=chosen_class,
                 distance_km=distance_for_fare,
+                at=quoted_at,
             )
-            estimated_price = _estimate["total"]
 
-            # The legacy Booking-first path is retained for scheduled rides
-            # and non-instant services. Apply the same Wallet commitment gate
-            # as RideRequestService: use the actual calculated fare and its
-            # denomination, not the form's default/empty amount.
             fare_currency = str(_estimate.get("currency") or "USD").strip().upper()
             requested_currency = str(
                 sanitized_data.get("currency") or fare_currency
@@ -643,6 +618,25 @@ class BookingService:
                     ),
                     field="currency",
                 )
+
+            accepted_fare_amount = validate_fare_quote(
+                fare_quote,
+                service_type=service_key,
+                vehicle_class=chosen_class,
+                currency=fare_currency,
+                pickup=pickup_snapshot,
+                dropoff=dropoff_snapshot,
+                distance_km=distance_for_fare,
+                route_duration_s=route_duration_s,
+                route_provider=route_provider,
+                fare_version=_estimate.get("version"),
+                server_amount=_estimate["total"],
+                confirmed_amount=sanitized_data.get("confirmed_fare_amount"),
+            )
+            estimated_price = accepted_fare_amount
+
+            # Apply the same Wallet eligibility gate using the accepted
+            # server-signed road-distance fare and its authoritative currency.
             selected_payment_method = str(
                 sanitized_data.get("payment_method") or "cash"
             ).strip().lower()
@@ -770,7 +764,7 @@ class BookingService:
                 base_price=estimated_price,
                 surge_multiplier=_applied_surge,
                 estimated_distance_km=distance_for_fare,
-                estimated_duration_minutes=sanitized_data.get("estimated_duration"),
+                estimated_duration_minutes=route_duration_minutes,
                 payment_method=sanitized_data.get("payment_method", "cash"),
                 payment_status=PaymentStatus.PENDING,
                 status=BookingStatusPy.PENDING_PAYMENT,
@@ -787,6 +781,8 @@ class BookingService:
                     "distance_km": float(distance_for_fare)
                     if distance_for_fare is not None else None,
                     "distance_basis": distance_basis,
+                    "route_duration_s": route_duration_s,
+                    "route_provider": route_provider,
                     "booking_mode": booking_mode,  # 'instant' | 'scheduled'
                     "pickup_schedule": pickup_schedule_metadata,
                     "trip_fingerprint": _trip_fingerprint(sanitized_data),

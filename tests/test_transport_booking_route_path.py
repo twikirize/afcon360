@@ -193,45 +193,8 @@ def _bolt_form(app, pickup_time: str) -> dict:
         cash.allowed_timings = timings
         db.session.commit()
 
-        from app.transport.services.booking_service import _measured_distance_km
-        from app.transport.services.fare_service import calculate_estimate
-        from app.transport.services.fare_quote_service import (
-            issue_fare_quote, money_amount,
-        )
-
-        pickup = {
-            "latitude": float(form["pickup_latitude"]),
-            "longitude": float(form["pickup_longitude"]),
-            "address": form["pickup_location"],
-        }
-        dropoff = {
-            "latitude": float(form["dropoff_latitude"]),
-            "longitude": float(form["dropoff_longitude"]),
-            "address": form["dropoff_location"],
-        }
-        quoted_at = datetime.now().replace(microsecond=0)
-        distance_km = _measured_distance_km(pickup, dropoff)
-        estimate = calculate_estimate(
-            service_type=form["service_type"],
-            vehicle_class=form["vehicle_class"],
-            distance_km=distance_km,
-            at=quoted_at,
-        )
-        currency = str(estimate.get("currency") or "USD").upper()
-        amount = money_amount(estimate["total"])
-        form["currency"] = currency
-        form["confirmed_fare_amount"] = format(amount, ".2f")
-        form["fare_quote_token"] = issue_fare_quote(
-            service_type=form["service_type"],
-            vehicle_class=form["vehicle_class"],
-            currency=currency,
-            amount=amount,
-            fare_version=estimate.get("version"),
-            pickup=pickup,
-            dropoff=dropoff,
-            distance_km=distance_km,
-            quoted_at=quoted_at,
-        )
+        from tests.transport_road_quote_helpers import add_test_road_quote
+        add_test_road_quote(form, distance_km=12.4, duration_s=1380.0)
     return form
 
 

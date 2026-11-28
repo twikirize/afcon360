@@ -39,35 +39,8 @@ def _payload(app, **overrides):
         # catalogue. Seed its standard config for this isolated test database.
         from app.wallet.models.payment_method import PaymentMethodConfig
         PaymentMethodConfig.initialize_defaults()
-        from app.transport.services.booking_service import _measured_distance_km
-        from app.transport.services.fare_service import calculate_estimate
-        from app.transport.services.fare_quote_service import (
-            issue_fare_quote, money_amount,
-        )
-
-        quoted_at = datetime.now().replace(microsecond=0)
-        distance_km = _measured_distance_km(body["pickup"], body["dropoff"])
-        estimate = calculate_estimate(
-            service_type=body["service_type"],
-            vehicle_class=body["vehicle_class"],
-            distance_km=distance_km,
-            at=quoted_at,
-        )
-        currency = str(estimate.get("currency") or "USD").upper()
-        amount = money_amount(estimate["total"])
-        body["currency"] = currency
-        body["confirmed_fare_amount"] = format(amount, ".2f")
-        body["fare_quote_token"] = issue_fare_quote(
-            service_type=body["service_type"],
-            vehicle_class=body["vehicle_class"],
-            currency=currency,
-            amount=amount,
-            fare_version=estimate.get("version"),
-            pickup=body["pickup"],
-            dropoff=body["dropoff"],
-            distance_km=distance_km,
-            quoted_at=quoted_at,
-        )
+        from tests.transport_road_quote_helpers import add_test_ride_request_quote
+        add_test_ride_request_quote(body)
     return body
 
 
@@ -149,7 +122,8 @@ class TestRequestCreate:
         _promote_to_tier2(app, rider_id)
         _login_as(app, client, rider_id)
 
-        resp = client.post(URL, json=_payload(app))
+        body = _payload(app)
+        resp = client.post(URL, json=body)
         assert resp.status_code == 201, resp.get_data(as_text=True)
         data = resp.get_json()["data"]
         assert data["request_id"] and len(data["request_id"]) >= 16
@@ -158,6 +132,21 @@ class TestRequestCreate:
         assert data["cycle"]["status"] == "searching"
         assert data["cycle"]["deadline"]
         assert data["fare_estimate"]["amount"] > 0
+        from app.transport.models import RideRequest
+        with app.app_context():
+            request_row = RideRequest.query.filter_by(
+                user_id=rider_id, idempotency_key=body["idempotency_key"],
+                is_deleted=False,
+            ).first()
+            # The route quote is authoritative; the durable request retains
+            # exactly its measured road distance, duration and provider.
+            assert request_row is not None
+            route_meta = request_row.request_metadata
+            assert route_meta["distance_basis"] == "road_network"
+            assert route_meta["distance_km"] == pytest.approx(8.75)
+            assert route_meta["route_duration_s"] == pytest.approx(1260.0)
+            assert route_meta["estimated_duration_minutes"] == 21
+            assert route_meta["route_provider"] == "test-routing-provider"
         from app.wallet.models.marketplace_invoice import MarketplaceInvoice
         with app.app_context():
             invoice = MarketplaceInvoice.query.filter_by(

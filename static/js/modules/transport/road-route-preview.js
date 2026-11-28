@@ -101,7 +101,7 @@
     setState(
       'unavailable',
       'Driving route unavailable',
-      message || 'We could not calculate a road route right now. You can still review fare options.'
+      message || 'We could not calculate a road route right now. A road-based fare quote is unavailable until routing recovers.'
     );
   }
 
@@ -161,7 +161,7 @@
         'resolved',
         'Driving route · ' + distanceKm + ' km · ' + duration,
         rendered
-          ? 'Planned road route only. Fare estimate continues to use straight-line distance.'
+          ? 'Preliminary road route. The fare quote will use its own server-signed road measurement.'
           : 'Road measurements resolved, but the map could not display the route geometry.'
       );
     }).catch(function (error) {
@@ -204,7 +204,7 @@
     setState(
       'loading',
       'Calculating driving route…',
-      'The road preview is informational; fare estimates still use straight-line distance.'
+      'Road-route measurements are required for fare quotes. No straight-line fallback is used.'
     );
 
     debounceTimer = window.setTimeout(function () {
@@ -212,6 +212,39 @@
       requestPreview(payload, mySequence);
     }, 250);
   }
+
+  // The ride-options response carries the exact route facts signed into the
+  // fare quote. Replace the early informational preview with that route so
+  // the map, distance, duration and quoted fare all describe one measurement.
+  document.addEventListener('afcon360:fare-route-resolved', function (event) {
+    var data = event && event.detail;
+    if (!data || data.distance_basis !== 'road_network' ||
+        !isFinite(Number(data.distance_km)) ||
+        !isFinite(Number(data.duration_s)) ||
+        !validGeometry(data.route_geometry)) {
+      showUnavailable('We could not verify the route used for this fare. Please request a fresh quote.');
+      return;
+    }
+
+    sequence += 1;
+    if (debounceTimer) {
+      window.clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    cancelInflight();
+
+    var rendered = (typeof window.__mapRenderRoadRoute === 'function') &&
+      window.__mapRenderRoadRoute(data.route_geometry);
+    var distanceKm = Number(data.distance_km).toFixed(1);
+    var duration = formatDuration(data.duration_s);
+    setState(
+      'resolved',
+      'Driving route · ' + distanceKm + ' km · ' + duration,
+      rendered
+        ? 'This is the exact road route used to calculate the fare options.'
+        : 'The signed road distance and duration priced this fare, but the map could not display its geometry.'
+    );
+  });
 
   document.addEventListener('afcon360:route-preview-inputs-changed', function () {
     schedulePreview(false);

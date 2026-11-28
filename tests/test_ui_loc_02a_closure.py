@@ -5,7 +5,7 @@ Node-owned additive tests. Proves, against the REAL server boundary:
      (0,0) + valid Kampala accepted; out-of-range rejected)
   2. create_booking rejects unresolved/invalid endpoints; valid books
   3. POST /api/transport/ride-options rejects the six classes server-side
-     WITHOUT reaching fare calculation; valid still 200 straight_line_planner
+     WITHOUT reaching fare calculation; valid still 200 road_network
   4. explicit estimate (fare/estimate) still serves planning_default while
      real booking with no coordinates is refused
 """
@@ -21,6 +21,30 @@ LAT_B, LNG_B = 0.3350, 32.6000
 
 RIDE_OPTIONS_URL = "/api/transport/ride-options"
 FARE_ESTIMATE_URL = "/api/transport/fare/estimate"
+
+
+@pytest.fixture(autouse=True)
+def _stub_test_road_routing(monkeypatch):
+    from app.geo.interfaces import GeoPoint, RouteResult
+    from app.transport.services import road_distance_service
+
+    class _Provider:
+        def route(self, origin, destination, profile="auto"):
+            return RouteResult(
+                distance_m=8750.0,
+                duration_s=1260.0,
+                geometry=[
+                    GeoPoint(0.3150, 32.5820),
+                    GeoPoint(0.3250, 32.5900),
+                    GeoPoint(0.3350, 32.6000),
+                ],
+                provider="test-routing-provider",
+                resolved=True,
+            )
+
+    monkeypatch.setattr(
+        road_distance_service, "get_routing_service", lambda: _Provider()
+    )
 
 
 def _user(app, tag="loc02a"):
@@ -122,14 +146,17 @@ def test_booking_valid_coordinates_still_books(app):
     from app.transport.models import Booking
     from app.transport.services.booking_service import get_booking_service
     user_id = _user(app)
+    from tests.transport_road_quote_helpers import add_test_road_quote
+    valid_payload = _payload(
+        pickup_latitude=LAT_A, pickup_longitude=LNG_A,
+        dropoff_latitude=LAT_B, dropoff_longitude=LNG_B)
     with app.app_context():
-        result = get_booking_service().create_booking(user_id, _payload(
-            pickup_latitude=LAT_A, pickup_longitude=LNG_A,
-            dropoff_latitude=LAT_B, dropoff_longitude=LNG_B))
+        add_test_road_quote(valid_payload)
+        result = get_booking_service().create_booking(user_id, valid_payload)
     assert result["success"] is True
     with app.app_context():
         booking = db.session.get(Booking, result["data"]["booking_id"])
-        assert booking.booking_metadata["distance_basis"] == "straight_line_planner"
+        assert booking.booking_metadata["distance_basis"] == "road_network"
 
 
 # --- Steps 6-7: ride_options server boundary (direct POST) ------------------
@@ -202,7 +229,7 @@ def test_ride_options_valid_still_works(app, anonymous_client):
     resp = anonymous_client.post(RIDE_OPTIONS_URL, json=_valid_ride_body())
     assert resp.status_code == 200
     data = resp.get_json()["data"]
-    assert data["distance_basis"] == "straight_line_planner"
+    assert data["distance_basis"] == "road_network"
 
 
 # --- Steps 5/11: explicit estimate vs booking separation --------------------

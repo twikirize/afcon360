@@ -58,17 +58,18 @@ def test_route_preview_is_visually_mobile_responsive_and_truthful():
     template = _read("templates/transport/new_home.html")
     assert "@media (max-width: 420px)" in css
     assert '.road-route-summary[hidden]' in css
-    assert "Planned road route only" in _read(
-        "static/js/modules/transport/road-route-preview.js"
-    )
-    assert "Fare estimate continues to use straight-line distance" in _read(
-        "static/js/modules/transport/road-route-preview.js"
-    )
-    assert "fare estimates continue to use straight-line distance" in template
+    preview_client = _read("static/js/modules/transport/road-route-preview.js")
+    assert "Preliminary road route" in preview_client
+    assert "afcon360:fare-route-resolved" in preview_client
+    assert "This is the exact road route used to calculate the fare options" in preview_client
+    assert "fare estimates continue to use straight-line distance" not in template
 
 
-def test_existing_ride_options_keeps_the_existing_fare_distance_basis():
+def test_ride_options_uses_server_road_measurement_for_signed_fare_quotes():
     ride_options = _read("app/transport/api/ride_options_routes.py")
-    assert 'distance_basis = "straight_line_planner"' in ride_options
-    assert "get_routing_service" not in ride_options
+    assert "measure_road_route(pickup, dropoff)" in ride_options
+    assert 'distance_basis = route["distance_basis"]' in ride_options
+    assert "route_duration_s=route[\"duration_s\"]" in ride_options
+    assert "route_provider=route[\"provider\"]" in ride_options
     assert "issue_fare_quote(" in ride_options
+    assert "straight_line" not in ride_options
