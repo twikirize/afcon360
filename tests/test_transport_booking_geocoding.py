@@ -49,12 +49,12 @@ def _create(app, user_id, **over):
     from app.transport.services.booking_service import get_booking_service
     from tests.transport_road_quote_helpers import add_test_road_quote
     data = _payload(**over)
-    if all(data.get(key) is not None for key in (
-        "pickup_latitude", "pickup_longitude",
-        "dropoff_latitude", "dropoff_longitude",
-    )):
-        add_test_road_quote(data)
     with app.app_context():
+        if all(data.get(key) is not None for key in (
+            "pickup_latitude", "pickup_longitude",
+            "dropoff_latitude", "dropoff_longitude",
+        )):
+            add_test_road_quote(data)
         result = get_booking_service().create_booking(user_id, data)
     assert result["success"] is True, result
     return result["data"]["booking_id"]
