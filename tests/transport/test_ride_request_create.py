@@ -39,35 +39,8 @@ def _payload(app, **overrides):
         # catalogue. Seed its standard config for this isolated test database.
         from app.wallet.models.payment_method import PaymentMethodConfig
         PaymentMethodConfig.initialize_defaults()
-        from app.transport.services.booking_service import _measured_distance_km
-        from app.transport.services.fare_service import calculate_estimate
-        from app.transport.services.fare_quote_service import (
-            issue_fare_quote, money_amount,
-        )
-
-        quoted_at = datetime.now().replace(microsecond=0)
-        distance_km = _measured_distance_km(body["pickup"], body["dropoff"])
-        estimate = calculate_estimate(
-            service_type=body["service_type"],
-            vehicle_class=body["vehicle_class"],
-            distance_km=distance_km,
-            at=quoted_at,
-        )
-        currency = str(estimate.get("currency") or "USD").upper()
-        amount = money_amount(estimate["total"])
-        body["currency"] = currency
-        body["confirmed_fare_amount"] = format(amount, ".2f")
-        body["fare_quote_token"] = issue_fare_quote(
-            service_type=body["service_type"],
-            vehicle_class=body["vehicle_class"],
-            currency=currency,
-            amount=amount,
-            fare_version=estimate.get("version"),
-            pickup=body["pickup"],
-            dropoff=body["dropoff"],
-            distance_km=distance_km,
-            quoted_at=quoted_at,
-        )
+        from tests.transport_road_quote_helpers import add_test_ride_request_quote
+        add_test_ride_request_quote(body)
     return body
 
 
