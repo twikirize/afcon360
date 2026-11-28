@@ -140,6 +140,23 @@ def test_native_scheduled_airport_booking_uses_booking_service_without_early_dis
     assert service_calls["transition"] == 0
 
 
+def test_native_booking_rejects_missing_road_fare_quote(client, monkeypatch):
+    user = SimpleNamespace(id=9810)
+    _prepare_booking_gate(monkeypatch, user)
+    payload = _booking_payload(service_type="airport_departure", booking_mode="scheduled")
+    payload.pop("fare_quote_token")
+    payload.pop("confirmed_fare_amount")
+
+    response = client.post(
+        "/api/mobile/v1/transport/bookings",
+        json=payload,
+        headers={"Authorization": "Bearer native-test-token"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "fare_quote_required"
+
+
 def test_native_instant_airport_booking_uses_website_cash_dispatch_path(
     client, monkeypatch
 ):
