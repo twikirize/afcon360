@@ -26,12 +26,14 @@ on:
       - "app/utils/crypto.py"
       - "app/utils/log_redaction.py"
       - "templates/owner/communication_settings.html"
+      - "templates/owner/geofencing.html"
       - "tests/notifications/test_shared_email_configuration.py"
       - "tests/test_geo_integration.py"
       - "tests/test_module_integration.py"
       - "tests/test_*.py"
       - "tests/transport/**"
       - "app/__init__.py"
+      - "app/core/model_registry.py"
       - "templates/transport/**"
       - "templates/admin/transport_admin_*.html"
       - "tests/test_transport_booking_route_path.py"
@@ -220,6 +222,7 @@ jobs:
           app/transport
           app/wallet
           app/geo
+          app/core/model_registry.py
           app/backup
           scripts/seed_payment_methods.py
           app/tasks/transport_recovery.py
@@ -312,6 +315,7 @@ jobs:
               "admin/transport_admin_operations.html",
               "owner/settings.html",
               "owner/communication_settings.html",
+              "owner/geofencing.html",
               "auth/mfa_setup.html",
               "auth/mfa_status.html",
               "auth/verify_phone.html",
@@ -368,6 +372,8 @@ jobs:
           node --check static/js/modules/transport/driver_offer_poll.js
           node --check static/js/modules/transport/rider_matching.js
           node --check static/js/modules/transport/rider_status_sync.js
+          node --check static/js/modules/transport/pickup-search.js
+          node --check static/js/modules/transport/dropoff-search.js
           node --check static/js/modules/transport/road-route-preview.js
           node --check static/js/geo/geo-realtime.js
           node --input-type=module --check < static/js/modules/transport/offer-poller.js
@@ -408,6 +414,9 @@ jobs:
               tests/test_transport_route_preview.py
               tests/test_transport_road_route_preview_frontend.py
               tests/test_transport_ride_options.py
+              tests/test_geo_service_areas.py
+              tests/test_geo_service_area_api.py
+              tests/test_transport_matching_distance.py
             )
             if [[ ${#TARGETS[@]} -eq 0 ]]; then
               echo "No failed-test targets are recorded."

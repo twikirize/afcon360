@@ -597,6 +597,13 @@ class BookingService:
             _ensure_canonical_coords(pickup_snapshot, "pickup_location")
             _ensure_canonical_coords(dropoff_snapshot, "dropoff_location")
 
+            # Re-check the owner-managed service-area policy at the booking
+            # write boundary; client and quote-discovery checks are not trusted.
+            from app.geo.service_areas import enforce_service_area_trip
+            enforce_service_area_trip(
+                pickup_snapshot, dropoff_snapshot, service="transport"
+            )
+
             # UI-LOC-02A: booking-bound pricing has no silent fallback.
             # Measured GEO straight-line distance from resolved coordinates
             # is the ONLY booking fare basis. Explicit estimates live in

@@ -108,8 +108,16 @@ def test_close_driver_outranks_far_driver_on_proximity():
     degrades to a pool-order tie — this test fails until migration."""
     close = _driver(0.3566, 32.5825)   # ~1 km north of pickup
     far = _driver(0.4556, 32.5825)     # ~12 km north of pickup
-    ranked = MatchingService._rank_drivers_for_booking(
-        drivers=[far, close], booking=_booking(KAMPALA_PICKUP))
+    default_policy = {
+        "version": 1, "enabled": False,
+        "allow_cross_area_routes": False, "areas": [],
+    }
+    with mock.patch(
+        "app.geo.service_areas.get_service_area_config",
+        return_value=default_policy,
+    ):
+        ranked = MatchingService._rank_drivers_for_booking(
+            drivers=[far, close], booking=_booking(KAMPALA_PICKUP))
     assert [d["current_location"] for d in ranked] == [
         close["current_location"], far["current_location"]]
     assert ranked[0]["match_score"] > ranked[1]["match_score"]
@@ -123,8 +131,16 @@ def test_stale_or_invalid_location_excluded_before_scoring():
         datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
     no_coords = _driver(0.3477, 32.5826)
     no_coords["current_location"] = {"latitude": None, "longitude": None}
-    ranked = MatchingService._rank_drivers_for_booking(
-        drivers=[stale, no_coords], booking=_booking(KAMPALA_PICKUP))
+    default_policy = {
+        "version": 1, "enabled": False,
+        "allow_cross_area_routes": False, "areas": [],
+    }
+    with mock.patch(
+        "app.geo.service_areas.get_service_area_config",
+        return_value=default_policy,
+    ):
+        ranked = MatchingService._rank_drivers_for_booking(
+            drivers=[stale, no_coords], booking=_booking(KAMPALA_PICKUP))
     assert ranked == []
 
 
@@ -144,3 +160,39 @@ def test_calculate_distance_delegates_to_canonical_geo():
     assert (origin.latitude, origin.longitude) == (0.3476, 32.5825)
     assert (dest.latitude, dest.longitude) == (0.0515, 32.4467)
     assert result == pytest.approx(5.0)  # metres -> km bridge
+
+
+
+def test_active_service_area_excludes_driver_outside_pickup_area(monkeypatch):
+    settings = {
+        "version": 1,
+        "enabled": True,
+        "allow_cross_area_routes": False,
+        "areas": [{
+            "id": "kampala",
+            "name": "Kampala",
+            "active": True,
+            "services": ["transport"],
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [32.5, 0.3], [32.7, 0.3], [32.7, 0.5],
+                    [32.5, 0.5], [32.5, 0.3],
+                ]],
+            },
+        }],
+    }
+    monkeypatch.setattr(
+        "app.geo.service_areas.get_service_area_config",
+        lambda: settings,
+    )
+    inside = _driver(0.3566, 32.5825)
+    outside = _driver(0.55, 32.5825)
+
+    ranked = MatchingService._rank_drivers_for_booking(
+        drivers=[outside, inside], booking=_booking(KAMPALA_PICKUP)
+    )
+
+    assert [item["current_location"] for item in ranked] == [
+        inside["current_location"]
+    ]

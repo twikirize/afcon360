@@ -90,4 +90,69 @@ class LocationObservation(BaseModel):
     )
 
 
-__all__ = ["LocationObservation"]
+
+# Owner-managed service-area configuration. These are GEO-owned
+# configuration records, not Transport bookings or other domain data.
+class GeoServiceArea(BaseModel):
+    """One active or disabled geographic coverage area."""
+
+    __tablename__ = "geo_service_areas"
+    __table_args__ = (
+        db.UniqueConstraint("slug", name="uq_geo_service_areas_slug"),
+        db.Index("ix_geo_service_areas_active", "active", "is_deleted"),
+    )
+
+    public_id = db.Column(
+        db.String(64),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=lambda: str(uuid_lib.uuid4()),
+    )
+    slug = db.Column(db.String(80), nullable=False)
+    name = db.Column(db.String(80), nullable=False)
+    country_code = db.Column(db.String(2), nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True, server_default="true")
+    # JSON arrays keep service assignment flexible without a join table;
+    # the application validates the values against its canonical service set.
+    services = db.Column(db.JSON, nullable=False, default=list)
+    # GeoJSON Polygon/MultiPolygon in RFC 7946 [longitude, latitude] order.
+    geometry = db.Column(db.JSON, nullable=False)
+    created_by = db.Column(
+        db.BigInteger, db.ForeignKey("users.id"), nullable=True, index=True
+    )
+    updated_by = db.Column(
+        db.BigInteger, db.ForeignKey("users.id"), nullable=True, index=True
+    )
+
+
+class GeoServiceAreaPolicy(BaseModel):
+    """Singleton operational policy for GEO service-area enforcement."""
+
+    __tablename__ = "geo_service_area_policies"
+    __table_args__ = (
+        db.UniqueConstraint("policy_key", name="uq_geo_service_area_policy_key"),
+    )
+
+    policy_key = db.Column(
+        db.String(32), nullable=False, default="default", server_default="default"
+    )
+    enforcement_enabled = db.Column(
+        db.Boolean, nullable=False, default=False, server_default="false"
+    )
+    allow_cross_area_routes = db.Column(
+        db.Boolean, nullable=False, default=False, server_default="false"
+    )
+    policy_version = db.Column(
+        db.Integer, nullable=False, default=1, server_default="1"
+    )
+    updated_by = db.Column(
+        db.BigInteger, db.ForeignKey("users.id"), nullable=True, index=True
+    )
+
+
+__all__ = [
+    "LocationObservation",
+    "GeoServiceArea",
+    "GeoServiceAreaPolicy",
+]

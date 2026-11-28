@@ -273,6 +273,13 @@ class RideRequestService:
         pickup_snapshot = _resolve_snapshot(data, "pickup")
         dropoff_snapshot = _resolve_snapshot(data, "dropoff")
 
+        # The accepted request must still be inside the same active area
+        # policy as the rider's fare discovery request.
+        from app.geo.service_areas import enforce_service_area_trip
+        enforce_service_area_trip(
+            pickup_snapshot, dropoff_snapshot, service="transport"
+        )
+
         # Canonical fare engine over the measured straight-line distance —
         # the same basis BookingService uses (no second fare path).
         from app.transport.services.booking_service import _measured_distance_km

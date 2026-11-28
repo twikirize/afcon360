@@ -1929,7 +1929,7 @@
     })
     .then(function(r){ return r.json(); })
     .then(function(d){
-      if (!d || !d.success) return optionsError();
+      if (!d || !d.success) return optionsError(d && d.error, d && d.code);
       var data = d.data || {};
       var opts = data.options || [];
       state.distanceKm = data.distance_km != null ? data.distance_km : null;
@@ -1961,14 +1961,18 @@
     tripMeta.textContent = note;
   }
 
-  function optionsError(){
-    optionsBox.innerHTML =
-      '<div class="bolt-empty">We couldn\'t reach the ride service. ' +
-      '<button type="button" class="bolt-retry" id="retryBtn">Retry</button></div>';
+  function optionsError(message, code){
+    var detail = message ? esc(message) : 'We couldn\\'t reach the ride service.';
+    var retry = code === 'OUTSIDE_SERVICE_AREA' ? '' :
+      ' <button type="button" class="bolt-retry" id="retryBtn">Retry</button>';
+    optionsBox.innerHTML = '<div class="bolt-empty">' + detail + retry + '</div>';
     var rb = document.getElementById('retryBtn');
     if (rb) rb.addEventListener('click', function(){ loadOptions(); });
     btnReview.disabled = true;
     hideFarePanel();
+    if (code === 'OUTSIDE_SERVICE_AREA') {
+      tripMeta.textContent = message || 'This journey is outside Pamoja\\'s active ride service areas.';
+    }
   }
   function optionsEmpty(){
     optionsBox.innerHTML =

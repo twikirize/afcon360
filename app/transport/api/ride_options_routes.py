@@ -131,6 +131,22 @@ class RideOptionsResource(Resource):
         pickup = {"latitude": float(pickup_lat), "longitude": float(pickup_lng)}
         dropoff = {"latitude": float(dropoff_lat), "longitude": float(dropoff_lng)}
 
+        # The owner-managed service-area policy is authoritative for ride
+        # discovery. Browser-only geofence checks are advisory; this server
+        # check protects direct API callers as well.
+        from app.geo.service_areas import (
+            assess_service_area_trip,
+            service_area_error,
+        )
+        service_area = assess_service_area_trip(pickup, dropoff, service="transport")
+        if not service_area.get("supported"):
+            return {
+                "success": False,
+                "error": service_area_error(service_area),
+                "code": "OUTSIDE_SERVICE_AREA",
+                "service_area": service_area,
+            }, 422
+
         # The fare engine currently denominates transport quotes in its own
         # currency. A separate Wallet-currency amount is display-only.
         from app.wallet.services.display_fx_service import build_display_amount

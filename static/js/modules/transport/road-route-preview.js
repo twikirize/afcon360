@@ -98,9 +98,10 @@
 
   function showUnavailable(message) {
     clearRenderedRoute();
+    var areaBlocked = !!(message && /service areas|service area|outside Pamoja/i.test(message));
     setState(
       'unavailable',
-      'Driving route unavailable',
+      areaBlocked ? 'Ride not available in this area' : 'Driving route unavailable',
       message || 'We could not calculate a road route right now. You can still review fare options.'
     );
   }
@@ -168,7 +169,11 @@
       if (mySequence !== sequence) return;
       inflight = null;
       if (error && error.name === 'AbortError') return;
-      showUnavailable();
+      var blockedMessage = error && error.payload &&
+        error.payload.code === 'OUTSIDE_SERVICE_AREA'
+        ? error.payload.error
+        : undefined;
+      showUnavailable(blockedMessage);
     });
   }
 

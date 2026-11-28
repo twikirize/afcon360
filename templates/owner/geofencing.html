@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+
+{% block title %}Service Areas & Geofencing — Pamoja{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css">
+<style>
+  .geo-admin-wrap{max-width:1180px;margin:0 auto}
+  #serviceAreaMap{height:440px;border:1px solid #d8dee5;border-radius:12px;z-index:0}
+  .geo-help{font-size:.88rem;color:#64748b}
+  .geo-area-card{border:1px solid #e2e8f0;border-radius:12px;padding:14px}
+  .geo-status{font-size:.75rem;font-weight:700;text-transform:uppercase}
+  .geo-status-on{color:#166534}.geo-status-off{color:#64748b}
+  .geo-json{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 geo-admin-wrap">
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">Service areas & geofencing</h1>
+      <p class="text-muted mb-0">Configure where Pamoja offers each location-based service. Changes apply to backend checks and rider location search.</p>
+    </div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ 'danger' if category in ['error','danger'] else category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div>
+          <h2 class="h5 mb-1">Geofence enforcement</h2>
+          <p class="geo-help mb-0">This switch controls service-area enforcement only. It does not disable GEO, geocoding, maps or road routing.</p>
+        </div>
+        <span class="badge {{ 'text-bg-success' if config.enabled else 'text-bg-secondary' }}">
+          {{ 'Enforcement enabled' if config.enabled else 'Enforcement disabled' }}
+        </span>
+      </div>
+      <form method="post" class="mt-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="save_settings">
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" role="switch" id="geofenceEnabled" name="enabled" {% if config.enabled %}checked{% endif %}>
+          <label class="form-check-label fw-semibold" for="geofenceEnabled">Enforce active service-area boundaries</label>
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" id="crossArea" name="allow_cross_area_routes" {% if config.allow_cross_area_routes %}checked{% endif %}>
+          <label class="form-check-label" for="crossArea">Allow trips between different active service areas</label>
+        </div>
+        <button type="submit" class="btn btn-primary">Save geofencing settings</button>
+      </form>
+      {% if config.enabled and not active_area_count %}
+        <div class="alert alert-danger mt-3 mb-0">Enforcement is on but there are no active service areas for rides. New ride quotes and bookings will be rejected until an active Transport area is configured.</div>
+      {% elif not config.enabled %}
+        <div class="alert alert-warning mt-3 mb-0">Geofencing is currently bypassed. Riders can request rides outside the configured areas. Enable enforcement after validating the active polygons.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <section class="card shadow-sm border-0 mb-4" aria-labelledby="setupGuideTitle">
+    <div class="card-body">
+      <h2 class="h5 mb-3" id="setupGuideTitle">Set up a service area in four steps</h2>
+      <div class="row g-3">
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="fw-semibold">1. Name the area</div>
+          <p class="geo-help mb-0">Use a city or operating-zone name and its country code</p>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="fw-semibold">2. Find the place</div>
+          <p class="geo-help mb-0">Search for the city to centre the map; then zoom to the coverage you serve</p>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="fw-semibold">3. Draw the boundary</div>
+          <p class="geo-help mb-0">Use the polygon tool for an accurate edge or the rectangle tool for a simple operating zone</p>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="fw-semibold">4. Select services and save</div>
+          <p class="geo-help mb-0">Choose Transport or other applicable services. Enable enforcement only after reviewing every active area</p>
+        </div>
+      </div>
+      <p class="small text-muted mt-3 mb-0">The boundary is the area Pamoja supports, not a promise that every road is covered by the routing network. Use a realistic operating boundary and avoid drawing a single rectangle around an entire country.</p>
+    </div>
+  </section>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-header bg-white fw-semibold">Configured service areas</div>
+        <div class="card-body">
+          {% if config.areas %}
+            <div class="d-grid gap-2">
+              {% for area in config.areas %}
+                <a class="geo-area-card text-decoration-none {{ 'border-primary' if selected_area and selected_area.id == area.id else '' }}"
+                   href="{{ url_for('admin.owner.geofencing', area=area.id) }}">
+                  <div class="d-flex justify-content-between align-items-center gap-2">
+                    <strong class="text-body">{{ area.name }}</strong>
+                    <span class="geo-status {{ 'geo-status-on' if area.active else 'geo-status-off' }}">{{ 'Active' if area.active else 'Disabled' }}</span>
+                  </div>
+                  <div class="small text-muted mt-1">{{ area.country_code or 'Country not specified' }} · {{ area.services|join(', ') }}</div>
+                </a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-muted">No service areas configured yet.</p>
+          {% endif %}
+          <a class="btn btn-outline-primary w-100 mt-3" href="{{ url_for('admin.owner.geofencing') }}">Add a new service area</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+      <div class="card shadow-sm border-0">
+        <div class="card-header bg-white fw-semibold">{{ 'Edit service area' if selected_area else 'Create service area' }}</div>
+        <div class="card-body">
+          <form method="post" id="serviceAreaForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="save_area">
+            <input type="hidden" name="area_id" value="{{ selected_area.id if selected_area else '' }}">
+
+            <div class="row g-3">
+              <div class="col-12 col-md-8">
+                <label class="form-label" for="areaName">Area / city name</label>
+                <input class="form-control" id="areaName" name="name" maxlength="80" required value="{{ selected_area.name if selected_area else '' }}" placeholder="e.g. Kampala">
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="countryCode">Country code</label>
+                <input class="form-control text-uppercase" id="countryCode" name="country_code" maxlength="2" value="{{ selected_area.country_code if selected_area else '' }}" placeholder="UG">
+              </div>
+              <div class="col-12">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="areaActive" name="active" {% if selected_area is none or selected_area.active %}checked{% endif %}>
+                  <label class="form-check-label" for="areaActive">Area active</label>
+                </div>
+              </div>
+              <div class="col-12">
+                <label class="form-label d-block">Services available in this area</label>
+                {% for service, label in [('transport','Rides / Transport'),('accommodation','Accommodation'),('events','Events'),('tourism','Tourism')] %}
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="service-{{ service }}" name="services" value="{{ service }}"
+                      {% if selected_area and service in selected_area.services %}checked{% elif not selected_area and service == 'transport' %}checked{% endif %}>
+                    <label class="form-check-label" for="service-{{ service }}">{{ label }}</label>
+                  </div>
+                {% endfor %}
+              </div>
+              <div class="col-12">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                  <label class="form-label mb-0">Service-area boundary</label>
+                  <span class="geo-help" id="areaBoundaryStatus" role="status" aria-live="polite">No boundary drawn yet. Draw a polygon or rectangle on the map below.</span>
+                </div>
+                <details class="mb-3">
+                  <summary class="small text-primary">Advanced: paste or edit GeoJSON boundary</summary>
+                  <textarea class="form-control geo-json mt-2" id="geometry" name="geometry" rows="7" placeholder='{"type":"Polygon","coordinates":[[[32.5,0.2],[32.8,0.2],[32.8,0.5],[32.5,0.5],[32.5,0.2]]]}'>{{ selected_area.geometry|tojson if selected_area else '' }}</textarea>
+                  <p class="geo-help mt-1 mb-0">GeoJSON coordinates must be [longitude, latitude]. Most managers should use the map drawing tools instead.</p>
+                </details>
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="areaMapSearch">Find city or place to centre the map</label>
+                <div class="input-group mb-2">
+                  <input class="form-control" id="areaMapSearch" type="search" maxlength="160"
+                         placeholder="e.g. Nairobi, Kenya">
+                  <button class="btn btn-outline-primary" type="button" id="areaMapSearchButton">Find place</button>
+                </div>
+                <p class="geo-help mb-2" id="areaMapSearchNote" role="status" aria-live="polite">
+                  Search uses the configured GEO place provider. You can also pan/zoom or paste GeoJSON.
+                </p>
+                <div id="serviceAreaMap" aria-label="Draw the service area boundary on the map"></div>
+                <p class="geo-help mt-2 mb-0">Draw one or more shapes to build a multi-part coverage area. Click a drawn shape to edit or remove it. The shaded boundary determines where selected services are available.</p>
+                {% if not map_config.tile_url_template %}
+                  <p class="text-warning small mt-2 mb-0">Map tiles are not configured. You can still paste or edit the GeoJSON boundary above.</p>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 mt-4">
+              <button type="submit" class="btn btn-primary">Save service area</button>
+              {% if selected_area %}
+                <button type="button" class="btn btn-outline-danger" id="disableServiceArea">Disable this area</button>
+              {% endif %}
+              <a class="btn btn-outline-secondary" href="{{ url_for('admin.owner.geofencing') }}">Clear form</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script nonce="{{ csp_nonce }}">
+(function () {
+  'use strict';
+  var form = document.getElementById('serviceAreaForm');
+  var actionField = form ? form.querySelector('input[name="action"]') : null;
+  var disableButton = document.getElementById('disableServiceArea');
+  if (disableButton && form && actionField) {
+    disableButton.addEventListener('click', function () {
+      if (!window.confirm('Disable this service area? Its configuration will be preserved.')) return;
+      actionField.value = 'disable_area';
+      form.submit();
+    });
+  }
+
+  var mapNode = document.getElementById('serviceAreaMap');
+  var geoField = document.getElementById('geometry');
+  var boundaryStatus = document.getElementById('areaBoundaryStatus');
+  if (!mapNode || !geoField) return;
+  if (!window.L) {
+    if (boundaryStatus) {
+      boundaryStatus.textContent = 'Map tools could not load. Open the advanced GeoJSON editor or check the map asset connection.';
+    }
+    return;
+  }
+
+  var mapConfig = {{ map_config|tojson }};
+  var searchInput = document.getElementById('areaMapSearch');
+  var searchButton = document.getElementById('areaMapSearchButton');
+  var searchNote = document.getElementById('areaMapSearchNote');
+  if (searchButton && searchInput && searchNote) {
+    searchButton.addEventListener('click', function () {
+      var query = searchInput.value.trim();
+      if (query.length < 2) {
+        searchNote.textContent = 'Enter at least two characters.';
+        return;
+      }
+      searchButton.disabled = true;
+      searchNote.textContent = 'Searching for a map centre…';
+      fetch('/geo/api/geocode?service=transport&q=' + encodeURIComponent(query), {
+        headers: {'Accept': 'application/json'},
+        credentials: 'same-origin',
+        cache: 'no-store'
+      }).then(function (response) {
+        if (!response.ok) throw new Error('Place search unavailable');
+        return response.json();
+      }).then(function (payload) {
+        if (!payload || payload.success !== true ||
+            !Array.isArray(payload.results) || !payload.results.length) {
+          searchNote.textContent = 'No place result was found. Pan the map or paste GeoJSON instead.';
+          return;
+        }
+        var result = payload.results[0];
+        var lat = Number(result.latitude);
+        var lng = Number(result.longitude);
+        if (!isFinite(lat) || !isFinite(lng) ||
+            lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          searchNote.textContent = 'The place provider returned invalid coordinates.';
+          return;
+        }
+        map.setView([lat, lng], 13);
+        searchNote.textContent = (result.label || query) +
+          (payload.attribution ? ' · ' + payload.attribution : '');
+      }).catch(function () {
+        searchNote.textContent = 'Place search is unavailable. Pan the map or paste GeoJSON instead.';
+      }).finally(function () {
+        searchButton.disabled = false;
+      });
+    });
+    searchInput.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        searchButton.click();
+      }
+    });
+  }
+
+  var center = mapConfig.default_center || {latitude: 0, longitude: 0};
+  var map = L.map(mapNode).setView([center.latitude, center.longitude], mapConfig.default_zoom || 5);
+  if (mapConfig.tile_url_template) {
+    L.tileLayer(mapConfig.tile_url_template, {
+      attribution: mapConfig.tile_attribution || '',
+      maxZoom: 19
+    }).addTo(map);
+  }
+  var drawn = new L.FeatureGroup();
+  map.addLayer(drawn);
+
+  function loadGeometry() {
+    drawn.clearLayers();
+    var parsed;
+    try { parsed = JSON.parse(geoField.value); } catch (e) { return; }
+    if (!parsed || !parsed.type || !parsed.coordinates) return;
+    try {
+      L.geoJSON({type: 'Feature', properties: {}, geometry: parsed}).eachLayer(function (layer) {
+        if (layer instanceof L.Polygon) {
+          drawn.addLayer(layer);
+        } else if (typeof layer.eachLayer === 'function') {
+          layer.eachLayer(function (part) {
+            if (part instanceof L.Polygon) drawn.addLayer(part);
+          });
+        }
+      });
+      if (drawn.getLayers().length && drawn.getBounds().isValid()) {
+        map.fitBounds(drawn.getBounds(), {padding: [20, 20], maxZoom: 14});
+      }
+      updateBoundaryStatus(drawn.getLayers().length);
+    } catch (e) { /* GeoJSON remains editable in the text field. */ }
+  }
+
+  function updateBoundaryStatus(count) {
+    if (!boundaryStatus) return;
+    if (!count) {
+      boundaryStatus.textContent = 'No boundary drawn yet. Draw a polygon or rectangle on the map below.';
+      boundaryStatus.className = 'geo-help';
+    } else {
+      boundaryStatus.textContent = count + ' boundary shape' + (count === 1 ? '' : 's') + ' ready to save.';
+      boundaryStatus.className = 'small text-success fw-semibold';
+    }
+  }
+
+  function saveGeometry() {
+    var polygons = [];
+    drawn.eachLayer(function (layer) {
+      var geometry = layer.toGeoJSON().geometry;
+      if (!geometry) return;
+      if (geometry.type === 'Polygon') polygons.push(geometry.coordinates);
+      else if (geometry.type === 'MultiPolygon') {
+        geometry.coordinates.forEach(function (polygon) { polygons.push(polygon); });
+      }
+    });
+    if (!polygons.length) {
+      geoField.value = '';
+    } else if (polygons.length === 1) {
+      geoField.value = JSON.stringify({type: 'Polygon', coordinates: polygons[0]});
+    } else {
+      geoField.value = JSON.stringify({type: 'MultiPolygon', coordinates: polygons});
+    }
+    updateBoundaryStatus(polygons.length);
+  }
+
+  if (L.Control && L.Control.Draw) {
+    map.addControl(new L.Control.Draw({
+      position: 'topleft',
+      draw: {polyline: false, circle: false, marker: false, circlemarker: false,
+             polygon: {allowIntersection: false, showArea: true}, rectangle: true},
+      edit: {featureGroup: drawn, remove: true}
+    }));
+    map.on(L.Draw.Event.CREATED, function (event) {
+      drawn.addLayer(event.layer);
+      saveGeometry();
+    });
+    map.on(L.Draw.Event.EDITED, saveGeometry);
+    map.on(L.Draw.Event.DELETED, saveGeometry);
+  }
+  geoField.addEventListener('change', loadGeometry);
+  geoField.addEventListener('blur', loadGeometry);
+  loadGeometry();
+  window.setTimeout(function () { map.invalidateSize(); }, 150);
+})();
+</script>
+{% endblock %}

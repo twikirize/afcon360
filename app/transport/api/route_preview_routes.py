@@ -174,6 +174,23 @@ class RoutePreviewResource(Resource):
             }, 400)
 
         try:
+            from app.geo.service_areas import (
+                assess_service_area_trip,
+                service_area_error,
+            )
+            service_area = assess_service_area_trip(
+                {"latitude": origin.latitude, "longitude": origin.longitude},
+                {"latitude": destination.latitude, "longitude": destination.longitude},
+                service="transport",
+            )
+            if not service_area.get("supported"):
+                return _json_response({
+                    "success": False,
+                    "error": service_area_error(service_area),
+                    "code": "OUTSIDE_SERVICE_AREA",
+                    "service_area": service_area,
+                }, 422)
+
             service = get_routing_service()
             result = service.route(origin, destination, profile="auto")
             route_data = _serialize_route(result)
