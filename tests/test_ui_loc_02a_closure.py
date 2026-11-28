@@ -229,7 +229,7 @@ def test_ride_options_valid_still_works(app, anonymous_client):
     resp = anonymous_client.post(RIDE_OPTIONS_URL, json=_valid_ride_body())
     assert resp.status_code == 200
     data = resp.get_json()["data"]
-    assert data["distance_basis"] == "straight_line_planner"
+    assert data["distance_basis"] == "road_network"
 
 
 # --- Steps 5/11: explicit estimate vs booking separation --------------------
