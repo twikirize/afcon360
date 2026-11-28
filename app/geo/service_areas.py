@@ -599,16 +599,92 @@ def validate_service_area_config(raw: Any) -> dict:
 
 
 def save_service_area_config(raw: dict, updated_by: int | None = None) -> dict:
-    """Persist the validated config in SystemConfig; no migration required."""
+    """Persist service-area records and their singleton enforcement policy."""
     current = get_service_area_config()
     validated = validate_service_area_config(raw)
-    validated["version"] = max(current.get("version", 1), validated["version"]) + 1
-    SystemConfig.set(
-        SERVICE_AREA_CONFIG_KEY,
-        validated,
-        value_type="json",
-        category="geo",
-        description="Owner-managed service-area polygons and geofence enforcement",
-        updated_by=updated_by,
-    )
-    return validated
+    validated["version"] = max(
+        current.get("version", 1), validated["version"]
+    ) + 1
+
+    try:
+        policy = GeoServiceAreaPolicy.query.filter_by(
+            policy_key="default", is_deleted=False
+        ).first()
+        if policy is None:
+            policy = GeoServiceAreaPolicy(
+                policy_key="default",
+                enforcement_enabled=validated["enabled"],
+                allow_cross_area_routes=validated["allow_cross_area_routes"],
+                policy_version=validated["version"],
+                updated_by=updated_by,
+            )
+            db.session.add(policy)
+        else:
+            policy.enforcement_enabled = validated["enabled"]
+            policy.allow_cross_area_routes = validated["allow_cross_area_routes"]
+            policy.policy_version = validated["version"]
+            policy.updated_by = updated_by
+
+        existing_records = GeoServiceArea.query.filter(
+            GeoServiceArea.is_deleted.is_(False)
+        ).all()
+        existing_by_slug = {record.slug: record for record in existing_records}
+        retained_slugs = set()
+
+        for area in validated["areas"]:
+            slug = area["id"]
+            record = existing_by_slug.get(slug)
+            if record is None:
+                # Restore a soft-deleted slug rather than create a duplicate.
+                record = GeoServiceArea.query.filter_by(slug=slug).first()
+            if record is None:
+                record = GeoServiceArea(
+                    slug=slug,
+                    name=area["name"],
+                    country_code=area["country_code"] or None,
+                    active=area["active"],
+                    services=area["services"],
+                    geometry=area["geometry"],
+                    created_by=updated_by,
+                    updated_by=updated_by,
+                )
+                db.session.add(record)
+            else:
+                record.is_deleted = False
+                record.deleted_at = None
+                record.name = area["name"]
+                record.country_code = area["country_code"] or None
+                record.active = area["active"]
+                record.services = area["services"]
+                record.geometry = area["geometry"]
+                record.updated_by = updated_by
+            retained_slugs.add(slug)
+
+        # Preserve historic configuration but prevent omitted records from
+        # remaining eligible. No raw DELETE is performed.
+        for record in existing_records:
+            if record.slug not in retained_slugs:
+                record.active = False
+                record.is_deleted = True
+                record.deleted_at = db.func.now()
+                record.updated_by = updated_by
+
+        db.session.commit()
+        return validated
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        if not _is_missing_geofence_table(exc):
+            raise
+
+        # Temporary compatibility only: until the owner runs the generated
+        # migration, preserve the previous JSON storage contract. This path
+        # automatically stops being used once both GEO tables exist.
+        SystemConfig.set(
+            SERVICE_AREA_CONFIG_KEY,
+            validated,
+            value_type="json",
+            category="geo",
+            description="Legacy transition for owner-managed service areas",
+            updated_by=updated_by,
+        )
+        return validated
