@@ -133,7 +133,7 @@
     <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
     <h4 style="font-size: 16px; margin-bottom: 16px;"><i class="fas fa-gavel"></i> Compliance Review Actions</h4>
 
-    {% if kyc_record.status in ('pending', 'in_review') %}
+    {% if kyc_record.status in ('pending', 'in_review', 'manual_review') %}
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
 
       <!-- Approve Form -->
@@ -160,6 +160,19 @@
         <button type="submit" class="btn btn-danger" style="width: 100%;">Reject Submission</button>
       </form>
 
+      <!-- Seek Clarification Form (Ask user for more info WITHOUT rejecting) -->
+      <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=kyc_record.id) }}" class="card" style="padding: 16px; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="seek_clarification">
+        <h5 style="color: #f59e0b; margin-bottom: 10px;"><i class="fas fa-question-circle"></i> Seek Clarification</h5>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px;">Request additional information from the applicant without rejecting the submission. The status remains under review.</p>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="clarification_details">What clarification is needed? <span style="color: #ef4444;">*</span></label>
+          <textarea id="clarification_details" name="clarification_details" class="form-control" rows="3" placeholder="Specify what additional information or documents you need from the applicant..." required></textarea>
+        </div>
+        <button type="submit" class="btn btn-warning" style="width: 100%; background: #f59e0b; color: white;">Send Clarification Request</button>
+      </form>
+
       <!-- Targeted Replacement Form -->
       <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=kyc_record.id) }}" class="card" style="padding: 16px; border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -178,6 +191,28 @@
           <textarea id="reupload_reason" name="reupload_reason" class="form-control" rows="3" placeholder="For example: PDF is blank, cropped, or too blurry to verify." required></textarea>
         </div>
         <button type="submit" class="btn btn-primary" style="width: 100%;">Ask for This File Again</button>
+      </form>
+
+      <!-- Assign to Another Officer Form -->
+      <form method="POST" action="{{ url_for('admin.compliance.kyc_action', kyc_id=kyc_record.id) }}" class="card" style="padding: 16px; border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="assign_to">
+        <h5 style="color: #8b5cf6; margin-bottom: 10px;"><i class="fas fa-user-plus"></i> Assign to Another Officer</h5>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px;">Transfer this KYC review to another compliance officer.</p>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="assign_to_id">Officer <span style="color: #ef4444;">*</span></label>
+          <select id="assign_to_id" name="assign_to_id" class="form-control" required>
+            <option value="">-- Select Officer --</option>
+            {% for officer in compliance_officers %}
+            <option value="{{ officer.id }}">{{ officer.username }} ({{ officer.email }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="assignment_note">Assignment Note</label>
+          <textarea id="assignment_note" name="assignment_note" class="form-control" rows="2" placeholder="Optional note for the assigned officer..."></textarea>
+        </div>
+        <button type="submit" class="btn" style="width: 100%; background: #8b5cf6; color: white;">Assign Officer</button>
       </form>
 
     </div>
