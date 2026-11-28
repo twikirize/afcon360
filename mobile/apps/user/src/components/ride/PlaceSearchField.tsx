@@ -18,11 +18,14 @@ type PlaceSearchFieldProps = {
   placeholder: string;
   onValue: (value: string) => void;
   onSelect: (place: Place) => void;
-  /** Optional control on the label row (e.g. "use my current location"). */
+  /** Optional control on the label row. */
   accessory?: React.ReactNode;
+  /** Optional leading mark and trailing action inside the input. */
+  leading?: React.ReactNode;
+  trailing?: React.ReactNode;
 };
 
-export function PlaceSearchField({ label, value, placeholder, onValue, onSelect, accessory }: PlaceSearchFieldProps) {
+export function PlaceSearchField({ label, value, placeholder, onValue, onSelect, accessory, leading, trailing }: PlaceSearchFieldProps) {
   const [searchState, setSearchState] = useState<PlaceSearchState>(EMPTY_PLACE_SEARCH_STATE);
   const selectedLabelQuery = useRef<string | null>(null);
   const query = value.trim().replace(/\s+/g, " ");
@@ -126,7 +129,9 @@ export function PlaceSearchField({ label, value, placeholder, onValue, onSelect,
         <Text style={styles.fieldLabel}>{label}</Text>
         {accessory}
       </View>
-      <TextInput
+      <View style={styles.inputShell}>
+        {leading ? <View style={styles.leading}>{leading}</View> : null}
+        <TextInput
         value={value}
         onChangeText={nextValue => {
           selectedLabelQuery.current = null;
@@ -144,7 +149,9 @@ export function PlaceSearchField({ label, value, placeholder, onValue, onSelect,
         accessibilityHint="Enter at least two characters, then choose a verified place from the suggestions."
         autoCorrect={false}
         returnKeyType="search"
-      />
+        />
+        {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
+      </View>
       {visibleState.status === "loading" ? (
         <View style={styles.searchStatus}>
           <ActivityIndicator color={colors.brand.green} />
@@ -195,13 +202,27 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   fieldLabel: { color: colors.text.ink, fontWeight: "700", fontSize: 13 },
-  input: {
-    backgroundColor: colors.surface.white,
+  inputShell: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 13,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    borderRadius: 15,
+    paddingLeft: 11,
+    paddingRight: 7,
+  },
+  leading: { alignItems: "center", justifyContent: "center" },
+  trailing: { alignItems: "center", justifyContent: "center" },
+  input: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 9,
     color: colors.text.ink,
     fontSize: 15,
   },

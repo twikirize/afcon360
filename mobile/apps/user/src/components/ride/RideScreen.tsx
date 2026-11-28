@@ -458,40 +458,31 @@ export function RideScreen() {
   if (stage === "where") {
     return (
       <SafeAreaView style={styles.whereSafe} edges={["top", "left", "right"]}>
-        <View style={styles.whereHeader}>
-          <Text style={styles.whereEyebrow}>TRANSPORT</Text>
-          <Text accessibilityRole="header" style={styles.whereTitle}>
-            Where are you going?
-          </Text>
-        </View>
-        <View style={styles.whereProgress}>
-          <Progress stage={stage} />
-        </View>
-        <RideWhere
-          pickup={pickup}
-          dropoff={dropoff}
-          pickupText={pickupText}
-          dropoffText={dropoffText}
-          serviceType={serviceType}
-          vip={vip}
-          schedule={schedule}
-          scheduledAt={scheduledAt}
-          locationBusy={locationBusy}
-          locationMessage={locationMessage}
-          reverseAttribution={reverseAttribution}
-          onPickupTextChange={value => { setPickupText(value); setPickup(null); resetCommitment(); }}
-          onDropoffTextChange={value => { setDropoffText(value); setDropoff(null); resetCommitment(); }}
-          onPickupSelect={place => setResolvedPlace("pickup", place)}
-          onDropoffSelect={place => setResolvedPlace("dropoff", place)}
-          onUseCurrentLocation={useCurrentLocation}
-          onSwapLocations={swapLocations}
-          onServiceTypeChange={setService}
-          onScheduleChange={schedule => { setSchedule(schedule); resetCommitment(); }}
-          onScheduledAtChange={value => { setScheduledAt(value); resetCommitment(); }}
-          onContinue={continueToOptions}
-          resetCommitment={resetCommitment}
-          onMapMessage={handleMapMessage}
-        />
+      <RideWhere
+        pickup={pickup}
+        dropoff={dropoff}
+        pickupText={pickupText}
+        dropoffText={dropoffText}
+        serviceType={serviceType}
+        vip={vip}
+        schedule={schedule}
+        scheduledAt={scheduledAt}
+        locationBusy={locationBusy}
+        locationMessage={locationMessage}
+        reverseAttribution={reverseAttribution}
+        onPickupTextChange={value => { setPickupText(value); setPickup(null); resetCommitment(); }}
+        onDropoffTextChange={value => { setDropoffText(value); setDropoff(null); resetCommitment(); }}
+        onPickupSelect={place => setResolvedPlace("pickup", place)}
+        onDropoffSelect={place => setResolvedPlace("dropoff", place)}
+        onUseCurrentLocation={useCurrentLocation}
+        onSwapLocations={swapLocations}
+        onServiceTypeChange={setService}
+        onScheduleChange={schedule => { setSchedule(schedule); resetCommitment(); }}
+        onScheduledAtChange={value => { setScheduledAt(value); resetCommitment(); }}
+        onContinue={continueToOptions}
+        resetCommitment={resetCommitment}
+        onMapMessage={handleMapMessage}
+      />
       </SafeAreaView>
     );
   }

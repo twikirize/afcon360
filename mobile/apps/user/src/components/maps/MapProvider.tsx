@@ -44,7 +44,7 @@ function buildMapHtml(): string {
 <style>
 html,body,#map{height:100%;width:100%;margin:0;background:#dfe7e0}
 .leaflet-container{font:13px sans-serif;background:#dfe7e0}
-.pin{width:22px;height:22px;border:3px solid white;border-radius:50%;box-shadow:0 2px 7px #0006}
+.pin{width:22px;height:22px;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);position:relative;box-shadow:0 2px 7px #0006}.pin:after{content:'';position:absolute;width:6px;height:6px;left:5px;top:5px;border-radius:50%;background:#fff}
 .pin.pickup{background:#0e6b4f}
 .pin.dropoff{background:#d92d20}
 .leaflet-control-attribution{font-size:9px!important;background:rgba(255,255,255,.78)!important}
@@ -63,7 +63,7 @@ html,body,#map{height:100%;width:100%;margin:0;background:#dfe7e0}
     attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   });
   var tileOk=0,tileFailed=0,reportedDown=false;
-  tiles.on('tileload',function(){tileOk++;if(tileOk===1)send({type:'map_tiles_ready'});});
+  tiles.on('tileload',function(){tileOk++;if(tileOk===1)send({type:'map_ready'});});
   tiles.on('tileerror',function(){
     tileFailed++;
     // A single missing tile is normal at the edge of a viewport. Only a
@@ -97,7 +97,7 @@ html,body,#map{height:100%;width:100%;margin:0;background:#dfe7e0}
     refresh();
   };
   map.on('click',function(e){send({type:'map_tap',latitude:e.latlng.lat,longitude:e.latlng.lng});});
-  setTimeout(function(){map.invalidateSize();send({type:'map_ready'});},250);
+  setTimeout(function(){map.invalidateSize();},250);
 })();
 </script></body></html>
 `.trim();
@@ -151,6 +151,7 @@ export function WebViewMap({ pickup, dropoff, onMapReady, onMapError, onMapMessa
       return;
     }
     if (!message || typeof message.type !== "string") return;
+    if (message.type === "map_ready") onMapReady();
     if (message.type === "map_tiles_unavailable" || message.type === "map_library_error") {
       onMapError(MAP_TILE_ERROR_MESSAGE);
       return;
@@ -177,7 +178,6 @@ export function WebViewMap({ pickup, dropoff, onMapReady, onMapError, onMapMessa
       scrollEnabled={false}
       nestedScrollEnabled={false}
       onMessage={handleMessage}
-      onLoadEnd={onMapReady}
       onError={() => onMapError(MAP_TILE_ERROR_MESSAGE)}
       onHttpError={() => onMapError(MAP_TILE_ERROR_MESSAGE)}
       style={[styles.fill, style]}

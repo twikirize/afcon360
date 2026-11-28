@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, Text, View, StyleSheet } from "react-native";
-import { colors, spacing, radii } from "../../theme/tokens";
+import { spacing, radii } from "../../theme/tokens";
 import type { RideServiceType, RideVip } from "./types";
 
 type ServiceTypeSelectorProps = {
@@ -9,58 +9,34 @@ type ServiceTypeSelectorProps = {
   onSelect: (serviceType: RideServiceType, vip: RideVip) => void;
 };
 
-// Short labels, exactly like the web's .svc-label at 360dp. "Airport
-// Transfer" wrapped to two lines and pushed "VIP Service" out of the row;
-// three words that fit on one line solve it without shrinking the type.
 const SERVICE_OPTIONS = [
-  {
-    key: "quick",
-    serviceType: "on_demand",
-    vip: false,
-    icon: "◷",
-    name: "Quick",
-    accessibilityLabel: "Quick ride",
-  },
-  {
-    key: "airport",
-    serviceType: "airport_departure",
-    vip: false,
-    icon: "✈",
-    name: "Airport",
-    accessibilityLabel: "Airport transfer",
-  },
-  {
-    key: "vip",
-    serviceType: "on_demand",
-    vip: true,
-    icon: "★",
-    name: "VIP",
-    accessibilityLabel: "VIP service",
-  },
+  { key: "quick", serviceType: "on_demand", vip: false, icon: "⚡", name: "Quick", accessibilityLabel: "Quick ride" },
+  { key: "airport", serviceType: "airport_departure", vip: false, icon: "✈", name: "Airport", accessibilityLabel: "Airport transfer" },
+  { key: "vip", serviceType: "on_demand", vip: true, icon: "☆", name: "VIP", accessibilityLabel: "VIP service" },
 ] as const;
 
+/** Equal-width, single-line choices that remain tappable on 360dp phones. */
 export function ServiceTypeSelector({ serviceType, vip, onSelect }: ServiceTypeSelectorProps) {
   return (
     <View style={styles.serviceRow}>
-      {SERVICE_OPTIONS.map((option) => {
-        const isSelected = serviceType === option.serviceType && vip === option.vip;
+      {SERVICE_OPTIONS.map(option => {
+        const selected = serviceType === option.serviceType && vip === option.vip;
         return (
           <Pressable
             key={option.key}
             accessibilityRole="button"
-            accessibilityState={{ selected: isSelected }}
+            accessibilityState={{ selected }}
             accessibilityLabel={option.accessibilityLabel}
             onPress={() => onSelect(option.serviceType, option.vip)}
-            style={[
-              styles.serviceChoice,
-              isSelected && (option.vip ? styles.serviceVipSelected : styles.serviceSelected),
-            ]}
-            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+            style={[styles.choice, selected && styles.choiceSelected]}
+            hitSlop={{ top: 5, bottom: 5, left: 3, right: 3 }}
           >
-            <Text style={styles.serviceIcon}>{option.icon}</Text>
+            <Text style={[styles.icon, selected && styles.selectedText]}>{option.icon}</Text>
             <Text
-              style={styles.serviceName}
+              style={[styles.name, selected && styles.selectedText]}
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
               maxFontSizeMultiplier={1.1}
             >
               {option.name}
@@ -73,39 +49,27 @@ export function ServiceTypeSelector({ serviceType, vip, onSelect }: ServiceTypeS
 }
 
 const styles = StyleSheet.create({
-  serviceRow: { flexDirection: "row", gap: spacing.xs },
-  serviceChoice: {
-    // Equal thirds with a 44dp minimum touch target. flexBasis 0 is what
-    // forces each label to fit its share instead of overrunning the row.
+  serviceRow: { flexDirection: "row", gap: spacing.sm },
+  choice: {
     flex: 1,
     flexBasis: 0,
-    minHeight: 44,
+    minWidth: 0,
+    minHeight: 46,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
-    paddingVertical: spacing.sm,
+    gap: 5,
     paddingHorizontal: 4,
+    paddingVertical: 7,
     borderRadius: radii.lg,
+    backgroundColor: "#F0F1F0",
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface.white,
+    borderColor: "#E8EBE8",
   },
-  serviceSelected: {
-    borderColor: colors.brand.green,
-    backgroundColor: colors.brand.greenSoft,
-  },
-  serviceVipSelected: {
-    borderColor: colors.brand.gold,
-    backgroundColor: colors.brand.goldSoft,
-  },
-  serviceIcon: { fontSize: 16 },
-  serviceName: {
-    color: colors.text.ink,
-    fontSize: 12,
-    fontWeight: "800",
-    flexShrink: 1,
-  },
+  choiceSelected: { backgroundColor: "#0E9F5B", borderColor: "#0E9F5B" },
+  icon: { color: "#26332B", fontSize: 15 },
+  name: { color: "#26332B", fontSize: 12, fontWeight: "800", flexShrink: 1 },
+  selectedText: { color: "#FFFFFF" },
 });
 
 export default ServiceTypeSelector;
