@@ -826,7 +826,7 @@ def main() -> None:
     mark_stage("wallet_navigation_started")
     tap_text("Wallet", last=True, allow_tab_bar=True)
     wait_for_text(
-        "Your money, clearly managed.", "Wallet accounts", "No Wallet account is active yet.",
+        "Your money, clearly managed.", "Wallet accounts", "You don't have a wallet yet. Create one to start sending and receiving money.",
         timeout=35, label="authenticated Wallet read views",
     )
     save_screen("04-wallet")
