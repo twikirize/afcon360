@@ -9,7 +9,9 @@ on:
     branches: [main]
     paths:
       - "app/transport/**"
+      - "app/auth/mobile_api.py"
       - "app/wallet/**"
+      - "tests/auth/test_mobile_transport_booking_parity_api.py"
       - "app/geo/**"
       - "static/js/geo/**"
       - "static/js/modules/transport/**"
@@ -218,6 +220,7 @@ jobs:
         run: >-
           python -m compileall -q
           app/transport
+          app/auth/mobile_api.py
           app/wallet
           app/geo
           app/backup
