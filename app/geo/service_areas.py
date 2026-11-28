@@ -169,6 +169,7 @@ def check_service_area_point(latitude: Any, longitude: Any,
         return {
             "enabled": False, "supported": True,
             "reason": "geofencing_disabled", "area_id": None, "area_name": None,
+            "service": service,
         }
 
     matching = []
@@ -187,6 +188,7 @@ def check_service_area_point(latitude: Any, longitude: Any,
             "reason": "inside_active_area",
             "area_id": str(area.get("id") or ""),
             "area_name": str(area.get("name") or ""),
+            "service": service,
         }
 
     has_active = any(
@@ -198,6 +200,7 @@ def check_service_area_point(latitude: Any, longitude: Any,
         "enabled": True, "supported": False,
         "reason": "outside_active_area" if has_active else "no_active_service_area",
         "area_id": None, "area_name": None,
+        "service": service,
     }
 
 
@@ -252,6 +255,7 @@ def assess_service_area_trip(pickup: dict, dropoff: dict,
         return {
             "enabled": False, "supported": True,
             "reason": "geofencing_disabled", "area_id": None, "area_name": None,
+            "service": service,
             "pickup": check_service_area_point(
                 pickup.get("latitude"), pickup.get("longitude"), service, settings),
             "dropoff": check_service_area_point(
@@ -284,13 +288,14 @@ def assess_service_area_trip(pickup: dict, dropoff: dict,
         return {
             "enabled": True, "supported": True,
             "reason": "inside_active_area", "area_id": area_id,
-            "area_name": area_name, "pickup": pickup_status,
+            "area_name": area_name, "service": service, "pickup": pickup_status,
             "dropoff": dropoff_status,
         }
 
     return {
         "enabled": True, "supported": False, "reason": reason,
         "field": field, "area_id": None, "area_name": None,
+        "service": service,
         "pickup": pickup_status, "dropoff": dropoff_status,
     }
 
@@ -299,8 +304,15 @@ def service_area_error(assessment: dict) -> str:
     """Human-readable rider-safe explanation for unsupported ride locations."""
     reason = assessment.get("reason")
     field = assessment.get("field")
+    service = str(assessment.get("service") or "transport").lower()
+    service_label = {
+        "transport": "Ride bookings",
+        "accommodation": "Accommodation bookings",
+        "events": "Event services",
+        "tourism": "Tourism services",
+    }.get(service, "This service")
     if reason == "no_active_service_area":
-        return "Ride bookings are temporarily unavailable because no active service area is configured."
+        return f"{service_label} are temporarily unavailable because no active service area is configured."
     if reason == "cross_area_route_not_enabled":
         return "Pickup and destination must be within the same active ride service area."
     if field == "location":
@@ -310,7 +322,7 @@ def service_area_error(assessment: dict) -> str:
         )
     endpoint = "pickup" if field == "pickup" else "destination"
     return (
-        f"The {endpoint} is outside Pamoja's currently supported ride service areas. "
+        f"The {endpoint} is outside Pamoja's currently supported {service} service areas. "
         "Please choose a place inside an active service area."
     )
 
