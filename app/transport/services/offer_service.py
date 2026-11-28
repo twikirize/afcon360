@@ -578,17 +578,21 @@ class OfferService:
             else:
                 detail["distance_km"] = None
                 detail["distance_basis"] = basis
-            detail["estimated_duration_minutes"] = getattr(
-                booking, "estimated_duration_minutes", None
-            )
-            detail["route_duration_s"] = (
-                metadata.get("route_duration_s")
-                if isinstance(metadata, dict) else None
-            )
-            detail["route_provider"] = (
-                metadata.get("route_provider")
-                if isinstance(metadata, dict) else None
-            )
+            # Only a signed road-route booking carries an authoritative
+            # driving duration/provider. Older estimates may be caller input
+            # and must not be presented to drivers as a route ETA.
+            if basis == "road_network":
+                detail["estimated_duration_minutes"] = getattr(
+                    booking, "estimated_duration_minutes", None
+                )
+                detail["route_duration_s"] = (
+                    metadata.get("route_duration_s")
+                    if isinstance(metadata, dict) else None
+                )
+                detail["route_provider"] = (
+                    metadata.get("route_provider")
+                    if isinstance(metadata, dict) else None
+                )
 
             detail["vehicle"] = cls._offer_vehicle_or_none(
                 offer, booking, ref
