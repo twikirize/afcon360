@@ -161,7 +161,6 @@
                   <textarea class="form-control geo-json mt-2" id="geometry" name="geometry" rows="7" placeholder='{"type":"Polygon","coordinates":[[[32.5,0.2],[32.8,0.2],[32.8,0.5],[32.5,0.5],[32.5,0.2]]]}'>{{ selected_area.geometry|tojson if selected_area else '' }}</textarea>
                   <p class="geo-help mt-1 mb-0">GeoJSON coordinates must be [longitude, latitude]. Most managers should use the map drawing tools instead.</p>
                 </details>
-                <textarea class="d-none" id="geometryPayload" aria-hidden="true"></textarea>
               </div>
               <div class="col-12">
                 <label class="form-label" for="areaMapSearch">Find city or place to centre the map</label>
