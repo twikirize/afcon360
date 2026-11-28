@@ -34,8 +34,12 @@ def get_service_area_config() -> dict:
     if not isinstance(raw, dict):
         return deepcopy(DEFAULT_SERVICE_AREA_CONFIG)
     areas = raw.get("areas")
+    try:
+        version = max(1, int(raw.get("version") or 1))
+    except (TypeError, ValueError):
+        version = 1
     return {
-        "version": int(raw.get("version") or 1),
+        "version": version,
         "enabled": raw.get("enabled") is True,
         "allow_cross_area_routes": raw.get("allow_cross_area_routes") is True,
         "areas": areas if isinstance(areas, list) else [],
@@ -257,6 +261,11 @@ def service_area_error(assessment: dict) -> str:
         return "Ride bookings are temporarily unavailable because no active service area is configured."
     if reason == "cross_area_route_not_enabled":
         return "Pickup and destination must be within the same active ride service area."
+    if field == "location":
+        return (
+            "This place is outside Pamoja's currently supported service areas. "
+            "Choose a place inside an active service area."
+        )
     endpoint = "pickup" if field == "pickup" else "destination"
     return (
         f"The {endpoint} is outside Pamoja's currently supported ride service areas. "
@@ -318,9 +327,23 @@ def validate_service_area_config(raw: Any) -> dict:
             "geometry": geometry,
         })
 
+    enabled = raw.get("enabled") is True
+    if enabled and not any(
+        item["active"] and ("transport" in item["services"] or "*" in item["services"])
+        for item in cleaned
+    ):
+        raise ValueError(
+            "Enable at least one active ride service area before turning on geofence enforcement."
+        )
+
+    try:
+        version = max(1, int(raw.get("version") or 1))
+    except (TypeError, ValueError):
+        version = 1
+
     return {
-        "version": int(raw.get("version") or 1),
-        "enabled": raw.get("enabled") is True,
+        "version": version,
+        "enabled": enabled,
         "allow_cross_area_routes": raw.get("allow_cross_area_routes") is True,
         "areas": cleaned,
     }
