@@ -21,7 +21,7 @@ GEO owns the route provider and returns provider-independent \`RouteResult\` val
 ## 3. Routing failure policy
 There is no Haversine/straight-line fallback for booking-bound fares.
 If GEO returns an unresolved route, malformed/non-finite measurements, missing geometry, or no provider identity, the quote endpoint returns \`503 ROUTING_UNAVAILABLE\`. No signed fare quote is issued, no request/booking is created, and no driver search begins. The rider is told the driving route is unavailable and can retry.
-This is deliberately fail-closed. Operations must enable and health-check the configured GEO routing provider before enabling production booking flows. For the current Valhalla adapter, deployment configuration must provide an enabled provider and a reachable routing base URL. A route provider outage therefore makes new fare quotes unavailable rather than silently underpricing trips.
+This is deliberately fail-closed. Valhalla is disabled by default. Before production booking flows are enabled, configure the runtime with `GEO_VALHALLA_ENABLED=true` and `GEO_VALHALLA_URL=<server-side Valhalla base URL>`, then health-check routing from every web/worker runtime that serves Transport. Do not put the provider URL or credentials in browser code. A disabled, unreachable or unhealthy route provider makes new fare quotes unavailable rather than silently underpricing trips. This PR does not change production environment variables.
 ## 4. Other estimate endpoint
 \`POST /api/transport/fare/estimate\` is a planning endpoint:
 - when pickup and destination coordinates are supplied and no explicit distance is supplied, it uses GEO road distance and labels the result \`road_network\`;
