@@ -98,9 +98,10 @@
 
   function showUnavailable(message) {
     clearRenderedRoute();
+    var areaBlocked = !!(message && /service areas|service area|outside Pamoja/i.test(message));
     setState(
       'unavailable',
-      'Driving route unavailable',
+      areaBlocked ? 'Ride not available in this area' : 'Driving route unavailable',
       message || 'We could not calculate a road route right now. You can still review fare options.'
     );
   }
