@@ -48,6 +48,7 @@ from app.transport.services.location_snapshot import (
 )
 from app.transport.services.fare_quote_service import (
     load_fare_quote,
+    road_measurements_from_quote,
     money_amount,
     validate_fare_quote,
 )
@@ -70,7 +71,9 @@ def _trip_hash(service_type: str, vehicle_class: str, passenger_count: int,
                pickup: Dict[str, Any], dropoff: Dict[str, Any],
                payment_method: Optional[str], currency_code: Optional[str],
                pickup_time_fp: str, requested_currency: Optional[str],
-               accepted_fare_amount: Decimal, fare_version: str) -> str:
+               accepted_fare_amount: Decimal, fare_version: str,
+               distance_km: float, route_duration_s: float,
+               route_provider: str) -> str:
     """Stable fingerprint of the trip requirements a key was first used for.
 
     Coordinates are rounded to 6dp so float-encoding noise does not split
@@ -98,6 +101,10 @@ def _trip_hash(service_type: str, vehicle_class: str, passenger_count: int,
         "requested_currency": requested_currency,
         "accepted_fare_amount": format(money_amount(accepted_fare_amount), ".2f"),
         "fare_version": str(fare_version or ""),
+        "distance_basis": "road_network",
+        "distance_km": round(float(distance_km), 6),
+        "route_duration_s": round(float(route_duration_s), 3),
+        "route_provider": str(route_provider or "").strip()[:64],
     }
     return hashlib.sha256(
         json.dumps(canonical, sort_keys=True).encode("utf-8")).hexdigest()
@@ -273,21 +280,15 @@ class RideRequestService:
         pickup_snapshot = _resolve_snapshot(data, "pickup")
         dropoff_snapshot = _resolve_snapshot(data, "dropoff")
 
-        # Canonical fare engine over the measured straight-line distance —
-        # the same basis BookingService uses (no second fare path).
-        from app.transport.services.booking_service import _measured_distance_km
+        # The signed quote is the route authority at commitment. Do not ask
+        # GEO to route again: a provider/map-data change between review and
+        # confirmation must not silently change the rider's accepted price.
         from app.transport.services.fare_service import calculate_estimate
-
-        measured_km = _measured_distance_km(pickup_snapshot, dropoff_snapshot)
-        if measured_km is None:
-            raise ValidationError(
-                message="Resolved coordinates required for fare calculation",
-                field="pickup",
-            )
-        # Only a current, signed quote can cross the commitment boundary.
-        # Reuse the quote's issue time so a change of hour/table version
-        # during the review step cannot silently change the shown amount.
         fare_quote = load_fare_quote(data.get("fare_quote_token"))
+        route_facts = road_measurements_from_quote(fare_quote)
+        measured_km = route_facts["distance_km"]
+        route_duration_s = route_facts["route_duration_s"]
+        route_provider = route_facts["route_provider"]
         try:
             quoted_at = datetime.fromisoformat(str(fare_quote.get("quoted_at")))
             if quoted_at.tzinfo is not None:
@@ -359,6 +360,8 @@ class RideRequestService:
             pickup=pickup_snapshot,
             dropoff=dropoff_snapshot,
             distance_km=measured_km,
+            route_duration_s=route_duration_s,
+            route_provider=route_provider,
             fare_version=estimate.get("version"),
             server_amount=estimate["total"],
             confirmed_amount=data.get("confirmed_fare_amount"),
@@ -427,7 +430,8 @@ class RideRequestService:
                                passenger_count, pickup_snapshot,
                                dropoff_snapshot, payment_method, currency_code,
                                pickup_time_fp, requested_currency,
-                               accepted_fare_amount, str(estimate.get("version") or ""))
+                               accepted_fare_amount, str(estimate.get("version") or ""),
+                               measured_km, route_duration_s, route_provider)
 
         # Deferred model import (see module note): resolves at call time.
         from app.transport.models import RideRequest, SearchCycle
@@ -476,7 +480,12 @@ class RideRequestService:
                     },
                     "requested_currency": requested_currency,
                     "distance_km": float(measured_km),
-                    "distance_basis": "straight_line_planner",
+                    "distance_basis": "road_network",
+                    "route_duration_s": route_duration_s,
+                    "estimated_duration_minutes": int(
+                        (route_duration_s + 59.999) // 60
+                    ),
+                    "route_provider": route_provider,
                     "created_via": "ride_request_api",
                     "created_at": now.isoformat(),
                     "booking_mode": booking_mode,
