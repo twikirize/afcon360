@@ -8,10 +8,9 @@ at creation). No JavaScript-side pricing, no duplicate formulas.
 Inputs (JSON): service_type, vehicle_class, estimated_distance_km
 (optional, planning default labelled in the response), plus optional
 pickup_latitude/pickup_longitude/dropoff_latitude/dropoff_longitude:
-when both endpoints are valid, distance derives from the GEO
-straight-line planner (explicitly NOT road distance); otherwise the
-planning default applies. Either way the response states which
-distance basis was used.
+when both endpoints are supplied, distance is resolved from the GEO road
+routing provider. Explicit distance-only input remains labelled as a
+planning input and is never used to create a booking.
 
 Auth: login required (consistent with the booking flow that consumes
 estimates). Riders can estimate; only the booking service persists.
@@ -67,12 +66,41 @@ class FareEstimateResource(Resource):
                     "error": f"Unknown currency: {currency}"}, 400
 
         distance_km = data.get("estimated_distance_km")
-        distance_basis = "planning_default"
-        if distance_km is None:
-            coords = _straight_line_km(data)
-            if coords is not None:
-                distance_km = coords
-                distance_basis = "straight_line_planner"
+        distance_basis = "explicit_planning_input" if distance_km is not None else "planning_default"
+        route = None
+        coordinate_keys = (
+            "pickup_latitude", "pickup_longitude",
+            "dropoff_latitude", "dropoff_longitude",
+        )
+        supplied_coordinates = any(
+            data.get(key) not in (None, "") for key in coordinate_keys
+        )
+        if distance_km is None and supplied_coordinates:
+            if any(data.get(key) in (None, "") for key in coordinate_keys):
+                return {"success": False, "error": "All four resolved route coordinates are required."}, 400
+            from app.transport.services.road_distance_service import measure_road_route
+            from app.utils.exceptions import ServiceUnavailableError, ValidationError
+            try:
+                route = measure_road_route(
+                    {
+                        "latitude": data.get("pickup_latitude"),
+                        "longitude": data.get("pickup_longitude"),
+                    },
+                    {
+                        "latitude": data.get("dropoff_latitude"),
+                        "longitude": data.get("dropoff_longitude"),
+                    },
+                )
+            except ValidationError as exc:
+                return {"success": False, "error": exc.message}, 400
+            except ServiceUnavailableError as exc:
+                return {
+                    "success": False,
+                    "code": "ROUTING_UNAVAILABLE",
+                    "error": exc.message,
+                }, 503
+            distance_km = route["distance_km"]
+            distance_basis = "road_network"
 
         try:
             estimate = calculate_estimate(
@@ -96,6 +124,9 @@ class FareEstimateResource(Resource):
                 "breakdown": estimate["breakdown"],
                 "inputs": estimate["inputs"],
                 "distance_basis": distance_basis,
+                "duration_s": route["duration_s"] if route else None,
+                "duration_minutes": route["duration_minutes"] if route else None,
+                "route_provider": route["provider"] if route else None,
                 "default_distance_km": float(DEFAULT_DISTANCE_KM),
                 "note": ("Planning estimate from the canonical fare "
                          "engine; final fare follows authoritative trip "
@@ -103,28 +134,6 @@ class FareEstimateResource(Resource):
                          "promotions)."),
             },
         }, 200
-
-
-def _straight_line_km(data):
-    """GEO straight-line kilometres between supplied endpoints, or
-    None when either endpoint is absent/invalid. Planning input only:
-    explicitly not road distance, ETA, or fare distance."""
-    try:
-        from app.geo.interfaces import GeoPoint
-        from app.geo.services import straight_line_distance_m
-        origin = GeoPoint(float(data["pickup_latitude"]),
-                          float(data["pickup_longitude"]))
-        destination = GeoPoint(float(data["dropoff_latitude"]),
-                               float(data["dropoff_longitude"]))
-    except (KeyError, TypeError, ValueError):
-        return None
-    try:
-        from app.core.validators import validate_coordinates
-        validate_coordinates(origin.latitude, origin.longitude)
-        validate_coordinates(destination.latitude, destination.longitude)
-    except Exception:
-        return None
-    return straight_line_distance_m(origin, destination) / 1000.0
 
 
 class FareConfigResource(Resource):
