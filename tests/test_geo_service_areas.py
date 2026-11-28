@@ -171,7 +171,7 @@ def test_driver_area_check_is_bypassed_when_geofencing_disabled():
     assert result["reason"] == "geofencing_disabled"
 
 
-def test_cannot_enable_geofencing_without_active_transport_area():
+def test_cannot_enable_geofencing_without_any_active_area():
     with pytest.raises(ValueError, match="at least one active service area"):
         validate_service_area_config(
             config(area(active=False), enabled=True)
