@@ -50,7 +50,7 @@ with app.app_context():
             results.append((label, type(e).__name__, str(e)[:80]))
 
     def base_payload(mode, pickup_time):
-        return {
+        payload = {
             "service_type": "on_demand",
             "provider_type": "individual_driver",
             "pickup_latitude": 0.3136,
@@ -66,6 +66,38 @@ with app.app_context():
             "vehicle_class": "comfort",
             "booking_mode": mode,
         }
+        from app.transport.services.road_distance_service import measure_road_route
+        from app.transport.services.fare_service import calculate_estimate
+        from app.transport.services.fare_quote_service import issue_fare_quote, money_amount
+
+        pickup = {"latitude": payload["pickup_latitude"], "longitude": payload["pickup_longitude"]}
+        dropoff = {"latitude": payload["dropoff_latitude"], "longitude": payload["dropoff_longitude"]}
+        route = measure_road_route(pickup, dropoff)
+        quoted_at = datetime.now().replace(microsecond=0)
+        estimate = calculate_estimate(
+            service_type=payload["service_type"],
+            vehicle_class=payload["vehicle_class"],
+            distance_km=route["distance_km"],
+            at=quoted_at,
+        )
+        amount = money_amount(estimate["total"])
+        payload["currency"] = str(estimate.get("currency") or "USD").upper()
+        payload["confirmed_fare_amount"] = format(amount, ".2f")
+        payload["fare_quote_token"] = issue_fare_quote(
+            service_type=payload["service_type"],
+            vehicle_class=payload["vehicle_class"],
+            currency=payload["currency"],
+            amount=amount,
+            fare_version=estimate.get("version"),
+            pickup=pickup,
+            dropoff=dropoff,
+            distance_km=route["distance_km"],
+            route_duration_s=route["duration_s"],
+            route_provider=route["provider"],
+            quoted_at=quoted_at,
+        )
+        return payload
+
 
     now = datetime.now(timezone.utc)
     nairobi = ZoneInfo("Africa/Nairobi")
