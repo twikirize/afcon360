@@ -146,8 +146,7 @@
             <div class="d-flex flex-wrap gap-2 mt-4">
               <button type="submit" class="btn btn-primary">Save service area</button>
               {% if selected_area %}
-                <button type="submit" class="btn btn-outline-danger" name="action" value="disable_area"
-                        onclick="return confirm('Disable this service area? Its configuration will be preserved.');">Disable this area</button>
+                <button type="button" class="btn btn-outline-danger" id="disableServiceArea">Disable this area</button>
               {% endif %}
               <a class="btn btn-outline-secondary" href="{{ url_for('admin.owner.geofencing') }}">Clear form</a>
             </div>
@@ -165,6 +164,17 @@
 <script nonce="{{ csp_nonce }}">
 (function () {
   'use strict';
+  var form = document.getElementById('serviceAreaForm');
+  var actionField = form ? form.querySelector('input[name="action"]') : null;
+  var disableButton = document.getElementById('disableServiceArea');
+  if (disableButton && form && actionField) {
+    disableButton.addEventListener('click', function () {
+      if (!window.confirm('Disable this service area? Its configuration will be preserved.')) return;
+      actionField.value = 'disable_area';
+      form.submit();
+    });
+  }
+
   var mapNode = document.getElementById('serviceAreaMap');
   var geoField = document.getElementById('geometry');
   if (!mapNode || !geoField || !window.L) return;
