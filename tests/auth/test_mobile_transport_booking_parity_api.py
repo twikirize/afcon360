@@ -83,6 +83,55 @@ def _prepare_booking_gate(monkeypatch, user):
     )
 
 
+def test_native_ride_options_returns_the_same_geo_road_quote(client, monkeypatch):
+    from app.geo.interfaces import GeoPoint, RouteResult
+    from app.transport.services import road_distance_service
+
+    class _Provider:
+        def route(self, origin, destination, profile="auto"):
+            return RouteResult(
+                distance_m=18420.0,
+                duration_s=1681.0,
+                geometry=[
+                    GeoPoint(0.3136, 32.5811),
+                    GeoPoint(0.20, 32.52),
+                    GeoPoint(0.0464, 32.4435),
+                ],
+                provider="test-native-routing-provider",
+                resolved=True,
+            )
+
+    monkeypatch.setattr(
+        road_distance_service, "get_routing_service", lambda: _Provider()
+    )
+    response = client.post(
+        "/api/mobile/v1/transport/ride-options",
+        json={
+            "service_type": "airport_departure",
+            "currency": "USD",
+            "pickup_latitude": 0.3136,
+            "pickup_longitude": 32.5811,
+            "dropoff_latitude": 0.0464,
+            "dropoff_longitude": 32.4435,
+        },
+    )
+
+    assert response.status_code == 200, response.get_data(as_text=True)
+    body = response.get_json()
+    assert body["success"] is True
+    data = body["data"]
+    assert data["distance_basis"] == "road_network"
+    assert data["distance_km"] == 18.42
+    assert data["duration_s"] == 1681.0
+    assert data["duration_minutes"] == 29
+    assert data["route_provider"] == "test-native-routing-provider"
+    assert len(data["route_geometry"]) == 3
+    assert data["options"]
+    quote = data["options"][0]["quote_token"]
+    assert isinstance(quote, str) and quote
+    assert data["options"][0]["fare_total"] > 0
+
+
 def test_native_scheduled_airport_booking_uses_booking_service_without_early_dispatch(
     client, monkeypatch
 ):
