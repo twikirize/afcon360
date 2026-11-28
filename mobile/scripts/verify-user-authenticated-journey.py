@@ -880,7 +880,7 @@ def main() -> None:
     mark_stage("explore_screen")
 
     tap_text("Book a ride")
-    wait_for_text("Where are you going?", "Pickup", timeout=25, label="native ride request screen")
+    wait_for_text("Search pickup", "Where to?", "See Ride Options", timeout=25, label="native ride request screen")
     save_screen("07-ride")
     mark_stage("ride_screen")
 
