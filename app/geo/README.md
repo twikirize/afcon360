@@ -98,15 +98,25 @@ coordinates); no provider SDK objects cross into domains.
 ### Owner-managed service areas (SERVICE-AREAS-01)
 
 `app/geo/service_areas.py` owns the platform's shared service-area policy.
-Configuration is stored in the existing `SystemConfig` JSON setting
-`GEO_SERVICE_AREAS`; no new table or migration is required.
+Authoritative persistence uses GEO-owned relational models:
+`geo_service_areas` stores the name, country, active state, services and
+GeoJSON boundary; `geo_service_area_policies` stores the global enforcement
+switch and cross-area Transport policy. The models are registered through
+`app.core.model_registry` so `flask db migrate` can detect them.
+
+Until the operator-generated migration is applied, a temporary
+`SystemConfig` JSON compatibility path keeps the feature reviewable and
+preserves backward compatibility. Once the tables exist, saves go to the
+relational models and subsequent reads use those records.
 
 The owner/super-admin management page is `/admin/owner/geofencing`. It
 supports GeoJSON Polygon/MultiPolygon boundaries, service-specific
 activation (transport, accommodation, events, tourism), individual area
 enable/disable, global enforcement enable/disable, and an explicit
 cross-area ride option. The global switch defaults off until an operator
-has configured boundaries.
+has configured boundaries. The owner interface guides the operator through
+naming an area, centring the map by place search, drawing the boundary and
+selecting its services. Direct GeoJSON editing is an advanced fallback.
 
 Stable domain-facing helpers:
 
