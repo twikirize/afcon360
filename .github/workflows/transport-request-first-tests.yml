@@ -18,6 +18,8 @@ on:
       - "static/offline.html"
       - "static/transport/sw.js"
       - "scripts/seed_payment_methods.py"
+      - "scripts/probe_booking_modes.py"
+      - "scripts/seed_and_probe.py"
       - "app/tasks/transport_recovery.py"
       - "app/utils/validators.py"
       - "app/utils/module_toggle_service.py"
@@ -225,6 +227,8 @@ jobs:
           app/geo
           app/backup
           scripts/seed_payment_methods.py
+          scripts/probe_booking_modes.py
+          scripts/seed_and_probe.py
           app/tasks/transport_recovery.py
           app/tasks/transport_permission_purge.py
           app/transport/services/offer_service.py
