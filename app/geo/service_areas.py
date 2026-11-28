@@ -201,6 +201,48 @@ def check_service_area_point(latitude: Any, longitude: Any,
     }
 
 
+def assess_driver_for_pickup_area(
+    driver_latitude: Any,
+    driver_longitude: Any,
+    pickup_latitude: Any,
+    pickup_longitude: Any,
+    service: str = "transport",
+    config: dict | None = None,
+) -> dict:
+    """Require a match candidate to be in the pickup's active service area."""
+    settings = config if isinstance(config, dict) else get_service_area_config()
+    if settings.get("enabled") is not True:
+        return {"enabled": False, "supported": True, "reason": "geofencing_disabled"}
+
+    pickup_status = check_service_area_point(
+        pickup_latitude, pickup_longitude, service, settings
+    )
+    if not pickup_status.get("supported"):
+        return {
+            "enabled": True, "supported": False,
+            "reason": "pickup_outside_active_area",
+        }
+
+    driver_status = check_service_area_point(
+        driver_latitude, driver_longitude, service, settings
+    )
+    if not driver_status.get("supported"):
+        return {
+            "enabled": True, "supported": False,
+            "reason": "driver_outside_active_area",
+        }
+    if driver_status.get("area_id") != pickup_status.get("area_id"):
+        return {
+            "enabled": True, "supported": False,
+            "reason": "driver_in_different_service_area",
+        }
+    return {
+        "enabled": True, "supported": True,
+        "reason": "driver_in_pickup_service_area",
+        "area_id": pickup_status.get("area_id"),
+    }
+
+
 def assess_service_area_trip(pickup: dict, dropoff: dict,
                              service: str = "transport",
                              config: dict | None = None) -> dict:
