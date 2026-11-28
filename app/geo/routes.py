@@ -105,7 +105,7 @@ def _health_payload(app=None):
     }
 
 
-def _annotate_service_area_payload(payload):
+def _annotate_service_area_payload(payload, service="transport"):
     """Attach fresh operating-area status after Redis geocode-cache lookup.
 
     Geocoding candidates are cached, but service-area decisions are not:
@@ -125,7 +125,7 @@ def _annotate_service_area_payload(payload):
         candidate = dict(item)
         status = check_service_area_point(
             candidate.get("latitude"), candidate.get("longitude"),
-            service="transport", config=settings,
+            service=service, config=settings,
         )
         candidate["service_area"] = status
         annotated.append(candidate)
@@ -179,8 +179,6 @@ def service_area_check():
         }), 400
 
     response_data = dict(result)
-    response = jsonify({"success": True, "data": response_data})
-    response.headers["Cache-Control"] = "private, no-store, max-age=0"
     if not result.get("supported"):
         response_data["message"] = service_area_error(result)
     elif result.get("enabled"):
@@ -191,8 +189,8 @@ def service_area_check():
         )
     else:
         response_data["message"] = "Service-area enforcement is disabled."
-    response.set_data(json.dumps({"success": True, "data": response_data}))
-    response.headers["Content-Type"] = "application/json"
+    response = jsonify({"success": True, "data": response_data})
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
     return response, 200
 
 
@@ -297,6 +295,14 @@ def geocode_search():
     from app.geo.config import load_geo_config
     from app.geo.services import build_geocoding_service
 
+    service = str(request.args.get("service") or "transport").strip().lower()
+    if service not in {"transport", "accommodation", "events", "tourism"}:
+        return jsonify({
+            "success": False,
+            "error": "Unsupported service type for geographic availability.",
+            "code": "INVALID_SERVICE",
+        }), 400
+
     query = request.args.get("q")
     if not isinstance(query, str) or not query.strip():
         return jsonify({
@@ -337,7 +343,7 @@ def geocode_search():
     cached = _geo_cache_get(key)
     if cached is not None:
         current_app.logger.debug("geo cache hit q=%s", query)
-        return jsonify(_annotate_service_area_payload(cached))
+        return jsonify(_annotate_service_area_payload(cached, service=service))
 
     # Per-request service from the existing env/config surface: no global
     # wiring change, and the existing get_geocoding_service() singleton
@@ -386,7 +392,7 @@ def geocode_search():
             items[0]["provider"] if items else "unresolved"),
     }
     _geo_cache_set(key, payload, empty=not payload.get("results"))
-    return jsonify(_annotate_service_area_payload(payload)), 200
+    return jsonify(_annotate_service_area_payload(payload, service=service)), 200
 
 
 @geo_bp.get("/api/reverse")
