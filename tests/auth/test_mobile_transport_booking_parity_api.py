@@ -107,7 +107,7 @@ def test_native_ride_options_returns_the_same_geo_road_quote(client, monkeypatch
     response = client.post(
         "/api/mobile/v1/transport/ride-options",
         json={
-            "service_type": "airport_departure",
+            "service_type": "on_demand",
             "currency": "USD",
             "pickup_latitude": 0.3136,
             "pickup_longitude": 32.5811,
