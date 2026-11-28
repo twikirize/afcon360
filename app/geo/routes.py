@@ -139,6 +139,7 @@ def service_area_check():
     """Anonymous-allowed coordinate support check for map/GPS clients."""
     from flask import request
     from app.geo.validation import normalize_point
+    from app.utils.exceptions import ValidationError
     from app.geo.service_areas import (
         assess_service_area_trip,
         check_service_area_point,
@@ -178,7 +179,7 @@ def service_area_check():
                 service=service_name,
             )
             result.setdefault("field", "location")
-    except Exception:
+    except (ValidationError, TypeError, ValueError):
         return jsonify({
             "success": False,
             "error": "Provide valid latitude and longitude coordinates.",
