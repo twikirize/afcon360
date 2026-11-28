@@ -212,10 +212,28 @@ def test_preview_returns_breakdown(app, authenticated_client):
     assert "driver_id" not in blob and '"id":' not in blob
 
 
-def test_preview_straight_line_distance_basis(app, authenticated_client):
-    from app.geo.interfaces import GeoPoint
-    from app.geo.services import straight_line_distance_m
+def test_preview_uses_road_distance_when_coordinates_are_supplied(
+        app, authenticated_client, monkeypatch):
+    from app.geo.interfaces import GeoPoint, RouteResult
+    from app.transport.services import road_distance_service
 
+    class _Provider:
+        def route(self, origin, destination, profile="auto"):
+            return RouteResult(
+                distance_m=12345.0,
+                duration_s=987.6,
+                geometry=[
+                    GeoPoint(0.3136, 32.5811),
+                    GeoPoint(0.3170, 32.5860),
+                    GeoPoint(0.32, 32.59),
+                ],
+                provider="test-routing-provider",
+                resolved=True,
+            )
+
+    monkeypatch.setattr(
+        road_distance_service, "get_routing_service", lambda: _Provider()
+    )
     body = {"service_type": "on_demand", "pickup_latitude": 0.3136,
             "pickup_longitude": 32.5811, "dropoff_latitude": 0.32,
             "dropoff_longitude": 32.59}
@@ -223,10 +241,11 @@ def test_preview_straight_line_distance_basis(app, authenticated_client):
                                      json=body)
     assert resp.status_code == 200
     data = resp.get_json()["data"]
-    assert data["distance_basis"] == "straight_line_planner"
-    expected_km = straight_line_distance_m(
-        GeoPoint(0.3136, 32.5811), GeoPoint(0.32, 32.59)) / 1000.0
-    assert data["inputs"]["distance_km"] == pytest.approx(expected_km)
+    assert data["distance_basis"] == "road_network"
+    assert data["inputs"]["distance_km"] == pytest.approx(12.345)
+    assert data["duration_s"] == pytest.approx(987.6)
+    assert data["duration_minutes"] == 17
+    assert data["route_provider"] == "test-routing-provider"
 
 
 def test_preview_rejects_unknown_currency(app, authenticated_client):
