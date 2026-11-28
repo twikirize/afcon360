@@ -750,12 +750,12 @@ def main() -> None:
     # deliberately requested from the Account tab, not forced at app launch.
     tap_text("Wallet", last=True, allow_tab_bar=True)
     wait_for_text(
-        "Power your payments with our wallet.",
+        "Power Your Payments with Our Wallet",
         timeout=35,
         label="signed-out Wallet guest page",
     )
     wait_for_text_scrolling(
-        "Why use the wallet?",
+        "Why use our Wallet?",
         timeout=25,
         label="signed-out Wallet benefits",
     )
