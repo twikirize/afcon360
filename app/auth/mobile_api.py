@@ -1073,6 +1073,13 @@ def mobile_create_transport_booking():
             "A valid service type and booking mode are required.",
             400,
         )
+    if (not data.get("fare_quote_token")
+            or data.get("confirmed_fare_amount") is None):
+        return _error(
+            "fare_quote_required",
+            "Request current road-route fare options and confirm the fare before booking.",
+            400,
+        )
     if booking_mode == "scheduled" and not data.get("pickup_time"):
         return _error(
             "scheduled_pickup_time_required",
