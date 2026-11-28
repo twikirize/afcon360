@@ -134,6 +134,15 @@
                 <textarea class="form-control geo-json" id="geometry" name="geometry" rows="7" required placeholder='{"type":"Polygon","coordinates":[[[32.5,0.2],[32.8,0.2],[32.8,0.5],[32.5,0.5],[32.5,0.2]]]}'>{{ selected_area.geometry|tojson if selected_area else '' }}</textarea>
               </div>
               <div class="col-12">
+                <label class="form-label" for="areaMapSearch">Find city or place to centre the map</label>
+                <div class="input-group mb-2">
+                  <input class="form-control" id="areaMapSearch" type="search" maxlength="160"
+                         placeholder="e.g. Nairobi, Kenya">
+                  <button class="btn btn-outline-primary" type="button" id="areaMapSearchButton">Find place</button>
+                </div>
+                <p class="geo-help mb-2" id="areaMapSearchNote" role="status" aria-live="polite">
+                  Search uses the configured GEO place provider. You can also pan/zoom or paste GeoJSON.
+                </p>
                 <div id="serviceAreaMap" aria-label="Draw the service area boundary on the map"></div>
                 <p class="geo-help mt-2 mb-0">Use the polygon or rectangle drawing tool. Coordinates are stored as longitude, latitude. The boundary determines where rides may start and end; it does not constrain every road segment to remain inside the polygon.</p>
                 {% if not map_config.tile_url_template %}
@@ -179,6 +188,56 @@
   if (!mapNode || !geoField || !window.L) return;
 
   var mapConfig = {{ map_config|tojson }};
+  var searchInput = document.getElementById('areaMapSearch');
+  var searchButton = document.getElementById('areaMapSearchButton');
+  var searchNote = document.getElementById('areaMapSearchNote');
+  if (searchButton && searchInput && searchNote) {
+    searchButton.addEventListener('click', function () {
+      var query = searchInput.value.trim();
+      if (query.length < 2) {
+        searchNote.textContent = 'Enter at least two characters.';
+        return;
+      }
+      searchButton.disabled = true;
+      searchNote.textContent = 'Searching for a map centre…';
+      fetch('/geo/api/geocode?service=transport&q=' + encodeURIComponent(query), {
+        headers: {'Accept': 'application/json'},
+        credentials: 'same-origin',
+        cache: 'no-store'
+      }).then(function (response) {
+        if (!response.ok) throw new Error('Place search unavailable');
+        return response.json();
+      }).then(function (payload) {
+        if (!payload || payload.success !== true ||
+            !Array.isArray(payload.results) || !payload.results.length) {
+          searchNote.textContent = 'No place result was found. Pan the map or paste GeoJSON instead.';
+          return;
+        }
+        var result = payload.results[0];
+        var lat = Number(result.latitude);
+        var lng = Number(result.longitude);
+        if (!isFinite(lat) || !isFinite(lng) ||
+            lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          searchNote.textContent = 'The place provider returned invalid coordinates.';
+          return;
+        }
+        map.setView([lat, lng], 13);
+        searchNote.textContent = (result.label || query) +
+          (payload.attribution ? ' · ' + payload.attribution : '');
+      }).catch(function () {
+        searchNote.textContent = 'Place search is unavailable. Pan the map or paste GeoJSON instead.';
+      }).finally(function () {
+        searchButton.disabled = false;
+      });
+    });
+    searchInput.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        searchButton.click();
+      }
+    });
+  }
+
   var center = mapConfig.default_center || {latitude: 0, longitude: 0};
   var map = L.map(mapNode).setView([center.latitude, center.longitude], mapConfig.default_zoom || 5);
   if (mapConfig.tile_url_template) {
