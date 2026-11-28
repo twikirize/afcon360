@@ -14,8 +14,6 @@ from decimal import Decimal
 
 import pytest
 
-from app.geo.interfaces import GeoPoint
-from app.geo.services import straight_line_distance_m
 
 LAT_A, LNG_A = 0.3150, 32.5820
 LAT_B, LNG_B = 0.3350, 32.6000
@@ -49,9 +47,15 @@ def _payload(**over):
 
 def _create(app, user_id, **over):
     from app.transport.services.booking_service import get_booking_service
+    from tests.transport_road_quote_helpers import add_test_road_quote
+    data = _payload(**over)
+    if all(data.get(key) is not None for key in (
+        "pickup_latitude", "pickup_longitude",
+        "dropoff_latitude", "dropoff_longitude",
+    )):
+        add_test_road_quote(data)
     with app.app_context():
-        result = get_booking_service().create_booking(
-            user_id, _payload(**over))
+        result = get_booking_service().create_booking(user_id, data)
     assert result["success"] is True, result
     return result["data"]["booking_id"]
 
@@ -111,7 +115,7 @@ def test_out_of_range_coordinates_rejected(app):
                                   dropoff_longitude=LNG_B))
 
 
-# --- measured distance --------------------------------------------------------------------
+# --- signed road distance --------------------------------------------------------------------
 
 def test_measured_distance_prices_booking(app):
     user_id = _user(app)
@@ -119,12 +123,14 @@ def test_measured_distance_prices_booking(app):
         app, user_id, pickup_latitude=LAT_A, pickup_longitude=LNG_A,
         dropoff_latitude=LAT_B, dropoff_longitude=LNG_B)
     booking = _booking(app, booking_id)
-    expected_km = straight_line_distance_m(
-        GeoPoint(LAT_A, LNG_A), GeoPoint(LAT_B, LNG_B)) / 1000.0
+    expected_km = 8.75
     assert float(booking.estimated_distance_km) == pytest.approx(expected_km,
                                                                  abs=0.01)
-    assert booking.booking_metadata["distance_basis"] == "straight_line_planner"
+    assert booking.booking_metadata["distance_basis"] == "road_network"
     assert booking.booking_metadata["distance_km"] == pytest.approx(expected_km)
+    assert booking.booking_metadata["route_duration_s"] == 1260.0
+    assert booking.booking_metadata["route_provider"] == "test-routing-provider"
+    assert booking.estimated_duration_minutes == 21
     assert booking.booking_metadata["fare_version"] >= 1
     # Same canonical engine: (10 + km*2.5) * 1.2 [* surge].
     # Money columns keep cent precision; compare accordingly.
