@@ -91,8 +91,9 @@ export function RideWhere({
 }: RideWhereProps) {
   const { height } = useWindowDimensions();
   const compact = height < 760;
-  const sheetHeight = compact ? 300 : height < 860 ? 320 : 336;
-  const searchHeight = compact ? 158 : 166;
+  const veryCompact = height < 680;
+  const sheetHeight = veryCompact ? 260 : compact ? 282 : height < 860 ? 304 : 324;
+  const searchHeight = veryCompact ? 136 : compact ? 146 : 158;
 
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -360,7 +361,7 @@ const styles = StyleSheet.create({
 
   mapArea: {
     flex: 1,
-    minHeight: 112,
+    minHeight: veryCompact ? 84 : compact ? 100 : 112,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.border,

@@ -132,23 +132,23 @@ export function PlaceSearchField({ label, value, placeholder, onValue, onSelect,
       <View style={styles.inputShell}>
         {leading ? <View style={styles.leading}>{leading}</View> : null}
         <TextInput
-        value={value}
-        onChangeText={nextValue => {
-          selectedLabelQuery.current = null;
-          onValue(nextValue);
-        }}
-        onSubmitEditing={() => {
-          if (visibleState.status === "success" && visibleState.results[0]) {
-            selectCandidate(visibleState.results[0]);
-          }
-        }}
-        style={styles.input}
-        placeholder={placeholder}
-        placeholderTextColor={colors.text.muted}
-        accessibilityLabel={label}
-        accessibilityHint="Enter at least two characters, then choose a verified place from the suggestions."
-        autoCorrect={false}
-        returnKeyType="search"
+          value={value}
+          onChangeText={nextValue => {
+            selectedLabelQuery.current = null;
+            onValue(nextValue);
+          }}
+          onSubmitEditing={() => {
+            if (visibleState.status === "success" && visibleState.results[0]) {
+              selectCandidate(visibleState.results[0]);
+            }
+          }}
+          style={styles.input}
+          placeholder={placeholder}
+          placeholderTextColor={colors.text.muted}
+          accessibilityLabel={label}
+          accessibilityHint="Enter at least two characters, then choose a verified place from the suggestions."
+          autoCorrect={false}
+          returnKeyType="search"
         />
         {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
       </View>
