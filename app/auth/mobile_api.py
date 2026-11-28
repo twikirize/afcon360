@@ -21,7 +21,6 @@ from app.auth.mobile_tokens import (
     _resolve_record,
     _token_key,
     issue_mobile_tokens,
-    load_mobile_bearer_context,
     mark_mobile_session_revoked,
     pop_mobile_mfa_challenge,
     require_mobile_context,
@@ -33,6 +32,7 @@ logger = logging.getLogger(__name__)
 mobile_api_bp = Blueprint("mobile_api", __name__, url_prefix="/api/mobile/v1")
 
 
+# --- Helpers & Auth Guard ---
 def _error(code: str, message: str, status: int):
     return jsonify({"success": False, "code": code, "message": message}), status
 
@@ -255,6 +255,8 @@ def _bearer_required(expected_client: str | None = None):
     return decorate
 
 
+
+# --- Authentication & Account Session ---
 @mobile_api_bp.post("/auth/login")
 @limiter.limit("5 per minute", key_func=get_remote_address)
 def mobile_login():
@@ -868,9 +870,10 @@ def mobile_me():
     }), 200
 
 
+
+# --- Rider Transport & Activity ---
 @mobile_api_bp.post("/transport/ride-options")
 @limiter.limit("30 per minute", key_func=get_remote_address)
-@_bearer_required("user")
 def mobile_ride_options():
     """Use the canonical quote-only Transport resource; no matching is started."""
     from app.transport.api.ride_options_routes import RideOptionsResource
@@ -1357,6 +1360,8 @@ def mobile_settle_wallet(booking_reference):
     return RiderWalletSettlementResource().post(booking_reference)
 
 
+
+# --- Driver Operations, Fleet, Trips & Earnings ---
 def _current_driver():
     from app.transport.api.driver_routes import _current_driver_profile
     return _current_driver_profile()
@@ -2586,13 +2591,14 @@ def mobile_driver_cash_receipt(booking_reference):
 # Native Events and Tickets APIs
 # ---------------------------------------------------------------------------
 
+
+# --- Events & Tickets ---
 def _native_events_user():
     return g._afcon360_mobile_auth_context["user"]
 
 
 @mobile_api_bp.get("/events")
 @limiter.limit("30 per minute", key_func=get_remote_address)
-@_bearer_required("user")
 def mobile_events_list():
     from app.events.native_event_service import NativeEventService
     try:
@@ -2647,7 +2653,6 @@ def mobile_event_registration(registration_reference):
 
 @mobile_api_bp.get("/events/<string:event_public_id>")
 @limiter.limit("30 per minute", key_func=get_remote_address)
-@_bearer_required("user")
 def mobile_event_detail(event_public_id):
     from app.events.native_event_service import NativeEventError, NativeEventService
     try:
@@ -2689,13 +2694,14 @@ def mobile_event_register_free_ticket(event_public_id):
 # Native Accommodation APIs
 # ---------------------------------------------------------------------------
 
+
+# --- Accommodation & Stays ---
 def _native_accommodation_user():
     return g._afcon360_mobile_auth_context["user"]
 
 
 @mobile_api_bp.get("/accommodation/properties")
 @limiter.limit("30 per minute", key_func=get_remote_address)
-@_bearer_required("user")
 def mobile_accommodation_properties():
     from app.accommodation.services.native_booking_service import NativeAccommodationService
     try:
@@ -2715,7 +2721,6 @@ def mobile_accommodation_properties():
 
 @mobile_api_bp.get("/accommodation/properties/<string:property_public_id>")
 @limiter.limit("30 per minute", key_func=get_remote_address)
-@_bearer_required("user")
 def mobile_accommodation_property(property_public_id):
     from app.accommodation.services.native_booking_service import (
         NativeAccommodationError,
@@ -2870,6 +2875,8 @@ def mobile_accommodation_cancel_booking(booking_reference):
 # Native Wallet APIs
 # ---------------------------------------------------------------------------
 
+
+# --- Digital Wallet, Deposits & Withdrawals ---
 def _native_wallet_user():
     return g._afcon360_mobile_auth_context["user"]
 

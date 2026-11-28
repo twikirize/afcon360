@@ -91,11 +91,11 @@ def dashboard():
     # Get pending data subject requests
     pending_dsr = DataSubjectRequestService.get_requests_by_status(DataSubjectRequestStatus.PENDING)
     
-    # Build stats dict for sidebar badges
+# Build stats dict for sidebar badges
     stats = {
-        'kyc_pending': len(pending_kyc),
-        'orgs_pending': len(pending_orgs),
-        'payouts_pending': len(pending_payouts),
+        'kyc_pending': KycRecord.query.filter(KycRecord.status.in_(['pending', 'manual_review'])).count(),
+        'orgs_pending': Organisation.query.filter_by(verification_status='pending').count(),
+        'payouts_pending': 0,
         'aml_alerts': 0,
         'open_cases': case_stats.get('open', 0),
         'escalations': 0,
@@ -121,12 +121,14 @@ def kyc_queue():
     """KYC compliance queue"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-    status = request.args.get('status', 'pending')
+    status = request.args.get('status', 'pending_review')
     search = request.args.get('search', '').strip()
     
     query = KycRecord.query
     
-    if status != 'all':
+    if status == 'pending_review':
+        query = query.filter(KycRecord.status.in_(['pending', 'manual_review']))
+    elif status != 'all':
         query = query.filter_by(status=status)
 
     if search:
@@ -202,12 +204,23 @@ def view_kyc(kyc_id_or_uuid):
     doc_url = _resolve_kyc_media_url(kyc_record.document_url)
     selfie_url = _resolve_kyc_media_url(kyc_record.selfie_url)
 
+    # Get list of compliance officers for assignment dropdown
+    from app.identity.models.user import User
+    from app.identity.models.roles_permission import Role
+    # Query users who have any of the compliance-related roles via UserRole relationship
+    compliance_role_names = ['compliance_officer', 'admin', 'super_admin']
+    compliance_officers = User.query.join(User.roles).join(Role).filter(
+        Role.name.in_(compliance_role_names),
+        User.is_deleted == False
+    ).distinct().all()
+
     return render_template('admin/compliance/view_kyc.html',
                           kyc_record=kyc_record,
                           doc_url=doc_url,
                           selfie_url=selfie_url,
                           compliance_case=compliance_case,
                           stats=_sidebar_stats(),
+                          compliance_officers=compliance_officers,
                           title="View KYC")
 
 
@@ -293,6 +306,61 @@ def kyc_action(kyc_id_or_uuid=None, kyc_id=None, **route_values):
             flash(f'KYC record {kyc_id} assigned to you for review.', 'info')
         else:
             flash('KYC record is not available for assignment.', 'warning')
+    elif action == 'assign_to':
+        record = db.session.get(KycRecord, kyc_id)
+        assign_to_id = request.form.get('assign_to_id', type=int)
+        assignment_note = request.form.get('assignment_note', '').strip()
+        if not record:
+            abort(404)
+        if not assign_to_id:
+            flash('Please select an officer to assign.', 'danger')
+        else:
+            from app.identity.models.user import User
+            target_officer = User.query.get(assign_to_id)
+            if not target_officer:
+                flash('Selected officer not found.', 'danger')
+            else:
+                record.status = 'in_review'
+                record.checked_by = str(assign_to_id)
+                record.compliance_reviewed_at = datetime.now(timezone.utc)
+                record.compliance_reviewed_by = current_user.id
+                if assignment_note:
+                    existing_notes = record.compliance_notes or ''
+                    record.compliance_notes = f"{existing_notes}\n\n[Assigned by {current_user.username} to {target_officer.username}]: {assignment_note}"
+                db.session.commit()
+                try:
+                    NotificationService.notify_kyc_reupload_requested(
+                        user_id=record.user_id,
+                        document_label=f'KYC review assigned to {target_officer.username}',
+                        reason=assignment_note or 'KYC review assigned to another officer',
+                    )
+                except Exception:
+                    current_app.logger.exception('Could not notify user of KYC assignment')
+                flash(f'KYC record {kyc_id} assigned to {target_officer.username}.', 'success')
+    elif action == 'seek_clarification':
+        record = db.session.get(KycRecord, kyc_id)
+        clarification_details = request.form.get('clarification_details', '').strip()
+        if not record:
+            abort(404)
+        if not clarification_details:
+            flash('Please specify what clarification is needed.', 'danger')
+        else:
+            record.compliance_status = 'clarification_requested'
+            record.status = 'in_review'
+            record.compliance_reviewed_at = datetime.now(timezone.utc)
+            record.compliance_reviewed_by = current_user.id
+            existing_notes = record.compliance_notes or ''
+            record.compliance_notes = f"{existing_notes}\n\n[Clarification Requested by {current_user.username}]: {clarification_details}"
+            db.session.commit()
+            try:
+                NotificationService.notify_kyc_reupload_requested(
+                    user_id=record.user_id,
+                    document_label='Additional information needed for KYC review',
+                    reason=clarification_details,
+                )
+            except Exception:
+                current_app.logger.exception('Could not notify user of clarification request')
+            flash('Clarification request sent to applicant. Status remains under review.', 'info')
     elif action == 'request_reupload':
         record = db.session.get(KycRecord, kyc_id)
         document_key = request.form.get('document_key', 'document').strip()
