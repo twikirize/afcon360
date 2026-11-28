@@ -1,6 +1,7 @@
 import pytest
 
 from app.geo.service_areas import (
+    assess_driver_for_pickup_area,
     assess_service_area_trip,
     check_service_area_point,
     point_in_geometry,
@@ -132,3 +133,46 @@ def test_non_transport_area_does_not_enable_rides():
 def test_admin_config_rejects_duplicate_area_ids():
     with pytest.raises(ValueError, match="Duplicate"):
         validate_service_area_config(config(area(), area()))
+
+
+
+def test_driver_must_be_in_same_active_area_as_pickup():
+    settings = config(area())
+    accepted = assess_driver_for_pickup_area(
+        0.6, 32.6, 0.5, 32.5, config=settings
+    )
+    outside = assess_driver_for_pickup_area(
+        1.5, 32.5, 0.5, 32.5, config=settings
+    )
+    assert accepted["supported"] is True
+    assert outside["supported"] is False
+    assert outside["reason"] == "driver_outside_active_area"
+
+
+def test_driver_in_different_active_city_is_not_matched_to_pickup():
+    settings = config(
+        area(),
+        area("nairobi", "Nairobi", polygon(36, -2, 38, 1)),
+        cross=True,
+    )
+    result = assess_driver_for_pickup_area(
+        -1.0, 37.0, 0.5, 32.5, config=settings
+    )
+    assert result["supported"] is False
+    assert result["reason"] == "driver_in_different_service_area"
+
+
+def test_driver_area_check_is_bypassed_when_geofencing_disabled():
+    result = assess_driver_for_pickup_area(
+        -1.0, 37.0, 0.5, 32.5,
+        config=config(area(), enabled=False),
+    )
+    assert result["supported"] is True
+    assert result["reason"] == "geofencing_disabled"
+
+
+def test_cannot_enable_geofencing_without_active_transport_area():
+    with pytest.raises(ValueError, match="at least one active ride"):
+        validate_service_area_config(
+            config(area(active=False), enabled=True)
+        )
