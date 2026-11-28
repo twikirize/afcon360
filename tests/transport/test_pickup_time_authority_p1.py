@@ -30,7 +30,8 @@ from app.utils.exceptions import ValidationError
 
 
 def _payload(**over):
-    """Valid instant payload mirroring the rider form contract."""
+    """Valid rider payload with a signed deterministic road quote."""
+    from tests.transport_road_quote_helpers import add_test_road_quote
     data = {
         "service_type": "on_demand",
         "provider_type": "individual_driver",
@@ -49,7 +50,7 @@ def _payload(**over):
         "vehicle_class": "comfort",
     }
     data.update(over)
-    return data
+    return add_test_road_quote(data)
 
 
 @pytest.fixture
