@@ -105,6 +105,13 @@ def _health_payload(app=None):
     }
 
 
+def _geocode_json_response(payload, service="transport"):
+    """Return a fresh policy annotation; never let browsers cache eligibility."""
+    response = jsonify(_annotate_service_area_payload(payload, service=service))
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return response
+
+
 def _annotate_service_area_payload(payload, service="transport"):
     """Attach fresh operating-area status after Redis geocode-cache lookup.
 
@@ -351,7 +358,7 @@ def geocode_search():
     cached = _geo_cache_get(key)
     if cached is not None:
         current_app.logger.debug("geo cache hit q=%s", query)
-        return jsonify(_annotate_service_area_payload(cached, service=service_name))
+        return _geocode_json_response(cached, service=service_name)
 
     # Per-request service from the existing env/config surface: no global
     # wiring change, and the existing get_geocoding_service() singleton
@@ -400,7 +407,7 @@ def geocode_search():
             items[0]["provider"] if items else "unresolved"),
     }
     _geo_cache_set(key, payload, empty=not payload.get("results"))
-    return jsonify(_annotate_service_area_payload(payload, service=service_name)), 200
+    return _geocode_json_response(payload, service=service_name), 200
 
 
 @geo_bp.get("/api/reverse")
