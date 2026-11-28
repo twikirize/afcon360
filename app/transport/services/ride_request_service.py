@@ -11,8 +11,8 @@ Re-use, not duplication:
   * input shape validation — app.utils.validators.validate_booking_request
   * location truth — location_snapshot.build_canonical_location_snapshot
     (with SOURCE_METHOD_PAIRS + geo geocode evidence, same as BookingService)
-  * fare truth — fare_service.calculate_estimate over the measured
-    straight-line distance (booking_service._measured_distance_km)
+  * fare truth — fare_service.calculate_estimate over the road distance
+    and duration bound into a signed GEO route quote
   * matching window — MatchingService._matching_window_seconds
   * storage labels — app/utils/enums.py Python str-Enums (UPPERCASE
     names, lowercase values: ServiceType.ON_DEMAND.value == 'on_demand');
