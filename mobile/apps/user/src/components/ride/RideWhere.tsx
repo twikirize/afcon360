@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,6 +8,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { BlurTargetView } from "expo-blur";
 import Svg, { Circle, Path } from "react-native-svg";
 import { colors, spacing, radii, typography } from "../../theme/tokens";
 import { GlassView } from "../GlassView";
@@ -58,7 +59,7 @@ function LocationPin({ color }: { color: string }) {
   );
 }
 
-/** AFCON360 rider picker: brand, search, live map and a fixed booking sheet. */
+/** AFCON360 rider picker: brand, floating search, map and fixed booking sheet. */
 export function RideWhere({
   pickup,
   dropoff,
@@ -94,7 +95,11 @@ export function RideWhere({
   const veryCompact = height < 680;
   const sheetHeight = veryCompact ? 260 : compact ? 282 : height < 860 ? 304 : 324;
   const searchHeight = veryCompact ? 136 : compact ? 146 : 158;
+  const mapOverlap = veryCompact ? 60 : 78;
+  const mapTop = 50 + searchHeight - mapOverlap;
+  const mapBottom = sheetHeight - mapOverlap;
 
+  const mapBlurTarget = useRef<View | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReloadKey, setMapReloadKey] = useState(0);
@@ -142,66 +147,10 @@ export function RideWhere({
 
   return (
     <View style={styles.root}>
-      <Afcon360Brand />
-
-      <GlassView
-        radius={23}
-        blurAmount={24}
-        style={[styles.searchCard, { height: searchHeight }]}
-        contentStyle={styles.searchGlassContent}
+      <BlurTargetView
+        ref={mapBlurTarget}
+        style={[styles.mapLayer, { top: mapTop, bottom: mapBottom }]}
       >
-        <ScrollView
-          style={styles.searchScroll}
-          contentContainerStyle={styles.searchScrollContent}
-          keyboardShouldPersistTaps="handled"
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={false}
-        >
-          <PlaceSearchField
-            label="Pickup"
-            value={pickupText}
-            placeholder="Search pickup"
-            onValue={onPickupTextChange}
-            onSelect={onPickupSelect}
-            leading={<LocationPin color="#29A96B" />}
-            trailing={
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Swap pickup and destination"
-                onPress={onSwapLocations}
-                style={styles.swapButton}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={styles.swapText}>↕</Text>
-              </Pressable>
-            }
-          />
-          <PlaceSearchField
-            label="Destination"
-            value={dropoffText}
-            placeholder="Where to?"
-            onValue={onDropoffTextChange}
-            onSelect={onDropoffSelect}
-            leading={<LocationPin color="#DF645C" />}
-          />
-
-          {(pickup || dropoff) ? (
-            <Text style={styles.sourceText}>
-              {[pickup, dropoff].filter(Boolean).map(place => {
-                const label = place === pickup ? "Pickup" : "Destination";
-                const source = place!.source === "gps"
-                  ? "current device location"
-                  : place!.source === "map"
-                    ? "selected on map"
-                    : "verified search result";
-                return label + ": " + source;
-              }).join("  ·  ")}
-            </Text>
-          ) : null}
-        </ScrollView>
-      </GlassView>
-
-      <View style={styles.mapArea}>
         {mapError ? (
           <View style={styles.mapFallback} accessibilityRole="summary">
             <Text style={styles.mapFallbackTitle}>Map unavailable</Text>
@@ -235,133 +184,176 @@ export function RideWhere({
             <Text style={styles.mapLoadingText}>Loading map…</Text>
           </View>
         ) : null}
+      </BlurTargetView>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Use my current location as pickup"
-          accessibilityState={{ disabled: locationBusy }}
-          disabled={locationBusy}
-          onPress={onUseCurrentLocation}
-          style={styles.locationButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      <View style={styles.overlay} pointerEvents="box-none">
+        <Afcon360Brand />
+
+        <GlassView
+          radius={23}
+          blurAmount={24}
+          blurTarget={mapBlurTarget}
+          style={[styles.searchCard, { height: searchHeight }]}
+          contentStyle={styles.searchGlassContent}
         >
-          {locationBusy ? (
-            <ActivityIndicator color={colors.brand.emerald} size="small" />
-          ) : (
-            <Text style={styles.locationArrow}>➤</Text>
-          )}
-          <Text style={styles.locationButtonText}>
-            {locationBusy ? "Locating…" : "Use my current location"}
-          </Text>
-        </Pressable>
-      </View>
-
-      <Text style={styles.mapFootnote} numberOfLines={1}>
-        © OpenStreetMap contributors · straight-line distance, not road distance
-      </Text>
-
-      <GlassView
-        radius={28}
-        blurAmount={22}
-        style={[styles.sheet, { height: sheetHeight }]}
-        contentStyle={styles.sheetInner}
-      >
-        <View style={styles.sheetHandle} />
-        <ScrollView
-          style={styles.sheetScroll}
-          contentContainerStyle={styles.sheetScrollContent}
-          keyboardShouldPersistTaps="handled"
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={false}
-        >
-          <Text accessibilityRole="header" style={styles.sectionTitle}>Service type</Text>
-          <ServiceTypeSelector serviceType={serviceType} vip={vip} onSelect={onServiceTypeChange} />
-
-          <ScheduleSelector
-            schedule={schedule}
-            scheduledAt={scheduledAt}
-            onScheduleChange={onScheduleChange}
-            onScheduledAtChange={onScheduledAtChange}
-            resetCommitment={resetCommitment}
-          />
-
-          <Text accessibilityRole="header" style={styles.sectionTitle}>Popular destinations</Text>
           <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chips}
+            style={styles.searchScroll}
+            contentContainerStyle={styles.searchScrollContent}
             keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
           >
-            {popularDestinations.map((name, index) => (
-              <Pressable
-                key={name}
-                accessibilityRole="button"
-                accessibilityLabel={"Search " + name + " as destination"}
-                onPress={() => handlePopularDestination(name)}
-                style={styles.chip}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              >
-                <Text style={styles.chipIcon}>{["▤", "⚽", "△"][index] ?? "•"}</Text>
-                <Text style={styles.chipText} numberOfLines={1}>
-                  {["Namboole Stadium", "Lugogo Oval", "Nile Independence"][index] ?? name}
-                </Text>
-              </Pressable>
-            ))}
+            <PlaceSearchField
+              label="Pickup"
+              value={pickupText}
+              placeholder="Search pickup"
+              onValue={onPickupTextChange}
+              onSelect={onPickupSelect}
+              leading={<LocationPin color="#29A96B" />}
+              trailing={
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Swap pickup and destination"
+                  onPress={onSwapLocations}
+                  style={styles.swapButton}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.swapText}>↕</Text>
+                </Pressable>
+              }
+            />
+            <PlaceSearchField
+              label="Destination"
+              value={dropoffText}
+              placeholder="Where to?"
+              onValue={onDropoffTextChange}
+              onSelect={onDropoffSelect}
+              leading={<LocationPin color="#DF645C" />}
+            />
+
+            {(pickup || dropoff) ? (
+              <Text style={styles.sourceText}>
+                {[pickup, dropoff].filter(Boolean).map(place => {
+                  const label = place === pickup ? "Pickup" : "Destination";
+                  const source = place!.source === "gps"
+                    ? "current device location"
+                    : place!.source === "map"
+                      ? "selected on map"
+                      : "verified search result";
+                  return label + ": " + source;
+                }).join("  ·  ")}
+              </Text>
+            ) : null}
           </ScrollView>
+        </GlassView>
 
-          {locationMessage ? <Text style={styles.statusText}>{locationMessage}</Text> : null}
-          {reverseAttribution ? <Text style={styles.attribution}>{reverseAttribution}</Text> : null}
-        </ScrollView>
-
-        <View style={styles.ctaBar}>
-          <Text style={styles.ctaHint} numberOfLines={2}>{ctaHint}</Text>
+        <View style={styles.mapGap} pointerEvents="box-none">
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ disabled: !canContinue }}
-            disabled={!canContinue}
-            onPress={onContinue}
-            style={({ pressed }) => [
-              styles.ctaButton,
-              !canContinue && styles.ctaButtonDisabled,
-              pressed && canContinue && styles.ctaButtonPressed,
-            ]}
+            accessibilityLabel="Use my current location as pickup"
+            accessibilityState={{ disabled: locationBusy }}
+            disabled={locationBusy}
+            onPress={onUseCurrentLocation}
+            style={styles.locationButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.ctaButtonText}>See Ride Options</Text>
+            {locationBusy ? (
+              <ActivityIndicator color={colors.brand.emerald} size="small" />
+            ) : (
+              <Text style={styles.locationArrow}>➤</Text>
+            )}
+            <Text style={styles.locationButtonText}>
+              {locationBusy ? "Locating…" : "Use my current location"}
+            </Text>
           </Pressable>
         </View>
-      </GlassView>
+
+        <Text style={styles.mapFootnote} numberOfLines={1}>
+          © OpenStreetMap contributors · straight-line distance, not road distance
+        </Text>
+
+        <GlassView
+          radius={28}
+          blurAmount={22}
+          blurTarget={mapBlurTarget}
+          style={[styles.sheet, { height: sheetHeight }]}
+          contentStyle={styles.sheetInner}
+        >
+          <View style={styles.sheetHandle} />
+          <ScrollView
+            style={styles.sheetScroll}
+            contentContainerStyle={styles.sheetScrollContent}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+          >
+            <Text accessibilityRole="header" style={styles.sectionTitle}>Service type</Text>
+            <ServiceTypeSelector serviceType={serviceType} vip={vip} onSelect={onServiceTypeChange} />
+
+            <ScheduleSelector
+              schedule={schedule}
+              scheduledAt={scheduledAt}
+              onScheduleChange={onScheduleChange}
+              onScheduledAtChange={onScheduledAtChange}
+              resetCommitment={resetCommitment}
+            />
+
+            <Text accessibilityRole="header" style={styles.sectionTitle}>Popular destinations</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chips}
+              keyboardShouldPersistTaps="handled"
+            >
+              {popularDestinations.map((name, index) => (
+                <Pressable
+                  key={name}
+                  accessibilityRole="button"
+                  accessibilityLabel={"Search " + name + " as destination"}
+                  onPress={() => handlePopularDestination(name)}
+                  style={styles.chip}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Text style={styles.chipIcon}>{["▤", "⚽", "△"][index] ?? "•"}</Text>
+                  <Text style={styles.chipText} numberOfLines={1}>
+                    {["Namboole Stadium", "Lugogo Oval", "Nile Independence"][index] ?? name}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            {locationMessage ? <Text style={styles.statusText}>{locationMessage}</Text> : null}
+            {reverseAttribution ? <Text style={styles.attribution}>{reverseAttribution}</Text> : null}
+          </ScrollView>
+
+          <View style={styles.ctaBar}>
+            <Text style={styles.ctaHint} numberOfLines={2}>{ctaHint}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canContinue }}
+              disabled={!canContinue}
+              onPress={onContinue}
+              style={({ pressed }) => [
+                styles.ctaButton,
+                !canContinue && styles.ctaButtonDisabled,
+                pressed && canContinue && styles.ctaButtonPressed,
+              ]}
+            >
+              <Text style={styles.ctaButtonText}>See Ride Options</Text>
+            </Pressable>
+          </View>
+        </GlassView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    minHeight: 0,
-    paddingHorizontal: 12,
-    paddingBottom: 7,
-    gap: 6,
-  },
-  searchCard: { flexShrink: 0, minHeight: 148 },
-  searchGlassContent: { flex: 1, paddingHorizontal: 13, paddingVertical: 9 },
-  searchScroll: { flex: 1, minHeight: 0 },
-  searchScrollContent: { gap: 6, paddingBottom: 4 },
-  swapButton: {
-    width: 34,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F1F8F3",
-    borderWidth: 1,
-    borderColor: "#CFE8D8",
-  },
-  swapText: { color: colors.brand.emerald, fontSize: 19, lineHeight: 22, fontWeight: "900" },
-  sourceText: { color: colors.text.ink, fontSize: 9, fontWeight: "600", marginTop: 1 },
-
-  mapArea: {
-    flex: 1,
-    minHeight: veryCompact ? 84 : compact ? 100 : 112,
+  root: { flex: 1, minHeight: 0, backgroundColor: colors.surface.canvas },
+  mapLayer: {
+    position: "absolute",
+    left: 12,
+    right: 12,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.border,
@@ -400,10 +392,38 @@ const styles = StyleSheet.create({
     borderColor: colors.brand.green,
   },
   mapRetryText: { color: colors.brand.green, fontSize: 12, fontWeight: "800" },
+
+  overlay: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingBottom: 7,
+    gap: 6,
+  },
+  searchCard: { flexShrink: 0, minHeight: 132 },
+  searchGlassContent: { flex: 1, paddingHorizontal: 13, paddingVertical: 9 },
+  searchScroll: { flex: 1, minHeight: 0 },
+  searchScrollContent: { gap: 6, paddingBottom: 4 },
+  swapButton: {
+    width: 34,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F1F8F3",
+    borderWidth: 1,
+    borderColor: "#CFE8D8",
+  },
+  swapText: { color: colors.brand.emerald, fontSize: 19, lineHeight: 22, fontWeight: "900" },
+  sourceText: { color: colors.text.ink, fontSize: 9, fontWeight: "600", marginTop: 1 },
+
+  mapGap: {
+    flex: 1,
+    minHeight: 84,
+    justifyContent: "flex-end",
+    alignItems: "flex-end",
+    paddingBottom: 3,
+  },
   locationButton: {
-    position: "absolute",
-    right: 10,
-    bottom: 10,
     minHeight: 38,
     flexDirection: "row",
     alignItems: "center",
@@ -424,7 +444,7 @@ const styles = StyleSheet.create({
   locationButtonText: { color: colors.text.ink, fontSize: 11, fontWeight: "800" },
   mapFootnote: { color: "#56665B", fontSize: 9, lineHeight: 12, paddingHorizontal: 3, marginTop: -1 },
 
-  sheet: { flexShrink: 0, minHeight: 280 },
+  sheet: { flexShrink: 0, minHeight: 244 },
   sheetInner: { flex: 1, minHeight: 0, paddingHorizontal: 15, paddingTop: 8, paddingBottom: 10 },
   sheetHandle: {
     alignSelf: "center",

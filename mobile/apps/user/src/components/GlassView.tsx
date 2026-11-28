@@ -1,7 +1,7 @@
 import React from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { StyleSheet, View } from "react-native";
-import type { StyleProp, ViewStyle } from "react-native";
+import type { StyleProp, View as NativeView, ViewStyle } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -12,6 +12,7 @@ type GlassViewProps = {
   radius?: number;
   dark?: boolean;
   blurAmount?: number;
+  blurTarget?: RefObject<NativeView | null>;
 };
 
 /**
@@ -25,6 +26,7 @@ export function GlassView({
   radius = 24,
   dark = false,
   blurAmount = 22,
+  blurTarget,
 }: GlassViewProps) {
   const tint = dark ? "rgba(10,16,26,0.48)" : "rgba(255,255,255,0.76)";
   const sheen: [string, string] = dark
@@ -41,6 +43,9 @@ export function GlassView({
           style={StyleSheet.absoluteFillObject}
           tint={dark ? "dark" : "light"}
           intensity={blurAmount}
+          blurTarget={blurTarget}
+          blurMethod="dimezisBlurViewSdk31Plus"
+          blurReductionFactor={2}
         />
         <LinearGradient
           pointerEvents="none"
