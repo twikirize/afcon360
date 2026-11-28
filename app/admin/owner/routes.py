@@ -43,6 +43,127 @@ logger = logging.getLogger(__name__)
 def owner_login_required(f):
     return login_required(owner_required(f))
 
+@owner_bp.route('/geofencing', methods=['GET', 'POST'])
+@login_required
+@owner_or_superadmin_required
+def geofencing():
+    """Manage geographic service-area polygons (Owner / Super Admin)."""
+    from app.geo.service_areas import (
+        get_service_area_config,
+        save_service_area_config,
+    )
+
+    config = get_service_area_config()
+    if request.method == 'POST':
+        action = request.form.get('action') or 'save_area'
+        try:
+            if action == 'save_settings':
+                config['enabled'] = request.form.get('enabled') == 'on'
+                config['allow_cross_area_routes'] = (
+                    request.form.get('allow_cross_area_routes') == 'on'
+                )
+                config = save_service_area_config(
+                    config, updated_by=getattr(current_user, 'id', None)
+                )
+                flash(
+                    'Geofence enforcement enabled.' if config['enabled']
+                    else 'Geofence enforcement disabled. Service-area restrictions are bypassed.',
+                    'success',
+                )
+            elif action == 'disable_area':
+                area_id = (request.form.get('area_id') or '').strip()
+                found = False
+                for area in config['areas']:
+                    if isinstance(area, dict) and area.get('id') == area_id:
+                        area['active'] = False
+                        found = True
+                        break
+                if not found:
+                    flash('Service area was not found.', 'warning')
+                else:
+                    config = save_service_area_config(
+                        config, updated_by=getattr(current_user, 'id', None)
+                    )
+                    flash('Service area disabled. Its boundary has been preserved.', 'success')
+            elif action == 'save_area':
+                import json as json_module
+
+                name = (request.form.get('name') or '').strip()
+                area_id = (request.form.get('area_id') or '').strip()
+                country_code = (request.form.get('country_code') or '').strip().upper()
+                try:
+                    geometry = json_module.loads(request.form.get('geometry') or '')
+                except (TypeError, ValueError):
+                    raise ValueError('Enter or draw a valid GeoJSON Polygon or MultiPolygon boundary.')
+
+                area = {
+                    'id': area_id or name,
+                    'name': name,
+                    'country_code': country_code,
+                    'active': request.form.get('active') == 'on',
+                    'services': request.form.getlist('services'),
+                    'geometry': geometry,
+                }
+                replaced = False
+                for index, existing in enumerate(config['areas']):
+                    if isinstance(existing, dict) and area_id and existing.get('id') == area_id:
+                        config['areas'][index] = area
+                        replaced = True
+                        break
+                if not replaced:
+                    config['areas'].append(area)
+
+                config = save_service_area_config(
+                    config, updated_by=getattr(current_user, 'id', None)
+                )
+                flash(f'Service area "{name}" saved successfully.', 'success')
+            else:
+                flash('Unknown geofencing action.', 'warning')
+        except (ValueError, TypeError) as exc:
+            flash(str(exc), 'danger')
+        except Exception:
+            db.session.rollback()
+            logger.exception('Owner service-area configuration could not be saved')
+            flash('The service-area settings could not be saved. No change was applied.', 'danger')
+
+        selected = (request.form.get('area_id') or '').strip()
+        return redirect(
+            url_for('admin.owner.geofencing', area=selected) if selected
+            else url_for('admin.owner.geofencing')
+        )
+
+    selected_id = (request.args.get('area') or '').strip()
+    selected_area = next(
+        (area for area in config['areas']
+         if isinstance(area, dict) and area.get('id') == selected_id),
+        None,
+    )
+    try:
+        from app.geo.config import load_geo_config
+        from app.geo.map_renderer import build_public_map_config
+        map_config = build_public_map_config(load_geo_config(current_app))
+    except Exception:
+        logger.exception('Could not load configured map renderer for geofence editor')
+        map_config = {
+            'default_center': {'latitude': 0.0, 'longitude': 32.0},
+            'default_zoom': 5,
+            'tile_url_template': '',
+            'tile_attribution': '',
+        }
+
+    active_area_count = sum(
+        1 for area in config['areas']
+        if isinstance(area, dict) and area.get('active') is True
+        and 'transport' in (area.get('services') or [])
+    )
+    return render_template(
+        'owner/geofencing.html',
+        config=config,
+        selected_area=selected_area,
+        active_area_count=active_area_count,
+        map_config=map_config,
+    )
+
 @owner_bp.context_processor
 def utility_processor():
     def now():
