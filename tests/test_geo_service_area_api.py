@@ -122,3 +122,42 @@ def test_owner_can_manage_and_toggle_service_area_enforcement(
 def test_standard_user_cannot_manage_service_areas(app, authenticated_client):
     response = authenticated_client.get("/admin/owner/geofencing")
     assert response.status_code == 403
+
+
+
+def test_geocode_results_receive_fresh_service_area_annotations_and_no_store(
+        app, anonymous_client, monkeypatch):
+    from app.geo.interfaces import GeocodeResult
+
+    class FakeGeocoder:
+        def geocode(self, query, limit=5):
+            return [
+                GeocodeResult(
+                    latitude=0.4, longitude=32.6, display_name="Inside",
+                    provider="fake", resolved=True,
+                ),
+                GeocodeResult(
+                    latitude=0.8, longitude=32.6, display_name="Outside",
+                    provider="fake", resolved=True,
+                ),
+            ]
+
+    monkeypatch.setattr("app.geo.routes._geo_cache_get", lambda key: None)
+    monkeypatch.setattr("app.geo.routes._geo_cache_set", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "app.geo.services.build_geocoding_service",
+        lambda config: FakeGeocoder(),
+    )
+    monkeypatch.setattr(
+        "app.geo.service_areas.get_service_area_config",
+        lambda: _area_config(),
+    )
+
+    response = anonymous_client.get(
+        "/geo/api/geocode?service=transport&q=sample place"
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["results"][0]["service_area"]["supported"] is True
+    assert payload["results"][1]["service_area"]["supported"] is False
+    assert "no-store" in response.headers["Cache-Control"]
