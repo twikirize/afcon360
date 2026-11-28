@@ -60,6 +60,7 @@ def get_service_area_config() -> dict:
             if not isinstance(area, dict):
                 continue
             prepared = dict(area)
+            prepared["_geometry_invalid"] = False
             try:
                 if area.get("active") is True:
                     prepared["_validated_geometry"] = validate_geometry(
@@ -70,6 +71,7 @@ def get_service_area_config() -> dict:
             except (TypeError, ValueError):
                 # An invalid saved polygon never grants service eligibility.
                 prepared["_validated_geometry"] = None
+                prepared["_geometry_invalid"] = True
             prepared_areas.append(prepared)
 
     try:
@@ -236,6 +238,8 @@ def check_service_area_point(latitude: Any, longitude: Any,
         if not isinstance(area, dict) or area.get("active") is not True:
             continue
         if not _service_matches(area, service):
+            continue
+        if area.get("_geometry_invalid") is True:
             continue
         validated_geometry = area.get("_validated_geometry")
         if validated_geometry is None:
