@@ -72,8 +72,15 @@ def test_service_area_check_rejects_invalid_service_and_coordinates(
 def test_owner_can_manage_and_toggle_service_area_enforcement(
         app, admin_client):
     with app.app_context():
-        SystemConfig.query.filter_by(key="GEO_SERVICE_AREAS").delete()
+        from sqlalchemy import inspect
         from app.extensions import db
+        from app.geo.models import GeoServiceArea, GeoServiceAreaPolicy
+
+        SystemConfig.query.filter_by(key="GEO_SERVICE_AREAS").delete()
+        if inspect(db.engine).has_table("geo_service_areas"):
+            GeoServiceArea.query.delete()
+        if inspect(db.engine).has_table("geo_service_area_policies"):
+            GeoServiceAreaPolicy.query.delete()
         db.session.commit()
 
     page = admin_client.get("/admin/owner/geofencing")
@@ -95,10 +102,20 @@ def test_owner_can_manage_and_toggle_service_area_enforcement(
     assert created.status_code == 302
 
     with app.app_context():
-        saved = SystemConfig.get("GEO_SERVICE_AREAS")
+        from sqlalchemy import inspect
+        from app.extensions import db
+        from app.geo.service_areas import get_service_area_config
+        saved = get_service_area_config()
         assert saved["enabled"] is False
         assert saved["areas"][0]["id"] == "kampala"
         assert saved["areas"][0]["active"] is True
+        if inspect(db.engine).has_table("geo_service_areas"):
+            from app.geo.models import GeoServiceArea
+            record = GeoServiceArea.query.filter_by(slug="kampala").one()
+            assert record.name == "Kampala"
+            assert record.country_code == "UG"
+            assert record.services == ["transport"]
+            assert record.geometry["type"] == "Polygon"
 
     enabled = admin_client.post(
         "/admin/owner/geofencing",
@@ -107,7 +124,8 @@ def test_owner_can_manage_and_toggle_service_area_enforcement(
     )
     assert enabled.status_code == 302
     with app.app_context():
-        assert SystemConfig.get("GEO_SERVICE_AREAS")["enabled"] is True
+        from app.geo.service_areas import get_service_area_config
+        assert get_service_area_config()["enabled"] is True
 
     disabled = admin_client.post(
         "/admin/owner/geofencing",
@@ -116,7 +134,8 @@ def test_owner_can_manage_and_toggle_service_area_enforcement(
     )
     assert disabled.status_code == 302
     with app.app_context():
-        assert SystemConfig.get("GEO_SERVICE_AREAS")["enabled"] is False
+        from app.geo.service_areas import get_service_area_config
+        assert get_service_area_config()["enabled"] is False
 
 
 def test_standard_user_cannot_manage_service_areas(app, authenticated_client):
@@ -167,7 +186,13 @@ def test_geocode_results_receive_fresh_service_area_annotations_and_no_store(
 def test_missing_geofence_config_defaults_off_but_corrupt_saved_config_fails_closed(
         app):
     with app.app_context():
+        from sqlalchemy import inspect
         from app.extensions import db
+        from app.geo.models import GeoServiceArea, GeoServiceAreaPolicy
+        if inspect(db.engine).has_table("geo_service_areas"):
+            GeoServiceArea.query.delete()
+        if inspect(db.engine).has_table("geo_service_area_policies"):
+            GeoServiceAreaPolicy.query.delete()
         SystemConfig.query.filter_by(key="GEO_SERVICE_AREAS").delete()
         db.session.commit()
 
@@ -185,3 +210,20 @@ def test_missing_geofence_config_defaults_off_but_corrupt_saved_config_fails_clo
         broken = get_service_area_config()
         assert broken["enabled"] is True
         assert broken["areas"] == []
+
+
+
+def test_geo_service_area_models_are_registered_for_autogenerate(app):
+    from app.extensions import db
+    from app.geo.models import GeoServiceArea, GeoServiceAreaPolicy
+
+    assert GeoServiceArea.__tablename__ == "geo_service_areas"
+    assert GeoServiceAreaPolicy.__tablename__ == "geo_service_area_policies"
+    assert "geo_service_areas" in db.metadata.tables
+    assert "geo_service_area_policies" in db.metadata.tables
+    assert {"slug", "name", "services", "geometry", "active"}.issubset(
+        set(GeoServiceArea.__table__.columns.keys())
+    )
+    assert {
+        "policy_key", "enforcement_enabled", "allow_cross_area_routes"
+    }.issubset(set(GeoServiceAreaPolicy.__table__.columns.keys()))
