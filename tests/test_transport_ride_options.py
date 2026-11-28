@@ -25,6 +25,31 @@ from app.transport.models import (
 from app.transport.services.fare_service import FARE_VERSION, calculate_estimate
 
 
+@pytest.fixture(autouse=True)
+def _configured_test_road_provider(monkeypatch):
+    """Keep fare endpoint tests deterministic and independent of live Valhalla."""
+    from app.geo.interfaces import GeoPoint, RouteResult
+    from app.transport.services import road_distance_service
+
+    class _Provider:
+        def route(self, origin, destination, profile="auto"):
+            return RouteResult(
+                distance_m=12345.0,
+                duration_s=987.6,
+                geometry=[
+                    GeoPoint(0.3136, 32.5811),
+                    GeoPoint(0.3170, 32.5860),
+                    GeoPoint(0.32, 32.59),
+                ],
+                provider="test-routing-provider",
+                resolved=True,
+            )
+
+    monkeypatch.setattr(
+        road_distance_service, "get_routing_service", lambda: _Provider()
+    )
+
+
 def _priced_vehicle_classes(app):
     from app.transport.services import fare_service
 
@@ -154,7 +179,7 @@ def test_ride_options_empty_body_returns_labeled_defaults(app, anonymous_client)
     data = payload["data"]
     assert data["service_type"] == "on_demand"
     assert data["currency"] == "USD"
-    assert data["distance_basis"] == "straight_line_planner"
+    assert data["distance_basis"] == "road_network"
     assert data["note"]
     assert "does not query driver" in data["note"]
     assert data["options"], "a valid route should return fare quotes even with no drivers"
@@ -242,14 +267,10 @@ def test_ride_options_prices_every_class_without_driver_lookup(
     resp = anonymous_client.post("/api/transport/ride-options", json=body)
     assert resp.status_code == 200, resp.get_data(as_text=True)
     data = resp.get_json()["data"]
-    assert data["distance_basis"] == "straight_line_planner"
-    from app.geo.interfaces import GeoPoint
-    from app.geo.services import straight_line_distance_m
+    assert data["distance_basis"] == "road_network"
     from app.transport.services.fare_quote_service import load_fare_quote, money_amount
 
-    expected_km = straight_line_distance_m(
-        GeoPoint(0.3136, 32.5811), GeoPoint(0.32, 32.59)
-    ) / 1000.0
+    expected_km = 12.345
     assert data["distance_km"] == pytest.approx(expected_km)
     # The endpoint intentionally omits enum classes that have no
     # explicit configured price multiplier (for example, an unpriced bus).
@@ -258,7 +279,10 @@ def test_ride_options_prices_every_class_without_driver_lookup(
     with app.app_context():
         quote = load_fare_quote(comfort["quote_token"])
     assert quote["vehicle_class"] == "comfort"
+    assert quote["distance_basis"] == "road_network"
     assert quote["distance_km"] == round(expected_km, 6)
+    assert quote["route_duration_s"] == pytest.approx(987.6)
+    assert quote["route_provider"] == "test-routing-provider"
     assert quote["amount"] == format(Decimal(str(comfort["fare_total"])), ".2f")
     assert Decimal(str(comfort["fare_total"])) == money_amount(comfort["fare_total"])
     assert comfort["fare_version"] == FARE_VERSION
@@ -267,6 +291,36 @@ def test_ride_options_prices_every_class_without_driver_lookup(
     assert totals == sorted(totals)
     blob = __import__("json").dumps(data)
     assert "driver_id" not in blob and '"id":' not in blob
+
+
+def test_ride_options_fails_closed_when_road_routing_is_unavailable(
+        app, anonymous_client, monkeypatch):
+    from app.geo.interfaces import RouteResult
+    from app.transport.services import road_distance_service
+
+    class _UnavailableProvider:
+        def route(self, origin, destination, profile="auto"):
+            return RouteResult(
+                distance_m=None, duration_s=None, geometry=[],
+                provider="unresolved", resolved=False,
+            )
+
+    monkeypatch.setattr(
+        road_distance_service, "get_routing_service",
+        lambda: _UnavailableProvider(),
+    )
+    response = anonymous_client.post(
+        "/api/transport/ride-options",
+        json={
+            "pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
+            "dropoff_latitude": 0.32, "dropoff_longitude": 32.59,
+        },
+    )
+    assert response.status_code == 503
+    payload = response.get_json()
+    assert payload["code"] == "ROUTING_UNAVAILABLE"
+    assert payload["success"] is False
+    assert "straight" not in payload["error"].lower()
 
 
 def test_ride_options_missing_pickup_coords(app, anonymous_client):
@@ -360,7 +414,7 @@ def test_ride_options_valid_coordinates(app, anonymous_client):
     payload = resp.get_json()
     assert payload["success"] is True
     data = payload["data"]
-    assert data["distance_basis"] == "straight_line_planner"
+    assert data["distance_basis"] == "road_network"
     assert data["distance_km"] is not None
     assert isinstance(data["options"], list)
 
@@ -384,18 +438,18 @@ def test_fare_quote_does_not_depend_on_vehicle_availability(
 
 def test_ride_options_distance_has_no_preconfirmation_eta(
         app, anonymous_client):
-    from app.geo.interfaces import GeoPoint
-    from app.geo.services import straight_line_distance_m
     body = {"service_type": "on_demand",
             "pickup_latitude": 0.3136, "pickup_longitude": 32.5811,
             "dropoff_latitude": 0.32, "dropoff_longitude": 32.59}
     resp = anonymous_client.post("/api/transport/ride-options", json=body)
     assert resp.status_code == 200
     data = resp.get_json()["data"]
-    assert data["distance_basis"] == "straight_line_planner"
-    expected_km = straight_line_distance_m(
-        GeoPoint(0.3136, 32.5811), GeoPoint(0.32, 32.59)) / 1000.0
+    assert data["distance_basis"] == "road_network"
+    expected_km = 12.345
     assert data["distance_km"] == pytest.approx(expected_km)
+    assert data["duration_s"] == pytest.approx(987.6)
+    assert data["duration_minutes"] == 17
+    assert data["route_provider"] == "test-routing-provider"
     comfort = next(o for o in data["options"]
                    if o["vehicle_class"] == "comfort")
     assert comfort["quote_token"]
