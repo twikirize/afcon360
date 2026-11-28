@@ -95,7 +95,48 @@ coordinates); no provider SDK objects cross into domains.
 - Freshness is domain-neutral recency only — Transport-specific tracking
   policy (availability flips, dispatch eligibility) stays in Transport.
 
-### Providers and fallback truthfulness
+### Owner-managed service areas (SERVICE-AREAS-01)
+
+`app/geo/service_areas.py` owns the platform's shared service-area policy.
+Configuration is stored in the existing `SystemConfig` JSON setting
+`GEO_SERVICE_AREAS`; no new table or migration is required.
+
+The owner/super-admin management page is `/admin/owner/geofencing`. It
+supports GeoJSON Polygon/MultiPolygon boundaries, service-specific
+activation (transport, accommodation, events, tourism), individual area
+enable/disable, global enforcement enable/disable, and an explicit
+cross-area ride option. The global switch defaults off until an operator
+has configured boundaries.
+
+Stable domain-facing helpers:
+
+```python
+from app.geo.service_areas import (
+    check_service_area_point,
+    assess_service_area_trip,
+    assess_driver_for_pickup_area,
+    enforce_service_area_trip,
+)
+```
+
+- GeoJSON order is `[longitude, latitude]`; public GEO points remain
+  latitude-first.
+- The outer polygon boundary is included; holes are excluded.
+- Transport quote discovery, booking creation, ride-request creation,
+  route preview and driver matching all re-check the same policy server-side.
+- Place search adds a fresh `service_area` verdict to candidates after
+  geocoding/cache lookup; the area decision itself is never browser-cached.
+- Disabled geofencing bypasses only the service-area restriction. It does
+  not disable GEO, routing, geocoding, authentication or other domain gates.
+- Routes can leave the service polygon briefly; the polygon governs endpoint
+  eligibility, not every road segment along the route.
+
+See `docs/geo/nodes/SERVICE-AREAS-01-contract.md` for the detailed contract
+and current domain integration boundaries. At this stage, only Transport's
+quote/booking/dispatch workflows enforce the service-area policy; other
+domains still need their own integration.
+
+## Providers and fallback truthfulness
 
 | Capability | Status | Behavior when unconfigured |
 |---|---|---|
