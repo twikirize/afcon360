@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState, useMemo } from "react";
+import { useRouter } from "expo-router";
 import { Alert, ActivityIndicator, Pressable, Text, TextInput, View, Image, StyleSheet, ScrollView } from "react-native";
 import { palette as basePalette } from "@afcon360/mobile-ui";
 import {
@@ -96,6 +97,7 @@ function bookingCanCancel(booking: AccommodationBooking): boolean {
 }
 
 export default function Stays() {
+  const router = useRouter();
   const { user } = useAuth();
   const [properties, setProperties] = useState<AccommodationProperty[]>([]);
   const [bookings, setBookings] = useState<AccommodationBooking[]>([]);
@@ -167,6 +169,9 @@ export default function Stays() {
   const isWishlisted = (propertyId: string) => wishlist.some((w) => w.propertyId === propertyId);
 
   const loadBookings = useCallback(async () => {
+    // Booking history is the signed-in guest's own record, so it is only
+    // requested when there is one. Property search above stays open to all.
+    if (!user?.public_id) { setBookings([]); setBookingsError(null); setBookingsLoading(false); return; }
     setBookingsLoading(true);
     setBookingsError(null);
     try {
@@ -178,7 +183,7 @@ export default function Stays() {
     } finally {
       setBookingsLoading(false);
     }
-  }, []);
+  }, [user?.public_id]);
 
   const loadProperties = useCallback(async (term = "") => {
     setLoading(true);
@@ -236,6 +241,10 @@ export default function Stays() {
 
   const requestQuote = async () => {
     if (!selectedProperty) return;
+    // templates/accommodation/guest/detail.html offers "Login to Book" in
+    // place of "Proceed to Checkout" to an anonymous visitor. The property
+    // page and its nightly rates stay public; the priced booking does not.
+    if (!user?.public_id) { router.push("/login" as never); return; }
     if (!isValidDateOnly(checkIn) || !isValidDateOnly(checkOut)) {
       setError("Enter real calendar dates using YYYY-MM-DD.");
       return;
@@ -493,7 +502,7 @@ export default function Stays() {
           <Field label="Check-out (YYYY-MM-DD)" value={checkOut} onChangeText={(value) => { setCheckOut(value); setQuote(null); }} placeholder="2026-12-12" />
           <Field label="Guests" value={guests} onChangeText={(value) => { setGuests(value); setQuote(null); }} placeholder="2" keyboardType="numeric" />
           <Field label="Rooms" value={rooms} onChangeText={(value) => { setRooms(value); setQuote(null); }} placeholder="1" keyboardType="numeric" />
-          <ActionButton label={busy ? "Preparing quote…" : "Check availability and get price"} disabled={busy} onPress={() => void requestQuote()} />
+          <ActionButton label={user ? (busy ? "Preparing quote…" : "Check availability and get price") : "Login to Book"} disabled={busy} onPress={() => void requestQuote()} />
         </Panel>
       ) : null}
 
@@ -525,7 +534,7 @@ export default function Stays() {
         </Panel>
       ) : null}
 
-      <Panel>
+      {user ? <Panel>
         <SectionTitle>Your accommodation bookings</SectionTitle>
         {bookingsError ? <Text style={styles.errorText}>Booking history is unavailable: {bookingsError}</Text> : null}
         {bookingsLoading ? <ActivityIndicator color={palette.green} /> : null}
@@ -545,7 +554,7 @@ export default function Stays() {
           <Text style={styles.emptyText}>Your accommodation bookings will appear here.</Text>
         )}
         <ActionButton label={bookingsLoading ? "Refreshing bookings…" : "Refresh bookings"} disabled={bookingsLoading} onPress={() => void loadBookings()} />
-      </Panel>
+      </Panel> : null}
 
       <StaysFiltersBottomSheet
         visible={filtersVisible}

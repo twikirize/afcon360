@@ -13,6 +13,7 @@ const approved = [
   ["apps/driver/app/(tabs)/account.tsx", 'WebBrowser.openBrowserAsync("https://www.pamoja.space/apps/privacy")', "Privacy notice"],
   ["apps/user/src/components/wallet/WalletScreen.tsx", "Linking.openURL(checkout.toString())", "Starting secure checkout…"],
   ["apps/user/src/components/wallet/WalletScreen.tsx", "Linking.openURL(checkout.toString())", "Open Flutterwave checkout"],
+  ["apps/user/src/components/wallet/WalletBalance.tsx", 'WebBrowser.openBrowserAsync(SITE + "/wallet/create")', "Create your wallet on the Pamoja website"],
   ["apps/user/app/(service)/settings.tsx", "Linking.openURL(officialDownloadsUrl)", "Open official downloads"],
   ["apps/user/app/(service)/settings.tsx", "WebBrowser.openBrowserAsync(officialDownloadsUrl)", "Open official downloads"],
   ["apps/user/app/(tabs)/explore.tsx", 'WebBrowser.openBrowserAsync(SITE + "/tourism")', "Explore tourism on website"],
@@ -40,19 +41,33 @@ const nativeInternalRoutes = [
   // Home wallet navigation
   ["apps/user/src/components/home/WalletCard.tsx", "router.push('/(tabs)/wallet' as any)"],
 
-  // Existing protected routes and account flows
+  // Account-only service routes stay behind a session — per route, never for
+  // the whole group.
   ["apps/user/app/(tabs)/activity.tsx", 'pathname: "/(service)/ride-status/[reference]"'],
   ["apps/user/app/(tabs)/account.tsx", 'router.push("/(service)/delete-account" as never)'],
   ["apps/user/src/auth/SignInScreen.tsx", 'router.push("/server-settings" as never)'],
   ["apps/user/app/server-settings.tsx", "export default function ServerSettingsScreen()"],
-  ["apps/user/app/(service)/_layout.tsx", 'if (!user) return <Redirect href="/login" />;'],
-  ["apps/user/app/(service)/_layout.tsx", 'return <Stack screenOptions={{ headerShown: false }} />;'],
+  ["apps/user/app/(service)/_layout.tsx", "<Stack screenOptions={{ headerShown: false }}>"],
+  ["apps/user/app/(service)/_layout.tsx", '<Stack.Protected guard={Boolean(user)} redirectTo="/login">'],
+  ["apps/user/app/(service)/_layout.tsx", '<Stack.Screen name="settings" />'],
+  ["apps/user/app/(service)/_layout.tsx", '<Stack.Screen name="delete-account" />'],
+  ["apps/user/app/(service)/_layout.tsx", '<Stack.Screen name="ride-status/[reference]" />'],
   ["apps/user/app/(service)/events.tsx", "export default function Events()"],
   ["apps/user/app/(service)/stays.tsx", "export default function Stays()"],
   ["apps/user/src/components/ride/RideScreen.tsx", "export function RideScreen()"],
   ["apps/user/app/(service)/ride-status/[reference].tsx", "export default function RideStatusScreen()"],
   ["apps/user/app/(service)/delete-account.tsx", "export default function DeleteAccountScreen()"],
   ["apps/user/app/(service)/adventure.tsx", "export default function Adventure()"],
+
+  // Discovery/commitment boundary. The web serves these pages to anonymous
+  // visitors and fences only the reader's own records, so each screen must
+  // check for a session before requesting that reader's data, and must gate
+  // the commit action rather than the page.
+  ["apps/user/app/(service)/stays.tsx", "if (!user?.public_id) { setBookings([]); setBookingsError(null); setBookingsLoading(false); return; }"],
+  ["apps/user/app/(service)/stays.tsx", '"Login to Book"'],
+  ["apps/user/app/(service)/events.tsx", "if (!user?.public_id) { setRegistrations([]); setRegistrationsError(null); setRegistrationsLoading(false); return; }"],
+  ["apps/user/app/(service)/events.tsx", 'if (!user?.public_id) { router.push("/login" as never); return; }'],
+  ["apps/user/src/components/ride/RideScreen.tsx", 'if (!user) { router.push("/login" as never); return; }'],
 ];
 
 const nativeResetRoutes = [
@@ -80,6 +95,24 @@ for (const relative of forbiddenUnprotectedRoutes) {
       `Authenticated User route must remain inside the guarded service stack: ${relative}`
     );
   }
+}
+
+// Transport, Stays, Events and Adventure are public pages on the web
+// (transport.routes.home, accommodation.routes.guest_search,
+// events.routes.list and tourism.routes.home carry no login_required). A
+// group-wide redirect to /login reproduces none of that, so it must never
+// return: the guard belongs on the account-only routes above.
+const serviceLayoutSource = fs.readFileSync(
+  path.join(root, "apps/user/app/(service)/_layout.tsx"),
+  "utf8"
+);
+
+if (serviceLayoutSource.includes('if (!user) return <Redirect href="/login" />;')) {
+  throw new Error(
+    "The (service) group must not redirect every route to /login. " +
+      "Guard the account-only routes with Stack.Protected and leave " +
+      "Transport, Stays, Events and Adventure open, as the website does."
+  );
 }
 
 // Root-level User routes are public entry points only. New authenticated pages

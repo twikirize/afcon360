@@ -8,12 +8,15 @@ export const palette = {
   border: "#DFE8E1", warningSoft: "#FFF4D9"
 };
 
-export function AppScreen({ children }: { children: ReactNode }) {
+export function AppScreen({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+  // `footer` sits outside the ScrollView, so it stays on screen while the page
+  // scrolls. Screens that omit it render exactly as before.
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {children}
       </ScrollView>
+      {footer ? <View style={styles.footer}>{footer}</View> : null}
     </SafeAreaView>
   );
 }
@@ -41,11 +44,14 @@ export function StatusPill({ children, tone = "green" }: { children: ReactNode; 
   return <View style={[styles.pill, { backgroundColor }]}><Text style={styles.pillText}>{children}</Text></View>;
 }
 
-export function ActionButton({ label, onPress, disabled = false }: { label: string; onPress?: () => void; disabled?: boolean }) {
+export function ActionButton({ label, onPress, disabled = false, variant = "primary" }: { label: string; onPress?: () => void; disabled?: boolean; variant?: "primary" | "secondary" }) {
+  // "secondary" reproduces the website's outlined button (wallet_home.html
+  // shows "Sign In" as white with a grey border beside the solid "Get Started").
+  const secondary = variant === "secondary";
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled || !onPress}
-      onPress={onPress} style={({ pressed }) => [styles.button, (disabled || !onPress) && styles.disabled, pressed && styles.pressed]}>
-      <Text style={styles.buttonText}>{label}</Text>
+      onPress={onPress} style={({ pressed }) => [styles.button, secondary && styles.buttonSecondary, (disabled || !onPress) && styles.disabled, pressed && styles.pressed]}>
+      <Text style={[styles.buttonText, secondary && styles.buttonSecondaryText]}>{label}</Text>
     </Pressable>
   );
 }
@@ -84,6 +90,9 @@ const styles = StyleSheet.create({
   disabled: { backgroundColor: "#9AA9A0" },
   pressed: { opacity: 0.82 },
   buttonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
+  buttonSecondary: { backgroundColor: palette.surface, borderWidth: 1, borderColor: "#D1D5DB" },
+  buttonSecondaryText: { color: "#374151" },
+  footer: { backgroundColor: palette.surface, borderTopWidth: 1, borderTopColor: palette.border, paddingHorizontal: 20, paddingVertical: 12, gap: 10 },
   tile: { flexDirection: "row", alignItems: "center", gap: 13, paddingVertical: 7 },
   symbol: { height: 44, width: 44, borderRadius: 14, backgroundColor: palette.greenSoft, alignItems: "center", justifyContent: "center" },
   symbolText: { fontSize: 20 },

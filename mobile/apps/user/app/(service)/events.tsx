@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
 import { palette as basePalette } from "@afcon360/mobile-ui";
 import {
@@ -22,6 +22,7 @@ import { serviceErrorMessage } from "../../src/services/service-errors";
 import { TicketPurchase } from "../../src/components/events/TicketPurchase";
 import type { WalletAccount } from "@afcon360/mobile-core";
 import { walletClient } from "../../src/services/api";
+import { useAuth } from "../../src/auth/AuthProvider";
 
 const palette = {
   ...basePalette,
@@ -64,6 +65,8 @@ function registrationPrice(registration: NativeEventRegistration): string {
 
 export default function Events() {
   const params = useLocalSearchParams<{ query?: string }>();
+  const router = useRouter();
+  const { user } = useAuth();
   const routeQuery = typeof params.query === "string" ? params.query : "";
   const [events, setEvents] = useState<NativeEventSummary[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<NativeEventDetail | null>(null);
@@ -99,6 +102,9 @@ export default function Events() {
   }, []);
 
   const loadRegistrations = useCallback(async () => {
+    // Ticket history is the signed-in reader's own record, so it is only
+    // requested when there is one. The published event list above stays open.
+    if (!user?.public_id) { setRegistrations([]); setRegistrationsError(null); setRegistrationsLoading(false); return; }
     setRegistrationsLoading(true);
     setRegistrationsError(null);
     try {
@@ -110,9 +116,10 @@ export default function Events() {
     } finally {
       setRegistrationsLoading(false);
     }
-  }, []);
+  }, [user?.public_id]);
 
   const loadWalletAccount = useCallback(async () => {
+    if (!user?.public_id) { setWalletAccount(null); return; }
     try {
       const summary = await walletClient.getSummary();
       const account = summary.accounts?.[0] ?? null;
@@ -120,7 +127,7 @@ export default function Events() {
     } catch {
       setWalletAccount(null);
     }
-  }, []);
+  }, [user?.public_id]);
 
   useEffect(() => {
     setQuery(routeQuery);
@@ -146,6 +153,10 @@ export default function Events() {
 
   const register = async (ticket: NativeEventTicketType) => {
     if (!selectedEvent) return;
+    // templates/events/public/landing.html renders "Register Now" for every
+    // visitor and leaves the session requirement to events.register
+    // (@login_required). Reproduce that: show the action, gate the commit.
+    if (!user?.public_id) { router.push("/login" as never); return; }
     if (Number(ticket.price) > 0) {
       // Paid ticket - show purchase flow (backend PR #46 required)
       setPurchaseTicket(ticket);
@@ -279,7 +290,7 @@ export default function Events() {
         />
       )}
 
-      <Panel>
+      {user ? <Panel>
         <SectionTitle>Your tickets</SectionTitle>
         {registrationsError ? <Text style={{ color: "#9A342D", lineHeight: 20 }}>Ticket history is unavailable: {registrationsError}</Text> : null}
         {registrationsLoading ? <ActivityIndicator color={palette.green} /> : null}
@@ -309,7 +320,7 @@ export default function Events() {
           <Text style={{ color: palette.muted }}>Your confirmed event tickets will appear here.</Text>
         )}
         <ActionButton label={registrationsLoading ? "Refreshing tickets…" : "Refresh tickets"} disabled={registrationsLoading} onPress={() => void loadRegistrations()} />
-      </Panel>
+      </Panel> : null}
     </AppScreen>
   );
 }

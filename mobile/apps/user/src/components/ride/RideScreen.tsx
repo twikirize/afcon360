@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import * as Location from "expo-location";
 import { authClient } from "../../services/api";
 import { MobileAuthError } from "@afcon360/mobile-core";
+import { useAuth } from "../../auth/AuthProvider";
 import { colors, spacing } from "../../theme/tokens";
 import {
   PamojaScreen as AppScreen,
@@ -69,6 +70,7 @@ function writeCache(key: string, results: any[], attribution: string | null) {
 
 export function RideScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const mapRef = useRef<any>(null);
   const mapResolveSeq = useRef({ pickup: 0, dropoff: 0 });
   const [stage, setStage] = useState<Stage>("where");
@@ -325,6 +327,12 @@ export function RideScreen() {
 
   const continueToConfirm = useCallback(async () => {
     if (!selectedQuote) return;
+    // Discovery/commitment boundary, straight from
+    // templates/transport/new_home.html: anonymous riders browse the whole
+    // pre-booking flow and see real fares; Confirm requires a session.
+    // This screen stays mounted behind the sign-in route, so the chosen
+    // pickup, destination, class and fare survive the detour.
+    if (!user) { router.push("/login" as never); return; }
     setStage("confirm");
     setPaymentError(null);
     setPaymentMethods([]);
@@ -350,7 +358,7 @@ export function RideScreen() {
     } finally {
       setLoadingPayments(false);
     }
-  }, [selectedQuote]);
+  }, [selectedQuote, user, router]);
 
   const requestRide = useCallback(async () => {
     if (!pickup || !dropoff || !selectedQuote || !paymentMethod || submitting) return;

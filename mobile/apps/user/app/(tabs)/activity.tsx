@@ -12,6 +12,8 @@ import {
 } from "../../src/components/PamojaScreen";
 import { useFocusEffect } from "expo-router";
 import { authClient } from "../../src/services/api";
+import { useAuth } from "../../src/auth/AuthProvider";
+import { SignInScreen } from "../../src/auth/SignInScreen";
 
 const palette = {
   ...basePalette,
@@ -29,11 +31,21 @@ const palette = {
 type ActivityItem = { request_id: string; booking_reference: string; kind?: "request" | "booking"; status: string; converted?: boolean; booking_status?: string; booking_mode?: string; service_type?: string; created_at?: string; fare_estimate?: { amount?: number; currency?: string } };
 export default function Activity() {
   const router = useRouter();
+  const { user } = useAuth();
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // These are the reader's own records, which the web fences behind a
+    // session. Without one there is nothing to request, so the tab never lets
+    // a backend refusal reach the screen.
+    if (!user) {
+      setItems([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     try {
       const response = await authClient.request<{ success: boolean; data: { items: ActivityItem[] } }>("/api/mobile/v1/activity");
       setItems(response.data.items ?? []);
@@ -43,7 +55,7 @@ export default function Activity() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
   useFocusEffect(
     useCallback(() => {
       void load();
@@ -53,6 +65,14 @@ export default function Activity() {
       return () => subscription.remove();
     }, [load])
   );
+
+  // Signed out, this tab is the app's sign-in surface, mounted here in place —
+  // the same treatment Account gets, because "your rides" is personal data and
+  // the website answers an anonymous visit with a login redirect. Wallet is the
+  // exception: the web publishes a guest page for it, so the app ports that.
+  if (!user) {
+    return <SignInScreen />;
+  }
 
   return <AppScreen>
     <PageHeader eyebrow="Your activity" title="Your rides and bookings." description="Your recent ride requests and confirmed transport bookings are loaded from AFCON360." />
