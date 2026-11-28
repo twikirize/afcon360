@@ -401,3 +401,49 @@ def test_ride_options_distance_has_no_preconfirmation_eta(
     assert comfort["quote_token"]
     assert "eta_minutes" not in comfort and "eta_basis" not in comfort
 
+
+
+def test_ride_options_rejects_trip_outside_active_transport_area(
+        app, anonymous_client, monkeypatch):
+    from app.geo.service_areas import get_service_area_config
+
+    settings = {
+        "version": 1,
+        "enabled": True,
+        "allow_cross_area_routes": False,
+        "areas": [{
+            "id": "kampala-core",
+            "name": "Kampala Core",
+            "active": True,
+            "services": ["transport"],
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [32.5, 0.3], [32.7, 0.3], [32.7, 0.5],
+                    [32.5, 0.5], [32.5, 0.3],
+                ]],
+            },
+        }],
+    }
+    monkeypatch.setattr(
+        "app.geo.service_areas.get_service_area_config",
+        lambda: settings,
+    )
+
+    response = anonymous_client.post(
+        "/api/transport/ride-options",
+        json={
+            "service_type": "on_demand",
+            "currency": "USD",
+            "pickup_latitude": 0.8,
+            "pickup_longitude": 32.6,
+            "dropoff_latitude": 0.4,
+            "dropoff_longitude": 32.6,
+        },
+    )
+
+    assert response.status_code == 422
+    payload = response.get_json()
+    assert payload["success"] is False
+    assert payload["code"] == "OUTSIDE_SERVICE_AREA"
+    assert "pickup" in payload["error"].lower()
