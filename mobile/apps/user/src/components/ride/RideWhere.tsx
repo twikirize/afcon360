@@ -100,7 +100,7 @@ export function RideWhere({
   const mapTop = 50 + searchHeight - mapOverlap;
   const mapBottom = sheetHeight - mapOverlap;
 
-  const mapBlurTarget = useRef<ComponentRef<typeof View>>(null);
+  const mapBlurTarget = useRef<ComponentRef<typeof View>>(null!);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReloadKey, setMapReloadKey] = useState(0);
