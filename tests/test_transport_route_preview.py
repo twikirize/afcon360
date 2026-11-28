@@ -214,3 +214,47 @@ def test_route_preview_downgrades_malformed_resolved_provider_results(
     assert data["distance_m"] is None
     assert data["duration_s"] is None
     assert data["geometry"] == []
+
+
+def test_route_preview_rejects_trip_outside_active_service_area_before_routing(
+        anonymous_client, monkeypatch):
+    service = _RoutingStub(RouteResult(
+        distance_m=1000,
+        duration_s=100,
+        geometry=[GeoPoint(0.3476, 32.5825)],
+        provider="valhalla",
+        resolved=True,
+    ))
+    monkeypatch.setattr(route_preview_routes, "get_routing_service",
+                        lambda: service)
+    monkeypatch.setattr(
+        "app.geo.service_areas.get_service_area_config",
+        lambda: {
+            "version": 1,
+            "enabled": True,
+            "allow_cross_area_routes": False,
+            "areas": [{
+                "id": "kampala-core",
+                "name": "Kampala Core",
+                "active": True,
+                "services": ["transport"],
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [32.5, 0.3], [32.7, 0.3], [32.7, 0.5],
+                        [32.5, 0.5], [32.5, 0.3],
+                    ]],
+                },
+            }],
+        },
+    )
+
+    response = anonymous_client.post(
+        "/api/transport/route-preview", json=_body()
+    )
+
+    assert response.status_code == 422
+    payload = response.get_json()
+    assert payload["code"] == "OUTSIDE_SERVICE_AREA"
+    assert "outside Pamoja" in payload["error"]
+    assert service.calls == []
