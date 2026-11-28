@@ -1,8 +1,10 @@
-"""Owner-managed geographic service areas.
+"""GEO-owned service-area policy and Polygon/MultiPolygon evaluation.
 
-Service-area configuration is stored in the existing SystemConfig KV store.
-No new table or migration is required. GeoJSON coordinates follow RFC 7946:
-[longitude, latitude]. Invalid configured polygons never grant access.
+Authoritative persistence uses the GEO service-area tables. Until the
+operator-generated Alembic migration is applied, the existing SystemConfig
+JSON setting remains a temporary compatibility path so this branch can be
+reviewed without hand-written migrations. Once the tables exist, all writes
+go to relational GEO records and the singleton policy row.
 """
 from __future__ import annotations
 
@@ -12,6 +14,10 @@ import re
 from copy import deepcopy
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.extensions import db
+from app.geo.models import GeoServiceArea, GeoServiceAreaPolicy
 from app.models.system_config import SystemConfig
 from app.utils.exceptions import ValidationError
 
@@ -30,17 +36,33 @@ _MAX_TOTAL_CONFIG_POINTS = 25000
 _EPSILON = 1e-10
 
 
-def get_service_area_config() -> dict:
-    """Read authoritative service areas; malformed persisted policy fails closed.
+def _prepare_area_record(area: dict) -> dict:
+    """Convert a persisted area to the shared service-policy dictionary."""
+    prepared = {
+        "id": str(area.get("id") or area.get("slug") or ""),
+        "name": str(area.get("name") or ""),
+        "country_code": str(area.get("country_code") or ""),
+        "active": area.get("active") is True,
+        "services": area.get("services") if isinstance(area.get("services"), list) else [],
+        "geometry": area.get("geometry"),
+    }
+    prepared["_geometry_invalid"] = False
+    try:
+        if prepared["active"]:
+            prepared["_validated_geometry"] = validate_geometry(prepared["geometry"])
+        else:
+            prepared["_validated_geometry"] = None
+    except (TypeError, ValueError):
+        prepared["_validated_geometry"] = None
+        prepared["_geometry_invalid"] = True
+    return prepared
 
-    A missing setting means this feature has never been enabled and preserves
-    the safe rollout default (off). A present but malformed setting is
-    different: it must not silently disable a policy that an operator saved.
-    """
+
+def _read_legacy_service_area_config() -> dict:
+    """Read the pre-migration JSON setting without treating corruption as off."""
     setting = SystemConfig.query.filter_by(key=SERVICE_AREA_CONFIG_KEY).first()
     if setting is None:
         return deepcopy(DEFAULT_SERVICE_AREA_CONFIG)
-
     try:
         raw = json.loads(setting.value) if setting.value else None
     except (TypeError, ValueError):
@@ -52,44 +74,79 @@ def get_service_area_config() -> dict:
             "allow_cross_area_routes": False,
             "areas": [],
         }
-
     areas = raw.get("areas")
-    prepared_areas = []
-    if isinstance(areas, list):
-        for area in areas:
-            if not isinstance(area, dict):
-                continue
-            prepared = dict(area)
-            prepared["_geometry_invalid"] = False
-            try:
-                if area.get("active") is True:
-                    prepared["_validated_geometry"] = validate_geometry(
-                        area.get("geometry")
-                    )
-                else:
-                    prepared["_validated_geometry"] = None
-            except (TypeError, ValueError):
-                # An invalid saved polygon never grants service eligibility.
-                prepared["_validated_geometry"] = None
-                prepared["_geometry_invalid"] = True
-            prepared_areas.append(prepared)
-
+    prepared = [
+        _prepare_area_record(area)
+        for area in areas
+        if isinstance(area, dict)
+    ] if isinstance(areas, list) else []
     try:
         version = max(1, int(raw.get("version") or 1))
     except (TypeError, ValueError):
         version = 1
-    # Only an explicit JSON boolean False disables enforcement. Any malformed
-    # value is treated as enabled-with-no-trustworthy-areas (fail closed).
-    enabled_value = raw.get("enabled")
-    enabled = enabled_value if isinstance(enabled_value, bool) else True
-    cross_area_value = raw.get("allow_cross_area_routes")
+    enabled = raw.get("enabled")
     return {
         "version": version,
-        "enabled": enabled,
-        "allow_cross_area_routes": cross_area_value is True,
-        "areas": prepared_areas,
+        "enabled": enabled if isinstance(enabled, bool) else True,
+        "allow_cross_area_routes": raw.get("allow_cross_area_routes") is True,
+        "areas": prepared,
     }
 
+
+def _is_missing_geofence_table(error: Exception) -> bool:
+    message = str(error).lower()
+    table_named = (
+        "geo_service_areas" in message
+        or "geo_service_area_policies" in message
+    )
+    missing = (
+        "does not exist" in message
+        or "no such table" in message
+        or "undefinedtable" in message
+    )
+    return table_named and missing
+
+
+def get_service_area_config() -> dict:
+    """Read current DB policy; safely fall back before the migration is applied."""
+    try:
+        policy = GeoServiceAreaPolicy.query.filter_by(
+            policy_key="default", is_deleted=False
+        ).first()
+        records = (
+            GeoServiceArea.query
+            .filter_by(is_deleted=False)
+            .order_by(GeoServiceArea.name.asc(), GeoServiceArea.slug.asc())
+            .all()
+        )
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        if _is_missing_geofence_table(exc):
+            return _read_legacy_service_area_config()
+        raise
+
+    # One-time transition behavior: when models exist but no owner has saved
+    # through the new page yet, retain any pre-migration SystemConfig values.
+    if policy is None and not records:
+        return _read_legacy_service_area_config()
+
+    areas = [
+        _prepare_area_record({
+            "id": record.slug,
+            "name": record.name,
+            "country_code": record.country_code,
+            "active": record.active,
+            "services": record.services,
+            "geometry": record.geometry,
+        })
+        for record in records
+    ]
+    return {
+        "version": max(1, int(policy.policy_version or 1)) if policy else 1,
+        "enabled": bool(policy.enforcement_enabled) if policy else False,
+        "allow_cross_area_routes": bool(policy.allow_cross_area_routes) if policy else False,
+        "areas": areas,
+    }
 
 def _number(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
