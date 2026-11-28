@@ -6,6 +6,7 @@ No new table or migration is required. GeoJSON coordinates follow RFC 7946:
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 from copy import deepcopy
@@ -29,10 +30,28 @@ _EPSILON = 1e-10
 
 
 def get_service_area_config() -> dict:
-    """Read the authoritative owner-managed service-area configuration."""
-    raw = SystemConfig.get(SERVICE_AREA_CONFIG_KEY, None)
-    if not isinstance(raw, dict):
+    """Read authoritative service areas; malformed persisted policy fails closed.
+
+    A missing setting means this feature has never been enabled and preserves
+    the safe rollout default (off). A present but malformed setting is
+    different: it must not silently disable a policy that an operator saved.
+    """
+    setting = SystemConfig.query.filter_by(key=SERVICE_AREA_CONFIG_KEY).first()
+    if setting is None:
         return deepcopy(DEFAULT_SERVICE_AREA_CONFIG)
+
+    try:
+        raw = json.loads(setting.value) if setting.value else None
+    except (TypeError, ValueError):
+        raw = None
+    if not isinstance(raw, dict) or setting.value_type != "json":
+        return {
+            "version": 1,
+            "enabled": True,
+            "allow_cross_area_routes": False,
+            "areas": [],
+        }
+
     areas = raw.get("areas")
     prepared_areas = []
     if isinstance(areas, list):
@@ -48,14 +67,20 @@ def get_service_area_config() -> dict:
                 # An invalid saved polygon never grants service eligibility.
                 prepared["_validated_geometry"] = None
             prepared_areas.append(prepared)
+
     try:
         version = max(1, int(raw.get("version") or 1))
     except (TypeError, ValueError):
         version = 1
+    # Only an explicit JSON boolean False disables enforcement. Any malformed
+    # value is treated as enabled-with-no-trustworthy-areas (fail closed).
+    enabled_value = raw.get("enabled")
+    enabled = enabled_value if isinstance(enabled_value, bool) else True
+    cross_area_value = raw.get("allow_cross_area_routes")
     return {
         "version": version,
-        "enabled": raw.get("enabled") is True,
-        "allow_cross_area_routes": raw.get("allow_cross_area_routes") is True,
+        "enabled": enabled,
+        "allow_cross_area_routes": cross_area_value is True,
         "areas": prepared_areas,
     }
 
