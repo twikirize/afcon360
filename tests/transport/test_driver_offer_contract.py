@@ -524,8 +524,10 @@ class TestLocationEndToEnd:
 
     def _create_via_service(self, app, rider_id, payload):
         from app.transport.services import get_booking_service
+        from tests.transport_road_quote_helpers import add_test_road_quote
 
         with app.app_context():
+            add_test_road_quote(payload)
             return get_booking_service().create_booking(rider_id, payload)
 
     def test_text_only_locations_rejected_at_creation(
