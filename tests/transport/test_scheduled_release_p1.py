@@ -205,25 +205,25 @@ class TestPhaseBSchema:
 
     def test_create_booking_persists_mode_and_receipt_time(self, app):
         user_id = _create_user(app)
-        result = get_booking_service().create_booking(
-            user_id,
-            {
-                "service_type": "on_demand",
-                "provider_type": "individual_driver",
-                "booking_mode": "scheduled",
-                "pickup_latitude": 0.3136,
-                "pickup_longitude": 32.5811,
-                "dropoff_latitude": 0.3476,
-                "dropoff_longitude": 32.5825,
-                "pickup_location": "Kampala",
-                "dropoff_location": "Entebbe",
-                "pickup_time": (_now() + timedelta(minutes=45)).isoformat(),
-                "passenger_count": 1,
-                "currency": "USD",
-                "payment_method": "cash",
-                "vehicle_class": "comfort",
-            },
-        )
+        from tests.transport_road_quote_helpers import add_test_road_quote
+        payload = {
+            "service_type": "on_demand",
+            "provider_type": "individual_driver",
+            "booking_mode": "scheduled",
+            "pickup_latitude": 0.3136,
+            "pickup_longitude": 32.5811,
+            "dropoff_latitude": 0.3476,
+            "dropoff_longitude": 32.5825,
+            "pickup_location": "Kampala",
+            "dropoff_location": "Entebbe",
+            "pickup_time": (_now() + timedelta(minutes=45)).isoformat(),
+            "passenger_count": 1,
+            "currency": "USD",
+            "payment_method": "cash",
+            "vehicle_class": "comfort",
+        }
+        add_test_road_quote(payload)
+        result = get_booking_service().create_booking(user_id, payload)
         assert result["success"] is True
         with app.app_context():
             booking = db.session.get(Booking, result["data"]["booking_id"])
