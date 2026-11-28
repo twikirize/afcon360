@@ -1,7 +1,7 @@
 import React from "react";
-import type { ReactNode, RefObject } from "react";
+import type { ComponentRef, ReactNode, RefObject } from "react";
 import { StyleSheet, View } from "react-native";
-import type { StyleProp, View as NativeView, ViewStyle } from "react-native";
+import type { StyleProp, ViewStyle } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -12,7 +12,7 @@ type GlassViewProps = {
   radius?: number;
   dark?: boolean;
   blurAmount?: number;
-  blurTarget?: RefObject<NativeView | null>;
+  blurTarget?: RefObject<ComponentRef<typeof View>>;
 };
 
 /**
@@ -37,10 +37,10 @@ export function GlassView({
   return (
     <View style={[styles.shadow, { borderRadius: radius }, style]}>
       <View style={[styles.clip, { borderRadius: radius }]}>
-        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: tint }]} />
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} />
         <BlurView
           pointerEvents="none"
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           tint={dark ? "dark" : "light"}
           intensity={blurAmount}
           blurTarget={blurTarget}
@@ -52,13 +52,13 @@ export function GlassView({
           colors={sheen}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
         <View pointerEvents="none" style={styles.topHighlight} />
         <View
           pointerEvents="none"
           style={[
-            StyleSheet.absoluteFillObject,
+            StyleSheet.absoluteFill,
             { borderRadius: radius, borderWidth: 1, borderColor: edge },
           ]}
         />
