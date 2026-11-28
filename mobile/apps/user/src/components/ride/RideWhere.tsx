@@ -268,7 +268,7 @@ export function RideWhere({
           </Pressable>
         </View>
 
-        <Text style={styles.mapFootnote} numberOfLines={1}>
+        <Text style={styles.mapFootnote} numberOfLines={1} pointerEvents="none">
           © OpenStreetMap contributors · straight-line distance, not road distance
         </Text>
 

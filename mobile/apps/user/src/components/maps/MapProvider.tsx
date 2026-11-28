@@ -31,9 +31,9 @@ export const MAP_TILE_ERROR_MESSAGE =
 /**
  * Leaflet page. The tile layer is a RELATIVE path resolved against the API
  * origin we load the page from, so tiles always come through our server
- * proxy. Two failure signals travel back to React Native:
- *   map_tiles_ready       - at least one tile painted (the map is usable)
- *   map_tiles_unavailable - every tile so far was refused (418/502/offline)
+ * proxy. Map readiness is reported only after the first real tile paints;
+ * total initial tile failure reports a truthful unavailable state instead of
+ * hiding broken tiles behind a premature WebView-loaded signal.
  */
 function buildMapHtml(): string {
   return `

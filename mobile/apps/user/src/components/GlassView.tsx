@@ -28,7 +28,7 @@ export function GlassView({
   blurAmount = 22,
   blurTarget,
 }: GlassViewProps) {
-  const tint = dark ? "rgba(10,16,26,0.48)" : "rgba(255,255,255,0.76)";
+  const tint = dark ? "rgba(10,16,26,0.45)" : "rgba(255,255,255,0.52)";
   const sheen: [string, string] = dark
     ? ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.02)"]
     : ["rgba(255,255,255,0.70)", "rgba(255,255,255,0.08)"];
