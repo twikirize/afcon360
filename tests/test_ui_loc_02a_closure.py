@@ -23,6 +23,30 @@ RIDE_OPTIONS_URL = "/api/transport/ride-options"
 FARE_ESTIMATE_URL = "/api/transport/fare/estimate"
 
 
+@pytest.fixture(autouse=True)
+def _stub_test_road_routing(monkeypatch):
+    from app.geo.interfaces import GeoPoint, RouteResult
+    from app.transport.services import road_distance_service
+
+    class _Provider:
+        def route(self, origin, destination, profile="auto"):
+            return RouteResult(
+                distance_m=8750.0,
+                duration_s=1260.0,
+                geometry=[
+                    GeoPoint(0.3150, 32.5820),
+                    GeoPoint(0.3250, 32.5900),
+                    GeoPoint(0.3350, 32.6000),
+                ],
+                provider="test-routing-provider",
+                resolved=True,
+            )
+
+    monkeypatch.setattr(
+        road_distance_service, "get_routing_service", lambda: _Provider()
+    )
+
+
 def _user(app, tag="loc02a"):
     from app.extensions import db
     from app.identity.models.user import User
