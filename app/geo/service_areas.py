@@ -311,10 +311,16 @@ def service_area_error(assessment: dict) -> str:
         "events": "Event services",
         "tourism": "Tourism services",
     }.get(service, "This service")
+    service_noun = {
+        "transport": "ride",
+        "accommodation": "accommodation",
+        "events": "event",
+        "tourism": "tourism",
+    }.get(service, "service")
     if reason == "no_active_service_area":
         return f"{service_label} are temporarily unavailable because no active service area is configured."
     if reason == "cross_area_route_not_enabled":
-        return "Pickup and destination must be within the same active ride service area."
+        return f"Pickup and destination must be within the same active {service_noun} service area."
     if field == "location":
         return (
             "This place is outside Pamoja's currently supported service areas. "
@@ -322,7 +328,7 @@ def service_area_error(assessment: dict) -> str:
         )
     endpoint = "pickup" if field == "pickup" else "destination"
     return (
-        f"The {endpoint} is outside Pamoja's currently supported {service} service areas. "
+        f"The {endpoint} is outside Pamoja's currently supported {service_noun} service areas. "
         "Please choose a place inside an active service area."
     )
 
@@ -382,12 +388,9 @@ def validate_service_area_config(raw: Any) -> dict:
         })
 
     enabled = raw.get("enabled") is True
-    if enabled and not any(
-        item["active"] and ("transport" in item["services"] or "*" in item["services"])
-        for item in cleaned
-    ):
+    if enabled and not any(item["active"] for item in cleaned):
         raise ValueError(
-            "Enable at least one active ride service area before turning on geofence enforcement."
+            "Enable at least one active service area before turning on geofence enforcement."
         )
 
     try:
