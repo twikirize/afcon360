@@ -4,24 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
+import { PamojaLogomark } from '../PamojaLogomark';
 
-const CenterLogo = () => (
-  <Svg
-    width="26"
-    height="26"
-    viewBox="0 0 100 100"
-    fill="none"
-    stroke="white"
-    strokeWidth="5.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <Path d="M 35 85 L 35 45 C 35 20, 50 15, 65 15 C 85 15, 85 45, 65 55 C 55 60, 45 60, 45 60 L 45 85" />
-    <Path d="M 45 60 C 45 40, 60 30, 68 30 C 68 45, 55 60, 45 60" />
-    <Path d="M 35 50 C 20 50, 20 40, 30 40 C 33 40, 35 45, 35 50" />
-  </Svg>
-);
+// The disc renders the shared logomark at the size the pill was designed around.
+const CenterLogo = () => <PamojaLogomark size={26} />;
 
 type TabIcon = 'home' | 'clipboard-outline' | 'wallet' | 'person-outline';
 
