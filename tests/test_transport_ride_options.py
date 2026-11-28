@@ -405,8 +405,6 @@ def test_ride_options_distance_has_no_preconfirmation_eta(
 
 def test_ride_options_rejects_trip_outside_active_transport_area(
         app, anonymous_client, monkeypatch):
-    from app.geo.service_areas import get_service_area_config
-
     settings = {
         "version": 1,
         "enabled": True,
