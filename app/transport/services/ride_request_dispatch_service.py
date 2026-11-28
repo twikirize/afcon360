@@ -320,6 +320,11 @@ class RideRequestDispatchService:
                 } if vehicle else None),
                 "distance_km": (request.request_metadata or {}).get("distance_km"),
                 "distance_basis": (request.request_metadata or {}).get("distance_basis"),
+                "estimated_duration_minutes": (
+                    request.request_metadata or {}
+                ).get("estimated_duration_minutes"),
+                "route_duration_s": (request.request_metadata or {}).get("route_duration_s"),
+                "route_provider": (request.request_metadata or {}).get("route_provider"),
             })
         return offers
 
