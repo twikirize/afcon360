@@ -408,6 +408,9 @@ jobs:
               tests/test_transport_route_preview.py
               tests/test_transport_road_route_preview_frontend.py
               tests/test_transport_ride_options.py
+              tests/test_geo_service_areas.py
+              tests/test_geo_service_area_api.py
+              tests/test_transport_matching_distance.py
             )
             if [[ ${#TARGETS[@]} -eq 0 ]]; then
               echo "No failed-test targets are recorded."
