@@ -195,3 +195,43 @@ def test_service_area_error_identifies_unsupported_place():
     )
     status["field"] = "location"
     assert "outside Pamoja's currently supported service areas" in service_area_error(status)
+
+
+
+def test_overlapping_service_areas_allow_trip_when_both_endpoints_share_one():
+    first = area("central", "Central", polygon(32.0, 0.0, 32.8, 0.8))
+    overlap = area("kampala", "Kampala", polygon(32.4, 0.2, 33.0, 0.7))
+    result = assess_service_area_trip(
+        {"latitude": 0.3, "longitude": 32.6},
+        {"latitude": 0.6, "longitude": 32.6},
+        config=config(first, overlap),
+    )
+    assert result["supported"] is True
+    assert result["area_id"] in {"central", "kampala"}
+
+
+def test_allow_cross_area_setting_only_applies_to_transport():
+    first = area("area-a", "Area A", polygon(32.0, 0.0, 33.0, 1.0))
+    second = area("area-b", "Area B", polygon(36.0, -2.0, 38.0, 1.0))
+    first["services"] = ["tourism"]
+    second["services"] = ["tourism"]
+    result = assess_service_area_trip(
+        {"latitude": 0.5, "longitude": 32.5},
+        {"latitude": -1.0, "longitude": 37.0},
+        service="tourism",
+        config=config(first, second, cross=True),
+    )
+    assert result["supported"] is False
+    assert result["reason"] == "cross_area_route_not_enabled"
+
+
+def test_degenerate_polygon_with_collinear_vertices_is_rejected():
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [[
+            [32.0, 0.0], [32.5, 0.0], [33.0, 0.0],
+            [32.0, 0.0],
+        ]],
+    }
+    with pytest.raises(ValueError, match="non-zero area"):
+        validate_geometry(geometry)
