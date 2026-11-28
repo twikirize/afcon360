@@ -18,9 +18,11 @@ type PlaceSearchFieldProps = {
   placeholder: string;
   onValue: (value: string) => void;
   onSelect: (place: Place) => void;
+  /** Optional control on the label row (e.g. "use my current location"). */
+  accessory?: React.ReactNode;
 };
 
-export function PlaceSearchField({ label, value, placeholder, onValue, onSelect }: PlaceSearchFieldProps) {
+export function PlaceSearchField({ label, value, placeholder, onValue, onSelect, accessory }: PlaceSearchFieldProps) {
   const [searchState, setSearchState] = useState<PlaceSearchState>(EMPTY_PLACE_SEARCH_STATE);
   const selectedLabelQuery = useRef<string | null>(null);
   const query = value.trim().replace(/\s+/g, " ");
@@ -120,7 +122,10 @@ export function PlaceSearchField({ label, value, placeholder, onValue, onSelect 
 
   return (
     <View style={styles.fieldGroup}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.labelRow}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        {accessory}
+      </View>
       <TextInput
         value={value}
         onChangeText={nextValue => {
@@ -183,6 +188,12 @@ export function PlaceSearchField({ label, value, placeholder, onValue, onSelect 
 
 const styles = StyleSheet.create({
   fieldGroup: { gap: spacing.sm },
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
   fieldLabel: { color: colors.text.ink, fontWeight: "700", fontSize: 13 },
   input: {
     backgroundColor: colors.surface.white,

@@ -20,6 +20,11 @@ class TileProviderConfig:
     kind: str = "pmtiles"  # pmtiles | martin | external
     base_url: str = ""
     style_url: str = ""
+    # Raster upstream used by the server-side tile proxy
+    # (/geo/api/tiles). Empty keeps the free OSM default, which is only
+    # ever reached from the server (a first-party User-Agent), never from
+    # an app or browser that OSM blocks.
+    upstream_url: str = ""
     enabled: bool = True
     attribution: str = "© OpenStreetMap contributors"
 

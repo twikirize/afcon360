@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Keyboard } from "react-native";
+import React, { useCallback, useRef, useState } from "react";
+import { Alert, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
 import { authClient } from "../../services/api";
@@ -12,70 +13,37 @@ import {
 } from "../PamojaScreen";
 import { ServiceHeroAccent } from "../ServiceHeroAccent";
 import { Progress } from "./Progress";
-import { PlaceSearchField } from "./PlaceSearchField";
 import { RideWhere } from "./RideWhere";
 import { RideChoose } from "./RideChoose";
 import { RideConfirm } from "./RideConfirm";
 import { RideMatch } from "./RideMatch";
-import { MapView } from "./MapView";
-import { ServiceTypeSelector } from "./ServiceTypeSelector";
-import { ScheduleSelector } from "./ScheduleSelector";
-import type { Place, Quote, PaymentMethod, LocationSource, RideServiceType, Stage } from "./types";
+import type { Place, Quote, PaymentMethod, RideServiceType, Stage } from "./types";
 import {
-  normalizePlaceSearchQuery,
   validCoordinate,
   distanceSquared,
-  formatMoney,
   friendlyError,
   validLocalSchedule,
   newIdempotencyKey,
-  readPlaceSearchCache,
-  writePlaceSearchCache,
-  EMPTY_PLACE_SEARCH_STATE,
-  validGeocodeCandidate,
-  PLACE_SEARCH_CACHE_POSITIVE_TTL_MS,
-  PLACE_SEARCH_CACHE_NEGATIVE_TTL_MS,
-  PLACE_SEARCH_CACHE_MAX_ENTRIES,
 } from "./utils";
 
-const placeSearchCache = new Map<string, { expiresAt: number; results: any[]; attribution: string | null }>();
+// A device with no satellite fix (indoors, on a desk, in a taxi) never resolves
+// getCurrentPositionAsync, so pressing "Use my current location" left the screen
+// on "locating…" indefinitely. Bound the wait and accept a cached fix.
+const GPS_FIX_TIMEOUT_MS = 12000;
+const LAST_KNOWN_FIX_MAX_AGE_MS = 2 * 60 * 1000;
 
-const BRAND = "#0E5B36";
-
-function readCache(key: string) {
-  const entry = placeSearchCache.get(key);
-  if (!entry) return null;
-  if (entry.expiresAt <= Date.now()) {
-    placeSearchCache.delete(key);
-    return null;
-  }
-  placeSearchCache.delete(key);
-  placeSearchCache.set(key, entry);
-  return entry;
-}
-
-function writeCache(key: string, results: any[], attribution: string | null) {
-  placeSearchCache.delete(key);
-  placeSearchCache.set(key, {
-    expiresAt: Date.now() + (results.length ? PLACE_SEARCH_CACHE_POSITIVE_TTL_MS : PLACE_SEARCH_CACHE_NEGATIVE_TTL_MS),
-    results,
-    attribution,
-  });
-  while (placeSearchCache.size > PLACE_SEARCH_CACHE_MAX_ENTRIES) {
-    const oldestKey = placeSearchCache.keys().next().value;
-    if (oldestKey === undefined) break;
-    placeSearchCache.delete(oldestKey);
-  }
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    promise,
+    new Promise<null>(resolve => setTimeout(() => resolve(null), ms)),
+  ]).catch(() => null);
 }
 
 export function RideScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const mapRef = useRef<any>(null);
   const mapResolveSeq = useRef({ pickup: 0, dropoff: 0 });
   const [stage, setStage] = useState<Stage>("where");
-  const [mapReady, setMapReady] = useState(false);
-  const [mapError, setMapError] = useState<string | null>(null);
 
   const [pickupText, setPickupText] = useState("");
   const [dropoffText, setDropoffText] = useState("");
@@ -103,6 +71,7 @@ export function RideScreen() {
 
   const [submitting, setSubmitting] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const [verificationRequired, setVerificationRequired] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
 
   const resetCommitment = useCallback(() => {
@@ -115,6 +84,7 @@ export function RideScreen() {
     setPaymentError(null);
     setIdempotencyKey(newIdempotencyKey());
     setRequestError(null);
+    setVerificationRequired(false);
   }, []);
 
   const setResolvedPlace = useCallback((side: "pickup" | "dropoff", place: Place) => {
@@ -179,10 +149,9 @@ export function RideScreen() {
   }, [reverseLabel, setResolvedPlace]);
 
   const handleMapMessage = useCallback((message: any) => {
-    if (message.type === "map_ready") {
-      setMapReady(true);
-      setMapError(null);
-    } else if (message.type === "map_tap") {
+    // "map_ready" is owned by RideWhere (it renders the map and its fallback);
+    // only taps and pin drags need the screen's reverse-geocode pipeline.
+    if (message.type === "map_tap") {
       let side: "pickup" | "dropoff";
       if (!pickup && !dropoff) {
         side = "pickup";
@@ -201,36 +170,47 @@ export function RideScreen() {
     }
   }, [dropoff, pickup, updateFromMap]);
 
-  useEffect(() => {
-    if (!mapReady) return;
-    const updatePin = (side: "pickup" | "dropoff", value: Place | null) => {
-      const payload = JSON.stringify({ side, value: value ? {
-        label: value.label,
-        latitude: value.latitude,
-        longitude: value.longitude,
-        source: value.source
-      } : null });
-      mapRef.current?.injectJavaScript("window.__afconSetPin&&window.__afconSetPin(" + payload + ");true;");
-    };
-    updatePin("pickup", pickup);
-    updatePin("dropoff", dropoff);
-  }, [mapReady, pickup, dropoff]);
-
   const useCurrentLocation = useCallback(async () => {
     setLocationBusy(true);
     setLocationMessage("Requesting permission and locating your device…");
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (!permission.granted) {
-        setLocationMessage("Location permission was not granted. Search for a place or tap the map to set pickup.");
+        setLocationMessage(
+          permission.canAskAgain
+            ? "Location permission was not granted. Search for a place or tap the map to set pickup."
+            : "Location is blocked for Pamoja in Android settings. Enable it there, or search for a place or tap the map."
+        );
         return;
       }
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced
-      });
+
+      // Prefer a recent cached fix: it is instant and accurate enough to seed a
+      // pickup, while a live fix can take a minute or never arrive at all.
+      const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
+      const lastKnownIsFresh = !!lastKnown && Date.now() - lastKnown.timestamp <= LAST_KNOWN_FIX_MAX_AGE_MS;
+
+      setLocationMessage(lastKnownIsFresh ? "Using your last known location…" : "Getting a GPS fix…");
+      const live = lastKnownIsFresh
+        ? null
+        : await withTimeout(
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            GPS_FIX_TIMEOUT_MS
+          );
+
+      // A stale cached fix still beats sending the rider back to search.
+      const position = live ?? lastKnown;
+      if (!position) {
+        setLocationMessage("No location fix yet. Search for a place or tap the map to set pickup.");
+        return;
+      }
+
       const latitude = position.coords.latitude;
       const longitude = position.coords.longitude;
       const resolved = await reverseLabel(latitude, longitude, "gps");
+      if (!validCoordinate({ latitude, longitude })) {
+        setLocationMessage("Your device reported an unusable position. Search for a place or tap the map to set pickup.");
+        return;
+      }
       setResolvedPlace("pickup", {
         label: resolved.label,
         latitude,
@@ -371,12 +351,15 @@ export function RideScreen() {
     setStage("match");
     setSubmitting(true);
     setRequestError(null);
+    setVerificationRequired(false);
     try {
       const endpoint = usesRequestFirstFlow
         ? "/api/mobile/v1/transport/ride-requests"
         : "/api/mobile/v1/transport/bookings";
       const response = await authClient.request<{
         success: boolean;
+        code?: string;
+        message?: string;
         booking_reference?: string;
         data?: { request_id?: string; booking_reference?: string };
       }>(endpoint, {
@@ -414,6 +397,15 @@ export function RideScreen() {
           confirmed_fare_amount: String(selectedQuote.fare_total)
         }
       });
+      // A 200 that carries success:false is a refusal, not a ride. Treating it
+      // as "no reference returned" hid the server's own reason (KYC, profile)
+      // behind a generic error while the rider waited for a match.
+      if (response.success === false) {
+        throw new MobileAuthError(
+          response.message ?? "AFCON360 refused this ride request.",
+          response.code ?? "ride_request_refused"
+        );
+      }
       const reference = response.booking_reference ??
         response.data?.request_id ??
         response.data?.booking_reference;
@@ -428,6 +420,25 @@ export function RideScreen() {
         }
       } as never);
     } catch (error) {
+      // The commitment gate answers with a machine-readable refusal. Keep the
+      // server's sentence, but mark it so the rider is told what will unblock
+      // them instead of watching a match that has already been decided.
+      const code = error instanceof MobileAuthError ? error.code : null;
+      if (code === "kyc_upgrade_required" || code === "profile_completion_required") {
+        setVerificationRequired(true);
+        setRequestError(
+          friendlyError(error, "AFCON360 needs more account verification before this ride can be requested.")
+        );
+        return;
+      }
+      if (code === "offline_read_only") {
+        // A cached identity cannot book. Say so, instead of letting the
+        // rider retry a request the client already knows will be refused.
+        setRequestError(
+          "You are working from saved offline information, so this ride was not sent. Reconnect to AFCON360 and try again."
+        );
+        return;
+      }
       setRequestError(friendlyError(
         error,
         "AFCON360 could not create the ride booking. Your Wallet has not been charged."
@@ -439,6 +450,51 @@ export function RideScreen() {
     pickup, dropoff, selectedQuote, paymentMethod, submitting, schedule,
     scheduledAt, idempotencyKey, serviceType, router
   ]);
+
+  // The picker is a full screen, not a scrolling article: search on top, the
+  // map filling whatever is left, and the sticky CTA below the fold-line-free
+  // sheet. Uber / Go Dudu / SafeBoda make booking reachable in two taps; the
+  // stacked-cards version hid the map and the CTA behind a scroll.
+  if (stage === "where") {
+    return (
+      <SafeAreaView style={styles.whereSafe} edges={["top", "left", "right"]}>
+        <View style={styles.whereHeader}>
+          <Text style={styles.whereEyebrow}>TRANSPORT</Text>
+          <Text accessibilityRole="header" style={styles.whereTitle}>
+            Where are you going?
+          </Text>
+        </View>
+        <View style={styles.whereProgress}>
+          <Progress stage={stage} />
+        </View>
+        <RideWhere
+          pickup={pickup}
+          dropoff={dropoff}
+          pickupText={pickupText}
+          dropoffText={dropoffText}
+          serviceType={serviceType}
+          vip={vip}
+          schedule={schedule}
+          scheduledAt={scheduledAt}
+          locationBusy={locationBusy}
+          locationMessage={locationMessage}
+          reverseAttribution={reverseAttribution}
+          onPickupTextChange={value => { setPickupText(value); setPickup(null); resetCommitment(); }}
+          onDropoffTextChange={value => { setDropoffText(value); setDropoff(null); resetCommitment(); }}
+          onPickupSelect={place => setResolvedPlace("pickup", place)}
+          onDropoffSelect={place => setResolvedPlace("dropoff", place)}
+          onUseCurrentLocation={useCurrentLocation}
+          onSwapLocations={swapLocations}
+          onServiceTypeChange={setService}
+          onScheduleChange={schedule => { setSchedule(schedule); resetCommitment(); }}
+          onScheduledAtChange={value => { setScheduledAt(value); resetCommitment(); }}
+          onContinue={continueToOptions}
+          resetCommitment={resetCommitment}
+          onMapMessage={handleMapMessage}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <AppScreen>
@@ -452,34 +508,6 @@ export function RideScreen() {
 
       <Progress stage={stage} />
 
-      {stage === "where" && (
-        <RideWhere
-          pickup={pickup}
-          dropoff={dropoff}
-          pickupText={pickupText}
-          dropoffText={dropoffText}
-          serviceType={serviceType}
-          vip={vip}
-          schedule={schedule}
-          scheduledAt={scheduledAt}
-          locationBusy={locationBusy}
-          locationMessage={locationMessage}
-          reverseAttribution={reverseAttribution}
-          mapReady={mapReady}
-          mapError={mapError}
-          onPickupTextChange={value => { setPickupText(value); setPickup(null); resetCommitment(); }}
-          onDropoffTextChange={value => { setDropoffText(value); setDropoff(null); resetCommitment(); }}
-          onPickupSelect={place => setResolvedPlace("pickup", place)}
-          onDropoffSelect={place => setResolvedPlace("dropoff", place)}
-          onUseCurrentLocation={useCurrentLocation}
-          onSwapLocations={swapLocations}
-          onServiceTypeChange={setService}
-          onScheduleChange={schedule => { setSchedule(schedule); resetCommitment(); }}
-          onScheduledAtChange={value => { setScheduledAt(value); resetCommitment(); }}
-          onContinue={continueToOptions}
-          resetCommitment={resetCommitment}
-        />
-      )}
 
       {stage === "choose" && (
         <RideChoose
@@ -516,10 +544,39 @@ export function RideScreen() {
       )}
 
       {stage === "match" && (
-        <RideMatch requestError={requestError} />
+        <RideMatch
+          submitting={submitting}
+          requestError={requestError}
+          verificationRequired={verificationRequired}
+          onRetry={requestRide}
+          onChangeRide={() => setStage("choose")}
+        />
       )}
     </AppScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  whereSafe: { flex: 1, backgroundColor: colors.surface.canvas },
+  whereProgress: { paddingHorizontal: 12 },
+  whereHeader: {
+    paddingHorizontal: 18,
+    paddingTop: spacing.sm,
+    paddingBottom: 2,
+  },
+  whereEyebrow: {
+    color: colors.brand.dark,
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.35,
+  },
+  whereTitle: {
+    color: colors.text.ink,
+    fontFamily: "serif",
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: "700",
+  },
+});
 
 export default RideScreen;
