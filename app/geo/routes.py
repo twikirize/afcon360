@@ -105,6 +105,87 @@ def _health_payload(app=None):
     }
 
 
+def _annotate_service_area_payload(payload):
+    """Attach fresh operating-area status after Redis geocode-cache lookup.
+
+    Geocoding candidates are cached, but service-area decisions are not:
+    an owner may activate, disable or redraw an area at any time.
+    """
+    from app.geo.service_areas import check_service_area_point
+
+    response = dict(payload or {})
+    annotated = []
+    for item in response.get("results", []):
+        if not isinstance(item, dict):
+            continue
+        candidate = dict(item)
+        status = check_service_area_point(
+            candidate.get("latitude"), candidate.get("longitude"),
+            service="transport",
+        )
+        candidate["service_area"] = status
+        annotated.append(candidate)
+    response["results"] = annotated
+    return response
+
+
+@geo_bp.post("/api/service-area/check")
+@rate_limit("geo_service_area_check", limit=60, period=60)
+def service_area_check():
+    """Anonymous-allowed coordinate support check for map/GPS clients."""
+    from flask import request
+    from app.geo.validation import normalize_point
+    from app.geo.service_areas import (
+        assess_service_area_trip,
+        check_service_area_point,
+        service_area_error,
+    )
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"success": False, "error": "A JSON object is required.",
+                        "code": "INVALID_SERVICE_AREA_INPUT"}), 400
+
+    try:
+        if isinstance(data.get("pickup"), dict) and isinstance(data.get("dropoff"), dict):
+            pickup = normalize_point(
+                data["pickup"].get("latitude"), data["pickup"].get("longitude")
+            )
+            dropoff = normalize_point(
+                data["dropoff"].get("latitude"), data["dropoff"].get("longitude")
+            )
+            result = assess_service_area_trip(
+                {"latitude": pickup.latitude, "longitude": pickup.longitude},
+                {"latitude": dropoff.latitude, "longitude": dropoff.longitude},
+                service=str(data.get("service") or "transport").lower(),
+            )
+        else:
+            point = normalize_point(data.get("latitude"), data.get("longitude"))
+            result = check_service_area_point(
+                point.latitude, point.longitude,
+                service=str(data.get("service") or "transport").lower(),
+            )
+    except Exception as exc:
+        return jsonify({
+            "success": False,
+            "error": "Provide valid latitude and longitude coordinates.",
+            "code": "INVALID_SERVICE_AREA_INPUT",
+        }), 400
+
+    response_data = dict(result)
+    if not result.get("supported"):
+        response_data["message"] = service_area_error(result)
+    elif result.get("enabled"):
+        response_data["message"] = (
+            "This location is within an active service area."
+            if not result.get("reason") == "cross_area_route_not_enabled"
+            else service_area_error(result)
+        )
+    else:
+        response_data["message"] = "Service-area enforcement is disabled."
+    return jsonify({"success": True, "data": response_data}), 200
+
+
 def _provider_attribution(provider: str):
     """Display credit for the answering geocoding provider.
 
@@ -246,7 +327,7 @@ def geocode_search():
     cached = _geo_cache_get(key)
     if cached is not None:
         current_app.logger.debug("geo cache hit q=%s", query)
-        return jsonify(cached)
+        return jsonify(_annotate_service_area_payload(cached))
 
     # Per-request service from the existing env/config surface: no global
     # wiring change, and the existing get_geocoding_service() singleton
@@ -295,7 +376,7 @@ def geocode_search():
             items[0]["provider"] if items else "unresolved"),
     }
     _geo_cache_set(key, payload, empty=not payload.get("results"))
-    return jsonify(payload), 200
+    return jsonify(_annotate_service_area_payload(payload)), 200
 
 
 @geo_bp.get("/api/reverse")
