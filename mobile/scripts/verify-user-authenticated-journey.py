@@ -887,7 +887,7 @@ def main() -> None:
     # Verify that both native location inputs reach the shared GEO endpoint
     # and display its truthful empty state when a deliberately unique query
     # has no provider match. This does not create a booking or touch Wallet.
-    tap_edit_field("Pickup location")
+    tap_edit_field("Pickup")
     type_text("AFCON360E2ENoSuchPickup92746215")
     wait_for_text(
         "No matching places were found.",
