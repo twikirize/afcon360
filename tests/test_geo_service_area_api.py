@@ -161,3 +161,27 @@ def test_geocode_results_receive_fresh_service_area_annotations_and_no_store(
     assert payload["results"][0]["service_area"]["supported"] is True
     assert payload["results"][1]["service_area"]["supported"] is False
     assert "no-store" in response.headers["Cache-Control"]
+
+
+
+def test_missing_geofence_config_defaults_off_but_corrupt_saved_config_fails_closed(
+        app):
+    with app.app_context():
+        from app.extensions import db
+        SystemConfig.query.filter_by(key="GEO_SERVICE_AREAS").delete()
+        db.session.commit()
+
+        from app.geo.service_areas import get_service_area_config
+        assert get_service_area_config()["enabled"] is False
+
+        # SystemConfig.set JSON-encodes a string when it is given as a string;
+        # the resulting valid JSON string is still not a service-area object.
+        SystemConfig.set(
+            "GEO_SERVICE_AREAS",
+            "not-a-service-area-object",
+            value_type="json",
+            category="geo",
+        )
+        broken = get_service_area_config()
+        assert broken["enabled"] is True
+        assert broken["areas"] == []
