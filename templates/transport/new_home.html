@@ -1929,11 +1929,28 @@
     })
     .then(function(r){ return r.json(); })
     .then(function(d){
-      if (!d || !d.success) return optionsError();
+      if (!d || !d.success) {
+        return optionsError(
+          d && d.code === 'ROUTING_UNAVAILABLE'
+            ? (d.error || 'A road route is unavailable. Please try again.')
+            : null
+        );
+      }
       var data = d.data || {};
       var opts = data.options || [];
-      state.distanceKm = data.distance_km != null ? data.distance_km : null;
+      if (data.distance_basis !== 'road_network' ||
+          !isFinite(Number(data.distance_km)) ||
+          !isFinite(Number(data.duration_s)) ||
+          !Array.isArray(data.route_geometry) || !data.route_geometry.length) {
+        return optionsError('We could not verify a road route for this journey. Please try again.');
+      }
+      state.distanceKm = data.distance_km;
       renderTripNote(data);
+      // Replace the preliminary preview with the exact server route whose
+      // signed distance/duration produced the displayed fare options.
+      document.dispatchEvent(new CustomEvent('afcon360:fare-route-resolved', {
+        detail: data
+      }));
       if (state.vip) {
         opts = opts.filter(function(o){
           return o.vehicle_class === 'premium' || o.vehicle_class === 'luxury';
@@ -1947,9 +1964,11 @@
 
   function renderTripNote(data){
     var note = 'Fare quote only. Driver matching has not started.';
-    if (data && data.distance_km != null) {
-      note = '~' + Number(data.distance_km).toFixed(1) +
-        ' km · estimated fare only. No driver has been contacted yet.';
+    if (data && data.distance_basis === 'road_network' &&
+        data.distance_km != null && data.duration_minutes != null) {
+      note = 'Road route: ' + Number(data.distance_km).toFixed(1) +
+        ' km · approx. ' + Number(data.duration_minutes) +
+        ' min. Fare options use this same road distance; no driver has been contacted yet.';
     }
     if (data && data.home_currency && data.display_currency === data.home_currency &&
         data.display_currency !== data.currency) {
@@ -1961,9 +1980,9 @@
     tripMeta.textContent = note;
   }
 
-  function optionsError(){
+  function optionsError(message){
     optionsBox.innerHTML =
-      '<div class="bolt-empty">We couldn\'t reach the ride service. ' +
+      '<div class="bolt-empty">' + esc(message || 'We couldn\'t reach the ride service. Please retry.') + ' ' +
       '<button type="button" class="bolt-retry" id="retryBtn">Retry</button></div>';
     var rb = document.getElementById('retryBtn');
     if (rb) rb.addEventListener('click', function(){ loadOptions(); });
