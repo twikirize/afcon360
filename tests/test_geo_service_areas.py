@@ -172,7 +172,26 @@ def test_driver_area_check_is_bypassed_when_geofencing_disabled():
 
 
 def test_cannot_enable_geofencing_without_active_transport_area():
-    with pytest.raises(ValueError, match="at least one active ride"):
+    with pytest.raises(ValueError, match="at least one active service area"):
         validate_service_area_config(
             config(area(active=False), enabled=True)
         )
+
+
+
+def test_non_transport_area_can_enable_global_geofence():
+    tourism = area()
+    tourism["services"] = ["tourism"]
+    result = validate_service_area_config(config(tourism, enabled=True))
+    assert result["enabled"] is True
+    assert result["areas"][0]["services"] == ["tourism"]
+
+
+def test_service_area_error_identifies_unsupported_place():
+    from app.geo.service_areas import service_area_error
+
+    status = check_service_area_point(
+        -1.0, 35.0, config=config(area())
+    )
+    status["field"] = "location"
+    assert "outside Pamoja's currently supported service areas" in service_area_error(status)
