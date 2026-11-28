@@ -430,7 +430,7 @@
         {% if o0_fare.get('display_currency_basis') == 'fare_currency' %}
           Operating country not set · showing base fare currency {{ o0_base_currency }}
         {% else %}
-          {% if o0.get('distance_basis') == 'straight_line_planner' %}Estimated fare{% else %}Estimated fare — approx. distance{% endif %}
+          {% if o0.get('distance_basis') == 'road_network' %}Road-route fare{% elif o0.get('distance_basis') == 'straight_line_planner' %}Planning fare estimate{% else %}Estimated fare — approx. distance{% endif %}
           · operating-market currency {{ o0_display_currency }}
         {% endif %}
         · not your net earnings
@@ -703,8 +703,9 @@
               {{ o.booking_reference }}
               · {{ o.get('passenger_count')|default(1) }} pax
               {% if o.get('ride_class') %} · {{ o.get('ride_class')|replace('_',' ')|title }}{% endif %}
-              {% if o_fare.get('amount') is not none %} · <span style="color:var(--green);">{% if o.get('distance_basis') == 'straight_line_planner' %}Fare estimate{% else %}Fare estimate — approx. distance{% endif %}: {{ o_fare.get('currency') or 'USD' }} {{ ('%.2f'|format(o_fare.get('amount')|float)).rstrip('0').rstrip('.') }}</span>{% endif %}
-              {% if o.get('distance_km') is not none %} · Est. {{ ('%.1f'|format(o.get('distance_km')|float)) }} km{% endif %}
+              {% if o_fare.get('amount') is not none %} · <span style="color:var(--green);">{% if o.get('distance_basis') == 'road_network' %}Road-route fare{% elif o.get('distance_basis') == 'straight_line_planner' %}Planning fare estimate{% else %}Fare estimate — approx. distance{% endif %}: {{ o_fare.get('currency') or 'USD' }} {{ ('%.2f'|format(o_fare.get('amount')|float)).rstrip('0').rstrip('.') }}</span>{% endif %}
+              {% if o.get('distance_km') is not none %} · {{ 'Road route' if o.get('distance_basis') == 'road_network' else 'Est.' }} {{ ('%.1f'|format(o.get('distance_km')|float)) }} km{% endif %}
+              {% if o.get('estimated_duration_minutes') is not none %} · approx. {{ o.get('estimated_duration_minutes') }} min{% endif %}
               {% if o_veh.get('license_plate') %} · {{ o_veh.get('license_plate') }}{% endif %}
               {% if o.get('ttl_remaining') %} · expires in ~{{ ((o.get('ttl_remaining') or 0) // 60) + 1 }} min{% endif %}
               · <span style="color:var(--green);">Live</span>
